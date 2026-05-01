@@ -1,4 +1,8 @@
-import Dexie, { type Table } from "dexie";
+import type { Table } from "dexie";
+// Import the Dexie ESM build directly. The package root uses a global singleton
+// wrapper that can throw when another Obsidian plugin has loaded a different
+// Dexie version in the same app window.
+import Dexie from "dexie/dist/dexie.mjs";
 
 import type { BlobRecord, EntryRecord, MetadataRecord } from "./records";
 
