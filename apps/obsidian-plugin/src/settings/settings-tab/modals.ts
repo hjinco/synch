@@ -43,47 +43,71 @@ export class ExcludedFoldersModal extends Modal {
   }
 
   onOpen(): void {
+    this.render();
+  }
+
+  private render(): void {
     const { contentEl } = this;
     contentEl.empty();
-    new Setting(contentEl).setName(t("excluded.header")).setHeading();
-    contentEl.createEl("p", {
-      text: t("excluded.selectHint"),
+    new Setting(contentEl).setName(t('excluded.header')).setHeading();
+    contentEl.createEl('p', {
+      text: t('excluded.selectHint'),
     });
 
     if (this.options.availableFolders.length === 0) {
-      contentEl.createEl("p", {
-        text: t("excluded.availableEmpty"),
+      contentEl.createEl('p', {
+        text: t('excluded.availableEmpty'),
       });
     } else {
       for (const folder of this.options.availableFolders) {
-        new Setting(contentEl)
-          .setName(folder)
-          .addToggle((toggle) =>
-            toggle.setValue(this.selectedFolders.has(folder)).onChange((value) => {
-              if (value) {
-                this.selectedFolders.add(folder);
-              } else {
-                this.selectedFolders.delete(folder);
-              }
-            }),
+        const inheritedFrom = findCoveringParent(folder, this.selectedFolders);
+        const isInherited = inheritedFrom !== null;
+        const isOn = isInherited || this.selectedFolders.has(folder);
+
+        const setting = new Setting(contentEl).setName(folder);
+        if (isInherited) {
+          setting.setDesc(
+            t('excluded.inherited', { parent: inheritedFrom as string }),
           );
+        }
+        setting.addToggle((toggle) =>
+          toggle
+            .setValue(isOn)
+            .setDisabled(isInherited)
+            .onChange((value) => this.handleToggle(folder, value)),
+        );
       }
     }
 
     new Setting(contentEl)
       .addButton((button) =>
-        button.setButtonText(t("cancel")).onClick(() => {
+        button.setButtonText(t('cancel')).onClick(() => {
           this.close();
         }),
       )
       .addButton((button) =>
-        button.setButtonText(t("done")).setCta().onClick(() => {
+        button.setButtonText(t('done')).setCta().onClick(() => {
           void this.options.onSubmit(
             [...this.selectedFolders].sort((a, b) => a.localeCompare(b)),
           );
           this.close();
         }),
       );
+  }
+
+  private handleToggle(folder: string, value: boolean): void {
+    if (value) {
+      this.selectedFolders.add(folder);
+      const prefix = `${folder}/`;
+      for (const candidate of [...this.selectedFolders]) {
+        if (candidate !== folder && candidate.startsWith(prefix)) {
+          this.selectedFolders.delete(candidate);
+        }
+      }
+    } else {
+      this.selectedFolders.delete(folder);
+    }
+    this.render();
   }
 }
 
