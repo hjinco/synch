@@ -97,4 +97,30 @@ describe("normalizeExcludedFolders", () => {
       ]),
     ).toEqual(["Archive", "Attachments/raw"]);
   });
+
+  it("removes descendants when their ancestor is also excluded", () => {
+    expect(normalizeExcludedFolders(["Foo", "Foo/Bar"])).toEqual(["Foo"]);
+  });
+
+  it("keeps independent siblings", () => {
+    expect(normalizeExcludedFolders(["Foo", "Bar"])).toEqual(["Bar", "Foo"]);
+  });
+
+  it("collapses multi-level descendants under the topmost ancestor", () => {
+    expect(normalizeExcludedFolders(["A", "A/B", "A/B/C", "D"])).toEqual([
+      "A",
+      "D",
+    ]);
+  });
+
+  it("does not treat lookalike siblings as descendants", () => {
+    expect(normalizeExcludedFolders(["Foo", "Foobar"])).toEqual([
+      "Foo",
+      "Foobar",
+    ]);
+  });
+
+  it("prunes regardless of input order", () => {
+    expect(normalizeExcludedFolders(["Foo/Bar", "Foo"])).toEqual(["Foo"]);
+  });
 });

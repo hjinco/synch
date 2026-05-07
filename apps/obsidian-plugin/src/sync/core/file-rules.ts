@@ -118,11 +118,25 @@ export function normalizeExcludedFolders(value: unknown): string[] {
     seen.add(normalized);
   }
 
-  return [...seen].sort((left, right) => left.localeCompare(right));
+  const sorted = [...seen].sort((left, right) => left.localeCompare(right));
+  return pruneSubpaths(sorted);
 }
 
 export function normalizeVaultPath(path: string): string {
   return path.trim().replace(/^\/+/, "").replace(/\/+$/, "");
+}
+
+function pruneSubpaths(sortedPaths: readonly string[]): string[] {
+  const result: string[] = [];
+  for (const path of sortedPaths) {
+    const coveredByExisting = result.some((parent) =>
+      path.startsWith(`${parent}/`),
+    );
+    if (!coveredByExisting) {
+      result.push(path);
+    }
+  }
+  return result;
 }
 
 function isExcludedByFolder(path: string, excludedFolders: ReadonlyArray<string>): boolean {
