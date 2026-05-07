@@ -14,6 +14,18 @@ import { formatDeletedFileTimestamp } from "./format";
 const DELETED_FILES_PAGE_SIZE = 25;
 const MAX_DELETED_FILES_RESTORE_SELECTION = 100;
 
+export function findCoveringParent(
+  folder: string,
+  selected: ReadonlySet<string>,
+): string | null {
+  for (const candidate of selected) {
+    if (folder !== candidate && folder.startsWith(`${candidate}/`)) {
+      return candidate;
+    }
+  }
+  return null;
+}
+
 export class ExcludedFoldersModal extends Modal {
   private readonly selectedFolders: Set<string>;
 
