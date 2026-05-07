@@ -34,6 +34,8 @@ const messages = {
     "excluded.count": ({ count }: { count: number }) => `${count} folder${count === 1 ? "" : "s"} excluded on this device.`,
     "excluded.folderDesc": "Excluded from sync on this device.",
     "excluded.header": "Excluded folders",
+    "excluded.inherited": ({ parent }: { parent: string }) =>
+      `Inherited from "${parent}".`,
     "excluded.none": "No excluded folders on this device.",
     "excluded.remove": "Remove",
     "excluded.selectHint": "Select folders that should never sync from this device.",
@@ -179,6 +181,8 @@ const messages = {
     "excluded.count": ({ count }: { count: number }) => `이 기기에서 ${count}개 폴더가 제외되었습니다.`,
     "excluded.folderDesc": "이 기기에서 동기화 제외됨.",
     "excluded.header": "제외된 폴더",
+    "excluded.inherited": ({ parent }: { parent: string }) =>
+      `상위 폴더 "${parent}"에 의해 제외됨.`,
     "excluded.none": "이 기기에서 제외된 폴더가 없습니다.",
     "excluded.remove": "제거",
     "excluded.selectHint": "이 기기에서 절대 동기화하지 않을 폴더를 선택하세요.",
