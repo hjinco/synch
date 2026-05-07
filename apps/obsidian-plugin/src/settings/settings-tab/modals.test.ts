@@ -27,4 +27,14 @@ describe("findCoveringParent", () => {
     const selected = new Set(["Bar", "Foo", "Baz"]);
     expect(findCoveringParent("Foo/Sub/Deep", selected)).toBe("Foo");
   });
+
+  it("returns the topmost ancestor when several ancestors are selected", () => {
+    const selected = new Set(["Foo/Bar", "Foo"]);
+    expect(findCoveringParent("Foo/Bar/Baz", selected)).toBe("Foo");
+  });
+
+  it("returns the ancestor even when the input itself is selected", () => {
+    const selected = new Set(["Foo", "Foo/Bar"]);
+    expect(findCoveringParent("Foo/Bar", selected)).toBe("Foo");
+  });
 });

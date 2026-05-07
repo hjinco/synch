@@ -18,7 +18,8 @@ export function findCoveringParent(
   folder: string,
   selected: ReadonlySet<string>,
 ): string | null {
-  for (const candidate of selected) {
+  const topmostFirst = [...selected].sort((left, right) => left.length - right.length);
+  for (const candidate of topmostFirst) {
     if (folder !== candidate && folder.startsWith(`${candidate}/`)) {
       return candidate;
     }
