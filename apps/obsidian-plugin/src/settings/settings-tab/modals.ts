@@ -16,10 +16,9 @@ const MAX_DELETED_FILES_RESTORE_SELECTION = 100;
 
 export function findCoveringParent(
   folder: string,
-  selected: ReadonlySet<string>,
+  sortedSelected: readonly string[],
 ): string | null {
-  const topmostFirst = [...selected].sort((left, right) => left.length - right.length);
-  for (const candidate of topmostFirst) {
+  for (const candidate of sortedSelected) {
     if (folder !== candidate && folder.startsWith(`${candidate}/`)) {
       return candidate;
     }
@@ -59,8 +58,11 @@ export class ExcludedFoldersModal extends Modal {
         text: t('excluded.availableEmpty'),
       });
     } else {
+      const sortedSelected = [...this.selectedFolders].sort(
+        (left, right) => left.length - right.length,
+      );
       for (const folder of this.options.availableFolders) {
-        const inheritedFrom = findCoveringParent(folder, this.selectedFolders);
+        const inheritedFrom = findCoveringParent(folder, sortedSelected);
         const isInherited = inheritedFrom !== null;
         const isOn = isInherited || this.selectedFolders.has(folder);
 
