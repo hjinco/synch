@@ -7,6 +7,8 @@
   "scripts": {
     "dev": "node esbuild.config.mjs",
     "build": "tsgo --noEmit --skipLibCheck && node esbuild.config.mjs production",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
     "bump:version": "node scripts/bump-release-version.mjs",
     "release-notes:prepare": "node scripts/prepare-release-notes.mjs",
     "release-notes:reset": "node scripts/reset-release-notes.mjs",
@@ -17,8 +19,12 @@
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
+    "@typescript-eslint/eslint-plugin": "^8.0.0",
+    "@typescript-eslint/parser": "^8.0.0",
     "dotenv": "^17.4.2",
     "esbuild": "^0.25.0",
+    "eslint": "^9.0.0",
+    "eslint-plugin-obsidianmd": "^0.3.0",
     "fake-indexeddb": "^6.2.5",
     "obsidian": "^1.11.4",
     "vitest": "^4.1.4"
