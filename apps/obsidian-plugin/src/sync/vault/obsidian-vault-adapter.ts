@@ -45,9 +45,7 @@ export class ObsidianSyncVaultAdapter {
       }
     }
 
-    return [...byPath.values()].sort((left, right) =>
-      left.path.localeCompare(right.path),
-    );
+    return [...byPath.values()];
   }
 
   async readFile(file: TFile): Promise<Uint8Array> {
