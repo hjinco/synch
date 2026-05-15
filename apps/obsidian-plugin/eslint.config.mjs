@@ -1,4 +1,4 @@
-import tsparser from "@typescript-eslint/parser";
+import tseslint from "typescript-eslint";
 import { defineConfig, globalIgnores } from "eslint/config";
 import obsidianmd from "eslint-plugin-obsidianmd";
 
@@ -7,7 +7,7 @@ export default defineConfig([
   {
     files: ["**/*.ts"],
     languageOptions: {
-      parser: tsparser,
+      parser: tseslint.parser,
       parserOptions: { project: true },
     }
   },
