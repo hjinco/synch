@@ -19,14 +19,13 @@
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
-    "@typescript-eslint/eslint-plugin": "^8.0.0",
-    "@typescript-eslint/parser": "^8.0.0",
     "dotenv": "^17.4.2",
     "esbuild": "^0.25.0",
     "eslint": "^9.0.0",
     "eslint-plugin-obsidianmd": "^0.3.0",
     "fake-indexeddb": "^6.2.5",
     "obsidian": "^1.11.4",
+    "typescript-eslint": "^8.59.3",
     "vitest": "^4.1.4"
   },
   "dependencies": {
