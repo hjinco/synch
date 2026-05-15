@@ -41,6 +41,15 @@ describe("vault writer", () => {
     expect(writer.textFiles.has("Meta/manifest.json")).toBe(false);
     expect(writer.binaryFiles.get("Backup/file.bin")).toEqual(new Uint8Array([9]));
   });
+
+  it("refuses to modify reserved vault paths", async () => {
+    const writer = new MemoryVaultWriter();
+
+    await expect(writeVaultText(writer, ".obsidian/app.json", "{}")).rejects.toThrow(
+      "Refusing to modify reserved vault path",
+    );
+    expect(writer.directories.has(".obsidian")).toBe(false);
+  });
 });
 
 class MemoryVaultWriter implements SyncVaultWriter {

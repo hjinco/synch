@@ -5,6 +5,7 @@ export interface SynchFileRules {
   includePdf: boolean;
   includeOtherFiles: boolean;
   excludedFolders: string[];
+  includedHiddenFolders: string[];
 }
 
 export type SynchSyncState =

@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   DEFAULT_SYNC_FILE_RULES,
   normalizeExcludedFolders,
+  normalizeIncludedHiddenFolders,
   normalizeSyncFileRules,
   shouldSyncPath,
 } from "./file-rules";
@@ -15,6 +16,20 @@ describe("shouldSyncPath", () => {
   it("excludes hidden paths and folders", () => {
     expect(shouldSyncPath(".obsidian/workspace.json", DEFAULT_SYNC_FILE_RULES)).toBe(false);
     expect(shouldSyncPath("Notes/.trash/daily.md", DEFAULT_SYNC_FILE_RULES)).toBe(false);
+  });
+
+  it("syncs allowlisted hidden folders while keeping reserved paths blocked", () => {
+    const rules = normalizeSyncFileRules({
+      ...DEFAULT_SYNC_FILE_RULES,
+      includeOtherFiles: true,
+      includedHiddenFolders: [".assets", "Notes/.attachments"],
+    });
+
+    expect(shouldSyncPath(".assets/image.png", rules)).toBe(true);
+    expect(shouldSyncPath("Notes/.attachments/data.json", rules)).toBe(true);
+    expect(shouldSyncPath(".unlisted/file.md", rules)).toBe(false);
+    expect(shouldSyncPath(".obsidian/app.json", rules)).toBe(false);
+    expect(shouldSyncPath(".git/config", rules)).toBe(false);
   });
 
   it("excludes Obsidian configuration files even when other files are enabled", () => {
@@ -82,6 +97,27 @@ describe("shouldSyncPath", () => {
     expect(shouldSyncPath("Archive/note.md", rules)).toBe(false);
     expect(shouldSyncPath("Attachments/raw/image.png", rules)).toBe(false);
     expect(shouldSyncPath("Attachments/kept/image.png", rules)).toBe(true);
+  });
+});
+
+describe("normalizeIncludedHiddenFolders", () => {
+  it("keeps hidden folders, deduplicates them, and removes reserved folders", () => {
+    expect(
+      normalizeIncludedHiddenFolders([
+        " .assets ",
+        "/.assets/",
+        "Notes/.attachments",
+        ".obsidian",
+        ".git",
+        "Regular",
+      ]),
+    ).toEqual([".assets", "Notes/.attachments"]);
+  });
+
+  it("removes descendants when their ancestor is also included", () => {
+    expect(normalizeIncludedHiddenFolders([".assets/raw", ".assets"])).toEqual([
+      ".assets",
+    ]);
   });
 });
 

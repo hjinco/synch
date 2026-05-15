@@ -49,6 +49,8 @@ import {
 
 type SyncActivityKind = "push" | "pull" | "local";
 
+const HIDDEN_FOLDER_RECONCILE_INTERVAL_MS = 60_000;
+
 interface ActiveSyncActivity {
   id: number;
   kind: SyncActivityKind;
@@ -86,6 +88,8 @@ export class SyncEngine {
   private localMutationQueue: Promise<void> = Promise.resolve();
   private activeSyncActivities: ActiveSyncActivity[] = [];
   private nextSyncActivityId = 1;
+  private hiddenFolderReconcileTimer: ReturnType<typeof setInterval> | null = null;
+  private hiddenFolderReconcilePromise: Promise<void> | null = null;
   private readonly syncEventGate = new SyncEventGate();
   private readonly vaultAdapter = new ObsidianSyncVaultAdapter(
     this.deps.plugin,
@@ -254,11 +258,14 @@ export class SyncEngine {
     });
   }
 
-  startAutoSync(): Promise<boolean> {
-    return this.syncAutoLoop.start();
+  async startAutoSync(): Promise<boolean> {
+    const started = await this.syncAutoLoop.start();
+    this.startHiddenFolderReconcileTimer();
+    return started;
   }
 
   stopAutoSync(): void {
+    this.stopHiddenFolderReconcileTimer();
     this.syncAutoLoop.stop();
   }
 
@@ -268,6 +275,16 @@ export class SyncEngine {
 
   async resumeAutoSyncConnection(): Promise<void> {
     await this.syncAutoLoop.resumeConnection();
+    this.startHiddenFolderReconcileTimer();
+  }
+
+  refreshHiddenFolderReconcileTimer(): void {
+    if (this.deps.getSyncFileRules().includedHiddenFolders.length > 0) {
+      this.startHiddenFolderReconcileTimer();
+      return;
+    }
+
+    this.stopHiddenFolderReconcileTimer();
   }
 
   registerVaultEvents(): void {
@@ -304,6 +321,58 @@ export class SyncEngine {
   async hasPendingMutations(): Promise<boolean> {
     const pending = await this.syncStore?.listDirtyEntries(1);
     return (pending?.length ?? 0) > 0;
+  }
+
+  private startHiddenFolderReconcileTimer(): void {
+    if (
+      this.hiddenFolderReconcileTimer !== null ||
+      this.deps.getSyncFileRules().includedHiddenFolders.length === 0
+    ) {
+      return;
+    }
+
+    this.hiddenFolderReconcileTimer = setInterval(() => {
+      void this.reconcileHiddenFoldersFromTimer();
+    }, HIDDEN_FOLDER_RECONCILE_INTERVAL_MS);
+  }
+
+  private stopHiddenFolderReconcileTimer(): void {
+    if (this.hiddenFolderReconcileTimer === null) {
+      return;
+    }
+
+    clearInterval(this.hiddenFolderReconcileTimer);
+    this.hiddenFolderReconcileTimer = null;
+  }
+
+  private async reconcileHiddenFoldersFromTimer(): Promise<void> {
+    if (
+      this.hiddenFolderReconcilePromise ||
+      this.deps.getSyncFileRules().includedHiddenFolders.length === 0 ||
+      !this.deps.hasActiveRemoteVaultSession() ||
+      !this.syncStore
+    ) {
+      return;
+    }
+
+    this.hiddenFolderReconcilePromise = this.reconcileHiddenFoldersOnce();
+    try {
+      await this.hiddenFolderReconcilePromise;
+    } finally {
+      this.hiddenFolderReconcilePromise = null;
+    }
+  }
+
+  private async reconcileHiddenFoldersOnce(): Promise<void> {
+    try {
+      const result = await this.reconcileOnce();
+      if (result.filesQueuedForUpsert > 0 || result.filesQueuedForDelete > 0) {
+        this.notifyLocalChange();
+      }
+    } catch (error) {
+      this.deps.setSyncStatus("attention_needed");
+      this.deps.notifyError(error, "Hidden folder scan failed");
+    }
   }
 
   async listFileSizeBlockedFiles(): Promise<SyncFileSizeBlockedFile[]> {

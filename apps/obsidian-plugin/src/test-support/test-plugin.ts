@@ -41,9 +41,72 @@ export function createTestPlugin(): Plugin {
         localStorage.set(key, value);
       },
       vault: {
+        getFiles(): [] {
+          return [];
+        },
         adapter: {
           async exists(path: string): Promise<boolean> {
             return directories.has(path) || files.has(path);
+          },
+          async stat(path: string): Promise<{ type: "file" | "folder"; ctime: number; mtime: number; size: number } | null> {
+            const file = files.get(path);
+            if (file !== undefined) {
+              return {
+                type: "file",
+                ctime: 1,
+                mtime: 1,
+                size: typeof file === "string" ? file.length : file.byteLength,
+              };
+            }
+
+            if (directories.has(path)) {
+              return {
+                type: "folder",
+                ctime: 1,
+                mtime: 1,
+                size: 0,
+              };
+            }
+
+            return null;
+          },
+          async list(path: string): Promise<{ files: string[]; folders: string[] }> {
+            const prefix = path ? `${path}/` : "";
+            const childFiles = new Set<string>();
+            const childFolders = new Set<string>();
+
+            for (const filePath of files.keys()) {
+              if (!filePath.startsWith(prefix)) {
+                continue;
+              }
+
+              const rest = filePath.slice(prefix.length);
+              const slashIndex = rest.indexOf("/");
+              if (slashIndex < 0) {
+                childFiles.add(filePath);
+              } else {
+                childFolders.add(`${prefix}${rest.slice(0, slashIndex)}`);
+              }
+            }
+
+            for (const folderPath of directories) {
+              if (folderPath === path || !folderPath.startsWith(prefix)) {
+                continue;
+              }
+
+              const rest = folderPath.slice(prefix.length);
+              const slashIndex = rest.indexOf("/");
+              childFolders.add(
+                slashIndex < 0
+                  ? folderPath
+                  : `${prefix}${rest.slice(0, slashIndex)}`,
+              );
+            }
+
+            return {
+              files: [...childFiles].sort((left, right) => left.localeCompare(right)),
+              folders: [...childFolders].sort((left, right) => left.localeCompare(right)),
+            };
           },
           async read(path: string): Promise<string> {
             const file = files.get(path);

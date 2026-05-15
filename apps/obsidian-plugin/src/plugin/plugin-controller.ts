@@ -34,7 +34,13 @@ import {
   SynchServerPluginVersionChecker,
 } from "./server-version-checker";
 import { SynchPluginUpdateChecker } from "./update-checker";
-import { normalizeExcludedFolders, type SyncFileRules } from "../sync/core/file-rules";
+import {
+  normalizeExcludedFolders,
+  normalizeIncludedHiddenFolders,
+  normalizeVaultPath,
+  type SyncFileRules,
+} from "../sync/core/file-rules";
+import { isReservedSyncPath } from "../sync/core/reserved-paths";
 import type { SyncTokenResponse } from "../sync/remote/client";
 import { SyncController } from "../sync/runtime/controller";
 import { SyncTokenManager } from "../sync/remote/token-manager";
@@ -421,6 +427,19 @@ export class SynchPluginController implements SynchSettingsController {
       ...this.getSyncFileRules(),
       excludedFolders: normalizeExcludedFolders(paths),
     });
+  }
+
+  async updateIncludedHiddenFolders(paths: string[]): Promise<void> {
+    await this.updateSyncFileRules({
+      ...this.getSyncFileRules(),
+      includedHiddenFolders: normalizeIncludedHiddenFolders(paths),
+    });
+  }
+
+  async listSelectableIncludedHiddenFolderPaths(): Promise<string[]> {
+    const folders: string[] = [];
+    await this.collectSelectableHiddenFolders("", folders);
+    return folders.sort((left, right) => left.localeCompare(right));
   }
 
   async updateApiBaseUrl(value: string): Promise<void> {
@@ -918,5 +937,30 @@ export class SynchPluginController implements SynchSettingsController {
 
   private hasActiveRemoteVaultSession(): boolean {
     return this.remoteVaultManager.getActiveSession() !== null;
+  }
+
+  private async collectSelectableHiddenFolders(
+    folder: string,
+    result: string[],
+  ): Promise<void> {
+    let listed: { folders: string[] };
+    try {
+      listed = await this.plugin.app.vault.adapter.list(folder);
+    } catch {
+      return;
+    }
+
+    for (const child of listed.folders) {
+      const normalized = normalizeVaultPath(child);
+      if (!normalized || isReservedSyncPath(normalized)) {
+        continue;
+      }
+
+      if (normalized.split("/").some((segment) => segment.startsWith("."))) {
+        result.push(normalized);
+      }
+
+      await this.collectSelectableHiddenFolders(normalized, result);
+    }
   }
 }

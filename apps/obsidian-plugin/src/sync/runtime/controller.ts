@@ -285,6 +285,7 @@ export class SyncController {
     try {
       this.setSyncStatus("syncing");
       await this.syncEngine.reconcileOnce();
+      this.syncEngine.refreshHiddenFolderReconcileTimer();
       this.syncEngine.notifyLocalChange();
     } catch (error) {
       if (isRemoteVaultUnavailableError(error)) {

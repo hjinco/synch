@@ -1,3 +1,5 @@
+import { isReservedSyncPath } from "./reserved-paths";
+
 const IMAGE_EXTENSIONS = new Set([
   "png",
   "jpg",
@@ -24,6 +26,7 @@ export interface SyncFileRules {
   includePdf: boolean;
   includeOtherFiles: boolean;
   excludedFolders: string[];
+  includedHiddenFolders: string[];
 }
 
 export const DEFAULT_SYNC_FILE_RULES: SyncFileRules = {
@@ -33,6 +36,7 @@ export const DEFAULT_SYNC_FILE_RULES: SyncFileRules = {
   includePdf: true,
   includeOtherFiles: false,
   excludedFolders: [],
+  includedHiddenFolders: [],
 };
 
 export function normalizeSyncFileRules(value: unknown): SyncFileRules {
@@ -40,6 +44,7 @@ export function normalizeSyncFileRules(value: unknown): SyncFileRules {
     return {
       ...DEFAULT_SYNC_FILE_RULES,
       excludedFolders: [...DEFAULT_SYNC_FILE_RULES.excludedFolders],
+      includedHiddenFolders: [...DEFAULT_SYNC_FILE_RULES.includedHiddenFolders],
     };
   }
 
@@ -54,6 +59,9 @@ export function normalizeSyncFileRules(value: unknown): SyncFileRules {
       DEFAULT_SYNC_FILE_RULES.includeOtherFiles,
     ),
     excludedFolders: normalizeExcludedFolders(record.excludedFolders),
+    includedHiddenFolders: normalizeIncludedHiddenFolders(
+      record.includedHiddenFolders,
+    ),
   };
 }
 
@@ -71,7 +79,14 @@ export function shouldSyncPath(path: string, rules: SyncFileRules): boolean {
     return false;
   }
 
-  if (hasHiddenSegment(normalizedPath)) {
+  if (isReservedSyncPath(normalizedPath)) {
+    return false;
+  }
+
+  if (
+    hasHiddenSegment(normalizedPath) &&
+    !isIncludedByFolder(normalizedPath, rules.includedHiddenFolders)
+  ) {
     return false;
   }
 
@@ -111,7 +126,34 @@ export function normalizeExcludedFolders(value: unknown): string[] {
     }
 
     const normalized = normalizeVaultPath(entry);
-    if (!normalized || hasHiddenSegment(normalized)) {
+    if (!normalized || hasHiddenSegment(normalized) || isReservedSyncPath(normalized)) {
+      continue;
+    }
+
+    seen.add(normalized);
+  }
+
+  const sorted = [...seen].sort((left, right) => left.localeCompare(right));
+  return pruneSubpaths(sorted);
+}
+
+export function normalizeIncludedHiddenFolders(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  const seen = new Set<string>();
+  for (const entry of value) {
+    if (typeof entry !== "string") {
+      continue;
+    }
+
+    const normalized = normalizeVaultPath(entry);
+    if (
+      !normalized ||
+      !hasHiddenSegment(normalized) ||
+      isReservedSyncPath(normalized)
+    ) {
       continue;
     }
 
@@ -140,7 +182,11 @@ function pruneSubpaths(sortedPaths: readonly string[]): string[] {
 }
 
 function isExcludedByFolder(path: string, excludedFolders: ReadonlyArray<string>): boolean {
-  return excludedFolders.some(
+  return isIncludedByFolder(path, excludedFolders);
+}
+
+function isIncludedByFolder(path: string, folders: ReadonlyArray<string>): boolean {
+  return folders.some(
     (folder) => path === folder || path.startsWith(`${folder}/`),
   );
 }

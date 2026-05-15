@@ -58,6 +58,8 @@ export function createSettingsTab(
     updateSyncFileRule: vi.fn(async () => {}),
     updateExcludedFolders: vi.fn(async () => {}),
     listSelectableExcludedFolderPaths: () => [],
+    updateIncludedHiddenFolders: vi.fn(async () => {}),
+    listSelectableIncludedHiddenFolderPaths: vi.fn(async () => []),
     listDeletedFiles: vi.fn(async () => ({
       files: [],
       hasMore: false,

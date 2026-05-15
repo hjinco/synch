@@ -27,7 +27,14 @@ export function findCoveringParent(
   return null;
 }
 
-export class ExcludedFoldersModal extends Modal {
+interface FolderSelectionModalLabels {
+  header: string;
+  selectHint: string;
+  availableEmpty: string;
+  inherited: (parent: string) => string;
+}
+
+class FolderSelectionModal extends Modal {
   private readonly selectedFolders: Set<string>;
 
   constructor(
@@ -36,6 +43,7 @@ export class ExcludedFoldersModal extends Modal {
       availableFolders: string[];
       initialSelection: string[];
       onSubmit: (paths: string[]) => Promise<void>;
+      labels: FolderSelectionModalLabels;
     },
   ) {
     super(app);
@@ -49,14 +57,14 @@ export class ExcludedFoldersModal extends Modal {
   private render(): void {
     const { contentEl } = this;
     contentEl.empty();
-    new Setting(contentEl).setName(t('excluded.header')).setHeading();
+    new Setting(contentEl).setName(this.options.labels.header).setHeading();
     contentEl.createEl('p', {
-      text: t('excluded.selectHint'),
+      text: this.options.labels.selectHint,
     });
 
     if (this.options.availableFolders.length === 0) {
       contentEl.createEl('p', {
-        text: t('excluded.availableEmpty'),
+        text: this.options.labels.availableEmpty,
       });
     } else {
       const sortedSelected = [...this.selectedFolders].sort(
@@ -69,9 +77,7 @@ export class ExcludedFoldersModal extends Modal {
 
         const setting = new Setting(contentEl).setName(folder);
         if (isInherited) {
-          setting.setDesc(
-            t('excluded.inherited', { parent: inheritedFrom as string }),
-          );
+          setting.setDesc(this.options.labels.inherited(inheritedFrom as string));
         }
         setting.addToggle((toggle) =>
           toggle
@@ -111,6 +117,48 @@ export class ExcludedFoldersModal extends Modal {
       this.selectedFolders.delete(folder);
     }
     this.render();
+  }
+}
+
+export class ExcludedFoldersModal extends FolderSelectionModal {
+  constructor(
+    app: App,
+    options: {
+      availableFolders: string[];
+      initialSelection: string[];
+      onSubmit: (paths: string[]) => Promise<void>;
+    },
+  ) {
+    super(app, {
+      ...options,
+      labels: {
+        header: t("excluded.header"),
+        selectHint: t("excluded.selectHint"),
+        availableEmpty: t("excluded.availableEmpty"),
+        inherited: (parent) => t("excluded.inherited", { parent }),
+      },
+    });
+  }
+}
+
+export class IncludedHiddenFoldersModal extends FolderSelectionModal {
+  constructor(
+    app: App,
+    options: {
+      availableFolders: string[];
+      initialSelection: string[];
+      onSubmit: (paths: string[]) => Promise<void>;
+    },
+  ) {
+    super(app, {
+      ...options,
+      labels: {
+        header: t("hiddenFolders.header"),
+        selectHint: t("hiddenFolders.selectHint"),
+        availableEmpty: t("hiddenFolders.availableEmpty"),
+        inherited: (parent) => t("hiddenFolders.inherited", { parent }),
+      },
+    });
   }
 }
 

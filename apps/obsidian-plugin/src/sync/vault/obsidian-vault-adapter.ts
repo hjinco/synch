@@ -25,16 +25,29 @@ export class ObsidianSyncVaultAdapter {
   }
 
   async listFiles(): Promise<SyncVaultFile[]> {
-    const files = this.plugin.app.vault
+    const byPath = new Map<string, SyncVaultFile>();
+    const visibleFiles = this.plugin.app.vault
       .getFiles()
       .filter((file) => this.isSyncablePath(file.path));
 
-    return files.map((file) => ({
-      path: file.path,
-      mtime: file.stat.mtime,
-      size: file.stat.size,
-      readBytes: async () => await this.readFile(file),
-    }));
+    for (const file of visibleFiles) {
+      byPath.set(file.path, {
+        path: file.path,
+        mtime: file.stat.mtime,
+        size: file.stat.size,
+        readBytes: async () => await this.readFile(file),
+      });
+    }
+
+    for (const file of await this.listIncludedHiddenFiles()) {
+      if (!byPath.has(file.path)) {
+        byPath.set(file.path, file);
+      }
+    }
+
+    return [...byPath.values()].sort((left, right) =>
+      left.path.localeCompare(right.path),
+    );
   }
 
   async readFile(file: TFile): Promise<Uint8Array> {
@@ -67,5 +80,52 @@ export class ObsidianSyncVaultAdapter {
 
   async remove(path: string): Promise<void> {
     await this.plugin.app.vault.adapter.remove(path);
+  }
+
+  private async listIncludedHiddenFiles(): Promise<SyncVaultFile[]> {
+    const files: SyncVaultFile[] = [];
+    for (const folder of this.getSyncFileRules().includedHiddenFolders) {
+      const stat = await this.plugin.app.vault.adapter.stat(folder);
+      if (!stat || stat.type !== "folder") {
+        continue;
+      }
+
+      await this.collectHiddenFiles(folder, files);
+    }
+    return files;
+  }
+
+  private async collectHiddenFiles(
+    folder: string,
+    files: SyncVaultFile[],
+  ): Promise<void> {
+    const listed = await this.plugin.app.vault.adapter.list(folder);
+    for (const childFolder of listed.folders) {
+      if (this.isScannableFolder(childFolder)) {
+        await this.collectHiddenFiles(childFolder, files);
+      }
+    }
+
+    for (const filePath of listed.files) {
+      if (!this.isSyncablePath(filePath)) {
+        continue;
+      }
+
+      const stat = await this.plugin.app.vault.adapter.stat(filePath);
+      if (!stat || stat.type !== "file") {
+        continue;
+      }
+
+      files.push({
+        path: filePath,
+        mtime: stat.mtime,
+        size: stat.size,
+        readBytes: async () => await this.readBytes(filePath),
+      });
+    }
+  }
+
+  private isScannableFolder(path: string): boolean {
+    return this.isSyncablePath(`${path}/__synch_probe__.md`);
   }
 }

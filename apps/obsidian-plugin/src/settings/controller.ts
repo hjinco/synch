@@ -56,6 +56,8 @@ export interface SynchSettingsController {
   ): Promise<void>;
   updateExcludedFolders(paths: string[]): Promise<void>;
   listSelectableExcludedFolderPaths(): string[];
+  updateIncludedHiddenFolders(paths: string[]): Promise<void>;
+  listSelectableIncludedHiddenFolderPaths(): Promise<string[]>;
   listDeletedFiles(
     before: SynchDeletedFileCursor | null,
     limit: number,

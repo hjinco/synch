@@ -1,3 +1,5 @@
+import { isReservedSyncPath } from "../core/reserved-paths";
+
 export interface SyncVaultWriter {
   exists(path: string): Promise<boolean>;
   mkdir(path: string): Promise<void>;
@@ -12,6 +14,7 @@ export async function writeVaultBytes(
   path: string,
   bytes: Uint8Array,
 ): Promise<void> {
+  assertWritableVaultPath(path);
   await ensureParentDirectories(writer, path);
   if (isMarkdownPath(path)) {
     await writer.writeText(path, new TextDecoder().decode(bytes));
@@ -26,6 +29,7 @@ export async function writeVaultBinary(
   path: string,
   bytes: Uint8Array,
 ): Promise<void> {
+  assertWritableVaultPath(path);
   await ensureParentDirectories(writer, path);
   await writer.writeBinary(path, bytes);
 }
@@ -35,6 +39,7 @@ export async function writeVaultText(
   path: string,
   content: string,
 ): Promise<void> {
+  assertWritableVaultPath(path);
   await ensureParentDirectories(writer, path);
   await writer.writeText(path, content);
 }
@@ -44,6 +49,8 @@ export async function renameVaultPath(
   oldPath: string,
   newPath: string,
 ): Promise<void> {
+  assertWritableVaultPath(oldPath);
+  assertWritableVaultPath(newPath);
   await ensureParentDirectories(writer, newPath);
   await writer.rename(oldPath, newPath);
 }
@@ -52,12 +59,21 @@ export async function removeVaultPathIfExists(
   writer: Pick<SyncVaultWriter, "exists" | "remove">,
   path: string | null | undefined,
 ): Promise<boolean> {
+  if (path) {
+    assertWritableVaultPath(path);
+  }
   if (!path || !(await writer.exists(path))) {
     return false;
   }
 
   await writer.remove(path);
   return true;
+}
+
+function assertWritableVaultPath(path: string): void {
+  if (isReservedSyncPath(path)) {
+    throw new Error(`Refusing to modify reserved vault path: ${path}`);
+  }
 }
 
 export async function ensureParentDirectories(

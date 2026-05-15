@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { SyncTokenResponse } from "../remote/client";
+import { DEFAULT_SYNC_FILE_RULES } from "../core/file-rules";
 import { createTestPlugin } from "../../test-support/test-plugin";
 import { SyncController } from "./controller";
 import { SyncEngine } from "./engine";
@@ -247,11 +248,7 @@ function createDeps(
     getSyncToken: async () => createToken(),
     invalidateSyncToken: vi.fn(),
     getRemoteVaultKey: () => new Uint8Array(32),
-    getSyncFileRules: () => ({
-      includeGlobs: [],
-      excludeGlobs: [],
-      maxFileBytes: 10_000_000,
-    }),
+    getSyncFileRules: () => DEFAULT_SYNC_FILE_RULES,
     hasActiveRemoteVaultSession: () => true,
     hasConnectedRemoteVault: () => true,
     hasAuthenticatedSession: () => true,

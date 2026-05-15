@@ -14,7 +14,11 @@ import {
   getStoragePercent,
   shouldShowSyncSpinner,
 } from "./format";
-import { DeletedFilesModal, ExcludedFoldersModal } from "./modals";
+import {
+  DeletedFilesModal,
+  ExcludedFoldersModal,
+  IncludedHiddenFoldersModal,
+} from "./modals";
 
 type RefreshSettings = () => void;
 
@@ -545,6 +549,42 @@ export function renderFileSyncSettings(
         button.setButtonText(t("excluded.remove")).onClick(async () => {
           await controller.updateExcludedFolders(
             fileRules.excludedFolders.filter((value) => value !== folder),
+          );
+          refresh();
+        }),
+      );
+  }
+
+  new Setting(containerEl)
+    .setName(t("hiddenFolders.header"))
+    .setDesc(
+      fileRules.includedHiddenFolders.length > 0
+        ? t("hiddenFolders.count", {
+            count: fileRules.includedHiddenFolders.length,
+          })
+        : t("hiddenFolders.none"),
+    )
+    .addButton((button) =>
+      button.setButtonText(t("manage")).onClick(async () => {
+        new IncludedHiddenFoldersModal(app, {
+          availableFolders: await controller.listSelectableIncludedHiddenFolderPaths(),
+          initialSelection: fileRules.includedHiddenFolders,
+          onSubmit: async (paths) => {
+            await controller.updateIncludedHiddenFolders(paths);
+            refresh();
+          },
+        }).open();
+      }),
+    );
+
+  for (const folder of fileRules.includedHiddenFolders) {
+    new Setting(containerEl)
+      .setName(folder)
+      .setDesc(t("hiddenFolders.folderDesc"))
+      .addButton((button) =>
+        button.setButtonText(t("hiddenFolders.remove")).onClick(async () => {
+          await controller.updateIncludedHiddenFolders(
+            fileRules.includedHiddenFolders.filter((value) => value !== folder),
           );
           refresh();
         }),
