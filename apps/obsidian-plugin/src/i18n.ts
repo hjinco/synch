@@ -15,6 +15,26 @@ const en = {
     cancel: "Cancel",
     close: "Close",
     connectAnyway: "Connect anyway",
+    "configSync.appearance": "Appearance",
+    "configSync.appearanceDesc": "Sync appearance settings from the vault configuration folder.",
+    "configSync.communityPluginData": "Community plugin settings",
+    "configSync.communityPluginDataDesc": "Sync community plugin data.json files. Restarting Obsidian may be required.",
+    "configSync.communityPluginFiles": "Installed community plugins",
+    "configSync.communityPluginFilesDesc": "Sync installed community plugin files.",
+    "configSync.communityPluginList": "Active community plugin list",
+    "configSync.communityPluginListDesc": "Sync the list of enabled community plugins.",
+    "configSync.corePluginList": "Active core plugin list",
+    "configSync.corePluginListDesc": "Sync the list of enabled core plugins.",
+    "configSync.corePluginData": "Core plugin settings",
+    "configSync.corePluginDataDesc": "Sync settings for core plugins such as graph, daily notes, and templates.",
+    "configSync.desc": "Sync selected Obsidian configuration files from this device.",
+    "configSync.header": "Vault configuration sync",
+    "configSync.hotkeys": "Hotkeys",
+    "configSync.hotkeysDesc": "Sync custom hotkey settings.",
+    "configSync.mainSettings": "Main settings",
+    "configSync.mainSettingsDesc": "Sync core app settings from the vault configuration folder.",
+    "configSync.themesAndSnippets": "Themes and snippets",
+    "configSync.themesAndSnippetsDesc": "Sync installed themes and CSS snippets.",
     "deleted.deletedAt": ({ deletedAt }: { deletedAt: string }) => `Deleted ${deletedAt}`,
     "deleted.empty": "No synced deleted files are available to restore.",
     "deleted.failed": ({ message }: { message: string }) => `Deleted file restore failed: ${message}`,
@@ -904,7 +924,10 @@ export function t<K extends SynchMessageKey>(
   key: K,
   params?: Parameters<Extract<(typeof messages.en)[K], (...args: never[]) => unknown>>[0],
 ): string {
-  const value = messages[getSynchLocale()][key] ?? messages.en[key];
+  const localeMessages = messages[getSynchLocale()] as Partial<
+    Record<SynchMessageKey, (typeof messages.en)[SynchMessageKey]>
+  >;
+  const value = localeMessages[key] ?? messages.en[key];
   if (typeof value === "function") {
     return value(params as never);
   }

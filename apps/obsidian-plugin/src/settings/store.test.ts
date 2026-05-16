@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { PluginDataStoreLike } from "../plugin-data";
 import { DEFAULT_SYNC_FILE_RULES } from "../sync/core/file-rules";
+import { DEFAULT_VAULT_CONFIG_SYNC_RULES } from "../sync/core/vault-config-rules";
 import type { SynchPluginSettings } from "./schema";
 import { SYNCH_SETTINGS_KEY } from "./schema";
 import { SynchSettingsStore } from "./store";
@@ -16,6 +17,7 @@ describe("SynchSettingsStore", () => {
         includeImages: false,
         excludedFolders: ["Archive"],
       },
+      vaultConfigSync: DEFAULT_VAULT_CONFIG_SYNC_RULES,
     });
     const store = new SynchSettingsStore(pluginDataStore, "https://default.synch.test");
     store.initialize();
@@ -30,6 +32,7 @@ describe("SynchSettingsStore", () => {
         includeImages: false,
         excludedFolders: ["Archive"],
       },
+      vaultConfigSync: DEFAULT_VAULT_CONFIG_SYNC_RULES,
     });
   });
 
@@ -54,6 +57,7 @@ describe("SynchSettingsStore", () => {
         ...DEFAULT_SYNC_FILE_RULES,
         includeAudio: false,
       },
+      vaultConfigSync: DEFAULT_VAULT_CONFIG_SYNC_RULES,
     });
   });
 
@@ -102,6 +106,7 @@ describe("SynchSettingsStore", () => {
         ...DEFAULT_SYNC_FILE_RULES,
         includeAudio: false,
       },
+      vaultConfigSync: DEFAULT_VAULT_CONFIG_SYNC_RULES,
     });
     const store = new SynchSettingsStore(pluginDataStore, "https://default.synch.test");
     store.initialize();
@@ -115,6 +120,7 @@ describe("SynchSettingsStore", () => {
         ...DEFAULT_SYNC_FILE_RULES,
         includeAudio: false,
       },
+      vaultConfigSync: DEFAULT_VAULT_CONFIG_SYNC_RULES,
     });
   });
 

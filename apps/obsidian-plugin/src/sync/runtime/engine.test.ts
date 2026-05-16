@@ -1,9 +1,12 @@
 import type { Plugin, TFile } from "obsidian";
 import { TFile as ObsidianTFile } from "obsidian";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { setRequestUrlMock } from "obsidian";
 
 import { encodeUtf8, hashBytes } from "../core/content";
+import { encryptSyncBlob } from "../core/crypto";
 import { DEFAULT_SYNC_FILE_RULES } from "../core/file-rules";
+import { DEFAULT_VAULT_CONFIG_SYNC_RULES } from "../core/vault-config-rules";
 import { queueLocalUpsertMutation } from "../core/mutation-queue";
 import type { SyncTokenResponse } from "../remote/client";
 import { createInitializedTestSyncStore } from "../../test-support/test-plugin";
@@ -14,6 +17,12 @@ type VaultEventCallback = (...args: unknown[]) => void;
 const TEST_VAULT_KEY = new Uint8Array(Array.from({ length: 32 }, (_, index) => index + 1));
 
 describe("SyncEngine", () => {
+  afterEach(() => {
+    setRequestUrlMock(async () => {
+      throw new Error("requestUrl mock is not configured");
+    });
+  });
+
   it("reports offline sync startup failures through status without a notice", async () => {
     const plugin = createPlugin({}, async () => encodeUtf8("body"));
     const store = await createInitializedTestSyncStore(plugin);
@@ -216,6 +225,7 @@ describe("SyncEngine", () => {
       invalidateSyncToken: vi.fn(),
       getRemoteVaultKey: () => TEST_VAULT_KEY,
       getSyncFileRules: () => DEFAULT_SYNC_FILE_RULES,
+      getVaultConfigSyncRules: () => DEFAULT_VAULT_CONFIG_SYNC_RULES,
       hasActiveRemoteVaultSession: () => true,
       notify: vi.fn(),
       notifyError: vi.fn(),
@@ -245,6 +255,57 @@ describe("SyncEngine", () => {
     await store.close();
   });
 
+  it("reapplies previously skipped remote vault config before reconcile queues local writes", async () => {
+    const plugin = createPlugin({}, async () => encodeUtf8("body"), []);
+    const store = await createInitializedTestSyncStore(plugin);
+    const remoteBytes = encodeUtf8("{\"theme\":\"remote\"}");
+    const remoteHash = await hashBytes(remoteBytes);
+    const encryptedBytes = await encryptSyncBlob(
+      TEST_VAULT_KEY,
+      remoteBytes,
+      { blobId: "blob-config" },
+      { syncFormatVersion: 1 },
+    );
+    await plugin.app.vault.adapter.write(".obsidian/app.json", "{\"theme\":\"local\"}");
+    await store.applyRemoteState({
+      entryId: "entry-config",
+      path: ".obsidian/app.json",
+      revision: 1,
+      blobId: "blob-config",
+      hash: remoteHash,
+      deleted: false,
+      updatedAt: 10,
+    });
+    setRequestUrlMock(async () => ({
+      status: 200,
+      arrayBuffer: toArrayBuffer(encryptedBytes),
+    }));
+    const engine = createEngine(plugin, {
+      getVaultConfigSyncRules: () => ({
+        ...DEFAULT_VAULT_CONFIG_SYNC_RULES,
+        enabled: true,
+      }),
+    });
+    engine.setStore(store);
+
+    await expect(engine.reapplyAllowedRemoteVaultConfig()).resolves.toBe(1);
+    await engine.reconcileOnce();
+
+    await expect(
+      plugin.app.vault.adapter.readBinary(".obsidian/app.json"),
+    ).resolves.toEqual(toArrayBuffer(remoteBytes));
+    await expect(store.listDirtyEntries()).resolves.toEqual([]);
+    await expect(store.getEntryById("entry-config")).resolves.toMatchObject({
+      entryId: "entry-config",
+      path: ".obsidian/app.json",
+      revision: 1,
+      blobId: "blob-config",
+      hash: remoteHash,
+      deleted: false,
+    });
+    await store.close();
+  });
+
 });
 
 function createEngine(
@@ -258,6 +319,7 @@ function createEngine(
     invalidateSyncToken: vi.fn(),
     getRemoteVaultKey: () => TEST_VAULT_KEY,
     getSyncFileRules: () => DEFAULT_SYNC_FILE_RULES,
+    getVaultConfigSyncRules: () => DEFAULT_VAULT_CONFIG_SYNC_RULES,
     hasActiveRemoteVaultSession: () => true,
     notify: vi.fn(),
     notifyError: vi.fn(),
@@ -274,6 +336,7 @@ type SyncEngineDepsForTest = ConstructorParameters<typeof SyncEngine>[0];
 function createPlugin(
   callbacks: Partial<Record<"modify", VaultEventCallback>>,
   readBinary: () => Promise<Uint8Array>,
+  visibleFiles: TFile[] = [createFile("note.md")],
 ): Plugin {
   const localStorage = new Map<string, unknown>();
   const directories = new Set([".obsidian/plugins/synch"]);
@@ -297,7 +360,7 @@ function createPlugin(
         localStorage.set(key, value);
       },
       vault: {
-        getFiles: vi.fn(() => [createFile("note.md")]),
+        getFiles: vi.fn(() => visibleFiles),
         readBinary: vi.fn(async () => toArrayBuffer(await readBinary())),
         on: vi.fn((eventName: string, callback: VaultEventCallback) => {
           if (eventName === "modify") {
@@ -336,6 +399,57 @@ function createPlugin(
           },
           async mkdir(path: string): Promise<void> {
             directories.add(path);
+          },
+          async stat(path: string): Promise<{
+            type: "file" | "folder";
+            mtime: number;
+            size: number;
+          } | null> {
+            if (directories.has(path)) {
+              return { type: "folder", mtime: 1, size: 0 };
+            }
+            const file = files.get(path);
+            if (!file) {
+              return null;
+            }
+            return {
+              type: "file",
+              mtime: 1,
+              size: typeof file === "string" ? file.length : file.byteLength,
+            };
+          },
+          async list(path: string): Promise<{ files: string[]; folders: string[] }> {
+            const prefix = path ? `${path}/` : "";
+            const childFiles: string[] = [];
+            const childFolders = new Set<string>();
+            for (const filePath of files.keys()) {
+              if (!filePath.startsWith(prefix)) {
+                continue;
+              }
+              const rest = filePath.slice(prefix.length);
+              const separatorIndex = rest.indexOf("/");
+              if (separatorIndex < 0) {
+                childFiles.push(filePath);
+              } else {
+                childFolders.add(`${prefix}${rest.slice(0, separatorIndex)}`);
+              }
+            }
+            for (const folderPath of directories) {
+              if (!folderPath.startsWith(prefix) || folderPath === path) {
+                continue;
+              }
+              const rest = folderPath.slice(prefix.length);
+              const separatorIndex = rest.indexOf("/");
+              childFolders.add(
+                separatorIndex < 0
+                  ? folderPath
+                  : `${prefix}${rest.slice(0, separatorIndex)}`,
+              );
+            }
+            return {
+              files: childFiles.sort(),
+              folders: [...childFolders].sort(),
+            };
           },
         },
       },

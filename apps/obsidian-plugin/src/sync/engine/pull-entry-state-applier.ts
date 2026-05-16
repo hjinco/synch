@@ -47,6 +47,7 @@ export interface PullEntryStateApplierDeps {
   vaultAdapter: PullEntryStateVaultAdapter;
   eventGate?: SyncEventGateLike;
   pullClient: Pick<SyncPullClient, "downloadBlob">;
+  shouldApplyRemotePath?: (path: string) => boolean;
   prepareConcurrency?: number;
   onProgress?: (progress: SyncProgressCounts) => Promise<void>;
   onConflict?: (event: PullConflictEvent) => void;
@@ -205,11 +206,13 @@ export class PullEntryStateApplier {
     manifest: PullEntryStateManifestItem[],
     options: { deferExternalPathOwners: boolean },
   ): Promise<PreparedManifestApplication> {
-    const { plans, deferred } = await this.manifestPlanner.planManifest(
+    const { plans: allPlans, deferred } = await this.manifestPlanner.planManifest(
       store,
       manifest,
       options,
     );
+    const plans = allPlans.filter((plan) => this.shouldApplyPlanToVault(plan));
+    await this.applySkippedRemoteStates(store, allPlans, plans);
     await this.markAlreadyCurrentVaultWrites(store, plans);
     const pathsToWrite = uniqueSyncPaths(
       plans
@@ -268,6 +271,40 @@ export class PullEntryStateApplier {
       batches,
       deferred,
     };
+  }
+
+  private shouldApplyPlanToVault(plan: PlannedEntryState): boolean {
+    return (
+      !plan.metadata.path ||
+      this.deps.shouldApplyRemotePath?.(plan.metadata.path) !== false
+    );
+  }
+
+  private async applySkippedRemoteStates(
+    store: PullEntryStateStore,
+    allPlans: PlannedEntryState[],
+    appliedPlans: PlannedEntryState[],
+  ): Promise<void> {
+    if (allPlans.length === appliedPlans.length) {
+      return;
+    }
+
+    const applied = new Set(appliedPlans);
+    for (const plan of allPlans) {
+      if (applied.has(plan)) {
+        continue;
+      }
+
+      await store.applyRemoteState({
+        entryId: plan.state.entryId,
+        path: plan.metadata.path,
+        revision: plan.state.revision,
+        blobId: plan.state.deleted ? null : plan.state.blobId,
+        hash: plan.hash,
+        deleted: plan.state.deleted,
+        updatedAt: plan.state.updatedAt,
+      });
+    }
   }
 
   private async markAlreadyCurrentVaultWrites(

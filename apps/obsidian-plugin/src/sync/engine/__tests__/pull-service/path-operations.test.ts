@@ -17,6 +17,70 @@ import {
 } from "./helpers";
 
 describe("SyncPullService path operations", () => {
+  it("skips remote vault config writes when the current rules reject the path", async () => {
+    const plugin = createTestPlugin();
+    const store = await createInitializedTestSyncStore(plugin);
+    const adapter = createVaultAdapter({
+      ".obsidian/app.json": "{\"theme\":\"local\"}",
+    });
+    const configHash = await hashText("{\"theme\":\"remote\"}");
+
+    const session = createRealtimeSession({
+      pages: [
+        {
+          cursor: 2,
+          hasMore: false,
+          commits: [
+            createCommit({
+              cursor: 2,
+              entryId: "entry-config",
+              revision: 1,
+              blobId: "blob-config",
+              encryptedMetadata: await encryptRemoteMetadata({
+                entryId: "entry-config",
+                revision: 1,
+                blobId: "blob-config",
+                path: ".obsidian/app.json",
+                hash: configHash,
+              }),
+            }),
+          ],
+        },
+      ],
+    });
+
+    const service = new SyncPullService({
+      getApiBaseUrl: () => "http://127.0.0.1:8787",
+      getSyncToken: async () => createToken(),
+      getSyncStore: () => store,
+      getRemoteVaultKey: () => TEST_VAULT_KEY,
+      shouldApplyRemotePath: (path) => path !== ".obsidian/app.json",
+      vaultAdapter: adapter,
+      pullClient: createPullClient({}),
+      onProgress: ignoreProgress,
+    });
+
+    await expect(service.pullOnce(session)).resolves.toEqual({
+      cursor: 2,
+      entriesApplied: 0,
+      filesWritten: 0,
+      filesDeleted: 0,
+      conflictsCreated: 0,
+    });
+    expect(adapter.text(".obsidian/app.json")).toBe("{\"theme\":\"local\"}");
+    expect(adapter.writes).toEqual([]);
+    expect(await store.getRemoteStateById("entry-config")).toMatchObject({
+      entryId: "entry-config",
+      path: ".obsidian/app.json",
+      revision: 1,
+      blobId: "blob-config",
+      hash: configHash,
+      deleted: false,
+    });
+    expect(await store.getLocalStateById("entry-config")).toBeNull();
+    await store.close();
+  });
+
   it("applies remote path changes using a vault rename", async () => {
     const plugin = createTestPlugin();
     const store = await createInitializedTestSyncStore(plugin);

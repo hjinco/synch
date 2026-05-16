@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { SyncTokenResponse } from "../remote/client";
 import { DEFAULT_SYNC_FILE_RULES } from "../core/file-rules";
+import { DEFAULT_VAULT_CONFIG_SYNC_RULES } from "../core/vault-config-rules";
 import { createTestPlugin } from "../../test-support/test-plugin";
 import { SyncController } from "./controller";
 import { SyncEngine } from "./engine";
@@ -249,6 +250,7 @@ function createDeps(
     invalidateSyncToken: vi.fn(),
     getRemoteVaultKey: () => new Uint8Array(32),
     getSyncFileRules: () => DEFAULT_SYNC_FILE_RULES,
+    getVaultConfigSyncRules: () => DEFAULT_VAULT_CONFIG_SYNC_RULES,
     hasActiveRemoteVaultSession: () => true,
     hasConnectedRemoteVault: () => true,
     hasAuthenticatedSession: () => true,

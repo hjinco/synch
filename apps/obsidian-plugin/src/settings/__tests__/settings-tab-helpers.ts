@@ -2,6 +2,7 @@ import { App, Plugin } from "obsidian";
 import { vi } from "vitest";
 
 import { DEFAULT_SYNC_FILE_RULES } from "../../sync/core/file-rules";
+import { DEFAULT_VAULT_CONFIG_SYNC_RULES } from "../../sync/core/vault-config-rules";
 import type { SynchSettingsController } from "../controller";
 import { SynchSettingTab } from "../settings-tab";
 
@@ -55,7 +56,9 @@ export function createSettingsTab(
       ...DEFAULT_SYNC_FILE_RULES,
       excludedFolders: [...DEFAULT_SYNC_FILE_RULES.excludedFolders],
     }),
+    getVaultConfigSyncRules: () => DEFAULT_VAULT_CONFIG_SYNC_RULES,
     updateSyncFileRule: vi.fn(async () => {}),
+    updateVaultConfigSyncRule: vi.fn(async () => {}),
     updateExcludedFolders: vi.fn(async () => {}),
     listSelectableExcludedFolderPaths: () => [],
     updateIncludedHiddenFolders: vi.fn(async () => {}),

@@ -7,6 +7,7 @@ import type {
   SynchDeletedFilesRestoreResult,
   SynchFileSizeBlockedFile,
   SynchFileRules,
+  SynchVaultConfigSyncRules,
   SynchPluginUpdateStatus,
   SynchStorageStatus,
   SynchSubscriptionStatus,
@@ -50,6 +51,7 @@ export interface SynchSettingsController {
   disconnectRemoteVault(): Promise<void>;
   updateApiBaseUrl(value: string): Promise<void>;
   getSyncFileRules(): SynchFileRules;
+  getVaultConfigSyncRules(): SynchVaultConfigSyncRules;
   updateSyncFileRule<K extends keyof SynchFileRules>(
     key: K,
     value: SynchFileRules[K],
@@ -58,6 +60,10 @@ export interface SynchSettingsController {
   listSelectableExcludedFolderPaths(): string[];
   updateIncludedHiddenFolders(paths: string[]): Promise<void>;
   listSelectableIncludedHiddenFolderPaths(): Promise<string[]>;
+  updateVaultConfigSyncRule<K extends keyof SynchVaultConfigSyncRules>(
+    key: K,
+    value: SynchVaultConfigSyncRules[K],
+  ): Promise<void>;
   listDeletedFiles(
     before: SynchDeletedFileCursor | null,
     limit: number,

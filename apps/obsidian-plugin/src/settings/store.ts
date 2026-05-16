@@ -7,6 +7,10 @@ import {
   SYNCH_SETTINGS_KEY,
 } from "./schema";
 import { normalizeSyncFileRules, type SyncFileRules } from "../sync/core/file-rules";
+import {
+  normalizeVaultConfigSyncRules,
+  type VaultConfigSyncRules,
+} from "../sync/core/vault-config-rules";
 
 export class SynchSettingsStore {
   private settings: SynchPluginSettings = DEFAULT_SYNCH_PLUGIN_SETTINGS;
@@ -61,6 +65,25 @@ export class SynchSettingsStore {
     this.settings = {
       ...this.settings,
       fileRules: normalized,
+    };
+    this.pluginDataStore.write(SYNCH_SETTINGS_KEY, this.settings);
+    await this.pluginDataStore.save();
+    return true;
+  }
+
+  async updateVaultConfigSyncRules(
+    nextRules: VaultConfigSyncRules,
+  ): Promise<boolean> {
+    const normalized = normalizeVaultConfigSyncRules(nextRules);
+    if (
+      JSON.stringify(normalized) === JSON.stringify(this.settings.vaultConfigSync)
+    ) {
+      return false;
+    }
+
+    this.settings = {
+      ...this.settings,
+      vaultConfigSync: normalized,
     };
     this.pluginDataStore.write(SYNCH_SETTINGS_KEY, this.settings);
     await this.pluginDataStore.save();

@@ -17,6 +17,7 @@ import type {
   SyncStorageStatus,
 } from "../remote/realtime-client";
 import type { SyncFileRules } from "../core/file-rules";
+import type { VaultConfigSyncRules } from "../core/vault-config-rules";
 import {
   clearDexieSyncStore,
   createDexieSyncStore,
@@ -46,6 +47,7 @@ export interface SyncControllerDeps {
   invalidateSyncToken: () => void;
   getRemoteVaultKey: () => Uint8Array;
   getSyncFileRules: () => SyncFileRules;
+  getVaultConfigSyncRules: () => VaultConfigSyncRules;
   hasActiveRemoteVaultSession: () => boolean;
   hasConnectedRemoteVault: () => boolean;
   hasAuthenticatedSession: () => boolean;
@@ -74,6 +76,7 @@ export class SyncController {
     invalidateSyncToken: () => this.deps.invalidateSyncToken(),
     getRemoteVaultKey: () => this.deps.getRemoteVaultKey(),
     getSyncFileRules: () => this.deps.getSyncFileRules(),
+    getVaultConfigSyncRules: () => this.deps.getVaultConfigSyncRules(),
     hasActiveRemoteVaultSession: () => this.deps.hasActiveRemoteVaultSession(),
     notify: (message, timeout) => this.notify(message, timeout),
     notifyError: (error, prefix) => this.deps.notifyError(error, prefix),
@@ -284,6 +287,7 @@ export class SyncController {
 
     try {
       this.setSyncStatus("syncing");
+      await this.syncEngine.reapplyAllowedRemoteVaultConfig();
       await this.syncEngine.reconcileOnce();
       this.syncEngine.refreshHiddenFolderReconcileTimer();
       this.syncEngine.notifyLocalChange();

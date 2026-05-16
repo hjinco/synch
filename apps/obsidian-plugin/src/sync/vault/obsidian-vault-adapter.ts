@@ -1,6 +1,8 @@
 import type { Plugin, TAbstractFile, TFile } from "obsidian";
 
 import type { SyncFileRules } from "../core/file-rules";
+import type { VaultConfigSyncRules } from "../core/vault-config-rules";
+import { isForbiddenVaultPath } from "../core/vault-path-policy";
 import { asSyncableFile, isSyncableVaultPath, toArrayBuffer } from "./vault-files";
 
 export interface SyncVaultFile {
@@ -14,6 +16,7 @@ export class ObsidianSyncVaultAdapter {
   constructor(
     private readonly plugin: Plugin,
     private readonly getSyncFileRules: () => SyncFileRules,
+    private readonly getVaultConfigSyncRules: () => VaultConfigSyncRules,
   ) {}
 
   asSyncableFile(file: TAbstractFile): TFile | null {
@@ -22,6 +25,10 @@ export class ObsidianSyncVaultAdapter {
 
   isSyncablePath(path: string): boolean {
     return isSyncableVaultPath(path, this.getSyncFileRules());
+  }
+
+  isProtectedVaultPath(path: string): boolean {
+    return isForbiddenVaultPath(path, this.getVaultConfigSyncRules());
   }
 
   async listFiles(): Promise<SyncVaultFile[]> {

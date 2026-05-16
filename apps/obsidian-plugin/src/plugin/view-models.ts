@@ -8,6 +8,20 @@ export interface SynchFileRules {
   includedHiddenFolders: string[];
 }
 
+export interface SynchVaultConfigSyncRules {
+  enabled: boolean;
+  configDir: string;
+  mainSettings: boolean;
+  appearance: boolean;
+  themesAndSnippets: boolean;
+  hotkeys: boolean;
+  corePluginList: boolean;
+  corePluginData: boolean;
+  communityPluginList: boolean;
+  communityPluginFiles: boolean;
+  communityPluginData: boolean;
+}
+
 export type SynchSyncState =
   | "not_ready"
   | "paused"

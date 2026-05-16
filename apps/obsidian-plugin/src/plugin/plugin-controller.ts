@@ -27,6 +27,7 @@ import type {
   SynchSubscriptionStatus,
   SynchSyncProgress,
   SynchSyncState,
+  SynchVaultConfigSyncRules,
   SynchVersionPreview,
 } from "./view-models";
 import {
@@ -40,6 +41,7 @@ import {
   normalizeVaultPath,
   type SyncFileRules,
 } from "../sync/core/file-rules";
+import type { VaultConfigSyncRules } from "../sync/core/vault-config-rules";
 import { isReservedSyncPath } from "../sync/core/reserved-paths";
 import type { SyncTokenResponse } from "../sync/remote/client";
 import { SyncController } from "../sync/runtime/controller";
@@ -127,6 +129,7 @@ export class SynchPluginController implements SynchSettingsController {
     },
     getRemoteVaultKey: () => this.getActiveRemoteVaultKey(),
     getSyncFileRules: () => this.getSyncFileRules(),
+    getVaultConfigSyncRules: () => this.getVaultConfigSyncRules(),
     hasActiveRemoteVaultSession: () => this.hasActiveRemoteVaultSession(),
     hasConnectedRemoteVault: () => this.hasConnectedRemoteVault(),
     hasAuthenticatedSession: () => this.hasAuthenticatedSession(),
@@ -402,6 +405,10 @@ export class SynchPluginController implements SynchSettingsController {
     return this.settingsStore.getSnapshot().fileRules;
   }
 
+  getVaultConfigSyncRules(): SynchVaultConfigSyncRules {
+    return this.settingsStore.getSnapshot().vaultConfigSync;
+  }
+
   listSelectableExcludedFolderPaths(): string[] {
     return this.plugin.app.vault
       .getAllLoadedFiles()
@@ -433,6 +440,16 @@ export class SynchPluginController implements SynchSettingsController {
     await this.updateSyncFileRules({
       ...this.getSyncFileRules(),
       includedHiddenFolders: normalizeIncludedHiddenFolders(paths),
+    });
+  }
+
+  async updateVaultConfigSyncRule<K extends keyof SynchVaultConfigSyncRules>(
+    key: K,
+    value: SynchVaultConfigSyncRules[K],
+  ): Promise<void> {
+    await this.updateVaultConfigSyncRules({
+      ...this.getVaultConfigSyncRules(),
+      [key]: value,
     });
   }
 
@@ -922,6 +939,23 @@ export class SynchPluginController implements SynchSettingsController {
 
   private async updateSyncFileRules(nextRules: SyncFileRules): Promise<void> {
     const changed = await this.settingsStore.updateFileRules(nextRules);
+    if (!changed) {
+      return;
+    }
+
+    this.refreshUi();
+    if (!this.isSyncEnabled()) {
+      this.syncController.stopAutoSyncAndMarkPaused();
+      return;
+    }
+
+    await this.syncController.reconcileAfterFileRuleChange();
+  }
+
+  private async updateVaultConfigSyncRules(
+    nextRules: VaultConfigSyncRules,
+  ): Promise<void> {
+    const changed = await this.settingsStore.updateVaultConfigSyncRules(nextRules);
     if (!changed) {
       return;
     }

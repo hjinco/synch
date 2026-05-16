@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { DEFAULT_SYNC_FILE_RULES } from "../sync/core/file-rules";
+import { DEFAULT_VAULT_CONFIG_SYNC_RULES } from "../sync/core/vault-config-rules";
 import { normalizeSynchPluginSettings } from "./schema";
 
 describe("normalizeSynchPluginSettings", () => {
@@ -16,6 +17,7 @@ describe("normalizeSynchPluginSettings", () => {
 
     expect(settings.apiBaseUrl).toBe(defaultApiBaseUrl);
     expect(settings.syncEnabled).toBe(true);
+    expect(settings.vaultConfigSync).toEqual(DEFAULT_VAULT_CONFIG_SYNC_RULES);
   });
 
   it("trims whitespace and trailing slashes from the API base URL", () => {
@@ -96,5 +98,27 @@ describe("normalizeSynchPluginSettings", () => {
         defaultApiBaseUrl,
       ).syncEnabled,
     ).toBe(true);
+  });
+
+  it("normalizes vault configuration sync settings", () => {
+    expect(
+      normalizeSynchPluginSettings(
+        {
+          apiBaseUrl: defaultApiBaseUrl,
+          fileRules: DEFAULT_SYNC_FILE_RULES,
+          vaultConfigSync: {
+            enabled: true,
+            configDir: ".obsidian-mobile",
+            communityPluginFiles: true,
+          },
+        },
+        defaultApiBaseUrl,
+      ).vaultConfigSync,
+    ).toEqual({
+      ...DEFAULT_VAULT_CONFIG_SYNC_RULES,
+      enabled: true,
+      configDir: ".obsidian-mobile",
+      communityPluginFiles: true,
+    });
   });
 });

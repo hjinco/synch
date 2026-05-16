@@ -4,6 +4,7 @@ import { vi } from "vitest";
 import { writeAuthSessionToken } from "../../auth/storage";
 import { writeStoredRemoteVaultKeySecret } from "../../remote-vault/device-storage";
 import { DEFAULT_SYNC_FILE_RULES } from "../../sync/core/file-rules";
+import { DEFAULT_VAULT_CONFIG_SYNC_RULES } from "../../sync/core/vault-config-rules";
 import type { SyncConnection } from "../../sync/store/store";
 import { SYNCH_SETTINGS_KEY, type SynchPluginSettings } from "../../settings/schema";
 import {
@@ -83,6 +84,7 @@ function settings(overrides: Partial<SynchPluginSettings>): SynchPluginSettings 
   return {
     apiBaseUrl: "http://127.0.0.1:8787",
     fileRules: DEFAULT_SYNC_FILE_RULES,
+    vaultConfigSync: DEFAULT_VAULT_CONFIG_SYNC_RULES,
     syncEnabled: true,
     ...overrides,
   };

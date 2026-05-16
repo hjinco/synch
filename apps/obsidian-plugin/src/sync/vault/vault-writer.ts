@@ -1,4 +1,4 @@
-import { isReservedSyncPath } from "../core/reserved-paths";
+import { isNeverSyncReservedPath } from "../core/reserved-paths";
 
 export interface SyncVaultWriter {
   exists(path: string): Promise<boolean>;
@@ -7,14 +7,18 @@ export interface SyncVaultWriter {
   writeBinary(path: string, content: Uint8Array): Promise<void>;
   rename(oldPath: string, newPath: string): Promise<void>;
   remove(path: string): Promise<void>;
+  isProtectedVaultPath?(path: string): boolean;
 }
 
 export async function writeVaultBytes(
-  writer: Pick<SyncVaultWriter, "exists" | "mkdir" | "writeText" | "writeBinary">,
+  writer: Pick<
+    SyncVaultWriter,
+    "exists" | "mkdir" | "writeText" | "writeBinary" | "isProtectedVaultPath"
+  >,
   path: string,
   bytes: Uint8Array,
 ): Promise<void> {
-  assertWritableVaultPath(path);
+  assertWritableVaultPath(writer, path);
   await ensureParentDirectories(writer, path);
   if (isMarkdownPath(path)) {
     await writer.writeText(path, new TextDecoder().decode(bytes));
@@ -25,42 +29,51 @@ export async function writeVaultBytes(
 }
 
 export async function writeVaultBinary(
-  writer: Pick<SyncVaultWriter, "exists" | "mkdir" | "writeBinary">,
+  writer: Pick<
+    SyncVaultWriter,
+    "exists" | "mkdir" | "writeBinary" | "isProtectedVaultPath"
+  >,
   path: string,
   bytes: Uint8Array,
 ): Promise<void> {
-  assertWritableVaultPath(path);
+  assertWritableVaultPath(writer, path);
   await ensureParentDirectories(writer, path);
   await writer.writeBinary(path, bytes);
 }
 
 export async function writeVaultText(
-  writer: Pick<SyncVaultWriter, "exists" | "mkdir" | "writeText">,
+  writer: Pick<
+    SyncVaultWriter,
+    "exists" | "mkdir" | "writeText" | "isProtectedVaultPath"
+  >,
   path: string,
   content: string,
 ): Promise<void> {
-  assertWritableVaultPath(path);
+  assertWritableVaultPath(writer, path);
   await ensureParentDirectories(writer, path);
   await writer.writeText(path, content);
 }
 
 export async function renameVaultPath(
-  writer: Pick<SyncVaultWriter, "exists" | "mkdir" | "rename">,
+  writer: Pick<
+    SyncVaultWriter,
+    "exists" | "mkdir" | "rename" | "isProtectedVaultPath"
+  >,
   oldPath: string,
   newPath: string,
 ): Promise<void> {
-  assertWritableVaultPath(oldPath);
-  assertWritableVaultPath(newPath);
+  assertWritableVaultPath(writer, oldPath);
+  assertWritableVaultPath(writer, newPath);
   await ensureParentDirectories(writer, newPath);
   await writer.rename(oldPath, newPath);
 }
 
 export async function removeVaultPathIfExists(
-  writer: Pick<SyncVaultWriter, "exists" | "remove">,
+  writer: Pick<SyncVaultWriter, "exists" | "remove" | "isProtectedVaultPath">,
   path: string | null | undefined,
 ): Promise<boolean> {
   if (path) {
-    assertWritableVaultPath(path);
+    assertWritableVaultPath(writer, path);
   }
   if (!path || !(await writer.exists(path))) {
     return false;
@@ -70,8 +83,11 @@ export async function removeVaultPathIfExists(
   return true;
 }
 
-function assertWritableVaultPath(path: string): void {
-  if (isReservedSyncPath(path)) {
+function assertWritableVaultPath(
+  writer: Pick<SyncVaultWriter, "isProtectedVaultPath">,
+  path: string,
+): void {
+  if (isNeverSyncReservedPath(path) || writer.isProtectedVaultPath?.(path)) {
     throw new Error(`Refusing to modify reserved vault path: ${path}`);
   }
 }

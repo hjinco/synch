@@ -6,18 +6,32 @@ import {
   type OfflineDetector,
 } from "../../http/network-status";
 import type { RemoteVaultUnavailableError } from "../../remote-vault/unavailable";
+import { hashBytes } from "../core/content";
 import { SyncAutoLoop } from "../engine/auto-sync";
 import type { SyncTokenResponse } from "../remote/client";
 import { SyncEventGate } from "../engine/event-gate";
 import { SyncEventRecorder } from "../engine/event-recorder";
 import type { SyncFileRules } from "../core/file-rules";
-import { decryptSyncMetadata } from "../core/crypto";
+import {
+  shouldSyncVaultConfigPath,
+  type VaultConfigSyncRules,
+} from "../core/vault-config-rules";
+import {
+  decideVaultPathSync,
+  shouldApplyRemoteVaultPath,
+} from "../core/vault-path-policy";
+import { decryptSyncBlob, decryptSyncMetadata } from "../core/crypto";
 import {
   type ReconcileOnceResult,
   SyncLocalReconcileService,
 } from "../engine/local-reconcile-service";
 import { metadataContextFromMutation } from "../engine/push-mutation-shared";
-import { ObsidianSyncVaultAdapter } from "../vault/obsidian-vault-adapter";
+import {
+  ObsidianSyncVaultAdapter,
+  type SyncVaultFile,
+} from "../vault/obsidian-vault-adapter";
+import { ObsidianVaultConfigSource } from "../vault/obsidian-vault-config-source";
+import { removeVaultPathIfExists, writeVaultBytes } from "../vault/vault-writer";
 import { SyncPullService } from "../engine/pull-service";
 import { SyncPushService } from "../engine/push-service";
 import { SyncAuthorizedRequestClient } from "../remote/request-client";
@@ -63,6 +77,7 @@ export interface SyncEngineDeps {
   invalidateSyncToken: () => void;
   getRemoteVaultKey: () => Uint8Array;
   getSyncFileRules: () => SyncFileRules;
+  getVaultConfigSyncRules: () => VaultConfigSyncRules;
   hasActiveRemoteVaultSession: () => boolean;
   notify: (message: string, timeout?: number) => void;
   notifyError: (error: unknown, prefix: string) => void;
@@ -94,6 +109,11 @@ export class SyncEngine {
   private readonly vaultAdapter = new ObsidianSyncVaultAdapter(
     this.deps.plugin,
     () => this.deps.getSyncFileRules(),
+    () => this.deps.getVaultConfigSyncRules(),
+  );
+  private readonly vaultConfigSource = new ObsidianVaultConfigSource(
+    this.deps.plugin,
+    () => this.deps.getVaultConfigSyncRules(),
   );
   private readonly syncEventRecorder = new SyncEventRecorder({
     getSyncStore: () => this.syncStore,
@@ -105,6 +125,7 @@ export class SyncEngine {
     getSyncToken: async () => await this.deps.getSyncToken(),
     invalidateSyncToken: () => this.deps.invalidateSyncToken(),
   });
+  private readonly syncPullClient = new SyncPullClient(this.syncRequestClient);
   private readonly syncPushService = new SyncPushService({
     getApiBaseUrl: () => this.deps.getApiBaseUrl(),
     getSyncToken: async () => await this.deps.getSyncToken(),
@@ -124,8 +145,20 @@ export class SyncEngine {
   private readonly syncLocalReconcileService = new SyncLocalReconcileService({
     getSyncStore: () => this.syncStore,
     getRemoteVaultKey: () => this.deps.getRemoteVaultKey(),
-    shouldSyncPath: (path) => this.vaultAdapter.isSyncablePath(path),
-    scanner: this.vaultAdapter,
+    shouldSyncPath: (path) =>
+      this.decideVaultPathSync(path).kind === "sync",
+    scanner: {
+      listFiles: async () => {
+        const byPath = new Map<string, SyncVaultFile>();
+        for (const file of await this.vaultAdapter.listFiles()) {
+          byPath.set(file.path, file);
+        }
+        for (const file of await this.vaultConfigSource.listFiles()) {
+          byPath.set(file.path, file);
+        }
+        return [...byPath.values()];
+      },
+    },
   });
   private readonly syncAutoLoop = new SyncAutoLoop({
     getApiBaseUrl: () => this.deps.getApiBaseUrl(),
@@ -201,9 +234,13 @@ export class SyncEngine {
     getSyncToken: async () => await this.deps.getSyncToken(),
     getSyncStore: () => this.syncStore,
     getRemoteVaultKey: () => this.deps.getRemoteVaultKey(),
+    shouldApplyRemotePath: (path) =>
+      shouldApplyRemoteVaultPath(path, {
+        vaultConfigRules: this.deps.getVaultConfigSyncRules(),
+      }),
     eventGate: this.syncEventGate,
     vaultAdapter: this.vaultAdapter,
-    pullClient: new SyncPullClient(this.syncRequestClient),
+    pullClient: this.syncPullClient,
     onProgress: async (progress) => {
       this.reportActivityProgress(progress);
     },
@@ -214,7 +251,7 @@ export class SyncEngine {
     getSyncToken: async () => await this.deps.getSyncToken(),
     getStore: () => this.requireStore(),
     getRemoteVaultKey: () => this.deps.getRemoteVaultKey(),
-    pullClient: new SyncPullClient(this.syncRequestClient),
+    pullClient: this.syncPullClient,
     withRealtimeSession: async (work) => await this.withRealtimeSession(work),
     runLocalMutationWork: async (work) => await this.runLocalMutationWork(work),
     pullOnce: async (session) => {
@@ -279,7 +316,7 @@ export class SyncEngine {
   }
 
   refreshHiddenFolderReconcileTimer(): void {
-    if (this.deps.getSyncFileRules().includedHiddenFolders.length > 0) {
+    if (this.hasPolledReconcileSources()) {
       this.startHiddenFolderReconcileTimer();
       return;
     }
@@ -305,6 +342,109 @@ export class SyncEngine {
     });
   }
 
+  async reapplyAllowedRemoteVaultConfig(): Promise<number> {
+    return await this.runLocalMutationWork(async () => {
+      return await this.reapplyAllowedRemoteVaultConfigEntries();
+    });
+  }
+
+  private async reapplyAllowedRemoteVaultConfigEntries(): Promise<number> {
+    const store = this.requireStore();
+    const rules = this.deps.getVaultConfigSyncRules();
+    if (!rules.enabled) {
+      return 0;
+    }
+
+    const remotes = (await store.listRemoteStates()).filter(
+      (entry) => entry.path && shouldSyncVaultConfigPath(entry.path, rules),
+    );
+    if (remotes.length === 0) {
+      return 0;
+    }
+
+    const token = await this.deps.getSyncToken();
+    let applied = 0;
+    await this.syncEventGate.suppressPaths(
+      remotes.map((entry) => entry.path).filter((path): path is string => !!path),
+      async () => {
+        for (const remote of remotes) {
+          if (!remote.path) {
+            continue;
+          }
+
+          const local = await store.getLocalStateById(remote.entryId);
+          if (local && !local.deleted) {
+            continue;
+          }
+
+          if (remote.deleted) {
+            await removeVaultPathIfExists(this.vaultAdapter, remote.path);
+            await store.upsertEntry({
+              entryId: remote.entryId,
+              path: remote.path,
+              revision: remote.revision,
+              blobId: null,
+              hash: remote.hash,
+              deleted: true,
+              updatedAt: remote.updatedAt,
+              localMtime: null,
+              localSize: null,
+            });
+            applied += 1;
+            continue;
+          }
+
+          if (!remote.blobId) {
+            continue;
+          }
+
+          const encryptedBytes = await this.syncPullClient.downloadBlob(
+            this.deps.getApiBaseUrl(),
+            token.token,
+            token.vaultId,
+            remote.blobId,
+          );
+          const bytes = await decryptSyncBlob(
+            this.deps.getRemoteVaultKey(),
+            encryptedBytes,
+            { blobId: remote.blobId },
+            { syncFormatVersion: token.syncFormatVersion },
+          );
+          const actualHash = await hashBytes(bytes);
+          if (actualHash !== remote.hash) {
+            throw new Error(
+              `Remote vault config ${remote.entryId}@${remote.revision} hash does not match metadata.`,
+            );
+          }
+
+          await writeVaultBytes(this.vaultAdapter, remote.path, bytes);
+          await store.upsertEntry({
+            entryId: remote.entryId,
+            path: remote.path,
+            revision: remote.revision,
+            blobId: remote.blobId,
+            hash: remote.hash,
+            deleted: false,
+            updatedAt: remote.updatedAt,
+            localMtime: null,
+            localSize: null,
+          });
+          await store.putBlob({
+            blobId: remote.blobId,
+            hash: remote.hash,
+            encryptedBytes,
+            role: "remote",
+            refEntryId: remote.entryId,
+            cachedAt: Date.now(),
+          });
+          applied += 1;
+        }
+      },
+    );
+    await store.flush();
+    return applied;
+  }
+
   async refreshSyncProgress(): Promise<void> {
     const store = this.syncStore;
     if (!store) {
@@ -326,7 +466,7 @@ export class SyncEngine {
   private startHiddenFolderReconcileTimer(): void {
     if (
       this.hiddenFolderReconcileTimer !== null ||
-      this.deps.getSyncFileRules().includedHiddenFolders.length === 0
+      !this.hasPolledReconcileSources()
     ) {
       return;
     }
@@ -348,7 +488,7 @@ export class SyncEngine {
   private async reconcileHiddenFoldersFromTimer(): Promise<void> {
     if (
       this.hiddenFolderReconcilePromise ||
-      this.deps.getSyncFileRules().includedHiddenFolders.length === 0 ||
+      !this.hasPolledReconcileSources() ||
       !this.deps.hasActiveRemoteVaultSession() ||
       !this.syncStore
     ) {
@@ -373,6 +513,20 @@ export class SyncEngine {
       this.deps.setSyncStatus("attention_needed");
       this.deps.notifyError(error, "Hidden folder scan failed");
     }
+  }
+
+  private hasPolledReconcileSources(): boolean {
+    return (
+      this.deps.getSyncFileRules().includedHiddenFolders.length > 0 ||
+      this.deps.getVaultConfigSyncRules().enabled
+    );
+  }
+
+  private decideVaultPathSync(path: string) {
+    return decideVaultPathSync(path, {
+      fileRules: this.deps.getSyncFileRules(),
+      vaultConfigRules: this.deps.getVaultConfigSyncRules(),
+    });
   }
 
   async listFileSizeBlockedFiles(): Promise<SyncFileSizeBlockedFile[]> {

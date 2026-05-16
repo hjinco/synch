@@ -24,6 +24,7 @@ export interface SyncPullServiceDeps {
   getSyncToken: () => Promise<SyncTokenResponse>;
   getSyncStore: () => SyncPullStore | null;
   getRemoteVaultKey: () => Uint8Array;
+  shouldApplyRemotePath?: (path: string) => boolean;
   vaultAdapter: PullVaultAdapter;
   eventGate?: SyncEventGateLike;
   pullClient?: Pick<SyncPullClient, "downloadBlob">;
@@ -59,6 +60,7 @@ export class SyncPullService {
       vaultAdapter: this.deps.vaultAdapter,
       eventGate: this.deps.eventGate,
       pullClient: this.pullClient,
+      shouldApplyRemotePath: this.deps.shouldApplyRemotePath,
       prepareConcurrency:
         this.deps.prepareConcurrency ?? DEFAULT_PULL_PREPARE_CONCURRENCY,
       onProgress: async (progress) => {

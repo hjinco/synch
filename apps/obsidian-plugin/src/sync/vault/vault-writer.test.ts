@@ -45,10 +45,24 @@ describe("vault writer", () => {
   it("refuses to modify reserved vault paths", async () => {
     const writer = new MemoryVaultWriter();
 
-    await expect(writeVaultText(writer, ".obsidian/app.json", "{}")).rejects.toThrow(
+    await expect(writeVaultText(writer, ".git/config", "config")).rejects.toThrow(
       "Refusing to modify reserved vault path",
     );
-    expect(writer.directories.has(".obsidian")).toBe(false);
+    expect(writer.directories.has(".git")).toBe(false);
+  });
+
+  it("uses writer-provided protected path rules", async () => {
+    const writer = new MemoryVaultWriter(
+      (path) => path === ".obsidian/workspace.json",
+    );
+
+    await writeVaultText(writer, ".obsidian/app.json", "{}");
+    await expect(writeVaultText(writer, ".obsidian/workspace.json", "{}")).rejects.toThrow(
+      "Refusing to modify reserved vault path",
+    );
+
+    expect(writer.textFiles.get(".obsidian/app.json")).toBe("{}");
+    expect(writer.textFiles.has(".obsidian/workspace.json")).toBe(false);
   });
 });
 
@@ -56,6 +70,13 @@ class MemoryVaultWriter implements SyncVaultWriter {
   readonly directories = new Set<string>();
   readonly textFiles = new Map<string, string>();
   readonly binaryFiles = new Map<string, Uint8Array>();
+  isProtectedVaultPath?: (path: string) => boolean;
+
+  constructor(isProtected?: (path: string) => boolean) {
+    if (isProtected) {
+      this.isProtectedVaultPath = isProtected;
+    }
+  }
 
   async exists(path: string): Promise<boolean> {
     return (

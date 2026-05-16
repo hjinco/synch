@@ -5,6 +5,7 @@ import { getSynchLocale, t } from "../../i18n";
 import type {
   SynchFileRules,
   SynchSubscriptionStatus,
+  SynchVaultConfigSyncRules,
 } from "../../plugin/view-models";
 import { isStorageWarningStatus } from "../../utils/storage-warning";
 import type { SynchSettingsController } from "../controller";
@@ -595,6 +596,137 @@ export function renderFileSyncSettings(
     cls: "synch-setting-hint",
     text: t("fileSync.hint"),
   });
+
+  renderVaultConfigSyncSettings(containerEl, controller, refresh);
+}
+
+function renderVaultConfigSyncSettings(
+  containerEl: HTMLElement,
+  controller: SynchSettingsController,
+  refresh: RefreshSettings,
+): void {
+  const rules = controller.getVaultConfigSyncRules();
+
+  new Setting(containerEl)
+    .setName(t("configSync.header"))
+    .setDesc(t("configSync.desc"))
+    .addToggle((toggle) =>
+      toggle.setValue(rules.enabled).onChange(async (value) => {
+        await controller.updateVaultConfigSyncRule("enabled", value);
+        refresh();
+      }),
+    );
+
+  if (!rules.enabled) {
+    return;
+  }
+
+  addVaultConfigRuleToggle(
+    containerEl,
+    t("configSync.mainSettings"),
+    t("configSync.mainSettingsDesc"),
+    rules,
+    "mainSettings",
+    controller,
+    refresh,
+  );
+  addVaultConfigRuleToggle(
+    containerEl,
+    t("configSync.appearance"),
+    t("configSync.appearanceDesc"),
+    rules,
+    "appearance",
+    controller,
+    refresh,
+  );
+  addVaultConfigRuleToggle(
+    containerEl,
+    t("configSync.themesAndSnippets"),
+    t("configSync.themesAndSnippetsDesc"),
+    rules,
+    "themesAndSnippets",
+    controller,
+    refresh,
+  );
+  addVaultConfigRuleToggle(
+    containerEl,
+    t("configSync.hotkeys"),
+    t("configSync.hotkeysDesc"),
+    rules,
+    "hotkeys",
+    controller,
+    refresh,
+  );
+  addVaultConfigRuleToggle(
+    containerEl,
+    t("configSync.corePluginList"),
+    t("configSync.corePluginListDesc"),
+    rules,
+    "corePluginList",
+    controller,
+    refresh,
+  );
+  addVaultConfigRuleToggle(
+    containerEl,
+    t("configSync.corePluginData"),
+    t("configSync.corePluginDataDesc"),
+    rules,
+    "corePluginData",
+    controller,
+    refresh,
+  );
+  addVaultConfigRuleToggle(
+    containerEl,
+    t("configSync.communityPluginList"),
+    t("configSync.communityPluginListDesc"),
+    rules,
+    "communityPluginList",
+    controller,
+    refresh,
+  );
+  addVaultConfigRuleToggle(
+    containerEl,
+    t("configSync.communityPluginFiles"),
+    t("configSync.communityPluginFilesDesc"),
+    rules,
+    "communityPluginFiles",
+    controller,
+    refresh,
+  );
+  addVaultConfigRuleToggle(
+    containerEl,
+    t("configSync.communityPluginData"),
+    t("configSync.communityPluginDataDesc"),
+    rules,
+    "communityPluginData",
+    controller,
+    refresh,
+  );
+}
+
+function addVaultConfigRuleToggle<K extends keyof SynchVaultConfigSyncRules>(
+  containerEl: HTMLElement,
+  name: string,
+  description: string,
+  rules: SynchVaultConfigSyncRules,
+  key: K,
+  controller: SynchSettingsController,
+  refresh: RefreshSettings,
+): void {
+  new Setting(containerEl)
+    .setName(name)
+    .setDesc(description)
+    .addToggle((toggle) =>
+      toggle
+        .setValue(rules[key] as boolean)
+        .onChange(async (value) => {
+          await controller.updateVaultConfigSyncRule(
+            key,
+            value as SynchVaultConfigSyncRules[K],
+          );
+          refresh();
+        }),
+    );
 }
 
 function addFileRuleToggle<K extends keyof SynchFileRules>(
