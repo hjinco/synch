@@ -306,6 +306,71 @@ describe("SyncEngine", () => {
     await store.close();
   });
 
+  it("updates stale local vault config when reapplying a newer remote revision", async () => {
+    const plugin = createPlugin({}, async () => encodeUtf8("body"), []);
+    const store = await createInitializedTestSyncStore(plugin);
+    const localBytes = encodeUtf8("{\"theme\":\"old\"}");
+    const localHash = await hashBytes(localBytes);
+    const remoteBytes = encodeUtf8("{\"theme\":\"new\"}");
+    const remoteHash = await hashBytes(remoteBytes);
+    const encryptedBytes = await encryptSyncBlob(
+      TEST_VAULT_KEY,
+      remoteBytes,
+      { blobId: "blob-config-new" },
+      { syncFormatVersion: 1 },
+    );
+    await plugin.app.vault.adapter.writeBinary(
+      ".obsidian/app.json",
+      toArrayBuffer(localBytes),
+    );
+    await store.upsertEntry({
+      entryId: "entry-config",
+      path: ".obsidian/app.json",
+      revision: 1,
+      blobId: "blob-config-old",
+      hash: localHash,
+      deleted: false,
+      updatedAt: 10,
+      localMtime: null,
+      localSize: null,
+    });
+    await store.applyRemoteState({
+      entryId: "entry-config",
+      path: ".obsidian/app.json",
+      revision: 2,
+      blobId: "blob-config-new",
+      hash: remoteHash,
+      deleted: false,
+      updatedAt: 20,
+    });
+    setRequestUrlMock(async () => ({
+      status: 200,
+      arrayBuffer: toArrayBuffer(encryptedBytes),
+    }));
+    const engine = createEngine(plugin, {
+      getVaultConfigSyncRules: () => ({
+        ...DEFAULT_VAULT_CONFIG_SYNC_RULES,
+        enabled: true,
+      }),
+    });
+    engine.setStore(store);
+
+    await expect(engine.reapplyAllowedRemoteVaultConfig()).resolves.toBe(1);
+
+    await expect(
+      plugin.app.vault.adapter.readBinary(".obsidian/app.json"),
+    ).resolves.toEqual(toArrayBuffer(remoteBytes));
+    await expect(store.getEntryById("entry-config")).resolves.toMatchObject({
+      entryId: "entry-config",
+      path: ".obsidian/app.json",
+      revision: 2,
+      blobId: "blob-config-new",
+      hash: remoteHash,
+      deleted: false,
+    });
+    await store.close();
+  });
+
 });
 
 function createEngine(

@@ -373,7 +373,17 @@ export class SyncEngine {
           }
 
           const local = await store.getLocalStateById(remote.entryId);
-          if (local && !local.deleted) {
+          const current = local
+            ? await store.getEntryById(remote.entryId)
+            : null;
+          if (
+            local &&
+            current &&
+            local.deleted === remote.deleted &&
+            current.revision === remote.revision &&
+            current.blobId === remote.blobId &&
+            current.hash === remote.hash
+          ) {
             continue;
           }
 
