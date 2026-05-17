@@ -372,6 +372,10 @@ export class SyncEngine {
             continue;
           }
 
+          if (await store.getDirtyEntryMutation(remote.entryId)) {
+            continue;
+          }
+
           const local = await store.getLocalStateById(remote.entryId);
           const current = local
             ? await store.getEntryById(remote.entryId)

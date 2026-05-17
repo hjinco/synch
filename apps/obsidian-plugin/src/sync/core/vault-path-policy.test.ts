@@ -54,6 +54,12 @@ describe("decideVaultPathSync", () => {
         vaultConfigRules,
       }).kind,
     ).toBe("ignore-local");
+    expect(
+      decideVaultPathSync(".obsidian/app.json", {
+        fileRules: DEFAULT_SYNC_FILE_RULES,
+        vaultConfigRules,
+      }).kind,
+    ).toBe("forbidden");
   });
 
   it("marks never-sync and device-local config paths as forbidden", () => {
@@ -76,6 +82,22 @@ describe("decideVaultPathSync", () => {
       isForbiddenVaultPath(".obsidian/app.json", DEFAULT_VAULT_CONFIG_SYNC_RULES),
     ).toBe(false);
   });
+
+  it("keeps the default Obsidian config folder protected when another config folder is active", () => {
+    const vaultConfigRules = {
+      ...DEFAULT_VAULT_CONFIG_SYNC_RULES,
+      enabled: true,
+      configDir: ".obsidian-mobile",
+    };
+
+    expect(isForbiddenVaultPath(".obsidian/app.json", vaultConfigRules)).toBe(true);
+    expect(
+      isForbiddenVaultPath(".obsidian/workspace.json", vaultConfigRules),
+    ).toBe(true);
+    expect(
+      isForbiddenVaultPath(".obsidian-mobile/app.json", vaultConfigRules),
+    ).toBe(false);
+  });
 });
 
 describe("shouldApplyRemoteVaultPath", () => {
@@ -96,6 +118,25 @@ describe("shouldApplyRemoteVaultPath", () => {
           ...DEFAULT_VAULT_CONFIG_SYNC_RULES,
           enabled: true,
         },
+      }),
+    ).toBe(true);
+  });
+
+  it("does not apply default Obsidian config paths as generic remote files when using a custom config folder", () => {
+    const vaultConfigRules = {
+      ...DEFAULT_VAULT_CONFIG_SYNC_RULES,
+      enabled: true,
+      configDir: ".obsidian-mobile",
+    };
+
+    expect(
+      shouldApplyRemoteVaultPath(".obsidian/app.json", {
+        vaultConfigRules,
+      }),
+    ).toBe(false);
+    expect(
+      shouldApplyRemoteVaultPath(".obsidian-mobile/app.json", {
+        vaultConfigRules,
       }),
     ).toBe(true);
   });

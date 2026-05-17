@@ -371,6 +371,82 @@ describe("SyncEngine", () => {
     await store.close();
   });
 
+  it("does not overwrite pending local vault config when reapplying remote config", async () => {
+    const plugin = createPlugin({}, async () => encodeUtf8("body"), []);
+    const store = await createInitializedTestSyncStore(plugin);
+    const baseBytes = encodeUtf8("{\"theme\":\"base\"}");
+    const localBytes = encodeUtf8("{\"theme\":\"local\"}");
+    const remoteBytes = encodeUtf8("{\"theme\":\"remote\"}");
+    const baseHash = await hashBytes(baseBytes);
+    const localHash = await hashBytes(localBytes);
+    const remoteHash = await hashBytes(remoteBytes);
+    await plugin.app.vault.adapter.writeBinary(
+      ".obsidian/app.json",
+      toArrayBuffer(localBytes),
+    );
+    await store.upsertEntry({
+      entryId: "entry-config",
+      path: ".obsidian/app.json",
+      revision: 1,
+      blobId: "blob-config-base",
+      hash: baseHash,
+      deleted: false,
+      updatedAt: 10,
+      localMtime: null,
+      localSize: null,
+    });
+    const queued = await queueLocalUpsertMutation(store, {
+      remoteVaultKey: TEST_VAULT_KEY,
+      path: ".obsidian/app.json",
+      entryId: "entry-config",
+      base: await store.getRemoteStateById("entry-config"),
+      previousLocal: {
+        deleted: false,
+        blobId: "blob-config-base",
+        hash: baseHash,
+      },
+      hash: localHash,
+    });
+    await store.applyLocalState({
+      entryId: "entry-config",
+      path: ".obsidian/app.json",
+      blobId: queued.blobId,
+      hash: localHash,
+      deleted: false,
+      updatedAt: 11,
+      localMtime: null,
+      localSize: null,
+    });
+    await store.applyRemoteState({
+      entryId: "entry-config",
+      path: ".obsidian/app.json",
+      revision: 2,
+      blobId: "blob-config-remote",
+      hash: remoteHash,
+      deleted: false,
+      updatedAt: 20,
+    });
+    const engine = createEngine(plugin, {
+      getVaultConfigSyncRules: () => ({
+        ...DEFAULT_VAULT_CONFIG_SYNC_RULES,
+        enabled: true,
+      }),
+    });
+    engine.setStore(store);
+
+    await expect(engine.reapplyAllowedRemoteVaultConfig()).resolves.toBe(0);
+
+    await expect(
+      plugin.app.vault.adapter.readBinary(".obsidian/app.json"),
+    ).resolves.toEqual(toArrayBuffer(localBytes));
+    await expect(store.getDirtyEntryMutation("entry-config")).resolves.toMatchObject({
+      entryId: "entry-config",
+      op: "upsert",
+      hash: localHash,
+    });
+    await store.close();
+  });
+
 });
 
 function createEngine(

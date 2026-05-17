@@ -6,6 +6,8 @@ import {
   type VaultConfigSyncRules,
 } from "./vault-config-rules";
 
+const DEFAULT_OBSIDIAN_CONFIG_DIR = ".obsidian";
+
 export type VaultPathPolicyDecision =
   | { kind: "sync" }
   | { kind: "ignore-local" }
@@ -23,7 +25,8 @@ export function decideVaultPathSync(
   const safetyClass = classifySyncPath(path, rules.vaultConfigRules.configDir);
   if (
     safetyClass === "reserved-never-sync" ||
-    isDeniedVaultConfigPath(path, rules.vaultConfigRules.configDir)
+    isDeniedVaultConfigPath(path, rules.vaultConfigRules.configDir) ||
+    isProtectedDefaultConfigPath(path, rules.vaultConfigRules.configDir)
   ) {
     return { kind: "forbidden" };
   }
@@ -50,7 +53,10 @@ export function shouldApplyRemoteVaultPath(
     return false;
   }
 
-  if (isDeniedVaultConfigPath(path, rules.vaultConfigRules.configDir)) {
+  if (
+    isDeniedVaultConfigPath(path, rules.vaultConfigRules.configDir) ||
+    isProtectedDefaultConfigPath(path, rules.vaultConfigRules.configDir)
+  ) {
     return false;
   }
 
@@ -68,6 +74,15 @@ export function isForbiddenVaultPath(
   return (
     classifySyncPath(path, vaultConfigRules.configDir) ===
       "reserved-never-sync" ||
-    isDeniedVaultConfigPath(path, vaultConfigRules.configDir)
+    isDeniedVaultConfigPath(path, vaultConfigRules.configDir) ||
+    isProtectedDefaultConfigPath(path, vaultConfigRules.configDir)
   );
+}
+
+function isProtectedDefaultConfigPath(path: string, configDir: string): boolean {
+  if (configDir === DEFAULT_OBSIDIAN_CONFIG_DIR) {
+    return false;
+  }
+
+  return classifySyncPath(path, DEFAULT_OBSIDIAN_CONFIG_DIR) !== "normal";
 }
