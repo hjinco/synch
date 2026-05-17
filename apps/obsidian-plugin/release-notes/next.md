@@ -14,5 +14,3 @@
 ## Fixed
 
 - Prevent sync from modifying reserved vault paths such as Obsidian settings, Git metadata, Synch metadata, trash, and dependency folders.
-- Apply previously skipped remote vault configuration before local reconciliation when config sync is enabled later.
-- Reapply newer remote vault configuration revisions when local Obsidian settings are stale.
