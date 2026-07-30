@@ -48,6 +48,7 @@
 		"@hono/zod-validator": "^0.7.6",
 		"@polar-sh/better-auth": "^1.8.3",
 		"@polar-sh/sdk": "^0.46.7",
+		"aws4fetch": "^1.0.20",
 		"better-auth": "^1.6.2",
 		"better-sqlite3": "^12.4.1",
 		"drizzle-orm": "^0.45.2",

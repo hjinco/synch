@@ -1,8 +1,10 @@
-export type BlobBody = NonNullable<Request["body"]>;
+import type { BlobBody, BlobStorage } from "./storage";
+
+export type { BlobBody };
 
 const R2_LIST_BATCH_SIZE = 1000;
 
-export class BlobRepository {
+export class BlobRepository implements BlobStorage {
 	constructor(private readonly bucket: R2Bucket) {}
 
 	async upload(key: string, body: BlobBody): Promise<{ size: number }> {
