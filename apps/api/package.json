@@ -34,6 +34,7 @@
 	},
 	"devDependencies": {
 		"@cloudflare/vitest-pool-workers": "^0.14.6",
+		"@types/better-sqlite3": "^7.6.13",
 		"@types/node": "^25.6.0",
 		"@typescript/native-preview": "^7.0.0-dev.20260423.1",
 		"dotenv": "^17.4.2",
@@ -48,6 +49,7 @@
 		"@polar-sh/better-auth": "^1.8.3",
 		"@polar-sh/sdk": "^0.46.7",
 		"better-auth": "^1.6.2",
+		"better-sqlite3": "^12.4.1",
 		"drizzle-orm": "^0.45.2",
 		"hono": "^4.12.14",
 		"jose": "^6.2.2",
