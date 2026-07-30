@@ -1,27 +1,24 @@
 import { and, eq } from "drizzle-orm";
-import { drizzle } from "drizzle-orm/durable-sqlite";
 
 import * as doSchema from "../../../db/do";
 import type { VaultStateLimits } from "../types";
+import type { CoordinatorDb, CoordinatorStorageHandle } from "./storage-handle";
 
-type CursorDb = Pick<
-	ReturnType<typeof drizzle<typeof doSchema>>,
-	"insert" | "select"
->;
+type CursorDb = Pick<CoordinatorDb, "insert" | "select">;
 
 export class CoordinatorCursorStore {
-	constructor(private readonly storage: DurableObjectStorage) {}
+	constructor(private readonly handle: CoordinatorStorageHandle) {}
 
 	currentCursor(): number {
-		return currentCursor(this.getDb());
+		return currentCursor(this.handle.db);
 	}
 
 	ensureVaultState(vaultId: string, initialLimits: VaultStateLimits): void {
-		ensureVaultState(this.getDb(), vaultId, initialLimits);
+		ensureVaultState(this.handle.db, vaultId, initialLimits);
 	}
 
 	readVaultId(): string | null {
-		const row = this.getDb()
+		const row = this.handle.db
 			.select({
 				vaultId: doSchema.coordinatorState.vaultId,
 			})
@@ -44,7 +41,7 @@ export class CoordinatorCursorStore {
 	}
 
 	readVaultLimits(): VaultStateLimits {
-		const row = this.storage.sql
+		const row = this.handle
 			.exec<{
 				storage_limit_bytes: number;
 				max_file_size_bytes: number;
@@ -79,7 +76,7 @@ export class CoordinatorCursorStore {
 			throw new Error("durable object vault id mismatch");
 		}
 
-		this.storage.sql.exec(
+		this.handle.exec(
 			`
 			UPDATE coordinator_state
 			SET
@@ -100,11 +97,11 @@ export class CoordinatorCursorStore {
 	}
 
 	recordLocalVaultConnection(userId: string, localVaultId: string): void {
-		recordLocalVaultConnection(this.getDb(), userId, localVaultId, Date.now());
+		recordLocalVaultConnection(this.handle.db, userId, localVaultId, Date.now());
 	}
 
 	deleteLocalVaultConnection(userId: string, localVaultId: string): void {
-		this.getDb()
+		this.handle.db
 			.delete(doSchema.localVaultConnections)
 			.where(
 				and(
@@ -119,9 +116,6 @@ export class CoordinatorCursorStore {
 		return currentCursor(db);
 	}
 
-	private getDb() {
-		return drizzle(this.storage, { schema: doSchema });
-	}
 }
 
 function ensureVaultState(

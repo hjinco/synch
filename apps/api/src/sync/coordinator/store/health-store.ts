@@ -3,6 +3,7 @@ import type {
 	VaultSyncHealthStatus,
 	VaultSyncStatusSummary,
 } from "../../health/types";
+import type { CoordinatorStorageHandle } from "./storage-handle";
 
 export const STAGED_BLOB_STALE_MS = 60 * 60 * 1000;
 export const PENDING_DELETE_STALE_MS = 24 * 60 * 60 * 1000;
@@ -10,11 +11,19 @@ export const ACTIVE_WITHOUT_RECENT_COMMIT_MS = 24 * 60 * 60 * 1000;
 const PENDING_DELETE_BACKLOG_WARNING_COUNT = 100;
 const STORAGE_NEAR_LIMIT_RATIO = 0.8;
 
+/** Live websocket count, kept separate from storage since it isn't backed by SQL. */
+export interface CoordinatorSocketCounter {
+	count(): number;
+}
+
 export class CoordinatorHealthStore {
-	constructor(private readonly ctx: DurableObjectState) {}
+	constructor(
+		private readonly handle: CoordinatorStorageHandle,
+		private readonly sockets: CoordinatorSocketCounter,
+	) {}
 
 	recordGcCompleted(now = Date.now()): void {
-		this.ctx.storage.sql.exec(
+		this.handle.exec(
 			`
 			UPDATE coordinator_state
 			SET last_gc_at = ?
@@ -25,7 +34,7 @@ export class CoordinatorHealthStore {
 	}
 
 	recordHealthSummaryFlushed(now = Date.now()): void {
-		this.ctx.storage.sql.exec(
+		this.handle.exec(
 			`
 			UPDATE coordinator_state
 			SET last_health_flushed_at = ?,
@@ -39,7 +48,7 @@ export class CoordinatorHealthStore {
 	}
 
 	recordHealthSummaryFlushFailed(error: unknown, now = Date.now()): number {
-		this.ctx.storage.sql.exec(
+		this.handle.exec(
 			`
 			UPDATE coordinator_state
 			SET health_flush_retry_count = health_flush_retry_count + 1,
@@ -50,7 +59,7 @@ export class CoordinatorHealthStore {
 			formatCompactError(error),
 			now,
 		);
-		const row = this.ctx.storage.sql
+		const row = this.handle
 			.exec<{ health_flush_retry_count: number }>(
 				"SELECT health_flush_retry_count FROM coordinator_state WHERE id = 1",
 			)
@@ -62,7 +71,7 @@ export class CoordinatorHealthStore {
 		now: number,
 		activeCursorTtlMs: number,
 	): VaultSyncStatusSummary | null {
-		const state = this.ctx.storage.sql
+		const state = this.handle
 			.exec<{
 				vault_id: string;
 				current_cursor: number;
@@ -89,7 +98,7 @@ export class CoordinatorHealthStore {
 		}
 
 		const activeSince = now - activeCursorTtlMs;
-		const stats = this.ctx.storage.sql
+		const stats = this.handle
 			.exec<{
 				entry_count: number;
 				live_blob_count: number;
@@ -125,7 +134,7 @@ export class CoordinatorHealthStore {
 			storageUsedBytes: Number(state.storage_used_bytes),
 			storageLimitBytes: Number(state.storage_limit_bytes),
 			activeLocalVaultCount: Number(stats?.active_local_vault_count ?? 0),
-			websocketCount: this.ctx.getWebSockets().length,
+			websocketCount: this.sockets.count(),
 			oldestStagedBlobAgeMs: ageMs(now, stats?.oldest_staged_blob_at ?? null),
 			oldestPendingDeleteAgeMs: ageMs(
 				now,
@@ -144,7 +153,7 @@ export class CoordinatorHealthStore {
 	}
 
 	readStorageStatus(): StorageStatusSnapshot {
-		const state = this.ctx.storage.sql
+		const state = this.handle
 			.exec<{
 				storage_used_bytes: number;
 				storage_limit_bytes: number;

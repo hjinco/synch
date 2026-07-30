@@ -23,6 +23,7 @@ import { CoordinatorEntryStore } from "../sync/coordinator/store/entry-store";
 import { CoordinatorHealthStore } from "../sync/coordinator/store/health-store";
 import { CoordinatorHistoryStore } from "../sync/coordinator/store/history-store";
 import { CoordinatorMutationStore } from "../sync/coordinator/store/mutation-store";
+import { DurableObjectCoordinatorStorageHandle } from "../sync/coordinator/store/storage-handle";
 import { VaultLifecycleService } from "../sync/coordinator/vault/lifecycle-service";
 import { VaultSyncStatusRepository } from "../sync/health/status-repository";
 import { VaultRepository } from "../vault/repository";
@@ -32,12 +33,15 @@ export function createCoordinatorRuntime(ctx: DurableObjectState, env: Env) {
 	const cursorActiveTtlMs = 30 * 24 * 60 * 60 * 1000;
 	const db = createDb(env.DB);
 	const storage = new DurableCoordinatorStorage(ctx);
-	const blobStore = new CoordinatorBlobStore(ctx.storage);
-	const cursorStore = new CoordinatorCursorStore(ctx.storage);
-	const entryStore = new CoordinatorEntryStore(ctx.storage);
-	const healthStore = new CoordinatorHealthStore(ctx);
-	const historyStore = new CoordinatorHistoryStore(ctx.storage);
-	const mutationStore = new CoordinatorMutationStore(ctx.storage);
+	const storageHandle = new DurableObjectCoordinatorStorageHandle(ctx.storage);
+	const blobStore = new CoordinatorBlobStore(storageHandle);
+	const cursorStore = new CoordinatorCursorStore(storageHandle);
+	const entryStore = new CoordinatorEntryStore(storageHandle);
+	const healthStore = new CoordinatorHealthStore(storageHandle, {
+		count: () => ctx.getWebSockets().length,
+	});
+	const historyStore = new CoordinatorHistoryStore(storageHandle);
+	const mutationStore = new CoordinatorMutationStore(storageHandle);
 	const socketService = new CoordinatorSocketService(ctx);
 	const blobRepository = new BlobRepository(env.SYNC_BLOBS);
 	const vaultRepository = new VaultRepository(db);

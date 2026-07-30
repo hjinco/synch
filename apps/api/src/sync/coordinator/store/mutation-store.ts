@@ -1,5 +1,4 @@
 import { and, eq } from "drizzle-orm";
-import { drizzle } from "drizzle-orm/durable-sqlite";
 
 import * as doSchema from "../../../db/do";
 import type {
@@ -13,6 +12,7 @@ import type {
 } from "../types";
 import { CoordinatorBlobStore } from "./blob-store";
 import { CoordinatorCursorStore } from "./cursor-store";
+import type { CoordinatorStorageHandle } from "./storage-handle";
 
 const AUTO_ENTRY_VERSION_BUCKET_MS = 5 * 60 * 1000;
 
@@ -20,9 +20,9 @@ export class CoordinatorMutationStore {
 	private readonly blobStore: CoordinatorBlobStore;
 	private readonly cursorStore: CoordinatorCursorStore;
 
-	constructor(private readonly storage: DurableObjectStorage) {
-		this.blobStore = new CoordinatorBlobStore(storage);
-		this.cursorStore = new CoordinatorCursorStore(storage);
+	constructor(private readonly handle: CoordinatorStorageHandle) {
+		this.blobStore = new CoordinatorBlobStore(handle);
+		this.cursorStore = new CoordinatorCursorStore(handle);
 	}
 
 	async commitMutation(
@@ -86,7 +86,7 @@ export class CoordinatorMutationStore {
 	): Promise<CommitMutationsResult> {
 		const now = Date.now();
 
-		return this.getDb().transaction((tx) => {
+		return this.handle.db.transaction((tx) => {
 			const results: CommitMutationBatchResult[] = [];
 			let highestResponseCursor: number | null = null;
 			let highestBroadcastCursor: number | null = null;
@@ -395,7 +395,4 @@ export class CoordinatorMutationStore {
 		});
 	}
 
-	private getDb() {
-		return drizzle(this.storage, { schema: doSchema });
-	}
 }

@@ -1,17 +1,14 @@
 import { and, eq, sql } from "drizzle-orm";
-import { drizzle } from "drizzle-orm/durable-sqlite";
 
 import * as doSchema from "../../../db/do";
 import { DomainError } from "../../../errors";
 import type { BlobRow, BlobState } from "../types";
+import type { CoordinatorDb, CoordinatorStorageHandle } from "./storage-handle";
 
-type BlobDb = Pick<
-	ReturnType<typeof drizzle<typeof doSchema>>,
-	"delete" | "insert" | "select" | "update"
->;
+type BlobDb = Pick<CoordinatorDb, "delete" | "insert" | "select" | "update">;
 
 export class CoordinatorBlobStore {
-	constructor(private readonly storage: DurableObjectStorage) {}
+	constructor(private readonly handle: CoordinatorStorageHandle) {}
 
 	async stageBlob(
 		blobId: string,
@@ -19,7 +16,7 @@ export class CoordinatorBlobStore {
 		now: number,
 		deleteAfter: number,
 	): Promise<void> {
-		this.getDb().transaction((tx) => {
+		this.handle.db.transaction((tx) => {
 			const storage = tx
 				.select({
 					usedBytes: doSchema.coordinatorState.storageUsedBytes,
@@ -112,7 +109,7 @@ export class CoordinatorBlobStore {
 	}
 
 	readBlob(blobId: string): BlobRow | null {
-		const row = this.getDb()
+		const row = this.handle.db
 			.select({
 				blob_id: doSchema.blobs.blobId,
 				state: doSchema.blobs.state,
@@ -130,7 +127,7 @@ export class CoordinatorBlobStore {
 	}
 
 	deleteBlobRecord(blobId: string): void {
-		this.getDb().transaction((tx) => {
+		this.handle.db.transaction((tx) => {
 			const existing = tx
 				.select({
 					sizeBytes: doSchema.blobs.sizeBytes,
@@ -151,7 +148,7 @@ export class CoordinatorBlobStore {
 	}
 
 	abortStagedBlob(blobId: string, now = Date.now()): void {
-		this.getDb().transaction((tx) => {
+		this.handle.db.transaction((tx) => {
 			const existing = tx
 				.select({
 					sizeBytes: doSchema.blobs.sizeBytes,
@@ -181,7 +178,7 @@ export class CoordinatorBlobStore {
 	}
 
 	isBlobPinned(blobId: string, includeStaging = true, now = Date.now()): boolean {
-		const row = this.storage.sql
+		const row = this.handle
 			.exec<{ found: number }>(
 				`
 				SELECT 1 AS found
@@ -222,7 +219,7 @@ export class CoordinatorBlobStore {
 
 	listBlobsReadyForDeletion(now: number, limit: number): BlobRow[] {
 		this.deleteExpiredEntryVersions(now);
-		return this.storage.sql
+		return this.handle
 			.exec<{
 				blob_id: string;
 				state: string;
@@ -265,8 +262,8 @@ export class CoordinatorBlobStore {
 	}
 
 	deleteBlobIfCollectible(blobId: string, now = Date.now()): void {
-		this.getDb().transaction((tx) => {
-			const collectible = this.storage.sql
+		this.handle.db.transaction((tx) => {
+			const collectible = this.handle
 				.exec<{ size_bytes: number }>(
 					`
 					SELECT size_bytes
@@ -305,7 +302,7 @@ export class CoordinatorBlobStore {
 
 	nextBlobGcAt(): number | null {
 		const now = Date.now();
-		const row = this.storage.sql
+		const row = this.handle
 			.exec<{ delete_after: number | null }>(
 				`
 					SELECT blobs.delete_after
@@ -344,7 +341,7 @@ export class CoordinatorBlobStore {
 
 	markUnpinnedBlobsForDeletion(now: number): void {
 		this.deleteExpiredEntryVersions(now);
-		this.storage.sql.exec(
+		this.handle.exec(
 			`
 			UPDATE blobs
 			SET state = 'pending_delete',
@@ -373,7 +370,7 @@ export class CoordinatorBlobStore {
 
 	markBlobPendingDeleteIfUnpinned(blobId: string, now: number): void {
 		this.deleteExpiredEntryVersions(now);
-		this.storage.sql.exec(
+		this.handle.exec(
 			`
 			UPDATE blobs
 			SET state = 'pending_delete',
@@ -463,7 +460,7 @@ export class CoordinatorBlobStore {
 	}
 
 	private deleteExpiredEntryVersions(now: number): void {
-		this.storage.sql.exec(
+		this.handle.exec(
 			`
 			DELETE FROM entry_versions
 			WHERE expires_at <= ?
@@ -472,9 +469,6 @@ export class CoordinatorBlobStore {
 		);
 	}
 
-	private getDb() {
-		return drizzle(this.storage, { schema: doSchema });
-	}
 }
 
 function decrementStorageUsedBytes(db: BlobDb, sizeBytes: number): void {

@@ -5,9 +5,10 @@ import type {
 	EntryVersionRow,
 	PurgeDeletedEntryBatchResult,
 } from "../types";
+import type { CoordinatorStorageHandle } from "./storage-handle";
 
 export class CoordinatorHistoryStore {
-	constructor(private readonly storage: DurableObjectStorage) {}
+	constructor(private readonly handle: CoordinatorStorageHandle) {}
 
 	listEntryVersions(
 		entryId: string,
@@ -15,7 +16,7 @@ export class CoordinatorHistoryStore {
 		retentionStart: number,
 		limit: number,
 	): EntryVersionListRow[] {
-		const rows = this.storage.sql
+		const rows = this.handle
 			.exec<{
 				version_id: string;
 				entry_id: string;
@@ -74,7 +75,7 @@ export class CoordinatorHistoryStore {
 		versionId: string,
 		retentionStart: number,
 	): EntryVersionRow | null {
-		const row = this.storage.sql
+		const row = this.handle
 			.exec<{
 				version_id: string;
 				entry_id: string;
@@ -131,7 +132,7 @@ export class CoordinatorHistoryStore {
 		const candidateBlobIds = new Set<string>();
 
 		for (const entry of entries) {
-			const current = this.storage.sql
+			const current = this.handle
 				.exec<{
 					revision: number;
 					deleted: number;
@@ -177,7 +178,7 @@ export class CoordinatorHistoryStore {
 				continue;
 			}
 
-			const restorable = this.storage.sql
+			const restorable = this.handle
 				.exec<{ found: number }>(
 					`
 					SELECT 1 AS found
@@ -202,7 +203,7 @@ export class CoordinatorHistoryStore {
 				continue;
 			}
 
-			for (const version of this.storage.sql
+			for (const version of this.handle
 				.exec<{ blob_id: string | null }>(
 					`
 					SELECT DISTINCT blob_id
@@ -218,7 +219,7 @@ export class CoordinatorHistoryStore {
 				}
 			}
 
-			this.storage.sql.exec(
+			this.handle.exec(
 				`
 				DELETE FROM entry_versions
 				WHERE entry_id = ?

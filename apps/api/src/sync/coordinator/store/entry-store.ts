@@ -1,5 +1,4 @@
 import { eq } from "drizzle-orm";
-import { drizzle } from "drizzle-orm/durable-sqlite";
 
 import * as doSchema from "../../../db/do";
 import type {
@@ -9,9 +8,10 @@ import type {
 	EntryStatePageCursor,
 	EntryStateRow,
 } from "../types";
+import type { CoordinatorStorageHandle } from "./storage-handle";
 
 export class CoordinatorEntryStore {
-	constructor(private readonly storage: DurableObjectStorage) {}
+	constructor(private readonly handle: CoordinatorStorageHandle) {}
 
 	listEntryStates(
 		sinceCursor: number,
@@ -19,7 +19,7 @@ export class CoordinatorEntryStore {
 		after: EntryStatePageCursor | null,
 		limit: number,
 	): EntryStateRow[] {
-		const rows = this.storage.sql
+		const rows = this.handle
 			.exec<{
 				entry_id: string;
 				revision: number;
@@ -71,7 +71,7 @@ export class CoordinatorEntryStore {
 	}
 
 	countEntryStates(sinceCursor: number, targetCursor: number): number {
-		const row = this.storage.sql
+		const row = this.handle
 			.exec<{ total: number }>(
 				`
 				SELECT COUNT(*) AS total
@@ -92,7 +92,7 @@ export class CoordinatorEntryStore {
 		retentionStart: number,
 		limit: number,
 	): DeletedEntryListRow[] {
-		const rows = this.storage.sql
+		const rows = this.handle
 			.exec<{
 				entry_id: string;
 				revision: number;
@@ -142,7 +142,7 @@ export class CoordinatorEntryStore {
 	}
 
 	readEntry(entryId: string): CurrentEntryRow | null {
-		const row = this.getDb()
+		const row = this.handle.db
 			.select({
 				entry_id: doSchema.entries.entryId,
 				revision: doSchema.entries.revision,
@@ -166,7 +166,4 @@ export class CoordinatorEntryStore {
 			: null;
 	}
 
-	private getDb() {
-		return drizzle(this.storage, { schema: doSchema });
-	}
 }
