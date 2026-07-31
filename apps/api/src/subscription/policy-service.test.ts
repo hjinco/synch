@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { D1Db } from "../db/client";
+import type { AppDb } from "../db/client";
 import {
 	applySubscriptionPlanLimitOverrides,
 	getSubscriptionPlanPolicy,
@@ -220,7 +220,7 @@ function fakePolicyDb(input: {
 		status: string;
 		periodEnd: Date | null;
 	}>;
-}): D1Db {
+}): AppDb {
 	return {
 		select(_fields: Record<string, unknown>) {
 			return {
@@ -241,5 +241,5 @@ function fakePolicyDb(input: {
 				},
 			};
 		},
-	} as unknown as D1Db;
+	} as unknown as AppDb;
 }

@@ -1,6 +1,6 @@
 import { asc, desc, eq } from "drizzle-orm";
 
-import type { D1Db } from "../db/client";
+import type { AppDb } from "../db/client";
 import * as schema from "../db/d1";
 
 export type PolarSubscriptionUpsertInput = {
@@ -25,7 +25,7 @@ export type OrganizationSubscriptionStatus = {
 };
 
 export class BillingRepository {
-	constructor(private readonly db: D1Db) {}
+	constructor(private readonly db: AppDb) {}
 
 	async readDefaultOrganizationIdForUser(userId: string): Promise<string | null> {
 		const rows = await this.db

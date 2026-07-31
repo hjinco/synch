@@ -1,6 +1,6 @@
 import { and, asc, eq, isNotNull, isNull, or } from "drizzle-orm";
 
-import type { D1Db } from "../db/client";
+import type { AppDb } from "../db/client";
 import * as schema from "../db/d1";
 import type {
 	VaultBootstrapRecord,
@@ -11,7 +11,7 @@ import type {
 } from "./types";
 
 export class VaultRepository {
-	constructor(private readonly db: D1Db) {}
+	constructor(private readonly db: AppDb) {}
 
 	async userCanAccessVault(userId: string, vaultId: string): Promise<boolean> {
 		const rows = await this.db
@@ -168,6 +168,12 @@ export class VaultRepository {
 	): Promise<VaultRecord> {
 		const vaultId = crypto.randomUUID();
 		const wrapperId = crypto.randomUUID();
+		// `.batch()`, not `.transaction()`: D1 rejects real SQL
+		// BEGIN/SAVEPOINT transactions at runtime (it requires its own
+		// storage-level transaction API instead), so drizzle's `.transaction()`
+		// - despite type-checking fine - throws against real D1. `.batch()` is
+		// the one atomic multi-write primitive both D1 and libSQL genuinely
+		// support with the same signature.
 		const [rows] = await this.db.batch([
 			this.db
 				.insert(schema.vault)

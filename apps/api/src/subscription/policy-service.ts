@@ -1,6 +1,6 @@
 import { desc, eq } from "drizzle-orm";
 
-import type { D1Db } from "../db/client";
+import type { AppDb } from "../db/client";
 import * as schema from "../db/d1";
 import {
 	applySubscriptionPlanLimitOverrides,
@@ -26,7 +26,7 @@ export type SubscriptionPolicyServiceConfig = {
 export class SubscriptionPolicyService implements SubscriptionPolicyReader {
 	constructor(
 		private readonly selfHosted = false,
-		private readonly db: D1Db | null = null,
+		private readonly db: AppDb | null = null,
 		private readonly config: SubscriptionPolicyServiceConfig = {},
 	) {}
 

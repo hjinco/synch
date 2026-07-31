@@ -1,10 +1,10 @@
 import { asc, eq } from "drizzle-orm";
 
-import type { D1Db } from "../db/client";
+import type { AppDb } from "../db/client";
 import * as schema from "../db/d1";
 
 export async function readDefaultOrganizationIdForUserId(
-	db: D1Db,
+	db: AppDb,
 	userId: string,
 ): Promise<string | null> {
 	const rows = await db

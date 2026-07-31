@@ -71,7 +71,7 @@ export function createRuntimeApp(env: RuntimeEnv, request: Request) {
 					);
 				},
 			});
-	const auth = createAuth(env.DB, {
+	const auth = createAuth(db, {
 		baseURL: authBaseUrl,
 		trustedOrigins: Array.from(new Set([publicOrigin, corsOrigin])),
 		selfHosted: env.SELF_HOSTED,

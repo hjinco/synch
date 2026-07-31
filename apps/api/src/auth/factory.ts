@@ -4,7 +4,7 @@ import type { BetterAuthPlugin } from "better-auth";
 import { bearer, deviceAuthorization, organization } from "better-auth/plugins";
 import { eq } from "drizzle-orm";
 
-import { createDb } from "../db/client";
+import type { AppDb } from "../db/client";
 import * as schema from "../db/d1";
 import { getDeviceVerificationUri } from "./device";
 import { createEmailVerificationConfig } from "./email";
@@ -26,8 +26,7 @@ export type AuthConfig = {
 /** Auth session lifetime for signed-in clients (plugin bearer token, cookies). */
 const SESSION_EXPIRES_IN_SECONDS = 60 * 60 * 24 * 30;
 
-export function createAuth(database: D1Database, config: AuthConfig) {
-	const db = createDb(database);
+export function createAuth(db: AppDb, config: AuthConfig) {
 	const emailVerification = createEmailVerificationConfig(config);
 	const auth = betterAuth({
 		baseURL: config.baseURL,
