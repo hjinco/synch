@@ -1,0 +1,19 @@
+name: synch
+
+services:
+  synch-api:
+    build:
+      context: ../..
+      dockerfile: apps/api/Dockerfile
+    restart: unless-stopped
+    ports:
+      - "${PORT:-8787}:8787"
+    env_file:
+      - .env
+    environment:
+      PORT: "8787"
+    volumes:
+      - synch-data:/data
+
+volumes:
+  synch-data:

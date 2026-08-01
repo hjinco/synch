@@ -1,0 +1,10 @@
+**/node_modules
+**/dist
+**/.turbo
+**/.wrangler
+.pnpm-store
+.git
+**/*.tsbuildinfo
+apps/obsidian-plugin/main.js
+**/.env
+**/data

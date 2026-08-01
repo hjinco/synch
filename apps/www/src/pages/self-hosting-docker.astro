@@ -1,0 +1,13 @@
+---
+import { getEntry, render } from "astro:content";
+import SelfHostingPage from "../components/SelfHostingPage.astro";
+
+const doc = await getEntry("docs", "self-hosting-docker/en");
+if (!doc) {
+  throw new Error("Missing English self-hosting-docker docs entry.");
+}
+
+const { Content } = await render(doc);
+---
+
+<SelfHostingPage Content={Content} doc={doc} locale="en" />

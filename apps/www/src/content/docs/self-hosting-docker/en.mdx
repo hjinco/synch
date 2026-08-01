@@ -1,0 +1,68 @@
+---
+title: Self-host Synch with Docker (no Cloudflare account)
+description: Run the Synch server on your own hardware with Docker Compose - no Cloudflare account, no third-party services required.
+updatedDate: 2026-08-01
+---
+
+If you'd rather not use Cloudflare at all, Synch's server also runs as a plain Node.js process. This guide covers running it with Docker Compose on your own hardware - a homelab NAS, a small VPS, anywhere you can run a container and expose a port.
+
+Data is stored entirely on disk: one SQLite file per vault, plus a small app database for accounts and vault metadata. There's no D1, no Durable Objects, no R2 - just files in a directory you control.
+
+If you'd rather deploy to a free Cloudflare account instead, see the [Cloudflare self-hosting guide](/self-hosting/).
+
+## Before you deploy
+
+You'll need Docker and Docker Compose installed, and a way to reach the server from your Obsidian devices - either on your local network, or over the internet if you want to sync away from home (put it behind a reverse proxy with TLS in that case; the container itself only speaks plain HTTP).
+
+## Deploy the API
+
+1. Clone the repository and go to the API directory:
+
+   ```bash
+   git clone https://github.com/hjinco/synch.git
+   cd synch/apps/api
+   ```
+
+2. Copy the example environment file:
+
+   ```bash
+   cp .env.example .env
+   ```
+
+3. Edit `.env` and fill in:
+   - `PUBLIC_URL` - the address clients will reach this server at (e.g. `http://192.168.1.50:8787` on your LAN, or `https://synch.your-domain.example` behind a reverse proxy). This must match exactly, including scheme and port - it's used to validate incoming request origins.
+   - `BETTER_AUTH_SECRET` and `SYNC_TOKEN_SECRET` - two independent random secrets. Generate each with:
+
+     ```bash
+     openssl rand -hex 32
+     ```
+
+4. Start the server:
+
+   ```bash
+   docker compose up -d
+   ```
+
+Vault and blob data persist in the `synch-data` Docker volume across restarts and upgrades. To move to a new host, copy that volume along with your `.env` file.
+
+### Blob storage
+
+By default, encrypted file contents are stored on disk inside the same data volume. If you'd rather use an S3-compatible bucket (AWS S3, MinIO, R2, etc.), uncomment and fill in the `BLOB_STORAGE=s3` block in `.env` before starting the container.
+
+### Upgrading
+
+```bash
+git pull
+docker compose up -d --build
+```
+
+Database migrations run automatically on startup.
+
+## Connect Obsidian
+
+1. Open Obsidian.
+2. Go to **Settings**.
+3. Open **Synch**.
+4. In **Self-hosted server**, paste your server's `PUBLIC_URL`. Do not include a trailing `/`.
+5. Click **Save**.
+6. Continue sign-in and vault setup normally.
