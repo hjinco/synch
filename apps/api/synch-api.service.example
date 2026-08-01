@@ -1,0 +1,34 @@
+## Example systemd unit for running the Synch API without Docker.
+##
+## Install:
+##   sudo cp synch-api.service.example /etc/systemd/system/synch-api.service
+##   sudo systemctl daemon-reload
+##   sudo systemctl enable --now synch-api
+##
+## Edit the paths, User/Group, and EnvironmentFile below to match your setup.
+## See apps/www/src/content/docs/self-hosting-docker/en.mdx for the full guide.
+
+[Unit]
+Description=Synch API (self-hosted)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=synch
+Group=synch
+WorkingDirectory=/opt/synch/apps/api
+EnvironmentFile=/opt/synch/apps/api/.env
+Environment=DATA_DIR=/var/lib/synch-api
+ExecStart=/opt/synch/apps/api/node_modules/.bin/tsx src/self-host.ts
+Restart=on-failure
+RestartSec=5
+
+# Hardening (optional but recommended)
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/synch-api
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

@@ -1,10 +1,10 @@
 ---
-title: Self-host Synch with Docker (no Cloudflare account)
-description: Run the Synch server on your own hardware with Docker Compose - no Cloudflare account, no third-party services required.
+title: Self-host Synch without Cloudflare
+description: Run the Synch server on your own hardware with Docker Compose or plain systemd - no Cloudflare account, no third-party services required.
 updatedDate: 2026-08-01
 ---
 
-If you'd rather not use Cloudflare at all, Synch's server also runs as a plain Node.js process. This guide covers running it with Docker Compose on your own hardware - a homelab NAS, a small VPS, anywhere you can run a container and expose a port.
+If you'd rather not use Cloudflare at all, Synch's server also runs as a plain Node.js process. This guide covers running it on your own hardware - a homelab NAS, a small VPS, an Incus/LXC container, anywhere you can run a long-lived process and expose a port - with either [Docker Compose](#deploy-with-docker-compose) or [systemd](#run-without-docker-systemd).
 
 Data is stored entirely on disk: one SQLite file per vault, plus a small app database for accounts and vault metadata. There's no D1, no Durable Objects, no R2 - just files in a directory you control.
 
@@ -12,9 +12,11 @@ If you'd rather deploy to a free Cloudflare account instead, see the [Cloudflare
 
 ## Before you deploy
 
-You'll need Docker and Docker Compose installed, and a way to reach the server from your Obsidian devices - either on your local network, or over the internet if you want to sync away from home (put it behind a reverse proxy with TLS in that case; the container itself only speaks plain HTTP).
+Either way, you'll need a way to reach the server from your Obsidian devices - either on your local network, or over the internet if you want to sync away from home (put it behind a reverse proxy with TLS in that case; the server itself only speaks plain HTTP).
 
-## Deploy the API
+## Deploy with Docker Compose
+
+You'll need Docker and Docker Compose installed.
 
 1. Clone the repository and go to the API directory:
 
@@ -57,6 +59,55 @@ docker compose up -d --build
 ```
 
 Database migrations run automatically on startup.
+
+## Run without Docker (systemd)
+
+The server is just a Node.js process (`src/self-host.ts`, run with [tsx](https://tsx.is/)) - Docker is a convenience, not a requirement. This is a reasonable choice if you're already running a VM (an Incus/LXC container, for example) and would rather not add Docker as a dependency.
+
+1. Install Node.js 24 and a build toolchain (needed for `better-sqlite3`'s native module if no prebuilt binary matches your VM's architecture/libc):
+
+   ```bash
+   # Debian/Ubuntu
+   sudo apt install -y nodejs python3 make g++
+   sudo corepack enable
+   ```
+
+2. Clone the repository and install production dependencies:
+
+   ```bash
+   git clone https://github.com/hjinco/synch.git /opt/synch
+   cd /opt/synch/apps/api
+   pnpm install --frozen-lockfile --filter @synch/api... --prod
+   ```
+
+3. Copy `.env.example` to `.env` and fill it in exactly as in the Docker Compose steps above.
+
+4. Install and start the [example systemd unit](https://github.com/hjinco/synch/blob/main/apps/api/synch-api.service.example):
+
+   ```bash
+   sudo useradd --system --home /var/lib/synch-api --create-home synch
+   sudo cp synch-api.service.example /etc/systemd/system/synch-api.service
+   # edit the unit's paths/User/Group if you didn't use /opt/synch or the synch user
+   sudo systemctl daemon-reload
+   sudo systemctl enable --now synch-api
+   ```
+
+5. Check it's up:
+
+   ```bash
+   curl http://localhost:8787/health
+   sudo journalctl -u synch-api -f
+   ```
+
+### Upgrading (systemd)
+
+```bash
+cd /opt/synch
+git pull
+cd apps/api
+pnpm install --frozen-lockfile --filter @synch/api... --prod
+sudo systemctl restart synch-api
+```
 
 ## Connect Obsidian
 
