@@ -82,6 +82,7 @@ export class SyncController {
     notify: (message, timeout) => this.notify(message, timeout),
     notifyError: (error, prefix) => this.deps.notifyError(error, prefix),
     notifySyncConflict: (event) => this.notifySyncConflict(event),
+    notifyRollbackDetected: (event) => this.notifyRollbackDetected(event),
     setSyncProgress: (progress) => this.setSyncProgress(progress),
     setSyncStatus: (status) => this.setSyncStatus(status),
     setStorageStatus: (status) => this.setStorageStatus(status),
@@ -476,6 +477,25 @@ export class SyncController {
 
     this.notify(
       t("sync.conflictRemoteKept", { path: event.originalPath }),
+    );
+  }
+
+  private notifyRollbackDetected(event: {
+    entryId: string;
+    path: string | null;
+    localRevision: number;
+    remoteRevision: number;
+  }): void {
+    // Always logged, regardless of whether a Notice is shown - this is the
+    // durable record that the server sent a stale revision, which shouldn't
+    // happen under normal operation (see the check in PullManifestPlanner).
+    console.warn(
+      `[synch] rejected a rollback attempt for entry ${event.entryId}` +
+        (event.path ? ` (${event.path})` : "") +
+        `: server sent revision ${event.remoteRevision}, already had ${event.localRevision}`,
+    );
+    this.notify(
+      t("sync.rollbackDetected", { path: event.path ?? event.entryId }),
     );
   }
 

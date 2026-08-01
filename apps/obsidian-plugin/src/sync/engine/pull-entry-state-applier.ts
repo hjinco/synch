@@ -31,6 +31,7 @@ import {
   pathsToRemoveForPlan,
   type PullConflictEvent,
   type PullEntryStateManifestItem,
+  type PullRollbackEvent,
   type PlannedEntryState,
   type PreparedEntryBlob,
   type PreparedManifestApplication,
@@ -51,6 +52,7 @@ export interface PullEntryStateApplierDeps {
   prepareConcurrency?: number;
   onProgress?: (progress: SyncProgressCounts) => Promise<void>;
   onConflict?: (event: PullConflictEvent) => void;
+  onRollbackDetected?: (event: PullRollbackEvent) => void;
   now?: () => number;
 }
 
@@ -61,7 +63,7 @@ export interface PullEntryStateApplyResult {
   conflictsCreated: number;
 }
 
-export type { PullConflictEvent, PullEntryStateManifestItem };
+export type { PullConflictEvent, PullEntryStateManifestItem, PullRollbackEvent };
 
 export interface PullEntryStateVaultAdapter
   extends ConflictFileWriter,

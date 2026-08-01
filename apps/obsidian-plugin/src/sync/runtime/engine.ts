@@ -88,6 +88,12 @@ export interface SyncEngineDeps {
     originalPath: string;
     conflictPath: string | null;
   }) => void;
+  notifyRollbackDetected: (event: {
+    entryId: string;
+    path: string | null;
+    localRevision: number;
+    remoteRevision: number;
+  }) => void;
   setSyncProgress: (progress: UserVisibleSyncProgress | null) => void;
   setSyncStatus: (status: UserVisibleSyncState) => void;
   setStorageStatus: (status: SyncStorageStatus | null) => void;
@@ -246,6 +252,7 @@ export class SyncEngine {
       this.reportActivityProgress(progress);
     },
     onConflict: (event) => this.deps.notifySyncConflict(event),
+    onRollbackDetected: (event) => this.deps.notifyRollbackDetected(event),
   });
   private readonly syncVersionHistoryService = new SyncVersionHistoryService({
     getApiBaseUrl: () => this.deps.getApiBaseUrl(),

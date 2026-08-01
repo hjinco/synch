@@ -19,12 +19,14 @@ import {
   type PlannedEntryState,
   type PullConflictEvent,
   type PullEntryStateManifestItem,
+  type PullRollbackEvent,
 } from "./pull-entry-state-internal";
 
 interface PullManifestPlannerDeps {
   getRemoteVaultKey: () => Uint8Array;
   vaultAdapter: ConflictFileWriter;
   onConflict?: (event: PullConflictEvent) => void;
+  onRollbackDetected?: (event: PullRollbackEvent) => void;
   now?: () => number;
 }
 
@@ -103,6 +105,24 @@ export class PullManifestPlanner {
       }
 
       const existing = await store.getEntryById(state.entryId);
+      // A well-behaved server only ever hands out strictly increasing
+      // revisions for a given entry - every legitimate mutation, delete, or
+      // restore bumps it. The AEAD binds (entryId, revision, op, blobId), so
+      // a stale-but-genuine ciphertext decrypts cleanly; nothing in the
+      // crypto layer signals that it's *old*. A malicious or compromised
+      // server can replay one verbatim and have it accepted as current
+      // unless something checks recency here - so skip (not defer: this
+      // isn't a legitimate item to retry later) rather than apply it.
+      if (existing && existing.revision > 0 && state.revision < existing.revision) {
+        this.deps.onRollbackDetected?.({
+          entryId: state.entryId,
+          path: metadata.path,
+          localRevision: existing.revision,
+          remoteRevision: state.revision,
+        });
+        continue;
+      }
+
       let finalPath: string | null = null;
       let hash: string | null = null;
       let pathConflict: PullConflictEvent | null = null;

@@ -13,6 +13,7 @@ import {
   type PullEntryStateStore,
   type PullEntryStateManifestItem,
   type PullEntryStateVaultAdapter,
+  type PullRollbackEvent,
 } from "./pull-entry-state-applier";
 
 const DEFAULT_PULL_BATCH = 50;
@@ -32,6 +33,7 @@ export interface SyncPullServiceDeps {
   applyWindowSize?: number;
   onProgress: (progress: SyncProgressCounts) => Promise<void>;
   onConflict?: (event: PullConflictEvent) => void;
+  onRollbackDetected?: (event: PullRollbackEvent) => void;
   now?: () => number;
 }
 
@@ -67,6 +69,7 @@ export class SyncPullService {
         await this.deps.onProgress(progress);
       },
       onConflict: this.deps.onConflict,
+      onRollbackDetected: this.deps.onRollbackDetected,
       now: this.deps.now,
     });
   }

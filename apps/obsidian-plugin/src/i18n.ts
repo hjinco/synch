@@ -142,6 +142,7 @@ const en = {
     "sync.fileSizeBlocked": ({ count }: { count: number }) => `${count} ${count === 1 ? "file exceeds" : "files exceed"} the sync size limit.`,
     "sync.label": "Sync",
     "sync.pathCollision": ({ path }: { path: string }) => `Sync path collision detected. The remote file was saved to "${path}".`,
+    "sync.rollbackDetected": ({ path }: { path: string }) => `Sync server sent an outdated version of "${path}". It was ignored to avoid overwriting newer changes.`,
     "sync.paused": "Sync paused",
     "sync.start": "Start sync",
     "sync.state.attention_needed": "attention needed",

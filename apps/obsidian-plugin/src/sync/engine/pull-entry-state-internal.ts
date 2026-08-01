@@ -17,6 +17,14 @@ export interface PullConflictEvent {
   conflictPath: string | null;
 }
 
+/** A manifest item whose revision is older than what's already known locally - see the check in `PullManifestPlanner`. */
+export interface PullRollbackEvent {
+  entryId: string;
+  path: string | null;
+  localRevision: number;
+  remoteRevision: number;
+}
+
 export type PullEntryStateManifestItem = {
   state: RemoteEntryState;
   metadata: SyncedEntryMetadata;
