@@ -78,6 +78,22 @@ describe("SynchSettingsStore", () => {
     expect(store.getSnapshot().apiBaseUrl).toBe("https://api.synch.test");
   });
 
+  it("adds https when updating the API base URL without a protocol", async () => {
+    const pluginDataStore = new MemoryPluginDataStore({
+      apiBaseUrl: "https://api.synch.test",
+      syncEnabled: true,
+      fileRules: DEFAULT_SYNC_FILE_RULES,
+      vaultConfigSync: DEFAULT_VAULT_CONFIG_SYNC_RULES,
+    });
+    const store = new SynchSettingsStore(pluginDataStore, "https://default.synch.test");
+    store.initialize();
+
+    await store.updateApiBaseUrl("custom.synch.test");
+
+    expect(store.getSnapshot().apiBaseUrl).toBe("https://custom.synch.test");
+    expect(pluginDataStore.saveCount).toBe(1);
+  });
+
   it("rejects API base URL updates with query strings or fragments", async () => {
     const pluginDataStore = new MemoryPluginDataStore({
       apiBaseUrl: "https://api.synch.test",

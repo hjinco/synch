@@ -7,6 +7,7 @@ target
 Cargo.lock
 *.tsbuildinfo
 apps/obsidian-plugin/main.js
+apps/api/worker-configuration.d.ts
 
 .omx
 .env

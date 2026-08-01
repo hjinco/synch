@@ -10,16 +10,24 @@ Synch는 독립적인 커뮤니티 플러그인 및 서비스입니다. Obsidian
 번역: [English](../../README.md) · [日本語](README.ja.md) ·
 [简体中文](README.zh-CN.md) · [繁體中文](README.zh-TW.md)
 
-## BRAT으로 설치하기
+## 설치
 
-현재 디렉터리 등록 문제로 Community Plugins에서 Synch를 설치할 수 없습니다.
-그동안은 BRAT을 이용해 설치해 주세요:
+1. Obsidian에서 **설정** → **Community plugins**를 엽니다.
+2. 제한 모드를 끈 뒤 **Browse**를 선택합니다.
+3. **Synchrun**을 검색하고 선택한 뒤 **Install**을 누릅니다.
+4. 설치가 끝나면 **Synchrun**을 활성화합니다.
 
-1. Obsidian 설정을 열고 **Community plugins**로 이동합니다.
-2. 제한 모드를 끄고 **Browse**를 선택한 뒤 **BRAT**을 설치하고 활성화합니다.
-3. BRAT 플러그인 설정을 열고 **Beta plugin list**에서 **Add beta plugin**을 선택합니다.
-4. 다음 저장소 URL을 입력하고 확인합니다: `https://github.com/hjinco/synch`.
-5. 설치가 끝나면 **Community plugins**로 돌아가 **Synch**를 활성화합니다.
+## 주요 기능
+
+- **거의 즉시 동기화:** Synch는 변경 사항을 자주 확인해 편집 내용이 기기 간에
+  거의 즉시 이동할 수 있게 합니다.
+- **버전 히스토리:** 동기화된 파일의 암호화된 기록을 이용해 실수로 변경한 내용을
+  복구할 수 있습니다.
+- **삭제된 파일 복구:** 삭제한 노트와 첨부 파일도 버전 히스토리에 남아 있는 동안
+  다시 가져올 수 있습니다.
+- **충돌 자동 병합:** 여러 기기에서 같은 Markdown 노트가 바뀌면 Synch가 서로 다른
+  부분의 변경을 자동으로 합칩니다. 같은 부분의 편집이 겹치면 내용이 손실되지 않도록
+  conflict file을 생성합니다.
 
 ## Synch 사용 방법
 

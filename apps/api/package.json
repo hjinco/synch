@@ -10,7 +10,7 @@
 		"db:migrate:self-hosted": "node ./scripts/migrate-self-hosted.mjs",
 		"db:migrate:managed": "wrangler d1 migrations apply DB --remote --env managed",
 		"db:studio": "drizzle-kit studio",
-		"dev": "wrangler dev --env managed",
+		"dev": "wrangler dev --env managed --var DEV_MODE:true",
 		"deploy": "wrangler deploy && pnpm run db:migrate:self-hosted",
 		"deploy:self-hosted": "wrangler deploy && pnpm run db:migrate:self-hosted",
 		"deploy:managed": "wrangler deploy --env managed",
@@ -19,8 +19,8 @@
 		"test:integration:watch": "vitest --config ./vitest.config.mts",
 		"test:unit": "vitest run --config ./vitest.unit.config.mts",
 		"test:smoke": "node ./scripts/e2e-smoke.mjs",
-		"cf-typegen": "wrangler types && node ./scripts/sanitize-worker-types.mjs",
-		"typecheck": "tsgo --noEmit",
+		"cf-typegen": "wrangler types",
+		"typecheck": "pnpm run cf-typegen && tsgo --noEmit",
 		"start": "tsx src/self-host.ts"
 	},
 	"cloudflare": {

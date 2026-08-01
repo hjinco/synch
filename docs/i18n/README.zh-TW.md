@@ -9,16 +9,22 @@ Synch 是獨立的社群外掛程式與服務，與 Obsidian 沒有關聯。
 翻譯: [English](../../README.md) · [한국어](README.ko.md) ·
 [日本語](README.ja.md) · [简体中文](README.zh-CN.md)
 
-## 使用 BRAT 安裝
+## 安裝
 
-由於目錄收錄問題，目前無法從 Community Plugins 安裝 Synch。請暫時透過
-BRAT 安裝：
+1. 在 Obsidian 中開啟 **設定** → **Community plugins**。
+2. 關閉受限模式，然後選擇 **Browse**。
+3. 搜尋 **Synchrun**，選取後點擊 **Install**。
+4. 安裝完成後，啟用 **Synchrun**。
 
-1. 開啟 Obsidian 設定並前往 **Community plugins**。
-2. 關閉受限模式，選擇 **Browse**，然後安裝並啟用 **BRAT**。
-3. 開啟 BRAT 外掛設定，在 **Beta plugin list** 中選擇 **Add beta plugin**。
-4. 輸入儲存庫 URL `https://github.com/hjinco/synch` 並確認。
-5. 安裝完成後返回 **Community plugins** 並啟用 **Synch**。
+## 功能
+
+- **近乎即時同步：** Synch 會頻繁檢查變更，讓編輯內容可在裝置之間近乎即時地
+  同步。
+- **版本記錄：** 可透過同步檔案的加密記錄，復原誤改的內容。
+- **復原已刪除檔案：** 已刪除的筆記和附件只要仍保留在版本記錄中，就可以找回。
+- **自動合併衝突：** 當同一篇 Markdown 筆記在多台裝置上被修改時，Synch 會自動
+  合併不同部分的編輯。若同一部分的編輯重疊，則會建立 conflict file，確保內容不會
+  遺失。
 
 ## 如何使用 Synch
 

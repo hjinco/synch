@@ -12,16 +12,24 @@ Translations: [한국어](docs/i18n/README.ko.md) ·
 [简体中文](docs/i18n/README.zh-CN.md) ·
 [繁體中文](docs/i18n/README.zh-TW.md)
 
-## Install with BRAT
+## Install
 
-Synch is temporarily unavailable in the Community Plugins directory due to a
-directory listing issue. Install it with BRAT in the meantime:
+1. In Obsidian, open **Settings** → **Community plugins**.
+2. Turn off Restricted mode, then select **Browse**.
+3. Search for **Synchrun**, select it, and choose **Install**.
+4. Enable **Synchrun** after installation finishes.
 
-1. Open Obsidian Settings and go to **Community plugins**.
-2. Turn off Restricted mode, select **Browse**, then install and enable **BRAT**.
-3. Open BRAT's plugin settings and select **Add beta plugin** under **Beta plugin list**.
-4. Enter the repository URL `https://github.com/hjinco/synch` and confirm.
-5. After installation finishes, return to **Community plugins** and enable **Synch**.
+## Features
+
+- **Near-instant sync:** Synch checks for changes frequently so edits can move
+  between devices almost immediately.
+- **Version history:** Recover from accidental edits with encrypted history for
+  synced files.
+- **Deleted file recovery:** Bring back deleted notes and attachments while
+  they are still kept in version history.
+- **Automatic conflict merges:** When the same Markdown note changes on
+  multiple devices, Synch automatically combines edits made to different
+  parts. If edits overlap, it creates a conflict file so no content is lost.
 
 ## How to use Synch
 

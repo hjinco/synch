@@ -61,6 +61,12 @@
 		"SYNC_TOKEN_TTL_SECONDS": 120,
 		"SELF_HOSTED": true
 	},
+	"secrets": {
+		"required": [
+			"BETTER_AUTH_SECRET",
+			"SYNC_TOKEN_SECRET"
+		]
+	},
 	"env": {
 		"managed": {
 			"durable_objects": {
@@ -120,6 +126,19 @@
 				"SYNC_TOKEN_TTL_SECONDS": 120,
 				"SELF_HOSTED": false,
 				"WWW_BASE_URL": "https://synch.run"
+			},
+			"secrets": {
+				"required": [
+					"AUTH_EMAIL_FROM",
+					"BETTER_AUTH_SECRET",
+					"BETTER_AUTH_URL",
+					"POLAR_ACCESS_TOKEN",
+					"POLAR_SANDBOX",
+					"POLAR_STARTER_ANNUAL_PRODUCT_ID",
+					"POLAR_STARTER_MONTHLY_PRODUCT_ID",
+					"POLAR_WEBHOOK_SECRET",
+					"SYNC_TOKEN_SECRET"
+				]
 			},
 			"observability": {
 				"enabled": true,

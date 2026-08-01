@@ -44,11 +44,23 @@ export function normalizeApiBaseUrl(value: unknown, fallback: string): string {
 }
 
 export function parseApiBaseUrlInput(value: string, fallback: string): string {
-  if (!value.trim()) {
+  const trimmed = value.trim();
+  if (!trimmed) {
     return fallback;
   }
 
-  const normalized = normalizeApiBaseUrl(value, "");
+  const hasProtocol = /^[a-z][a-z\d+.-]*:\/\//i.test(trimmed);
+  const hasSchemeWithoutSlashes =
+    /^[a-z][a-z\d+.-]*:/i.test(trimmed) &&
+    !/^[^/?#]+:\d+(?:[/?#]|$)/.test(trimmed);
+  if (hasSchemeWithoutSlashes && !hasProtocol) {
+    throw new Error("API base URL must be a valid http:// or https:// URL.");
+  }
+
+  const valueWithProtocol = hasProtocol
+    ? trimmed
+    : `https://${trimmed}`;
+  const normalized = normalizeApiBaseUrl(valueWithProtocol, "");
   if (!normalized) {
     throw new Error("API base URL must be a valid http:// or https:// URL.");
   }
