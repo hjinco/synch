@@ -20,6 +20,9 @@ Group=synch
 WorkingDirectory=/opt/synch/apps/api
 EnvironmentFile=/opt/synch/apps/api/.env
 Environment=DATA_DIR=/var/lib/synch-api
+# Only reachable via whatever reverse proxy you put in front of it (e.g.
+# `tailscale serve`, nginx, Caddy) - not directly on the LAN/public interface.
+Environment=HOST=127.0.0.1
 ExecStart=/opt/synch/apps/api/node_modules/.bin/tsx src/self-host.ts
 Restart=on-failure
 RestartSec=5

@@ -64,6 +64,8 @@ Database migrations run automatically on startup.
 
 The server is just a Node.js process (`src/self-host.ts`, run with [tsx](https://tsx.is/)) - Docker is a convenience, not a requirement. This is a reasonable choice if you're already running a VM (an Incus/LXC container, for example) and would rather not add Docker as a dependency.
 
+On Debian/Ubuntu, [`install.sh`](https://github.com/hjinco/synch/blob/main/apps/api/install.sh) automates everything below - clone the repo, then `cd apps/api && sudo ./install.sh`. It's safe to re-run (e.g. after `git pull`) to update and restart. The manual steps:
+
 1. Install Node.js 24 and a build toolchain (needed for `better-sqlite3`'s native module if no prebuilt binary matches your VM's architecture/libc):
 
    ```bash
@@ -108,6 +110,12 @@ cd apps/api
 pnpm install --frozen-lockfile --filter @synch/api... --prod
 sudo systemctl restart synch-api
 ```
+
+### Binding to localhost only
+
+By default the server listens on `0.0.0.0` (all interfaces) - Docker Compose needs this to make its port publishing work. If you're running the systemd deployment behind a local reverse proxy (e.g. [`tailscale serve`](https://tailscale.com/kb/1242/tailscale-serve), nginx, Caddy) and don't want the server directly reachable on your LAN or public interface, set `HOST=127.0.0.1` in `.env`. The example systemd unit (and `install.sh`) already does this for you.
+
+After changing it, update `PUBLIC_URL` to the address clients will actually connect through (your reverse proxy's address, not `127.0.0.1`) and restart the service - `PUBLIC_URL` is what better-auth validates incoming request origins against.
 
 ## Connect Obsidian
 

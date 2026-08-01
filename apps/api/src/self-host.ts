@@ -34,6 +34,12 @@ function readBlobStorage(dataDir: string): BlobStorage {
 async function main(): Promise<void> {
 	const dataDir = process.env.DATA_DIR ?? "./data";
 	const port = Number(process.env.PORT ?? 8787);
+	// Defaults to all interfaces (needed for Docker's port publishing to work
+	// at all - binding to 127.0.0.1 inside a container makes it unreachable
+	// from outside its own network namespace). Set HOST=127.0.0.1 for a
+	// bare-metal/systemd deployment that's only ever reached through a local
+	// reverse proxy (e.g. `tailscale serve`, nginx, Caddy).
+	const host = process.env.HOST ?? "0.0.0.0";
 	const publicUrl = process.env.PUBLIC_URL ?? `http://localhost:${port}`;
 
 	const runtime = await createNodeRuntime({
@@ -49,10 +55,10 @@ async function main(): Promise<void> {
 	});
 
 	const { wss, handleUpgrade } = createNodeWebSocketUpgradeHandler(runtime, publicUrl);
-	const server = serve({ fetch: (request) => runtime.fetch(request), port });
+	const server = serve({ fetch: (request) => runtime.fetch(request), port, hostname: host });
 	server.on("upgrade", handleUpgrade);
 
-	console.log(`[self-host] listening on port ${port}, data dir ${dataDir}`);
+	console.log(`[self-host] listening on ${host}:${port}, data dir ${dataDir}`);
 
 	const shutdown = () => {
 		console.log("[self-host] shutting down");
