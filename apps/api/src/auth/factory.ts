@@ -18,6 +18,8 @@ export type AuthConfig = {
 	trustedOrigins: string[];
 	selfHosted: boolean;
 	devMode: boolean;
+	/** Signing secret for sessions/cookies/CSRF. Falls back to better-auth's own `BETTER_AUTH_SECRET` env lookup when omitted (the Cloudflare path). */
+	secret?: string;
 	email?: SendEmail;
 	emailFrom?: string;
 	plugins?: BetterAuthPlugin[];
@@ -30,6 +32,7 @@ export function createAuth(db: AppDb, config: AuthConfig) {
 	const emailVerification = createEmailVerificationConfig(config);
 	const auth = betterAuth({
 		baseURL: config.baseURL,
+		secret: config.secret,
 		database: drizzleAdapter(db, {
 			provider: "sqlite",
 			schema,

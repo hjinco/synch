@@ -1,7 +1,16 @@
 import type { SubscriptionPlanPolicy } from "../../subscription/policy";
 
+export type CoordinatorStub = {
+	fetch(request: Request): Promise<Response>;
+};
+
+/**
+ * Structural, not `DurableObjectStub`-typed: on Cloudflare this is a real DO
+ * namespace binding, but `DurableObjectStub`'s only member this class uses is
+ * `fetch()`, so an in-process Node coordinator map satisfies this too.
+ */
 type CoordinatorNamespace = {
-	getByName(name: string): DurableObjectStub;
+	getByName(name: string): CoordinatorStub;
 };
 
 export class CoordinatorProxyRepository {

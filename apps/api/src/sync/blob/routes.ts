@@ -4,7 +4,7 @@ import { z } from "zod";
 import type { SyncTokenService } from "../access/token-service";
 import type { CoordinatorProxyRepository } from "../coordinator/proxy-repository";
 import { blobObjectKey } from "./object-key";
-import type { BlobRepository } from "./repository";
+import type { BlobStorage } from "./storage";
 import { BLOB_SIZE_HEADER, parseBlobSizeHeader } from "./size";
 import { Hono } from "hono";
 
@@ -12,7 +12,7 @@ export function registerBlobRoutes(
 	app: Hono,
 	deps: {
 		syncTokenService: SyncTokenService;
-		blobRepository: BlobRepository;
+		blobRepository: BlobStorage;
 		coordinatorProxyRepository: CoordinatorProxyRepository;
 	},
 ): void {

@@ -20,7 +20,8 @@
 		"test:unit": "vitest run --config ./vitest.unit.config.mts",
 		"test:smoke": "node ./scripts/e2e-smoke.mjs",
 		"cf-typegen": "wrangler types && node ./scripts/sanitize-worker-types.mjs",
-		"typecheck": "tsgo --noEmit"
+		"typecheck": "tsgo --noEmit",
+		"start": "tsx src/self-host.ts"
 	},
 	"cloudflare": {
 		"bindings": {
@@ -36,15 +37,16 @@
 		"@cloudflare/vitest-pool-workers": "^0.14.6",
 		"@types/better-sqlite3": "^7.6.13",
 		"@types/node": "^25.6.0",
+		"@types/ws": "^8.18.1",
 		"@typescript/native-preview": "^7.0.0-dev.20260423.1",
 		"dotenv": "^17.4.2",
 		"drizzle-kit": "^0.31.10",
 		"vitest": "^4.1.4",
-		"wrangler": "^4.82.2",
-		"ws": "^8.20.0"
+		"wrangler": "^4.82.2"
 	},
 	"dependencies": {
 		"@better-auth/drizzle-adapter": "^1.6.2",
+		"@hono/node-server": "^2.0.12",
 		"@hono/zod-validator": "^0.7.6",
 		"@libsql/client": "^0.15.15",
 		"@polar-sh/better-auth": "^1.8.3",
@@ -55,6 +57,8 @@
 		"drizzle-orm": "^0.45.2",
 		"hono": "^4.12.14",
 		"jose": "^6.2.2",
+		"tsx": "^4.21.0",
+		"ws": "^8.20.0",
 		"zod": "^4.3.6"
 	}
 }

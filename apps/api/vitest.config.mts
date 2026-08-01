@@ -37,6 +37,11 @@ export default defineConfig({
 	],
 	test: {
 		include: ["test/**/*.test.ts"],
+		// self-host tests boot a real Node process (native better-sqlite3/ws
+		// bindings, raw net sockets) and run under vitest.unit.config.mts's
+		// plain node environment instead - they can't run inside the
+		// Miniflare/workerd sandbox this config uses.
+		exclude: ["test/self-host/**"],
 		setupFiles: ["./test/setup.ts"],
 		testTimeout: 20_000,
 	},

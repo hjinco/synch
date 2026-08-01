@@ -12,7 +12,7 @@ import { registerSyncAccessRoutes } from "./sync/access/routes";
 import type { SyncService } from "./sync/access/service";
 import type { SyncTokenService } from "./sync/access/token-service";
 import { registerBlobRoutes } from "./sync/blob/routes";
-import type { BlobRepository } from "./sync/blob/repository";
+import type { BlobStorage } from "./sync/blob/storage";
 import { registerCoordinatorProxyRoutes } from "./sync/coordinator/proxy-routes";
 import type { CoordinatorProxyRepository } from "./sync/coordinator/proxy-repository";
 import { registerVaultRoutes } from "./vault/routes";
@@ -22,7 +22,7 @@ export type AppDependencies = {
 	auth: Auth;
 	syncService: SyncService;
 	syncTokenService: SyncTokenService;
-	blobRepository: BlobRepository;
+	blobRepository: BlobStorage;
 	coordinatorProxyRepository: CoordinatorProxyRepository;
 	vaultService: VaultService;
 	subscriptionPolicyService: SubscriptionPolicyReader;
