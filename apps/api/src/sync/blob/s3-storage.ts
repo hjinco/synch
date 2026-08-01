@@ -99,10 +99,19 @@ export class S3BlobStorage implements BlobStorage {
 	}
 
 	private objectUrl(key: string): string {
-		const encodedKey = key
-			.split("/")
-			.map((segment) => encodeURIComponent(segment))
-			.join("/");
+		// Reject ".." segments outright: `encodeURIComponent("..")` is `".."`
+		// (dots are unreserved), so a key like "vault-1/../vault-2/blob"
+		// reaches `new URL()` below with the traversal intact, and the WHATWG
+		// URL parser collapses it - `vault-1/../vault-2/blob` resolves to
+		// `vault-2/blob`, escaping vault-1's prefix (and, with enough "..", the
+		// bucket itself). Same class of bug `LocalDiskBlobStorage` already
+		// guards against; S3-compatible keys need the same guard since the URL
+		// parser (not a filesystem) is what's doing the collapsing here.
+		const segments = key.split("/");
+		if (segments.includes("..") || segments.includes(".")) {
+			throw new Error(`blob key must not contain "." or ".." segments: ${key}`);
+		}
+		const encodedKey = segments.map((segment) => encodeURIComponent(segment)).join("/");
 		return `${this.baseUrl}/${encodedKey}`;
 	}
 

@@ -176,4 +176,22 @@ describe("S3BlobStorage", () => {
 		expect(await storage.exists("vault-1/blob-b")).toBe(false);
 		expect(await storage.exists("vault-2/blob-c")).toBe(true);
 	});
+
+	it("rejects a same-vault-looking key that traverses into a different vault", async () => {
+		await storage.upload("vault-2/blob-secret", streamOf("secret"));
+
+		// `encodeURIComponent("..")` doesn't escape the dots, so ".." segments
+		// reach `new URL()` intact - which then collapses
+		// "vault-1/../vault-2/blob-secret" down to "vault-2/blob-secret",
+		// silently reaching across vaults if not rejected first.
+		await expect(
+			storage.download("vault-1/../vault-2/blob-secret"),
+		).rejects.toThrow(/must not contain "\." or "\.\." segments/);
+	});
+
+	it("rejects a key with a bare . segment", async () => {
+		await expect(storage.upload("vault-1/./blob", streamOf("x"))).rejects.toThrow(
+			/must not contain "\." or "\.\." segments/,
+		);
+	});
 });

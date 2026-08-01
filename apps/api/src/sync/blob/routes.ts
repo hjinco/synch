@@ -8,6 +8,18 @@ import type { BlobStorage } from "./storage";
 import { BLOB_SIZE_HEADER, parseBlobSizeHeader } from "./size";
 import { Hono } from "hono";
 
+// Both IDs are server/client-generated UUIDs in normal operation, but the
+// route param itself accepts any string (Hono decodes %2F into a literal
+// "/" in path params) - without this, a blobId like "../other-vault/blob"
+// reaches the storage backend's key construction, and on the S3-compatible
+// backend a ".." segment survives encodeURIComponent and gets collapsed by
+// the WHATWG URL parser, letting one vault's token read/write another
+// vault's blobs. Pinning the charset here stops it before it ever reaches
+// a storage backend, for every backend, not just the one that happened to
+// already guard against it.
+const SAFE_ID_PATTERN = /^[a-zA-Z0-9_-]+$/;
+const safeIdSchema = z.string().trim().min(1).regex(SAFE_ID_PATTERN);
+
 export function registerBlobRoutes(
 	app: Hono,
 	deps: {
@@ -21,8 +33,8 @@ export function registerBlobRoutes(
 		zValidator(
 			"param",
 			z.object({
-				vaultId: z.string().trim().min(1),
-				blobId: z.string().trim().min(1),
+				vaultId: safeIdSchema,
+				blobId: safeIdSchema,
 			}),
 		),
 		async (c) => {
@@ -100,8 +112,8 @@ export function registerBlobRoutes(
 		zValidator(
 			"param",
 			z.object({
-				vaultId: z.string().trim().min(1),
-				blobId: z.string().trim().min(1),
+				vaultId: safeIdSchema,
+				blobId: safeIdSchema,
 			}),
 		),
 		async (c) => {
