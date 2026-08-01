@@ -264,6 +264,28 @@ describe("self-hosted Node runtime: end-to-end sync", () => {
 		cleanup = [];
 	});
 
+	it("serves the auth pages Cloudflare would otherwise serve via its assets binding", async () => {
+		// On Cloudflare, wrangler.jsonc's "assets" binding serves apps/api/public/*
+		// ahead of the Worker - the device-authorization flow's verification URI
+		// (getDeviceVerificationUri -> "<baseURL>/device") and the sign-in/sign-up
+		// pages depend on that. There's no equivalent outside Workers, so the Node
+		// runtime has to serve these itself; this guards against that regressing.
+		const { dataDir, runtime, server, wss, baseUrl } = await bootServer();
+		cleanup.push(() => rmSync(dataDir, { recursive: true, force: true }));
+		cleanup.push(() => runtime.dispose());
+		cleanup.push(() => closeServer(server, wss));
+
+		for (const path of ["/device", "/signin", "/signup", "/vaults"]) {
+			const response = await fetch(`${baseUrl}${path}`);
+			expect(response.status, path).toBe(200);
+			expect(response.headers.get("content-type"), path).toMatch(/^text\/html/);
+		}
+
+		const robots = await fetch(`${baseUrl}/robots.txt`);
+		expect(robots.status).toBe(200);
+		expect(robots.headers.get("content-type")).toMatch(/^text\/plain/);
+	});
+
 	it("syncs a mutation between two simulated devices with no Cloudflare dependency", async () => {
 		const { dataDir, runtime, server, wss, baseUrl } = await bootServer();
 		cleanup.push(() => rmSync(dataDir, { recursive: true, force: true }));

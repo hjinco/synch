@@ -1,3 +1,4 @@
+import { serveStatic } from "@hono/node-server/serve-static";
 import { createClient } from "@libsql/client";
 import { drizzle as drizzleLibsql } from "drizzle-orm/libsql";
 import { migrate as migrateLibsql } from "drizzle-orm/libsql/migrator";
@@ -26,6 +27,21 @@ const DEFAULT_MIGRATIONS_FOLDER = path.resolve(
 	path.dirname(fileURLToPath(import.meta.url)),
 	"../../drizzle",
 );
+
+// On Cloudflare, `wrangler.jsonc`'s "assets" binding serves apps/api/public/*
+// (device.html, signin.html, ...) ahead of the Worker entirely - the Worker
+// code never even sees those requests. There's no equivalent outside
+// Workers, so the Node runtime needs to serve them itself, including the
+// extensionless "clean URL" routes (e.g. /device -> device.html) that the
+// device-authorization flow and the auth pages link to.
+const PUBLIC_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../public");
+const STATIC_PAGES: Record<string, string> = {
+	"/device": "device.html",
+	"/signin": "signin.html",
+	"/signup": "signup.html",
+	"/vaults": "vaults.html",
+	"/robots.txt": "robots.txt",
+};
 
 export interface NodeRuntimeConfig {
 	dataDir: string;
@@ -131,6 +147,10 @@ export async function createNodeRuntime(config: NodeRuntimeConfig) {
 			billingEnabled: false,
 		},
 	);
+
+	for (const [route, file] of Object.entries(STATIC_PAGES)) {
+		app.get(route, serveStatic({ path: path.join(PUBLIC_DIR, file) }));
+	}
 
 	return {
 		fetch: (request: Request) => app.fetch(request),
