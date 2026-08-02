@@ -32,6 +32,8 @@ function toArrayBuffer(data: unknown): ArrayBuffer {
  * port, so both exercise the exact same upgrade path.
  */
 export function createNodeWebSocketUpgradeHandler(runtime: NodeRuntime, publicUrl: string) {
+	const pendingTasks = new Set<Promise<unknown>>();
+	let closing = false;
 	const wss = new WebSocketServer({
 		noServer: true,
 		handleProtocols: (protocols, request) => {
@@ -42,6 +44,10 @@ export function createNodeWebSocketUpgradeHandler(runtime: NodeRuntime, publicUr
 	});
 
 	async function handleUpgrade(req: IncomingMessage, socket: Duplex, head: Buffer): Promise<void> {
+		if (closing) {
+			socket.destroy();
+			return;
+		}
 		const url = new URL(req.url ?? "/", publicUrl);
 		const match = SOCKET_PATH_PATTERN.exec(url.pathname);
 		if (!match) {
@@ -66,6 +72,11 @@ export function createNodeWebSocketUpgradeHandler(runtime: NodeRuntime, publicUr
 			return;
 		}
 
+		if (closing) {
+			socket.destroy();
+			return;
+		}
+
 		wss.handleUpgrade(req, socket, head, (rawWs) => {
 			const ws = rawWs as WsWebSocket;
 			coordinator.socketGateway.registerSocket(ws, session);
@@ -76,34 +87,81 @@ export function createNodeWebSocketUpgradeHandler(runtime: NodeRuntime, publicUr
 					: (Buffer.isBuffer(data) ? data : Buffer.concat(data as Buffer[])).toString(
 							"utf8",
 						);
-				coordinator.socketMessageHandler
-					.handle(ws as unknown as WebSocket, message)
+				track(coordinator.socketMessageHandler.handle(ws as unknown as WebSocket, message))
 					.catch((error: unknown) => {
 						console.error("[node-websocket] message handling failed", error);
 					});
 			});
+			let disconnected = false;
 			const onDisconnect = () => {
+				if (disconnected) {
+					return;
+				}
+				disconnected = true;
 				coordinator.socketGateway.unregisterSocket(ws);
-				coordinator.useCases.handleSocketClose().catch((error: unknown) => {
+				track(coordinator.useCases.handleSocketClose()).catch((error: unknown) => {
 					console.error("[node-websocket] socket close handling failed", error);
 				});
 			};
 			ws.on("close", onDisconnect);
 			ws.on("error", onDisconnect);
 
-			coordinator.socketConnectionService.completeSocketOpen().catch((error: unknown) => {
+			track(coordinator.socketConnectionService.completeSocketOpen()).catch((error: unknown) => {
 				console.error("[node-websocket] completeSocketOpen failed", error);
 			});
 		});
 	}
 
+	function track<T>(task: Promise<T>): Promise<T> {
+		pendingTasks.add(task);
+		void task.then(
+			() => pendingTasks.delete(task),
+			() => pendingTasks.delete(task),
+		);
+		return task;
+	}
+
+	async function drainPendingTasks(): Promise<void> {
+		while (pendingTasks.size > 0) {
+			await Promise.allSettled([...pendingTasks]);
+		}
+	}
+
+	async function close(code: number, reason: string): Promise<void> {
+		closing = true;
+		for (const ws of wss.clients) {
+			if (ws.readyState === ws.OPEN) {
+				ws.close(code, reason);
+			}
+		}
+		await new Promise<void>((resolve, reject) => {
+			wss.close((error) => {
+				if (error) {
+					reject(error);
+					return;
+				}
+				resolve();
+			});
+		});
+		await drainPendingTasks();
+	}
+
+	function terminate(): void {
+		closing = true;
+		for (const ws of wss.clients) {
+			ws.terminate();
+		}
+	}
+
 	return {
 		wss,
 		handleUpgrade: (req: IncomingMessage, socket: Duplex, head: Buffer) => {
-			void handleUpgrade(req, socket, head).catch((error: unknown) => {
+			void track(handleUpgrade(req, socket, head)).catch((error: unknown) => {
 				console.error("[node-websocket] upgrade failed", error);
 				socket.destroy();
 			});
 		},
+		close,
+		terminate,
 	};
 }

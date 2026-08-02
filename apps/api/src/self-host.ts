@@ -1,6 +1,8 @@
 import { serve } from "@hono/node-server";
+import type { Server as NodeHttpServer } from "node:http";
 
 import { createNodeWebSocketUpgradeHandler } from "./runtime/node-websocket";
+import { shutdownNodeServer } from "./runtime/node-shutdown";
 import { LocalDiskBlobStorage } from "./sync/blob/local-disk-storage";
 import { S3BlobStorage } from "./sync/blob/s3-storage";
 import type { BlobStorage } from "./sync/blob/storage";
@@ -54,21 +56,41 @@ async function main(): Promise<void> {
 		blobStorage: readBlobStorage(dataDir),
 	});
 
-	const { wss, handleUpgrade } = createNodeWebSocketUpgradeHandler(runtime, publicUrl);
-	const server = serve({ fetch: (request) => runtime.fetch(request), port, hostname: host });
-	server.on("upgrade", handleUpgrade);
+	const webSockets = createNodeWebSocketUpgradeHandler(runtime, publicUrl);
+	// Without a custom createServer option, @hono/node-server always creates an HTTP/1 server.
+	const server = serve({ fetch: (request) => runtime.fetch(request), port, hostname: host }) as NodeHttpServer;
+	server.on("upgrade", webSockets.handleUpgrade);
 
 	console.log(`[self-host] listening on ${host}:${port}, data dir ${dataDir}`);
 
-	const shutdown = () => {
-		console.log("[self-host] shutting down");
-		wss.close();
-		server.close();
-		runtime.dispose();
-		process.exit(0);
+	let shutdownPromise: Promise<void> | null = null;
+	const shutdown = (signal: NodeJS.Signals) => {
+		if (shutdownPromise) {
+			return;
+		}
+
+		console.log(`[self-host] received ${signal}, draining active requests`);
+		shutdownPromise = shutdownNodeServer({
+			server,
+			webSockets,
+			dispose: runtime.dispose,
+		})
+			.then((result) => {
+				if (result.forced) {
+					console.error(
+						"[self-host] graceful shutdown timed out; remaining connections were terminated",
+						result.error,
+					);
+				}
+				process.exitCode = result.error ? 1 : 0;
+			})
+			.catch((error: unknown) => {
+				console.error("[self-host] shutdown failed", error);
+				process.exitCode = 1;
+			});
 	};
-	process.on("SIGINT", shutdown);
-	process.on("SIGTERM", shutdown);
+	process.once("SIGINT", () => shutdown("SIGINT"));
+	process.once("SIGTERM", () => shutdown("SIGTERM"));
 }
 
 main().catch((error: unknown) => {
