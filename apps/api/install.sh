@@ -117,7 +117,10 @@ sed \
 	-e "s#^ReadWritePaths=.*#ReadWritePaths=${DATA_DIR}#" \
 	"$API_DIR/synch-api.service.example" > "$UNIT_PATH"
 systemctl daemon-reload
-systemctl enable --now synch-api
+systemctl enable synch-api
+# `restart` also starts an inactive unit, while ensuring a re-run after an
+# upgrade replaces the process that still has the previous code loaded.
+systemctl restart synch-api
 
 log "Waiting for the server to come up"
 for _ in $(seq 1 20); do
