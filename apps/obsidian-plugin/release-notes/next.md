@@ -8,3 +8,5 @@
 - Clarified vault configuration sync descriptions across supported languages.
 
 ## Fixed
+
+- Vault settings now keep the latest synced version without creating extra conflict-copy files.

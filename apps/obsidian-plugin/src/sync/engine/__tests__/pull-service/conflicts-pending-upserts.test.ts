@@ -20,6 +20,105 @@ import {
 const conflictTimestamp = () => new Date(2026, 3, 22, 10, 11, 12).getTime();
 
 describe("SyncPullService pending upsert conflict resolution", () => {
+  it("lets the latest remote vault config replace a pending local version without a conflict copy", async () => {
+    const plugin = createTestPlugin();
+    const store = await createInitializedTestSyncStore(plugin);
+    const path = ".obsidian/graph.json";
+    const adapter = {
+      ...createVaultAdapter({
+        [path]: '{"local":true}',
+      }),
+      isProtectedVaultPath: (candidate: string) =>
+        candidate.includes(".sync-conflict-"),
+    };
+    const localHash = await hashText('{"local":true}');
+    const remoteHash = await hashText('{"remote":true}');
+    await store.upsertEntry({
+      entryId: "entry-graph",
+      path,
+      revision: 2,
+      blobId: "blob-current",
+      hash: localHash,
+      deleted: false,
+      updatedAt: 1,
+    });
+    await store.markEntryDirty({
+      mutationId: "mutation-graph",
+      entryId: "entry-graph",
+      op: "upsert",
+      baseRevision: 2,
+      blobId: "blob-local",
+      hash: localHash,
+      encryptedMetadata: await encryptPendingMetadata({
+        entryId: "entry-graph",
+        baseRevision: 2,
+        op: "upsert",
+        blobId: "blob-local",
+        path,
+        hash: localHash,
+      }),
+      createdAt: 2,
+    });
+
+    const conflicts: PullConflictSummary[] = [];
+    const session = createRealtimeSession({
+      pages: [
+        {
+          cursor: 3,
+          hasMore: false,
+          commits: [
+            createCommit({
+              cursor: 3,
+              entryId: "entry-graph",
+              revision: 3,
+              blobId: "blob-remote",
+              encryptedMetadata: await encryptRemoteMetadata({
+                entryId: "entry-graph",
+                revision: 3,
+                blobId: "blob-remote",
+                path,
+                hash: remoteHash,
+              }),
+            }),
+          ],
+        },
+      ],
+    });
+    const service = new SyncPullService({
+      getApiBaseUrl: () => "http://127.0.0.1:8787",
+      getSyncToken: async () => createToken(),
+      getSyncStore: () => store,
+      getRemoteVaultKey: () => TEST_VAULT_KEY,
+      shouldUseLatestRemoteVersion: (candidate) => candidate.startsWith(".obsidian/"),
+      vaultAdapter: adapter,
+      pullClient: createPullClient({
+        blobs: {
+          "blob-remote": await encryptTestBlob(
+            "blob-remote",
+            new TextEncoder().encode('{"remote":true}'),
+          ),
+        },
+      }),
+      onProgress: ignoreProgress,
+      onConflict: (event) => conflicts.push(event),
+      now: conflictTimestamp,
+    });
+
+    await expect(service.pullOnce(session)).resolves.toEqual({
+      cursor: 3,
+      entriesApplied: 1,
+      filesWritten: 1,
+      filesDeleted: 0,
+      conflictsCreated: 0,
+    });
+    expect(adapter.text(path)).toBe('{"remote":true}');
+    expect(adapter.text(".obsidian/graph.sync-conflict-20260422-101112.json")).toBeNull();
+    expect(await store.listDirtyEntries()).toEqual([]);
+    expect(conflicts).toEqual([]);
+
+    await store.close();
+  });
+
   it("clears a same-entry pending upsert when the pulled remote state has identical content", async () => {
     const plugin = createTestPlugin();
     const store = await createInitializedTestSyncStore(plugin);

@@ -66,6 +66,17 @@ export function shouldApplyRemoteVaultPath(
   return true;
 }
 
+export function shouldUseLatestRemoteVaultConfig(
+  path: string,
+  rules: Pick<VaultPathPolicyRules, "vaultConfigRules">,
+): boolean {
+  return (
+    classifySyncPath(path, rules.vaultConfigRules.configDir) ===
+      "reserved-config-managed" &&
+    shouldSyncVaultConfigPath(path, rules.vaultConfigRules)
+  );
+}
+
 export function isForbiddenVaultPath(
   path: string,
   vaultConfigRules: Pick<VaultConfigSyncRules, "configDir">,

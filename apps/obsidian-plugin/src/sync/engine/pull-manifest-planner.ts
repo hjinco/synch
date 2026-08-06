@@ -27,6 +27,7 @@ interface PullManifestPlannerDeps {
   vaultAdapter: ConflictFileWriter;
   onConflict?: (event: PullConflictEvent) => void;
   onRollbackDetected?: (event: PullRollbackEvent) => void;
+  shouldUseLatestRemoteVersion?: (path: string) => boolean;
   now?: () => number;
 }
 
@@ -40,19 +41,50 @@ export class PullManifestPlanner {
   ): Promise<{
     plans: PlannedEntryState[];
     deferred: PullEntryStateManifestItem[];
+    superseded: PullEntryStateManifestItem[];
   }> {
+    for (const item of manifest) {
+      this.validateManifestItem(item);
+    }
+
+    const latestManagedEntryByPath = this.findLatestManagedEntryByPath(manifest);
+    const activeManifest: PullEntryStateManifestItem[] = [];
+    const superseded: PullEntryStateManifestItem[] = [];
+    for (const item of manifest) {
+      const winnerEntryId = latestManagedEntryByPath.get(item.metadata.path);
+      if (winnerEntryId && winnerEntryId !== item.state.entryId) {
+        const existing = await store.getEntryById(item.state.entryId);
+        if (
+          existing &&
+          existing.revision > 0 &&
+          item.state.revision < existing.revision
+        ) {
+          this.deps.onRollbackDetected?.({
+            entryId: item.state.entryId,
+            path: item.metadata.path,
+            localRevision: existing.revision,
+            remoteRevision: item.state.revision,
+          });
+          continue;
+        }
+        superseded.push(item);
+        continue;
+      }
+      activeManifest.push(item);
+    }
+
     const deferredEntryIds = new Set<string>();
     if (options.deferExternalPathOwners) {
       let changed = true;
       while (changed) {
         changed = false;
         const activeEntryIds = new Set(
-          manifest
+          activeManifest
             .map((item) => item.state.entryId)
             .filter((entryId) => !deferredEntryIds.has(entryId)),
         );
 
-        for (const { state, metadata } of manifest) {
+        for (const { state, metadata } of activeManifest) {
           if (deferredEntryIds.has(state.entryId) || state.deleted) {
             continue;
           }
@@ -72,7 +104,10 @@ export class PullManifestPlanner {
             pathOwner.entryId !== state.entryId &&
             !activeEntryIds.has(pathOwner.entryId) &&
             !adoptedLocalEntry;
-          if (externalPathOwner) {
+          if (
+            externalPathOwner &&
+            !this.deps.shouldUseLatestRemoteVersion?.(metadata.path)
+          ) {
             deferredEntryIds.add(state.entryId);
             changed = true;
           }
@@ -83,13 +118,13 @@ export class PullManifestPlanner {
     const deferredCursorThreshold =
       deferredEntryIds.size > 0
         ? Math.min(
-            ...manifest
+            ...activeManifest
               .filter((item) => deferredEntryIds.has(item.state.entryId))
               .map((item) => item.state.updatedSeq),
           )
         : null;
     const deltaEntryIds = new Set(
-      manifest
+      activeManifest
         .filter((item) => !isDeferredByCursorThreshold(item, deferredCursorThreshold))
         .map((item) => item.state.entryId),
     );
@@ -97,7 +132,7 @@ export class PullManifestPlanner {
     const plans: PlannedEntryState[] = [];
     const deferred: PullEntryStateManifestItem[] = [];
 
-    for (const item of manifest) {
+    for (const item of activeManifest) {
       const { state, metadata } = item;
       if (isDeferredByCursorThreshold(item, deferredCursorThreshold)) {
         deferred.push(item);
@@ -128,6 +163,7 @@ export class PullManifestPlanner {
       let pathConflict: PullConflictEvent | null = null;
       let adoptedLocalEntry: AdoptedLocalEntry | null = null;
       let vaultMove: PlannedEntryState["vaultMove"] = null;
+      let supersededPathOwner: SyncEntryRow | null = null;
 
       if (!state.deleted) {
         if (!state.blobId) {
@@ -148,17 +184,27 @@ export class PullManifestPlanner {
           pathOwner.entryId !== state.entryId &&
           !deltaEntryIds.has(pathOwner.entryId) &&
           !adoptedLocalEntry;
-        if (externalPathOwner && options.deferExternalPathOwners) {
+        if (
+          externalPathOwner &&
+          options.deferExternalPathOwners &&
+          !this.deps.shouldUseLatestRemoteVersion?.(metadata.path)
+        ) {
           deferred.push(item);
           continue;
         }
         if (duplicateEntryId || externalPathOwner) {
-          pathConflict = await this.createPathCollisionEvent(
-            state.entryId,
-            metadata.path,
-            reservedPaths,
-          );
-          finalPath = pathConflict.conflictPath;
+          if (this.deps.shouldUseLatestRemoteVersion?.(metadata.path)) {
+            supersededPathOwner =
+              pathOwner && pathOwner.entryId !== state.entryId ? pathOwner : null;
+            finalPath = metadata.path;
+          } else {
+            pathConflict = await this.createPathCollisionEvent(
+              state.entryId,
+              metadata.path,
+              reservedPaths,
+            );
+            finalPath = pathConflict.conflictPath;
+          }
         } else {
           finalPath = metadata.path;
         }
@@ -175,8 +221,10 @@ export class PullManifestPlanner {
           adoptedLocalEntry,
         );
         reservedPaths.set(finalPath, state.entryId);
-      } else if (metadata.hash !== null) {
-        throw new Error(`Deleted entry state ${state.entryId}@${state.revision} has a hash.`);
+      } else {
+        if (metadata.hash !== null) {
+          throw new Error(`Deleted entry state ${state.entryId}@${state.revision} has a hash.`);
+        }
       }
 
       plans.push({
@@ -190,10 +238,56 @@ export class PullManifestPlanner {
         hash,
         pathConflict,
         pendingConflict: null,
+        supersededPathOwner,
       });
     }
 
-    return { plans, deferred };
+    return { plans, deferred, superseded };
+  }
+
+  private validateManifestItem(item: PullEntryStateManifestItem): void {
+    const { state, metadata } = item;
+    if (!state.deleted) {
+      if (!state.blobId) {
+        throw new Error(`Entry state ${state.entryId}@${state.revision} is missing a blob.`);
+      }
+      if (!metadata.hash) {
+        throw new Error(`Entry state ${state.entryId}@${state.revision} is missing a hash.`);
+      }
+      return;
+    }
+
+    if (metadata.hash !== null) {
+      throw new Error(`Deleted entry state ${state.entryId}@${state.revision} has a hash.`);
+    }
+  }
+
+  private findLatestManagedEntryByPath(
+    manifest: PullEntryStateManifestItem[],
+  ): Map<string, string> {
+    const latest = new Map<string, PullEntryStateManifestItem>();
+    for (const item of manifest) {
+      const path = item.metadata.path;
+      // Tombstones are scoped to their entry id. They must not defeat a live
+      // state for another entry that now owns the same managed config path.
+      if (item.state.deleted || !this.deps.shouldUseLatestRemoteVersion?.(path)) {
+        continue;
+      }
+
+      const current = latest.get(path);
+      if (
+        !current ||
+        item.state.updatedSeq > current.state.updatedSeq ||
+        (item.state.updatedSeq === current.state.updatedSeq &&
+          item.state.entryId > current.state.entryId)
+      ) {
+        latest.set(path, item);
+      }
+    }
+
+    return new Map(
+      [...latest].map(([path, item]) => [path, item.state.entryId]),
+    );
   }
 
   private async planVaultMove(

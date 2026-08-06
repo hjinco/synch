@@ -49,6 +49,7 @@ export interface PullEntryStateApplierDeps {
   eventGate?: SyncEventGateLike;
   pullClient: Pick<SyncPullClient, "downloadBlob">;
   shouldApplyRemotePath?: (path: string) => boolean;
+  shouldUseLatestRemoteVersion?: (path: string) => boolean;
   prepareConcurrency?: number;
   onProgress?: (progress: SyncProgressCounts) => Promise<void>;
   onConflict?: (event: PullConflictEvent) => void;
@@ -188,7 +189,7 @@ export class PullEntryStateApplier {
     );
 
     return {
-      entriesApplied: prepared.plans.length,
+      entriesApplied: prepared.plans.length + prepared.superseded.length,
       filesWritten: prepared.pathsToWrite.length,
       filesDeleted,
       conflictsCreated: prepared.plans.reduce(
@@ -208,14 +209,19 @@ export class PullEntryStateApplier {
     manifest: PullEntryStateManifestItem[],
     options: { deferExternalPathOwners: boolean },
   ): Promise<PreparedManifestApplication> {
-    const { plans: allPlans, deferred } = await this.manifestPlanner.planManifest(
-      store,
-      manifest,
-      options,
-    );
+    const {
+      plans: allPlans,
+      deferred,
+      superseded,
+    } = await this.manifestPlanner.planManifest(store, manifest, options);
     const plans = allPlans.filter((plan) => this.shouldApplyPlanToVault(plan));
     await this.applySkippedRemoteStates(store, allPlans, plans);
     await this.markAlreadyCurrentVaultWrites(store, plans);
+    const supersededPathsToRemove = await this.findSupersededPathsToRemove(
+      store,
+      superseded,
+      plans,
+    );
     const pathsToWrite = uniqueSyncPaths(
       plans
         .filter((plan) => !plan.skipVaultWrite)
@@ -268,6 +274,8 @@ export class PullEntryStateApplier {
 
     return {
       plans,
+      superseded,
+      supersededPathsToRemove,
       pathsToWrite,
       pendingConflicts,
       batches,
@@ -378,7 +386,7 @@ export class PullEntryStateApplier {
         }
       | undefined,
   ): Promise<number> {
-    const originalEntries = await this.snapshotManifestEntries(store, prepared.plans);
+    const originalEntries = await this.snapshotManifestEntries(store, prepared);
     const originalDirtyEntries = await this.snapshotDirtyEntries(store, prepared);
     const pendingConflictsByPlan = groupPendingConflictsByPlan(prepared.pendingConflicts);
 
@@ -387,6 +395,7 @@ export class PullEntryStateApplier {
       let entriesApplied = 0;
       filesDeleted = await this.runWithSuppressedPaths(
         [
+          ...prepared.supersededPathsToRemove,
           ...prepared.batches.flatMap((batch) => batch.pathsToRemove),
           ...prepared.batches.flatMap((batch) =>
             batch.plans.flatMap((plan) => [plan.vaultMove?.from, plan.vaultMove?.to]),
@@ -395,6 +404,21 @@ export class PullEntryStateApplier {
         ],
         async () => {
           let removedTotal = 0;
+          await this.applySupersededRemoteEntries(store, prepared);
+          for (const path of prepared.supersededPathsToRemove) {
+            if (await removeVaultPathIfExists(this.deps.vaultAdapter, path)) {
+              removedTotal += 1;
+            }
+          }
+          entriesApplied += prepared.superseded.length;
+          if (prepared.superseded.length > 0) {
+            await this.deps.onProgress?.({
+              completedEntries: (progress?.completedOffset ?? 0) + entriesApplied,
+              totalEntries:
+                progress?.totalEntries ??
+                prepared.plans.length + prepared.superseded.length,
+            });
+          }
           for (const batch of prepared.batches) {
             const batchPendingConflicts = uniquePendingConflicts(
               batch.plans.flatMap((plan) => pendingConflictsByPlan.get(plan) ?? []),
@@ -451,7 +475,9 @@ export class PullEntryStateApplier {
             entriesApplied += batch.plans.length;
             await this.deps.onProgress?.({
               completedEntries: (progress?.completedOffset ?? 0) + entriesApplied,
-              totalEntries: progress?.totalEntries ?? prepared.plans.length,
+              totalEntries:
+                progress?.totalEntries ??
+                prepared.plans.length + prepared.superseded.length,
             });
           }
 
@@ -511,6 +537,66 @@ export class PullEntryStateApplier {
     }
   }
 
+  private async applySupersededRemoteEntries(
+    store: PullEntryStateStore,
+    prepared: PreparedManifestApplication,
+  ): Promise<void> {
+    const incomingByEntryId = new Map(
+      prepared.superseded.map((entry) => [entry.state.entryId, entry]),
+    );
+    const entryIds = new Set(incomingByEntryId.keys());
+    for (const plan of prepared.plans) {
+      if (plan.supersededPathOwner) {
+        entryIds.add(plan.supersededPathOwner.entryId);
+      }
+    }
+
+    for (const entryId of entryIds) {
+      const pending = await store.getDirtyEntryMutation(entryId);
+      if (pending) {
+        await store.clearDirtyEntryByMutationId(pending.mutationId);
+      }
+      await store.clearLocalState(entryId);
+
+      const incoming = incomingByEntryId.get(entryId);
+      if (incoming) {
+        await store.applyRemoteState({
+          entryId,
+          path: incoming.state.deleted ? incoming.metadata.path : null,
+          revision: incoming.state.revision,
+          blobId: incoming.state.deleted ? null : incoming.state.blobId,
+          hash: incoming.state.deleted ? null : incoming.metadata.hash,
+          deleted: incoming.state.deleted,
+          updatedAt: incoming.state.updatedAt,
+        });
+        continue;
+      }
+
+      const remote = await store.getRemoteStateById(entryId);
+      if (remote) {
+        await store.applyRemoteState({ ...remote, path: remote.deleted ? remote.path : null });
+      }
+    }
+  }
+
+  private async findSupersededPathsToRemove(
+    store: PullEntryStateStore,
+    superseded: PullEntryStateManifestItem[],
+    plans: PlannedEntryState[],
+  ): Promise<string[]> {
+    const claimedPaths = new Set(
+      plans.map((plan) => plan.finalPath).filter((path): path is string => !!path),
+    );
+    const paths: Array<string | null> = [];
+    for (const item of superseded) {
+      const existing = await store.getEntryById(item.state.entryId);
+      paths.push(
+        existing?.path && !claimedPaths.has(existing.path) ? existing.path : null,
+      );
+    }
+    return uniqueSyncPaths(paths);
+  }
+
   private async clearChangingStorePaths(
     store: PullEntryStateStore,
     plans: PlannedEntryState[],
@@ -531,14 +617,20 @@ export class PullEntryStateApplier {
 
   private async snapshotManifestEntries(
     store: PullEntryStateStore,
-    plans: PlannedEntryState[],
+    prepared: PreparedManifestApplication,
   ): Promise<Map<string, SnapshotEntryState>> {
     const entryIds = new Set<string>();
-    for (const plan of plans) {
+    for (const plan of prepared.plans) {
       entryIds.add(plan.state.entryId);
       if (plan.adoptedLocalEntry) {
         entryIds.add(plan.adoptedLocalEntry.entry.entryId);
       }
+      if (plan.supersededPathOwner) {
+        entryIds.add(plan.supersededPathOwner.entryId);
+      }
+    }
+    for (const entry of prepared.superseded) {
+      entryIds.add(entry.state.entryId);
     }
 
     const entries = new Map<string, SnapshotEntryState>();
@@ -561,6 +653,12 @@ export class PullEntryStateApplier {
       if (plan.adoptedLocalEntry) {
         entryIds.add(plan.adoptedLocalEntry.entry.entryId);
       }
+      if (plan.supersededPathOwner) {
+        entryIds.add(plan.supersededPathOwner.entryId);
+      }
+    }
+    for (const entry of prepared.superseded) {
+      entryIds.add(entry.state.entryId);
     }
     for (const pendingConflict of prepared.pendingConflicts) {
       entryIds.add(pendingConflict.pending.entryId);
@@ -577,6 +675,11 @@ export class PullEntryStateApplier {
     store: PullEntryStateStore,
     entries: ReadonlyMap<string, SnapshotEntryState>,
   ): Promise<void> {
+    for (const entryId of entries.keys()) {
+      await store.clearRemoteState(entryId);
+      await store.clearLocalState(entryId);
+    }
+
     for (const [entryId, entry] of entries) {
       if (entry.remote) {
         await store.applyRemoteState(entry.remote);

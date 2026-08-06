@@ -23,6 +23,573 @@ import {
 const conflictTimestamp = () => new Date(2026, 3, 22, 10, 11, 12).getTime();
 
 describe("SyncPullService path conflicts", () => {
+  it("keeps only the latest remote version when vault config entries share a path", async () => {
+    const plugin = createTestPlugin();
+    const store = await createInitializedTestSyncStore(plugin);
+    const path = ".obsidian/graph.json";
+    const adapter = {
+      ...createVaultAdapter(),
+      isProtectedVaultPath: (candidate: string) =>
+        candidate.includes(".sync-conflict-"),
+    };
+    const conflicts: PullConflictSummary[] = [];
+    const session = createRealtimeSession({
+      pages: [
+        {
+          cursor: 2,
+          hasMore: false,
+          commits: [
+            createCommit({
+              cursor: 1,
+              entryId: "entry-old",
+              revision: 1,
+              blobId: "blob-old",
+              encryptedMetadata: await encryptRemoteMetadata({
+                entryId: "entry-old",
+                revision: 1,
+                blobId: "blob-old",
+                path,
+                hash: await hashText('{"version":"old"}'),
+              }),
+            }),
+            createCommit({
+              cursor: 2,
+              entryId: "entry-latest",
+              revision: 1,
+              blobId: "blob-latest",
+              encryptedMetadata: await encryptRemoteMetadata({
+                entryId: "entry-latest",
+                revision: 1,
+                blobId: "blob-latest",
+                path,
+                hash: await hashText('{"version":"latest"}'),
+              }),
+            }),
+          ],
+        },
+      ],
+    });
+    const service = new SyncPullService({
+      getApiBaseUrl: () => "http://127.0.0.1:8787",
+      getSyncToken: async () => createToken(),
+      getSyncStore: () => store,
+      getRemoteVaultKey: () => TEST_VAULT_KEY,
+      shouldUseLatestRemoteVersion: (candidate) => candidate.startsWith(".obsidian/"),
+      vaultAdapter: adapter,
+      pullClient: createPullClient({
+        blobs: {
+          "blob-old": await encryptTestBlob(
+            "blob-old",
+            new TextEncoder().encode('{"version":"old"}'),
+          ),
+          "blob-latest": await encryptTestBlob(
+            "blob-latest",
+            new TextEncoder().encode('{"version":"latest"}'),
+          ),
+        },
+      }),
+      onProgress: ignoreProgress,
+      onConflict: (event) => conflicts.push(event),
+      now: conflictTimestamp,
+    });
+
+    await expect(service.pullOnce(session)).resolves.toEqual({
+      cursor: 2,
+      entriesApplied: 2,
+      filesWritten: 1,
+      filesDeleted: 0,
+      conflictsCreated: 0,
+    });
+    expect(adapter.text(path)).toBe('{"version":"latest"}');
+    expect(adapter.text(".obsidian/graph.sync-conflict-20260422-101112.json")).toBeNull();
+    expect(await store.getRemoteStateById("entry-old")).toMatchObject({
+      path: null,
+      revision: 1,
+      blobId: "blob-old",
+    });
+    expect(await store.getEntryById("entry-latest")).toMatchObject({
+      path,
+      revision: 1,
+      blobId: "blob-latest",
+    });
+    expect(conflicts).toEqual([]);
+
+    await store.close();
+  });
+
+  it("keeps the live vault config owner when a previous loser is deleted", async () => {
+    const plugin = createTestPlugin();
+    const store = await createInitializedTestSyncStore(plugin);
+    const path = ".obsidian/graph.json";
+    const winnerBody = '{"version":"winner"}';
+    const winnerHash = await hashText(winnerBody);
+    const adapter = createVaultAdapter({ [path]: winnerBody });
+    await store.applyRemoteState({
+      entryId: "entry-loser",
+      path: null,
+      revision: 1,
+      blobId: "blob-loser",
+      hash: await hashText('{"version":"loser"}'),
+      deleted: false,
+      updatedAt: 1,
+    });
+    await store.upsertEntry({
+      entryId: "entry-winner",
+      path,
+      revision: 1,
+      blobId: "blob-winner",
+      hash: winnerHash,
+      deleted: false,
+      updatedAt: 2,
+    });
+    await store.markEntryDirty({
+      mutationId: "mutation-winner",
+      entryId: "entry-winner",
+      op: "upsert",
+      baseRevision: 1,
+      blobId: "blob-winner-local",
+      hash: winnerHash,
+      encryptedMetadata: await encryptPendingMetadata({
+        entryId: "entry-winner",
+        baseRevision: 1,
+        op: "upsert",
+        blobId: "blob-winner-local",
+        path,
+        hash: winnerHash,
+      }),
+      createdAt: 3,
+    });
+
+    const session = createRealtimeSession({
+      pages: [
+        {
+          cursor: 4,
+          hasMore: false,
+          commits: [
+            createCommit({
+              cursor: 4,
+              entryId: "entry-loser",
+              op: "delete",
+              revision: 2,
+              baseRevision: 1,
+              blobId: null,
+              encryptedMetadata: await encryptRemoteMetadata({
+                entryId: "entry-loser",
+                revision: 2,
+                deleted: true,
+                blobId: null,
+                path,
+              }),
+            }),
+          ],
+        },
+      ],
+    });
+    const service = new SyncPullService({
+      getApiBaseUrl: () => "http://127.0.0.1:8787",
+      getSyncToken: async () => createToken(),
+      getSyncStore: () => store,
+      getRemoteVaultKey: () => TEST_VAULT_KEY,
+      shouldUseLatestRemoteVersion: (candidate) => candidate.startsWith(".obsidian/"),
+      vaultAdapter: adapter,
+      pullClient: createPullClient({}),
+      onProgress: ignoreProgress,
+    });
+
+    await expect(service.pullOnce(session)).resolves.toMatchObject({
+      entriesApplied: 1,
+      filesWritten: 0,
+      filesDeleted: 0,
+      conflictsCreated: 0,
+    });
+    expect(adapter.text(path)).toBe(winnerBody);
+    expect(await store.getEntryById("entry-winner")).toMatchObject({
+      path,
+      deleted: false,
+    });
+    expect(await store.listDirtyEntries()).toEqual([
+      expect.objectContaining({ mutationId: "mutation-winner" }),
+    ]);
+    expect(await store.getRemoteStateById("entry-loser")).toMatchObject({
+      path,
+      revision: 2,
+      deleted: true,
+    });
+
+    await store.close();
+  });
+
+  it("keeps a live vault config upsert when another entry is deleted in the same window", async () => {
+    const plugin = createTestPlugin();
+    const store = await createInitializedTestSyncStore(plugin);
+    const path = ".obsidian/graph.json";
+    const liveBody = '{"version":"live"}';
+    const adapter = createVaultAdapter();
+    const session = createRealtimeSession({
+      pages: [
+        {
+          cursor: 2,
+          hasMore: false,
+          commits: [
+            createCommit({
+              cursor: 1,
+              entryId: "entry-live",
+              revision: 1,
+              blobId: "blob-live",
+              encryptedMetadata: await encryptRemoteMetadata({
+                entryId: "entry-live",
+                revision: 1,
+                blobId: "blob-live",
+                path,
+                hash: await hashText(liveBody),
+              }),
+            }),
+            createCommit({
+              cursor: 2,
+              entryId: "entry-deleted",
+              op: "delete",
+              revision: 2,
+              baseRevision: 1,
+              blobId: null,
+              encryptedMetadata: await encryptRemoteMetadata({
+                entryId: "entry-deleted",
+                revision: 2,
+                deleted: true,
+                blobId: null,
+                path,
+              }),
+            }),
+          ],
+        },
+      ],
+    });
+    const service = new SyncPullService({
+      getApiBaseUrl: () => "http://127.0.0.1:8787",
+      getSyncToken: async () => createToken(),
+      getSyncStore: () => store,
+      getRemoteVaultKey: () => TEST_VAULT_KEY,
+      shouldUseLatestRemoteVersion: (candidate) => candidate.startsWith(".obsidian/"),
+      vaultAdapter: adapter,
+      pullClient: createPullClient({
+        blobs: {
+          "blob-live": await encryptTestBlob(
+            "blob-live",
+            new TextEncoder().encode(liveBody),
+          ),
+        },
+      }),
+      onProgress: ignoreProgress,
+    });
+
+    await expect(service.pullOnce(session)).resolves.toMatchObject({
+      entriesApplied: 2,
+      filesWritten: 1,
+      filesDeleted: 0,
+      conflictsCreated: 0,
+    });
+    expect(adapter.text(path)).toBe(liveBody);
+    expect(await store.getEntryById("entry-live")).toMatchObject({
+      path,
+      deleted: false,
+    });
+    expect(await store.getRemoteStateById("entry-deleted")).toMatchObject({
+      path,
+      revision: 2,
+      deleted: true,
+    });
+
+    await store.close();
+  });
+
+  it("deletes a vault config path when its current owner is deleted", async () => {
+    const plugin = createTestPlugin();
+    const store = await createInitializedTestSyncStore(plugin);
+    const path = ".obsidian/graph.json";
+    const body = '{"version":"current"}';
+    const adapter = createVaultAdapter({ [path]: body });
+    await store.upsertEntry({
+      entryId: "entry-current",
+      path,
+      revision: 1,
+      blobId: "blob-current",
+      hash: await hashText(body),
+      deleted: false,
+      updatedAt: 1,
+    });
+    const session = createRealtimeSession({
+      pages: [
+        {
+          cursor: 2,
+          hasMore: false,
+          commits: [
+            createCommit({
+              cursor: 2,
+              entryId: "entry-current",
+              op: "delete",
+              revision: 2,
+              baseRevision: 1,
+              blobId: null,
+              encryptedMetadata: await encryptRemoteMetadata({
+                entryId: "entry-current",
+                revision: 2,
+                deleted: true,
+                blobId: null,
+                path,
+              }),
+            }),
+          ],
+        },
+      ],
+    });
+    const service = new SyncPullService({
+      getApiBaseUrl: () => "http://127.0.0.1:8787",
+      getSyncToken: async () => createToken(),
+      getSyncStore: () => store,
+      getRemoteVaultKey: () => TEST_VAULT_KEY,
+      shouldUseLatestRemoteVersion: (candidate) => candidate.startsWith(".obsidian/"),
+      vaultAdapter: adapter,
+      pullClient: createPullClient({}),
+      onProgress: ignoreProgress,
+    });
+
+    await expect(service.pullOnce(session)).resolves.toMatchObject({
+      entriesApplied: 1,
+      filesWritten: 0,
+      filesDeleted: 1,
+      conflictsCreated: 0,
+    });
+    expect(adapter.text(path)).toBeNull();
+    expect(await store.getEntryById("entry-current")).toMatchObject({
+      path,
+      revision: 2,
+      deleted: true,
+    });
+
+    await store.close();
+  });
+
+  it("removes the previous path of a superseded vault config entry", async () => {
+    const plugin = createTestPlugin();
+    const store = await createInitializedTestSyncStore(plugin);
+    const previousPath = ".obsidian/old-graph.json";
+    const sharedPath = ".obsidian/graph.json";
+    const previousBody = '{"version":"previous"}';
+    const supersededBody = '{"version":"superseded"}';
+    const latestBody = '{"version":"latest"}';
+    const adapter = createVaultAdapter({ [previousPath]: previousBody });
+    await store.upsertEntry({
+      entryId: "entry-superseded",
+      path: previousPath,
+      revision: 1,
+      blobId: "blob-previous",
+      hash: await hashText(previousBody),
+      deleted: false,
+      updatedAt: 1,
+    });
+
+    const session = createRealtimeSession({
+      pages: [
+        {
+          cursor: 3,
+          hasMore: false,
+          commits: [
+            createCommit({
+              cursor: 2,
+              entryId: "entry-superseded",
+              revision: 2,
+              blobId: "blob-superseded",
+              encryptedMetadata: await encryptRemoteMetadata({
+                entryId: "entry-superseded",
+                revision: 2,
+                blobId: "blob-superseded",
+                path: sharedPath,
+                hash: await hashText(supersededBody),
+              }),
+            }),
+            createCommit({
+              cursor: 3,
+              entryId: "entry-latest",
+              revision: 1,
+              blobId: "blob-latest",
+              encryptedMetadata: await encryptRemoteMetadata({
+                entryId: "entry-latest",
+                revision: 1,
+                blobId: "blob-latest",
+                path: sharedPath,
+                hash: await hashText(latestBody),
+              }),
+            }),
+          ],
+        },
+      ],
+    });
+    const service = new SyncPullService({
+      getApiBaseUrl: () => "http://127.0.0.1:8787",
+      getSyncToken: async () => createToken(),
+      getSyncStore: () => store,
+      getRemoteVaultKey: () => TEST_VAULT_KEY,
+      shouldUseLatestRemoteVersion: (candidate) => candidate.startsWith(".obsidian/"),
+      vaultAdapter: adapter,
+      pullClient: createPullClient({
+        blobs: {
+          "blob-latest": await encryptTestBlob(
+            "blob-latest",
+            new TextEncoder().encode(latestBody),
+          ),
+        },
+      }),
+      onProgress: ignoreProgress,
+    });
+
+    await expect(service.pullOnce(session)).resolves.toMatchObject({
+      entriesApplied: 2,
+      filesWritten: 1,
+      filesDeleted: 1,
+      conflictsCreated: 0,
+    });
+    expect(adapter.text(previousPath)).toBeNull();
+    expect(adapter.text(sharedPath)).toBe(latestBody);
+    expect(await store.getRemoteStateById("entry-superseded")).toMatchObject({
+      path: null,
+      revision: 2,
+    });
+
+    await store.close();
+  });
+
+  it("rejects an invalid superseded vault config state", async () => {
+    const plugin = createTestPlugin();
+    const store = await createInitializedTestSyncStore(plugin);
+    const path = ".obsidian/graph.json";
+    const latestBody = '{"version":"latest"}';
+    const adapter = createVaultAdapter();
+    const session = createRealtimeSession({
+      pages: [
+        {
+          cursor: 2,
+          hasMore: false,
+          commits: [
+            createCommit({
+              cursor: 1,
+              entryId: "entry-invalid",
+              revision: 1,
+              blobId: null,
+              encryptedMetadata: await encryptRemoteMetadata({
+                entryId: "entry-invalid",
+                revision: 1,
+                blobId: null,
+                path,
+                hash: await hashText('{"version":"invalid"}'),
+              }),
+            }),
+            createCommit({
+              cursor: 2,
+              entryId: "entry-latest",
+              revision: 1,
+              blobId: "blob-latest",
+              encryptedMetadata: await encryptRemoteMetadata({
+                entryId: "entry-latest",
+                revision: 1,
+                blobId: "blob-latest",
+                path,
+                hash: await hashText(latestBody),
+              }),
+            }),
+          ],
+        },
+      ],
+    });
+    const service = new SyncPullService({
+      getApiBaseUrl: () => "http://127.0.0.1:8787",
+      getSyncToken: async () => createToken(),
+      getSyncStore: () => store,
+      getRemoteVaultKey: () => TEST_VAULT_KEY,
+      shouldUseLatestRemoteVersion: (candidate) => candidate.startsWith(".obsidian/"),
+      vaultAdapter: adapter,
+      pullClient: createPullClient({}),
+      onProgress: ignoreProgress,
+    });
+
+    await expect(service.pullOnce(session)).rejects.toThrow(
+      "Entry state entry-invalid@1 is missing a blob.",
+    );
+    expect(adapter.text(path)).toBeNull();
+    expect(await store.getRemoteStateById("entry-invalid")).toBeNull();
+    expect(await store.getCursor()).toBe(0);
+
+    await store.close();
+  });
+
+  it("replaces an older tracked vault config path owner with the latest remote entry", async () => {
+    const plugin = createTestPlugin();
+    const store = await createInitializedTestSyncStore(plugin);
+    const path = ".obsidian/graph.json";
+    const oldBody = '{"version":"old"}';
+    const latestBody = '{"version":"latest"}';
+    const adapter = createVaultAdapter({ [path]: oldBody });
+    await store.upsertEntry({
+      entryId: "entry-old",
+      path,
+      revision: 1,
+      blobId: "blob-old",
+      hash: await hashText(oldBody),
+      deleted: false,
+      updatedAt: 1,
+    });
+
+    const session = createRealtimeSession({
+      pages: [
+        {
+          cursor: 2,
+          hasMore: false,
+          commits: [
+            createCommit({
+              cursor: 2,
+              entryId: "entry-latest",
+              revision: 1,
+              blobId: "blob-latest",
+              encryptedMetadata: await encryptRemoteMetadata({
+                entryId: "entry-latest",
+                revision: 1,
+                blobId: "blob-latest",
+                path,
+                hash: await hashText(latestBody),
+              }),
+            }),
+          ],
+        },
+      ],
+    });
+    const service = new SyncPullService({
+      getApiBaseUrl: () => "http://127.0.0.1:8787",
+      getSyncToken: async () => createToken(),
+      getSyncStore: () => store,
+      getRemoteVaultKey: () => TEST_VAULT_KEY,
+      shouldUseLatestRemoteVersion: (candidate) => candidate.startsWith(".obsidian/"),
+      vaultAdapter: adapter,
+      pullClient: createPullClient({
+        blobs: {
+          "blob-latest": await encryptTestBlob(
+            "blob-latest",
+            new TextEncoder().encode(latestBody),
+          ),
+        },
+      }),
+      onProgress: ignoreProgress,
+    });
+
+    await expect(service.pullOnce(session)).resolves.toMatchObject({
+      entriesApplied: 1,
+      filesWritten: 1,
+      conflictsCreated: 0,
+    });
+    expect(adapter.text(path)).toBe(latestBody);
+    expect(await store.getRemoteStateById("entry-old")).toMatchObject({ path: null });
+    expect(await store.getEntryById("entry-latest")).toMatchObject({ path });
+
+    await store.close();
+  });
+
   it("adopts an unpushed local entry when the same remote path has identical content", async () => {
     const plugin = createTestPlugin();
     const store = await createInitializedTestSyncStore(plugin);

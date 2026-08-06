@@ -20,6 +20,7 @@ import {
 import {
   decideVaultPathSync,
   shouldApplyRemoteVaultPath,
+  shouldUseLatestRemoteVaultConfig,
 } from "../core/vault-path-policy";
 import { decryptSyncBlob, decryptSyncMetadata } from "../core/crypto";
 import {
@@ -251,6 +252,10 @@ export class SyncEngine {
     getRemoteVaultKey: () => this.deps.getRemoteVaultKey(),
     shouldApplyRemotePath: (path) =>
       shouldApplyRemoteVaultPath(path, {
+        vaultConfigRules: this.deps.getVaultConfigSyncRules(),
+      }),
+    shouldUseLatestRemoteVersion: (path) =>
+      shouldUseLatestRemoteVaultConfig(path, {
         vaultConfigRules: this.deps.getVaultConfigSyncRules(),
       }),
     eventGate: this.syncEventGate,
