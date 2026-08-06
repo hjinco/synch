@@ -1,68 +1,135 @@
-# Synch
+<h1 align="center">Synch</h1>
 
-Synch is an Obsidian Sync alternative for end-to-end encrypted vault synchronization.
+<p align="center">End-to-end encrypted sync for Obsidian.</p>
+
+<p align="center">
+  <a href="https://synch.run">Website</a> ·
+  <a href="https://synch.run/self-hosting">Cloudflare deployment</a> ·
+  <a href="https://synch.run/self-hosting-docker">Docker deployment</a>
+</p>
+
+<p align="center">
+  <a href="https://obsidian.md/plugins?id=synch"><img alt="Obsidian Community Plugin" src="https://img.shields.io/badge/Obsidian-Community%20Plugin-7c3aed?style=flat-square" /></a>
+  <a href="LICENSE"><img alt="MIT License" src="https://img.shields.io/badge/license-MIT-blue.svg?style=flat-square" /></a>
+</p>
+
+<p align="center">
+  <a href="README.md">English</a> |
+  <a href="docs/i18n/README.ko.md">한국어</a> |
+  <a href="docs/i18n/README.ja.md">日本語</a> |
+  <a href="docs/i18n/README.zh-CN.md">简体中文</a> |
+  <a href="docs/i18n/README.zh-TW.md">繁體中文</a>
+</p>
+
+<p align="center">
+  <a href="https://synch.run"><img alt="Synch overview" src=".github/assets/synch-preview.webp" /></a>
+</p>
+
+---
+
+Keep your Obsidian vault in sync across devices with local encryption, version
+history, and conflict-safe file handling.
 
 Synch is an independent community plugin and service. It is not affiliated with
 Obsidian.
 
-Website: [https://synch.run](https://synch.run)
+## Why Synch?
 
-Translations: [한국어](docs/i18n/README.ko.md) ·
-[日本語](docs/i18n/README.ja.md) ·
-[简体中文](docs/i18n/README.zh-CN.md) ·
-[繁體中文](docs/i18n/README.zh-TW.md)
+- **Private by design** — Vault data is encrypted on your device before upload.
+- **Fast sync** — Changes are detected frequently and synced across devices.
+- **Recoverable** — Restore previous versions and deleted files from encrypted history.
+- **Conflict-safe** — Non-overlapping Markdown edits can be merged automatically.
+- **Your choice of hosting** — Use Synch Cloud or run your own Synch server.
 
-## Install
+## How it works
 
-1. In Obsidian, open **Settings** → **Community plugins**.
-2. Turn off Restricted mode, then select **Browse**.
-3. Search for **Synchrun**, select it, and choose **Install**.
-4. Enable **Synchrun** after installation finishes.
+```mermaid
+flowchart LR
+    device["Your device"] --> encrypt["Encrypt vault data locally"]
+    encrypt --> server["Synch Cloud or your self-hosted server"]
+    server --> other["Download and decrypt on another device"]
+```
+
+The sync service stores encrypted file blobs and encrypted sync metadata. It is
+designed so that the hosted service cannot read your plaintext notes, plaintext
+file paths, or vault keys.
+
+## Compare Obsidian sync options
+
+Every option has a different balance of convenience, control, and setup effort.
+
+| Option | Encryption | Storage model | Conflict handling | Best fit |
+| --- | --- | --- | --- | --- |
+| **Synch** | Device-side E2EE | Synch Cloud or self-hosted | Automatically merges non-overlapping Markdown edits; preserves overlapping conflicts | Users who want a simple, open-source, privacy-focused workflow |
+| [Obsidian Sync](https://obsidian.md/sync) | E2EE by default; standard encryption is also available | Obsidian-hosted | Official Obsidian integration and sync history | Users who prefer the official hosted service |
+| [Self-hosted LiveSync](https://github.com/vrtmrz/obsidian-livesync) | E2EE | Self-hosted CouchDB, object storage, or optional WebRTC | Automatically merges simple conflicts | Users who want maximum backend control |
+| [Remotely Save](https://github.com/remotely-save/remotely-save) | Optional password-based E2EE | Your S3, WebDAV, Dropbox, OneDrive, Google Drive, and other storage | Basic conflict detection; advanced smart conflict handling is available in Pro | Users who already have a preferred storage provider |
+
+This comparison is intentionally high-level. Check each project's current
+documentation and settings before migrating an important vault.
 
 ## Features
 
-- **Near-instant sync:** Synch checks for changes frequently so edits can move
-  between devices almost immediately.
-- **Version history:** Recover from accidental edits with encrypted history for
-  synced files.
-- **Deleted file recovery:** Bring back deleted notes and attachments while
-  they are still kept in version history.
-- **Automatic conflict merges:** When the same Markdown note changes on
-  multiple devices, Synch automatically combines edits made to different
-  parts. If edits overlap, it creates a conflict file so no content is lost.
+- Near-instant synchronization
+- Encrypted version history
+- Deleted file recovery
+- Automatic Markdown conflict merging
+- Conflict copies when edits overlap
+- Markdown files enabled by default
+- Images, audio, video, and PDF files enabled by default
+- Additional file and folder exclusions
+- Hosted Synch Cloud
+- Custom API URLs for self-hosted deployments
+- Desktop and mobile Obsidian support
 
-## How to use Synch
+## Get started
 
-1. Install and enable the plugin.
-2. Open Synch's settings in Obsidian.
-3. Sign in to a Synch account from the plugin.
-4. Create or connect a remote vault.
-5. Keep Obsidian open while Synch uploads local changes and downloads remote changes.
+### Synch Cloud
 
-Synch syncs Markdown files by default. Images, audio, videos, and PDFs are also
-enabled by default. Other file types are disabled by default and can be enabled
-from the plugin settings. Hidden folders and hidden files are skipped, and you
-can exclude additional folders in settings.
+1. Open **Settings → Community plugins** in Obsidian.
+2. Turn off Restricted mode and select **Browse**.
+3. Search for **Synchrun**.
+4. Install and enable the plugin.
+5. Open Synchrun's settings and sign in.
+6. Create or connect a remote vault.
 
-When the same path is changed in incompatible ways on different devices, Synch
-keeps the conflicting content by writing a conflict copy in the vault instead of
-silently discarding it.
+Once connected, keep Obsidian open while Synch uploads local changes and
+downloads remote changes.
 
-The plugin can use the hosted Synch Cloud API or a custom API base URL for a
-self-hosted deployment.
+### Self-hosted Synch
 
-## Self-hosting
+The Cloudflare deployment guide deploys Synch to your own Cloudflare account. For
+a non-Cloudflare deployment, use the Docker/systemd guide.
 
-You can run your own Synch server on a free Cloudflare account or on your own
-hardware with Docker/systemd, then connect the Obsidian plugin to it with a
-custom server URL.
+You can run Synch on:
 
-See the self-hosting guides:
+- Cloudflare
+- Docker
+- Your own hardware with systemd
 
-- [Cloudflare](https://synch.run/self-hosting)
-- [Docker/systemd (no Cloudflare)](https://synch.run/self-hosting-docker)
+See the deployment guides:
 
-## Disclosures
+- [Cloudflare deployment](https://synch.run/self-hosting)
+- [Docker/systemd deployment](https://synch.run/self-hosting-docker)
+
+After deployment, set the custom API base URL in the plugin settings.
+
+## Safety notes
+
+Always create a full backup of your vault before:
+
+- Installing a new synchronization provider
+- Migrating from another sync solution
+- Changing encryption settings
+- Resetting or reconnecting a remote vault
+
+Do not run multiple synchronization providers against the same vault unless you
+fully understand how their file watchers and conflict resolution interact.
+
+### Disclosures
+
+<details>
+<summary>Show disclosures</summary>
 
 This section is provided for Obsidian developer policy review and for users who
 want to understand what the plugin does before installing it.
@@ -76,10 +143,10 @@ tokens, enforce storage limits, and manage service access.
 ### Network use
 
 Synch connects to the configured Synch API base URL over HTTPS and WebSocket
-connections. For the hosted service, this is Synch-operated infrastructure. The
-default hosted API endpoint is `https://api.synch.run`, and realtime sync uses
-`wss://api.synch.run` WebSocket connections. The plugin uses network requests
-to:
+connections. For the hosted service, this is Synch-operated infrastructure.
+The default hosted API endpoint is `https://api.synch.run`, and realtime sync
+uses `wss://api.synch.run` WebSocket connections. The plugin uses network
+requests to:
 
 - Sign in and maintain an authenticated device session.
 - Create, list, and connect remote vaults.
@@ -102,15 +169,16 @@ plaintext file paths, or plaintext vault keys.
 End-to-end encryption does not hide all operational metadata. Synch may process
 account information, vault identifiers and names, organization and membership
 records, local vault identifiers, blob identifiers, file sizes, storage usage,
-timestamps, sync cursors, session information, IP addresses, User-Agent strings,
-billing identifiers for hosted subscriptions, and similar operational metadata.
+timestamps, sync cursors, session information, IP addresses, User-Agent
+strings, billing identifiers for hosted subscriptions, and similar operational
+metadata.
 
 ### Local vault access
 
 Synch reads and writes files inside the current Obsidian vault so it can sync
-selected vault files. It stores plugin settings with Obsidian's plugin data API,
-stores the device session token with Obsidian's secret storage API, and stores
-local sync state in browser IndexedDB.
+selected vault files. It stores plugin settings with Obsidian's plugin data
+API, stores the device session token with Obsidian's secret storage API, and
+stores local sync state in browser IndexedDB.
 
 Synch does not intentionally read or write files outside the current Obsidian
 vault.
@@ -132,7 +200,13 @@ For details, read the hosted service legal documents:
 - [Privacy Policy](https://synch.run/privacy)
 - [Terms of Service](https://synch.run/terms)
 
-### Source code
+</details>
 
-Synch is open source under the MIT License. The source code for the plugin,
-hosted API, and website is published in this repository.
+## Contributing
+
+Issues, bug reports, documentation improvements, and pull requests are
+welcome.
+
+## License
+
+Synch is open source under the [MIT License](LICENSE).
