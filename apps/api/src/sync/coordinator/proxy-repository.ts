@@ -10,7 +10,7 @@ export type CoordinatorStub = {
  * namespace binding, but `DurableObjectStub`'s only member this class uses is
  * `fetch()`, so an in-process Node coordinator map satisfies this too.
  */
-type CoordinatorNamespace = {
+export type CoordinatorNamespace = {
 	getByName(name: string): CoordinatorStub;
 };
 

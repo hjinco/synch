@@ -6,22 +6,12 @@ import { mkdirSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { createApp } from "../app";
-import { createAuth } from "../auth";
-import { BillingRepository } from "../billing/repository";
-import { BillingService } from "../billing/service";
-import { capabilitiesFor, NODE_COMMUNITY_PROFILE } from "../config/deployment-profile";
+import { createApiApplication } from "../composition/create-api-application";
+import { NODE_COMMUNITY_PROFILE } from "../config/deployment-profile";
 import { createLibsqlDb } from "../db/client";
 import * as schema from "../db/d1";
-import { SubscriptionPolicyService } from "../subscription/policy-service";
-import { SyncService } from "../sync/access/service";
-import { SyncTokenService } from "../sync/access/token-service";
 import type { BlobStorage } from "../sync/blob/storage";
-import { CoordinatorProxyRepository } from "../sync/coordinator/proxy-repository";
-import { VaultPurgeConsumer } from "../vault/purge-consumer";
-import type { VaultPurgeQueue } from "../vault/purge-queue";
-import { VaultRepository } from "../vault/repository";
-import { VaultService } from "../vault/service";
+import { InlineVaultPurgeQueue } from "../vault/inline-purge-queue";
 import { NodeCoordinatorNamespace } from "./node-coordinator-namespace";
 
 const DEFAULT_MIGRATIONS_FOLDER = path.resolve(
@@ -57,14 +47,6 @@ export interface NodeRuntimeConfig {
 	migrationsFolder?: string;
 }
 
-class InlineVaultPurgeQueue implements VaultPurgeQueue {
-	constructor(private readonly vaultPurgeConsumer: VaultPurgeConsumer) {}
-
-	async enqueueVaultPurge(vaultId: string): Promise<void> {
-		await this.vaultPurgeConsumer.purgeVault(vaultId);
-	}
-}
-
 /**
  * Wires the same portable core (`createApp`, `VaultRepository`,
  * `SubscriptionPolicyService`, `SyncService`, ...) used on Cloudflare
@@ -80,7 +62,6 @@ class InlineVaultPurgeQueue implements VaultPurgeQueue {
  * self-hosted mode in `auth/email.ts`, so no mailer is needed either.
  */
 export async function createNodeRuntime(config: NodeRuntimeConfig) {
-	const capabilities = capabilitiesFor(NODE_COMMUNITY_PROFILE);
 	mkdirSync(config.dataDir, { recursive: true });
 	const appDbPath = path.join(config.dataDir, "app.db");
 	const client = createClient({ url: `file:${appDbPath}` });
@@ -92,16 +73,6 @@ export async function createNodeRuntime(config: NodeRuntimeConfig) {
 	const publicOrigin = new URL(config.publicUrl).origin;
 	const corsOrigin = config.corsOrigin ?? publicOrigin;
 
-	const vaultRepository = new VaultRepository(db);
-	const billingRepository = new BillingRepository(db);
-	const subscriptionPolicyService = new SubscriptionPolicyService(true, db, {
-		productIdsByPlanId: {},
-	});
-	const billingService = new BillingService(billingRepository, {
-		publicBaseUrl: publicOrigin,
-		wwwBaseUrl: corsOrigin,
-	});
-
 	const coordinatorNamespace = new NodeCoordinatorNamespace(config.dataDir, {
 		db,
 		blobStorage: config.blobStorage,
@@ -109,58 +80,37 @@ export async function createNodeRuntime(config: NodeRuntimeConfig) {
 		edition: NODE_COMMUNITY_PROFILE.edition,
 		polarProductIdsByPlanId: {},
 	});
-	const coordinatorProxyRepository = new CoordinatorProxyRepository(coordinatorNamespace);
-
-	const auth = createAuth(db, {
-		baseURL: config.publicUrl,
-		trustedOrigins: [publicOrigin, corsOrigin],
-		emailVerification: capabilities.emailVerification,
-		devMode: false,
-		secret: config.betterAuthSecret,
-		allowedEmails: config.authAllowedEmails,
-	});
-
-	const syncTokenService = new SyncTokenService(config.syncTokenSecret);
-	const vaultPurgeQueue = new InlineVaultPurgeQueue(
-		new VaultPurgeConsumer(
-			new VaultService(vaultRepository, subscriptionPolicyService),
-			coordinatorProxyRepository,
-		),
-	);
-	const vaultService = new VaultService(vaultRepository, subscriptionPolicyService, vaultPurgeQueue);
-	const syncService = new SyncService(
-		vaultService,
-		syncTokenService,
-		config.syncTokenTtlSeconds,
-		coordinatorProxyRepository,
-	);
-
-	const app = createApp(
+	const application = createApiApplication(
 		{
-			auth,
-			syncService,
-			vaultService,
-			syncTokenService,
-			blobRepository: config.blobStorage,
-			coordinatorProxyRepository,
-			subscriptionPolicyService,
-			billingService,
+			db,
+			blobStorage: config.blobStorage,
+			coordinatorNamespace,
+			createVaultPurgeQueue: (consumer) => new InlineVaultPurgeQueue(consumer),
 		},
 		{
-			publicOrigin,
+			profile: NODE_COMMUNITY_PROFILE,
 			corsOrigin,
-			billingEnabled: false,
+			auth: {
+				baseURL: config.publicUrl,
+				trustedOrigins: [publicOrigin, corsOrigin],
+				devMode: false,
+				secret: config.betterAuthSecret,
+				allowedEmails: config.authAllowedEmails,
+			},
+			syncTokenSecret: config.syncTokenSecret,
+			syncTokenTtlSeconds: config.syncTokenTtlSeconds,
+			productIdsByPlanId: {},
 		},
 	);
 
 	for (const [route, file] of Object.entries(STATIC_PAGES)) {
-		app.get(route, serveStatic({ path: path.join(PUBLIC_DIR, file) }));
+		application.app.get(route, serveStatic({ path: path.join(PUBLIC_DIR, file) }));
 	}
 
 	return {
-		fetch: (request: Request) => app.fetch(request),
+		fetch: (request: Request) => application.app.fetch(request),
 		coordinatorNamespace,
-		syncTokenService,
+		syncTokenService: application.syncTokenService,
 		dispose: () => {
 			coordinatorNamespace.closeAll();
 			void client.close();

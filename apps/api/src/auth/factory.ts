@@ -14,6 +14,7 @@ import {
 } from "./allowed-emails";
 import { getDeviceVerificationUri } from "./device";
 import { createEmailVerificationConfig } from "./email";
+import type { EmailSender } from "./ports";
 import {
 	defaultOrganizationSlug,
 	readDefaultOrganizationIdForUserId,
@@ -26,7 +27,7 @@ export type AuthConfig = {
 	devMode: boolean;
 	/** Signing secret for sessions/cookies/CSRF. Falls back to better-auth's own `BETTER_AUTH_SECRET` env lookup when omitted (the Cloudflare path). */
 	secret?: string;
-	email?: SendEmail;
+	email?: EmailSender;
 	emailFrom?: string;
 	/** Comma-separated email addresses allowed to create accounts. Blank or omitted keeps sign-up open. */
 	allowedEmails?: string;

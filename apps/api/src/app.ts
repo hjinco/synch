@@ -26,13 +26,11 @@ export type AppDependencies = {
 	coordinatorProxyRepository: CoordinatorProxyRepository;
 	vaultService: VaultService;
 	subscriptionPolicyService: SubscriptionPolicyReader;
-	billingService: BillingService;
+	billingService?: BillingService;
 };
 
 export type AppConfig = {
-	publicOrigin: string;
 	corsOrigin: string;
-	billingEnabled: boolean;
 };
 
 export type { VaultRecord } from "./vault/types";
@@ -53,8 +51,11 @@ export function createApp(deps: AppDependencies, config: AppConfig): Hono {
 	registerPluginVersionRoutes(app);
 	registerSyncAccessRoutes(app, deps);
 	registerVaultRoutes(app, deps);
-	if (config.billingEnabled) {
-		registerBillingRoutes(app, deps);
+	if (deps.billingService) {
+		registerBillingRoutes(app, {
+			auth: deps.auth,
+			billingService: deps.billingService,
+		});
 	}
 	registerBlobRoutes(app, deps);
 	registerCoordinatorProxyRoutes(app, deps);
