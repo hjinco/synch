@@ -32,7 +32,9 @@ jobs:
 
       - run: pnpm -C apps/api test:unit
 
-      - run: pnpm -C apps/api test:integration
+      - run: pnpm -C apps/api test:e2e:node
+
+      - run: pnpm -C apps/api test:integration:cloudflare
         env:
           BETTER_AUTH_URL: http://127.0.0.1:8787
           BETTER_AUTH_SECRET: ci-better-auth-secret-that-is-long-enough
@@ -53,7 +55,7 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
 
       - name: Deploy API
-        run: pnpm -C apps/api deploy:managed
+        run: pnpm -C apps/api deploy:cloudflare:managed
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

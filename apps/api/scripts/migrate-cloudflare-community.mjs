@@ -1,3 +1,4 @@
+// Applies app DB migrations for the community edition deployed on Cloudflare.
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";

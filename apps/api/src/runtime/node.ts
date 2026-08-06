@@ -10,6 +10,7 @@ import { createApp } from "../app";
 import { createAuth } from "../auth";
 import { BillingRepository } from "../billing/repository";
 import { BillingService } from "../billing/service";
+import { capabilitiesFor, NODE_COMMUNITY_PROFILE } from "../config/deployment-profile";
 import { createLibsqlDb } from "../db/client";
 import * as schema from "../db/d1";
 import { SubscriptionPolicyService } from "../subscription/policy-service";
@@ -79,6 +80,7 @@ class InlineVaultPurgeQueue implements VaultPurgeQueue {
  * self-hosted mode in `auth/email.ts`, so no mailer is needed either.
  */
 export async function createNodeRuntime(config: NodeRuntimeConfig) {
+	const capabilities = capabilitiesFor(NODE_COMMUNITY_PROFILE);
 	mkdirSync(config.dataDir, { recursive: true });
 	const appDbPath = path.join(config.dataDir, "app.db");
 	const client = createClient({ url: `file:${appDbPath}` });
@@ -104,7 +106,7 @@ export async function createNodeRuntime(config: NodeRuntimeConfig) {
 		db,
 		blobStorage: config.blobStorage,
 		syncTokenSecret: config.syncTokenSecret,
-		selfHosted: true,
+		edition: NODE_COMMUNITY_PROFILE.edition,
 		polarProductIdsByPlanId: {},
 	});
 	const coordinatorProxyRepository = new CoordinatorProxyRepository(coordinatorNamespace);
@@ -112,7 +114,7 @@ export async function createNodeRuntime(config: NodeRuntimeConfig) {
 	const auth = createAuth(db, {
 		baseURL: config.publicUrl,
 		trustedOrigins: [publicOrigin, corsOrigin],
-		selfHosted: true,
+		emailVerification: capabilities.emailVerification,
 		devMode: false,
 		secret: config.betterAuthSecret,
 		allowedEmails: config.authAllowedEmails,

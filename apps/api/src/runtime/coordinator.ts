@@ -1,6 +1,8 @@
-import { apiError } from "../errors";
 import { readPolarProductIdsByPlanId } from "../billing/product-ids";
+import { readCloudflareProfile } from "../config/cloudflare";
+import { isCommunityEdition } from "../config/deployment-profile";
 import { createDb } from "../db/client";
+import { apiError } from "../errors";
 import { SubscriptionPolicyService } from "../subscription/policy-service";
 import { SyncTokenService } from "../sync/access/token-service";
 import { BlobRepository } from "../sync/blob/repository";
@@ -29,6 +31,7 @@ import { VaultSyncStatusRepository } from "../sync/health/status-repository";
 import { VaultRepository } from "../vault/repository";
 
 export function createCoordinatorRuntime(ctx: DurableObjectState, env: Env) {
+	const profile = readCloudflareProfile(env);
 	const blobGracePeriodMs = 30 * 60 * 1000;
 	const cursorActiveTtlMs = 30 * 24 * 60 * 60 * 1000;
 	const db = createDb(env.DB);
@@ -45,9 +48,13 @@ export function createCoordinatorRuntime(ctx: DurableObjectState, env: Env) {
 	const socketService = new CoordinatorSocketService(ctx);
 	const blobRepository = new BlobRepository(env.SYNC_BLOBS);
 	const vaultRepository = new VaultRepository(db);
-	const subscriptionPolicyService = new SubscriptionPolicyService(env.SELF_HOSTED, db, {
-		productIdsByPlanId: readPolarProductIdsByPlanId(env),
-	});
+	const subscriptionPolicyService = new SubscriptionPolicyService(
+		isCommunityEdition(profile),
+		db,
+		{
+			productIdsByPlanId: readPolarProductIdsByPlanId(env),
+		},
+	);
 	const syncStatusRepository = new VaultSyncStatusRepository(db);
 	const syncTokenService = new SyncTokenService(env.SYNC_TOKEN_SECRET);
 	const maintenanceScheduler = new CoordinatorMaintenanceScheduler(ctx);

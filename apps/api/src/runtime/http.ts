@@ -4,10 +4,13 @@ import { readPolarProductIdsByPlanId } from "../billing/product-ids";
 import { BillingRepository } from "../billing/repository";
 import { createPolarAuthPlugin } from "../billing/polar";
 import { BillingService } from "../billing/service";
-import { resolveOriginBinding, resolveUrlBinding } from "../config/env";
+import {
+	parseCloudflareHttpConfig,
+	type CloudflareRuntimeEnv,
+} from "../config/cloudflare";
+import { isCommunityEdition } from "../config/deployment-profile";
 import { createDb } from "../db/client";
 import { CloudflareSubscriptionPolicyRefreshQueue } from "../subscription/policy-refresh-queue";
-import type { SubscriptionPolicyRefreshMessage } from "../subscription/policy-refresh-queue";
 import { SubscriptionPolicyService } from "../subscription/policy-service";
 import { SyncService } from "../sync/access/service";
 import { SyncTokenService } from "../sync/access/token-service";
@@ -19,52 +22,24 @@ import type { VaultPurgeMessage } from "../vault/purge-queue";
 import { VaultRepository } from "../vault/repository";
 import { VaultService } from "../vault/service";
 
-type RuntimeEnv = Omit<
-	Env,
-	| "AUTH_ALLOWED_EMAILS"
-	| "AUTH_EMAIL_FROM"
-	| "DEV_MODE"
-	| "EMAIL"
-	| "POLICY_REFRESH_QUEUE"
-	| "VAULT_PURGE_QUEUE"
-> & {
-	AUTH_ALLOWED_EMAILS?: string;
-	EMAIL?: SendEmail;
-	AUTH_EMAIL_FROM?: string;
-	DEV_MODE?: boolean | string;
-	WWW_BASE_URL?: string;
-	POLAR_ACCESS_TOKEN?: string;
-	POLAR_WEBHOOK_SECRET?: string;
-	POLAR_STARTER_MONTHLY_PRODUCT_ID?: string;
-	POLAR_STARTER_ANNUAL_PRODUCT_ID?: string;
-	POLAR_SANDBOX?: string;
-	POLICY_REFRESH_QUEUE?: Queue<SubscriptionPolicyRefreshMessage>;
-	VAULT_PURGE_QUEUE?: Queue<VaultPurgeMessage>;
-};
-
-export function createRuntimeApp(env: RuntimeEnv, request: Request) {
-	const requestOrigin = new URL(request.url).origin;
-	const authBaseUrl = resolveUrlBinding("BETTER_AUTH_URL", env.BETTER_AUTH_URL, requestOrigin);
-	const publicOrigin = new URL(authBaseUrl).origin;
-	const devMode = resolveBooleanBinding(env.DEV_MODE, false);
-	const corsOrigin = devMode
-		? "http://localhost:4321"
-		: resolveOriginBinding("WWW_BASE_URL", env.WWW_BASE_URL, "http://localhost:4321");
+export function createRuntimeApp(env: CloudflareRuntimeEnv, request: Request) {
+	const config = parseCloudflareHttpConfig(env, request);
+	const communityEdition = isCommunityEdition(config.profile);
 	const db = createDb(env.DB);
 	const billingRepository = new BillingRepository(db);
 	const productIdsByPlanId = readPolarProductIdsByPlanId(env);
 	const polarConfig = {
 		accessToken: env.POLAR_ACCESS_TOKEN,
 		webhookSecret: env.POLAR_WEBHOOK_SECRET,
-		sandbox: resolveBooleanBinding(env.POLAR_SANDBOX, false),
-		publicBaseUrl: authBaseUrl,
+		sandbox: config.polarSandbox,
+		publicBaseUrl: config.authBaseUrl,
 	};
 	const vaultRepository = new VaultRepository(db);
 	const coordinatorProxyRepository = new CoordinatorProxyRepository(env.SYNC_COORDINATOR);
-	const subscriptionPolicyService = new SubscriptionPolicyService(env.SELF_HOSTED, db, {
+	const subscriptionPolicyService = new SubscriptionPolicyService(communityEdition, db, {
 		productIdsByPlanId,
 	});
-	const polarAuthPlugin = env.SELF_HOSTED
+	const polarAuthPlugin = config.capabilities.billing === "disabled"
 		? null
 		: createPolarAuthPlugin(polarConfig, billingRepository, {
 				onSubscriptionUpsert: async (organizationId) => {
@@ -78,15 +53,16 @@ export function createRuntimeApp(env: RuntimeEnv, request: Request) {
 				},
 			});
 	const auth = createAuth(db, {
-		baseURL: authBaseUrl,
-		trustedOrigins: Array.from(new Set([publicOrigin, corsOrigin])),
-		selfHosted: env.SELF_HOSTED,
-		devMode,
+		baseURL: config.authBaseUrl,
+		trustedOrigins: Array.from(new Set([config.publicOrigin, config.corsOrigin])),
+		emailVerification: config.capabilities.emailVerification,
+		devMode: config.devMode,
 		email: env.EMAIL,
 		emailFrom: env.AUTH_EMAIL_FROM,
-		allowedEmails: env.SELF_HOSTED
-			? requireNonBlankStringBinding(env.AUTH_ALLOWED_EMAILS, "AUTH_ALLOWED_EMAILS")
-			: undefined,
+		allowedEmails:
+			config.capabilities.signUpAccess === "allowlist"
+				? requireNonBlankStringBinding(env.AUTH_ALLOWED_EMAILS, "AUTH_ALLOWED_EMAILS")
+				: undefined,
 		plugins: polarAuthPlugin ? [polarAuthPlugin] : [],
 	});
 	const blobRepository = new BlobRepository(env.SYNC_BLOBS);
@@ -94,10 +70,10 @@ export function createRuntimeApp(env: RuntimeEnv, request: Request) {
 	const billingService = new BillingService(billingRepository, {
 		...polarConfig,
 		productIdsByPlanId,
-		wwwBaseUrl: corsOrigin,
+		wwwBaseUrl: config.corsOrigin,
 	});
 	const vaultPurgeQueue = createVaultPurgeQueue({
-		selfHosted: env.SELF_HOSTED,
+		backgroundJobs: config.capabilities.backgroundJobs,
 		vaultRepository,
 		subscriptionPolicyService,
 		coordinatorProxyRepository,
@@ -127,9 +103,9 @@ export function createRuntimeApp(env: RuntimeEnv, request: Request) {
 			billingService,
 		},
 		{
-			publicOrigin,
-			corsOrigin,
-			billingEnabled: !env.SELF_HOSTED,
+			publicOrigin: config.publicOrigin,
+			corsOrigin: config.corsOrigin,
+			billingEnabled: config.capabilities.billing === "polar",
 		},
 	);
 
@@ -140,25 +116,14 @@ export function createRuntimeApp(env: RuntimeEnv, request: Request) {
 	};
 }
 
-function resolveBooleanBinding(value: boolean | string | undefined, fallback: boolean): boolean {
-	if (typeof value === "boolean") {
-		return value;
-	}
-	if (value === undefined || value.trim() === "") {
-		return fallback;
-	}
-
-	return value === "true" || value === "1";
-}
-
 function createVaultPurgeQueue(input: {
-	selfHosted: boolean;
+	backgroundJobs: "cloudflare-queue" | "inline";
 	vaultRepository: VaultRepository;
 	subscriptionPolicyService: SubscriptionPolicyService;
 	coordinatorProxyRepository: CoordinatorProxyRepository;
 	queue?: Queue<VaultPurgeMessage>;
 }): VaultPurgeQueue {
-	if (!input.selfHosted) {
+	if (input.backgroundJobs === "cloudflare-queue") {
 		return new CloudflareVaultPurgeQueue(
 			requireBinding(input.queue, "VAULT_PURGE_QUEUE"),
 		);

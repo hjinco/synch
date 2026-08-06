@@ -28,8 +28,9 @@ From the repository root:
 
 ```sh
 pnpm -C apps/api test:unit
-pnpm -C apps/api test:integration
-pnpm -C apps/api test:e2e:smoke
+pnpm -C apps/api test:integration:cloudflare
+pnpm -C apps/api test:e2e:node
+pnpm -C apps/api test:smoke
 pnpm -C apps/api typecheck
 
 pnpm -C apps/obsidian-plugin test

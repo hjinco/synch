@@ -1,15 +1,15 @@
 import type { AuthConfig } from "./factory";
 
 export function createEmailVerificationConfig(config: AuthConfig) {
-	if (config.selfHosted || config.devMode) {
+	if (config.emailVerification === "disabled" || config.devMode) {
 		return undefined;
 	}
 
 	if (!config.email) {
-		throw new Error("Cloudflare Email Service binding EMAIL is required when SELF_HOSTED is false.");
+		throw new Error("Email delivery is required when email verification is enabled.");
 	}
 	if (!config.emailFrom) {
-		throw new Error("AUTH_EMAIL_FROM is required when SELF_HOSTED is false.");
+		throw new Error("AUTH_EMAIL_FROM is required when email verification is enabled.");
 	}
 
 	const email = config.email;

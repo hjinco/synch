@@ -1,7 +1,8 @@
 import type Database from "better-sqlite3";
 
-import { apiError } from "../errors";
+import type { ProductEdition } from "../config/deployment-profile";
 import type { AppDb } from "../db/client";
+import { apiError } from "../errors";
 import { SubscriptionPolicyService } from "../subscription/policy-service";
 import { SyncTokenService } from "../sync/access/token-service";
 import type { BlobStorage } from "../sync/blob/storage";
@@ -36,7 +37,7 @@ export interface NodeCoordinatorSharedDeps {
 	db: AppDb;
 	blobStorage: BlobStorage;
 	syncTokenSecret: string;
-	selfHosted: boolean;
+	edition: ProductEdition;
 	polarProductIdsByPlanId: Record<string, string>;
 }
 
@@ -77,9 +78,13 @@ export function createNodeCoordinatorRuntime(
 	const historyStore = new CoordinatorHistoryStore(storageHandle);
 	const mutationStore = new CoordinatorMutationStore(storageHandle);
 	const vaultRepository = new VaultRepository(deps.db);
-	const subscriptionPolicyService = new SubscriptionPolicyService(deps.selfHosted, deps.db, {
-		productIdsByPlanId: deps.polarProductIdsByPlanId,
-	});
+	const subscriptionPolicyService = new SubscriptionPolicyService(
+		deps.edition === "community",
+		deps.db,
+		{
+			productIdsByPlanId: deps.polarProductIdsByPlanId,
+		},
+	);
 	const syncStatusRepository = new VaultSyncStatusRepository(deps.db);
 	const syncTokenService = new SyncTokenService(deps.syncTokenSecret);
 

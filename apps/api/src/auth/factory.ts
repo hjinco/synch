@@ -22,7 +22,7 @@ import {
 export type AuthConfig = {
 	baseURL: string;
 	trustedOrigins: string[];
-	selfHosted: boolean;
+	emailVerification: "required" | "disabled";
 	devMode: boolean;
 	/** Signing secret for sessions/cookies/CSRF. Falls back to better-auth's own `BETTER_AUTH_SECRET` env lookup when omitted (the Cloudflare path). */
 	secret?: string;
@@ -49,7 +49,8 @@ export function createAuth(db: AppDb, config: AuthConfig) {
 		trustedOrigins: config.trustedOrigins,
 		emailAndPassword: {
 			enabled: true,
-			requireEmailVerification: !config.selfHosted && !config.devMode,
+			requireEmailVerification:
+				config.emailVerification === "required" && !config.devMode,
 		},
 		emailVerification,
 		session: {

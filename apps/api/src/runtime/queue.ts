@@ -1,4 +1,6 @@
 import { readPolarProductIdsByPlanId } from "../billing/product-ids";
+import { readCloudflareProfile } from "../config/cloudflare";
+import { isCommunityEdition } from "../config/deployment-profile";
 import { createDb } from "../db/client";
 import { SubscriptionPolicyRefreshConsumer } from "../subscription/policy-refresh-consumer";
 import type { SubscriptionPolicyRefreshMessage } from "../subscription/policy-refresh-queue";
@@ -13,11 +15,16 @@ import { VaultService } from "../vault/service";
 export type QueueMessage = VaultPurgeMessage | SubscriptionPolicyRefreshMessage;
 
 export function createQueueConsumer(env: Env): QueueConsumer {
+	const profile = readCloudflareProfile(env);
 	const db = createDb(env.DB);
 	const vaultRepository = new VaultRepository(db);
-	const subscriptionPolicyService = new SubscriptionPolicyService(env.SELF_HOSTED, db, {
-		productIdsByPlanId: readPolarProductIdsByPlanId(env),
-	});
+	const subscriptionPolicyService = new SubscriptionPolicyService(
+		isCommunityEdition(profile),
+		db,
+		{
+			productIdsByPlanId: readPolarProductIdsByPlanId(env),
+		},
+	);
 	const vaultService = new VaultService(vaultRepository, subscriptionPolicyService);
 	const coordinatorProxyRepository = new CoordinatorProxyRepository(env.SYNC_COORDINATOR);
 	const policyRefreshService = new SubscriptionPolicyRefreshService(
