@@ -40,9 +40,11 @@ export interface SyncAutoLoopDeps {
   reconnectMaxDelayMs?: number;
   syncRetryBaseDelayMs?: number;
   syncRetryMaxDelayMs?: number;
+  shouldDeferSyncWork?: () => boolean;
   onConnectionStateChange?: (state: SyncConnectionState) => void;
   onStorageStatusChange?: (status: SyncStorageStatus | null) => void;
   onSyncScheduled?: () => void;
+  onSyncDeferred?: () => void;
   onIdle?: () => void;
   onError?: (error: unknown) => void;
   onRemoteVaultUnavailable?: (error: RemoteVaultUnavailableError) => void | Promise<void>;
@@ -93,6 +95,12 @@ export class SyncAutoLoop {
       return;
     }
 
+    if (this.shouldDeferSyncWork()) {
+      this.requestPush();
+      this.deps.onSyncDeferred?.();
+      return;
+    }
+
     this.deps.onSyncScheduled?.();
     this.timers.set("push", () => {
       this.requestPush();
@@ -100,13 +108,29 @@ export class SyncAutoLoop {
     }, this.deps.pushDebounceMs ?? DEFAULT_PUSH_DEBOUNCE_MS);
   }
 
+  async syncNow(): Promise<void> {
+    if (!this.isActive()) {
+      return;
+    }
+
+    this.timers.clear("push");
+    this.deps.onSyncScheduled?.();
+    this.requestPullWork(null);
+    this.requestPush();
+    await this.drain(true);
+  }
+
   requestPull(targetCursor: number | null = null): void {
     if (!this.isActive()) {
       return;
     }
 
-    this.deps.onSyncScheduled?.();
     this.requestPullWork(targetCursor);
+    if (this.shouldDeferSyncWork()) {
+      this.deps.onSyncDeferred?.();
+      return;
+    }
+    this.deps.onSyncScheduled?.();
     void this.drain();
   }
 
@@ -236,17 +260,17 @@ export class SyncAutoLoop {
         const unblockedFileSizeMutations =
           (await this.deps.unblockFileSizeBlockedMutations?.(session)) ?? 0;
         if (unblockedFileSizeMutations > 0) {
-          this.deps.onSyncScheduled?.();
           this.requestPush();
+          this.reportQueuedWork();
         }
         if (session.serverCursor > cursor) {
-          this.deps.onSyncScheduled?.();
           this.requestPullWork(session.serverCursor);
+          this.reportQueuedWork();
         }
         this.state.set("live");
-        if (this.hasPendingWork()) {
+        if (this.hasPendingWork() && !this.shouldDeferSyncWork()) {
           void this.drain();
-        } else {
+        } else if (!this.hasPendingWork()) {
           this.deps.onIdle?.();
         }
       } catch (error) {
@@ -322,9 +346,11 @@ export class SyncAutoLoop {
       const unblockedFileSizeMutations =
         (await this.deps.unblockFileSizeBlockedMutations?.(session)) ?? 0;
       if (unblockedFileSizeMutations > 0) {
-        this.deps.onSyncScheduled?.();
         this.requestPush();
-        void this.drain();
+        this.reportQueuedWork();
+        if (!this.shouldDeferSyncWork()) {
+          void this.drain();
+        }
       }
     } catch (error) {
       if (!isRealtimeConnectionError(error)) {
@@ -356,8 +382,8 @@ export class SyncAutoLoop {
     }
   }
 
-  private async drain(): Promise<void> {
-    if (!this.isActive() || this.drainPromise) {
+  private async drain(force = false): Promise<void> {
+    if (!this.isActive() || (!force && this.shouldDeferSyncWork()) || this.drainPromise) {
       return await (this.drainPromise ?? Promise.resolve());
     }
     this.drainPromise = this.runDrainLoop();
@@ -479,6 +505,12 @@ export class SyncAutoLoop {
       return;
     }
 
+    if (this.shouldDeferSyncWork()) {
+      this.state.set("live");
+      this.deps.onSyncDeferred?.();
+      return;
+    }
+
     this.state.set("retry_wait");
     const baseDelay = this.deps.syncRetryBaseDelayMs ?? DEFAULT_SYNC_RETRY_BASE_DELAY_MS;
     const maxDelay = this.deps.syncRetryMaxDelayMs ?? DEFAULT_SYNC_RETRY_MAX_DELAY_MS;
@@ -501,6 +533,18 @@ export class SyncAutoLoop {
 
   private isActive(): boolean {
     return this.state.isActive();
+  }
+
+  private shouldDeferSyncWork(): boolean {
+    return this.deps.shouldDeferSyncWork?.() ?? false;
+  }
+
+  private reportQueuedWork(): void {
+    if (this.shouldDeferSyncWork()) {
+      this.deps.onSyncDeferred?.();
+    } else {
+      this.deps.onSyncScheduled?.();
+    }
   }
 
   private requestPush(): void {

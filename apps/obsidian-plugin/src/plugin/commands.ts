@@ -11,12 +11,21 @@ export interface SynchCommandController {
   connectRemoteVaultFromPrompt(): Promise<void>;
   disconnectRemoteVault(): Promise<void>;
   openVersionHistoryPane(): Promise<void>;
+  syncNow(): Promise<void>;
 }
 
 export function registerSynchCommands(
   plugin: Plugin,
   controller: SynchCommandController,
 ): void {
+  plugin.addCommand({
+    id: "sync-now",
+    name: t("sync.now"),
+    callback: async () => {
+      await controller.syncNow();
+    },
+  });
+
   plugin.addCommand({
     id: "sign-in-on-this-device",
     name: t("auth.signInOnThisDevice"),

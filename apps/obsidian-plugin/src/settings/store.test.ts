@@ -12,6 +12,7 @@ describe("SynchSettingsStore", () => {
     const pluginDataStore = new MemoryPluginDataStore({
       apiBaseUrl: "https://api.synch.test",
       syncEnabled: false,
+      syncIntervalMs: 0,
       fileRules: {
         ...DEFAULT_SYNC_FILE_RULES,
         includeImages: false,
@@ -33,6 +34,7 @@ describe("SynchSettingsStore", () => {
         excludedFolders: ["Archive"],
       },
       vaultConfigSync: DEFAULT_VAULT_CONFIG_SYNC_RULES,
+      syncIntervalMs: 0,
     });
   });
 
@@ -58,6 +60,7 @@ describe("SynchSettingsStore", () => {
         includeAudio: false,
       },
       vaultConfigSync: DEFAULT_VAULT_CONFIG_SYNC_RULES,
+      syncIntervalMs: 0,
     });
   });
 
@@ -123,6 +126,7 @@ describe("SynchSettingsStore", () => {
         includeAudio: false,
       },
       vaultConfigSync: DEFAULT_VAULT_CONFIG_SYNC_RULES,
+      syncIntervalMs: 0,
     });
     const store = new SynchSettingsStore(pluginDataStore, "https://default.synch.test");
     store.initialize();
@@ -137,6 +141,7 @@ describe("SynchSettingsStore", () => {
         includeAudio: false,
       },
       vaultConfigSync: DEFAULT_VAULT_CONFIG_SYNC_RULES,
+      syncIntervalMs: 0,
     });
   });
 
@@ -153,13 +158,32 @@ describe("SynchSettingsStore", () => {
 
     expect(pluginDataStore.saveCount).toBe(0);
   });
+
+  it("persists supported sync intervals and normalizes unsupported values", async () => {
+    const pluginDataStore = new MemoryPluginDataStore({
+      apiBaseUrl: "https://custom.synch.test",
+      syncEnabled: true,
+      syncIntervalMs: 0,
+      fileRules: DEFAULT_SYNC_FILE_RULES,
+      vaultConfigSync: DEFAULT_VAULT_CONFIG_SYNC_RULES,
+    });
+    const store = new SynchSettingsStore(pluginDataStore, "https://default.synch.test");
+    store.initialize();
+
+    await store.updateSyncIntervalMs(180_000);
+    expect(store.getSnapshot().syncIntervalMs).toBe(180_000);
+
+    await store.updateSyncIntervalMs(42_000);
+    expect(store.getSnapshot().syncIntervalMs).toBe(0);
+    expect(pluginDataStore.saveCount).toBe(2);
+  });
 });
 
 class MemoryPluginDataStore implements PluginDataStoreLike {
   saveCount = 0;
   private readonly data: Record<string, unknown>;
 
-  constructor(settings: SynchPluginSettings) {
+  constructor(settings: Partial<SynchPluginSettings>) {
     this.data = {
       [SYNCH_SETTINGS_KEY]: settings,
     };

@@ -41,6 +41,7 @@ function formatSyncStatusLabel(statusLabel: string): string {
   const translated = label
     .replace(/^not ready/, t("sync.state.not_ready"))
     .replace(/^paused/, t("sync.state.paused"))
+    .replace(/^waiting to sync/, t("sync.state.pending"))
     .replace(/^syncing/, t("sync.state.syncing"))
     .replace(/^offline/, t("sync.state.offline"))
     .replace(/^reconnecting/, t("sync.state.reconnecting"))

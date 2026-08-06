@@ -11,12 +11,21 @@ import {
 } from "../sync/core/vault-config-rules";
 
 export const SYNCH_SETTINGS_KEY = "settings";
+export const REALTIME_SYNC_INTERVAL_MS = 0;
+export const SYNC_INTERVAL_OPTIONS_MS = [
+  REALTIME_SYNC_INTERVAL_MS,
+  30_000,
+  60_000,
+  3 * 60_000,
+  5 * 60_000,
+] as const;
 
 export interface SynchPluginSettings {
   apiBaseUrl: string;
   fileRules: SyncFileRules;
   vaultConfigSync: VaultConfigSyncRules;
   syncEnabled: boolean;
+  syncIntervalMs: number;
 }
 
 export const DEFAULT_SYNCH_PLUGIN_SETTINGS: SynchPluginSettings = {
@@ -24,6 +33,7 @@ export const DEFAULT_SYNCH_PLUGIN_SETTINGS: SynchPluginSettings = {
   fileRules: DEFAULT_SYNC_FILE_RULES,
   vaultConfigSync: DEFAULT_VAULT_CONFIG_SYNC_RULES,
   syncEnabled: true,
+  syncIntervalMs: REALTIME_SYNC_INTERVAL_MS,
 };
 
 export function normalizeSynchPluginSettings(
@@ -36,6 +46,7 @@ export function normalizeSynchPluginSettings(
       fileRules: DEFAULT_SYNC_FILE_RULES,
       vaultConfigSync: DEFAULT_VAULT_CONFIG_SYNC_RULES,
       syncEnabled: true,
+      syncIntervalMs: REALTIME_SYNC_INTERVAL_MS,
     };
   }
 
@@ -45,5 +56,13 @@ export function normalizeSynchPluginSettings(
     fileRules: normalizeSyncFileRules(record.fileRules),
     vaultConfigSync: normalizeVaultConfigSyncRules(record.vaultConfigSync),
     syncEnabled: typeof record.syncEnabled === "boolean" ? record.syncEnabled : true,
+    syncIntervalMs: normalizeSyncIntervalMs(record.syncIntervalMs),
   };
+}
+
+export function normalizeSyncIntervalMs(value: unknown): number {
+  return typeof value === "number" &&
+    SYNC_INTERVAL_OPTIONS_MS.includes(value)
+    ? value
+    : REALTIME_SYNC_INTERVAL_MS;
 }

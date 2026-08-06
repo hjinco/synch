@@ -25,6 +25,7 @@ export interface SynchVaultConfigSyncRules {
 export type SynchSyncState =
   | "not_ready"
   | "paused"
+  | "pending"
   | "syncing"
   | "offline"
   | "reconnecting"

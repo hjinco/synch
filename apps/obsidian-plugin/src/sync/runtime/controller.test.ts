@@ -10,6 +10,39 @@ import { SyncEngine } from "./engine";
 describe("SyncController", () => {
   afterEach(() => {
     vi.restoreAllMocks();
+    vi.useRealTimers();
+  });
+
+  it("keeps realtime connected and reschedules file sync cycles in periodic mode", async () => {
+    vi.useFakeTimers();
+    vi.spyOn(SyncEngine.prototype, "reconcileOnce").mockResolvedValue({
+      filesScanned: 1,
+      filesQueuedForUpsert: 0,
+      filesQueuedForDelete: 0,
+    });
+    vi.spyOn(SyncEngine.prototype, "waitForLocalMutationWork").mockResolvedValue();
+    const syncNow = vi.spyOn(SyncEngine.prototype, "syncNow").mockResolvedValue();
+    const startAutoSync = vi
+      .spyOn(SyncEngine.prototype, "startAutoSync")
+      .mockResolvedValue(true);
+    vi.spyOn(SyncEngine.prototype, "stopAutoSync").mockImplementation(() => {});
+    vi.spyOn(SyncEngine.prototype, "setStorageStatusWatching").mockImplementation(
+      () => {},
+    );
+    const controller = new SyncController(
+      createDeps({ getSyncIntervalMs: () => 180_000 }),
+    );
+
+    await controller.ensureAutoSyncState();
+    expect(syncNow).toHaveBeenCalledTimes(1);
+    expect(startAutoSync).toHaveBeenCalledTimes(1);
+
+    await vi.advanceTimersByTimeAsync(180_000);
+    expect(syncNow).toHaveBeenCalledTimes(2);
+
+    controller.stopAutoSyncAndMarkPaused();
+    await vi.advanceTimersByTimeAsync(180_000);
+    expect(syncNow).toHaveBeenCalledTimes(2);
   });
 
   it("schedules a push on startup when persisted pending mutations remain", async () => {
@@ -251,6 +284,7 @@ function createDeps(
     getRemoteVaultKey: () => new Uint8Array(32),
     getSyncFileRules: () => DEFAULT_SYNC_FILE_RULES,
     getVaultConfigSyncRules: () => DEFAULT_VAULT_CONFIG_SYNC_RULES,
+    getSyncIntervalMs: () => 0,
     hasActiveRemoteVaultSession: () => true,
     hasConnectedRemoteVault: () => true,
     hasAuthenticatedSession: () => true,

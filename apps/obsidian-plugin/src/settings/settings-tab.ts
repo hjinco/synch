@@ -12,6 +12,7 @@ import {
   renderRemoteVaultSettings,
   renderSettingsHeading,
   renderSubscriptionSetting,
+  renderSyncFrequencySettings,
   renderSyncStatusSetting,
   type SyncStatusSettingControls,
 } from "./settings-tab/sections";
@@ -143,6 +144,11 @@ export class SynchSettingTab extends PluginSettingTab {
       () => this.refresh(),
     );
     renderFileSyncSettings(this.app, containerEl, this.controller, () => this.refresh());
+    renderSyncFrequencySettings(
+      containerEl,
+      this.controller,
+      hasConnectedRemoteVault,
+    );
   }
 
 }

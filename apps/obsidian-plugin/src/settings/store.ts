@@ -3,6 +3,7 @@ import { getDefaultApiBaseUrl, parseApiBaseUrlInput } from "../config";
 import {
   DEFAULT_SYNCH_PLUGIN_SETTINGS,
   normalizeSynchPluginSettings,
+  normalizeSyncIntervalMs,
   type SynchPluginSettings,
   SYNCH_SETTINGS_KEY,
 } from "./schema";
@@ -98,6 +99,21 @@ export class SynchSettingsStore {
     this.settings = {
       ...this.settings,
       syncEnabled: enabled,
+    };
+    this.pluginDataStore.write(SYNCH_SETTINGS_KEY, this.settings);
+    await this.pluginDataStore.save();
+    return true;
+  }
+
+  async updateSyncIntervalMs(value: number): Promise<boolean> {
+    const syncIntervalMs = normalizeSyncIntervalMs(value);
+    if (syncIntervalMs === this.settings.syncIntervalMs) {
+      return false;
+    }
+
+    this.settings = {
+      ...this.settings,
+      syncIntervalMs,
     };
     this.pluginDataStore.write(SYNCH_SETTINGS_KEY, this.settings);
     await this.pluginDataStore.save();

@@ -36,6 +36,9 @@ export interface SynchSettingsController {
   listFileSizeBlockedFiles(): Promise<SynchFileSizeBlockedFile[]>;
   isSyncEnabled(): boolean;
   setSyncEnabled(enabled: boolean): Promise<void>;
+  getSyncIntervalMs(): number;
+  setSyncIntervalMs(value: number): Promise<void>;
+  syncNow(): Promise<void>;
   getStorageStatus(): SynchStorageStatus | null;
   watchStorageStatus(): void;
   unwatchStorageStatus(): void;

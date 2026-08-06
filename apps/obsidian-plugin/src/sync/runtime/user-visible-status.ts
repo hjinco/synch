@@ -3,6 +3,7 @@ import { t } from "../../i18n";
 export type UserVisibleSyncState =
   | "not_ready"
   | "paused"
+  | "pending"
   | "syncing"
   | "offline"
   | "reconnecting"

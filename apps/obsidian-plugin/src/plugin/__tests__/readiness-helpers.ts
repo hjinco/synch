@@ -86,6 +86,7 @@ function settings(overrides: Partial<SynchPluginSettings>): SynchPluginSettings 
     fileRules: DEFAULT_SYNC_FILE_RULES,
     vaultConfigSync: DEFAULT_VAULT_CONFIG_SYNC_RULES,
     syncEnabled: true,
+    syncIntervalMs: 0,
     ...overrides,
   };
 }

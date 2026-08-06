@@ -13,6 +13,104 @@ import type {
 } from "../../../remote/realtime-client";
 
 describe("SyncAutoLoop local changes", () => {
+  it("keeps local changes pending until a periodic sync is requested", async () => {
+    const store = await createInitializedTestSyncStore(createTestPlugin());
+    const pushPendingMutations = vi.fn(async () => createPushResult());
+    const onSyncDeferred = vi.fn();
+    const autoLoop = new SyncAutoLoop({
+      getApiBaseUrl: () => "http://127.0.0.1:8787",
+      getSyncToken: async () => createToken(),
+      getSyncStore: () => store,
+      pullOnce: vi.fn(async () => {}),
+      pushPendingMutations,
+      realtimeClient: createRealtimeClient(),
+      shouldDeferSyncWork: () => true,
+      onSyncDeferred,
+    });
+
+    await autoLoop.start();
+    autoLoop.notifyLocalChange();
+    await Promise.resolve();
+
+    expect(pushPendingMutations).not.toHaveBeenCalled();
+    expect(onSyncDeferred).toHaveBeenCalledTimes(1);
+
+    await autoLoop.syncNow();
+
+    expect(pushPendingMutations).toHaveBeenCalledTimes(1);
+    autoLoop.stop();
+    await store.close();
+  });
+
+  it("defers failed periodic work instead of retrying it immediately", async () => {
+    const store = await createInitializedTestSyncStore(createTestPlugin());
+    const pushPendingMutations = vi.fn(async () => {
+      throw new Error("push failed");
+    });
+    const onSyncDeferred = vi.fn();
+    const autoLoop = new SyncAutoLoop({
+      getApiBaseUrl: () => "http://127.0.0.1:8787",
+      getSyncToken: async () => createToken(),
+      getSyncStore: () => store,
+      pullOnce: vi.fn(async () => {}),
+      pushPendingMutations,
+      realtimeClient: createRealtimeClient(),
+      shouldDeferSyncWork: () => true,
+      onSyncDeferred,
+    });
+
+    await autoLoop.start();
+    await autoLoop.syncNow();
+    await Promise.resolve();
+
+    expect(pushPendingMutations).toHaveBeenCalledTimes(1);
+    expect(onSyncDeferred).toHaveBeenCalledTimes(1);
+    autoLoop.stop();
+    await store.close();
+  });
+
+  it("receives realtime cursor and storage updates while file sync is deferred", async () => {
+    const store = await createInitializedTestSyncStore(createTestPlugin());
+    const pushPendingMutations = vi.fn(async () => createPushResult());
+    const pullOnce = vi.fn(async () => {});
+    const onStorageStatusChange = vi.fn();
+    let callbacks: SyncRealtimeCallbacks | null = null;
+    const autoLoop = new SyncAutoLoop({
+      getApiBaseUrl: () => "http://127.0.0.1:8787",
+      getSyncToken: async () => createToken(),
+      getSyncStore: () => store,
+      pushPendingMutations,
+      pullOnce,
+      realtimeClient: createRealtimeClient((nextCallbacks) => {
+        callbacks = nextCallbacks;
+      }),
+      shouldDeferSyncWork: () => true,
+      onStorageStatusChange,
+    });
+
+    autoLoop.setStorageStatusWatching(true);
+    await autoLoop.start();
+    callbacks?.onCursorAdvanced(2);
+    callbacks?.onStorageStatusUpdated({
+      storageUsedBytes: 123,
+      storageLimitBytes: 456,
+    });
+    await Promise.resolve();
+
+    expect(pullOnce).not.toHaveBeenCalled();
+    expect(pushPendingMutations).not.toHaveBeenCalled();
+    expect(onStorageStatusChange).toHaveBeenLastCalledWith({
+      storageUsedBytes: 123,
+      storageLimitBytes: 456,
+    });
+
+    await autoLoop.syncNow();
+
+    expect(pullOnce).toHaveBeenCalledTimes(1);
+    autoLoop.stop();
+    await store.close();
+  });
+
   it("runs ad-hoc realtime work on the active session", async () => {
     const store = await createInitializedTestSyncStore(createTestPlugin());
     const pushPendingMutations = vi.fn(async () => {});
@@ -76,6 +174,32 @@ describe("SyncAutoLoop local changes", () => {
     expect(pushPendingMutations).toHaveBeenCalledTimes(1);
     expect(pushPendingMutations).toHaveBeenCalledWith(session);
     expect(pullOnce).toHaveBeenCalledTimes(0);
+    autoLoop.stop();
+    await store.close();
+  });
+
+  it("flushes a debounced push immediately when manual sync is requested", async () => {
+    vi.useFakeTimers();
+    const store = await createInitializedTestSyncStore(createTestPlugin());
+    const pushPendingMutations = vi.fn(async () => createPushResult());
+    const pullOnce = vi.fn(async () => {});
+    const autoLoop = new SyncAutoLoop({
+      getApiBaseUrl: () => "http://127.0.0.1:8787",
+      getSyncToken: async () => createToken(),
+      getSyncStore: () => store,
+      pushPendingMutations,
+      pullOnce,
+      realtimeClient: createRealtimeClient(),
+      pushDebounceMs: 1_000,
+    });
+
+    await autoLoop.start();
+    autoLoop.notifyLocalChange();
+    await autoLoop.syncNow();
+    await vi.advanceTimersByTimeAsync(1_000);
+
+    expect(pushPendingMutations).toHaveBeenCalledTimes(1);
+    expect(pullOnce).toHaveBeenCalledTimes(1);
     autoLoop.stop();
     await store.close();
   });

@@ -79,6 +79,7 @@ export interface SyncEngineDeps {
   getRemoteVaultKey: () => Uint8Array;
   getSyncFileRules: () => SyncFileRules;
   getVaultConfigSyncRules: () => VaultConfigSyncRules;
+  shouldDeferSyncWork: () => boolean;
   hasActiveRemoteVaultSession: () => boolean;
   notify: (message: string, timeout?: number) => void;
   notifyError: (error: unknown, contextKey: SynchErrorContextKey) => void;
@@ -98,6 +99,7 @@ export interface SyncEngineDeps {
   setSyncStatus: (status: UserVisibleSyncState) => void;
   setStorageStatus: (status: SyncStorageStatus | null) => void;
   onFileSizeBlockedFilesChange?: () => void;
+  onLocalChangeQueued?: () => void;
   onStorageQuotaExceeded?: () => void | Promise<void>;
   onRemoteVaultUnavailable?: (
     error: RemoteVaultUnavailableError,
@@ -110,7 +112,7 @@ export class SyncEngine {
   private localMutationQueue: Promise<void> = Promise.resolve();
   private activeSyncActivities: ActiveSyncActivity[] = [];
   private nextSyncActivityId = 1;
-  private hiddenFolderReconcileTimer: ReturnType<typeof setInterval> | null = null;
+  private hiddenFolderReconcileTimer: number | null = null;
   private hiddenFolderReconcilePromise: Promise<void> | null = null;
   private readonly syncEventGate = new SyncEventGate();
   private readonly vaultAdapter = new ObsidianSyncVaultAdapter(
@@ -189,6 +191,7 @@ export class SyncEngine {
       await this.withSyncActivity("pull", async () => {
         return await this.syncPullService.pullOnce(session);
       }),
+    shouldDeferSyncWork: () => this.deps.shouldDeferSyncWork(),
     onConnectionStateChange: (state) => {
       if (state === "reconnecting") {
         this.setOnlineSyncStatus("reconnecting");
@@ -204,6 +207,9 @@ export class SyncEngine {
     },
     onSyncScheduled: () => {
       this.setOnlineSyncStatus("syncing");
+    },
+    onSyncDeferred: () => {
+      this.deps.setSyncStatus("pending");
     },
     onIdle: () => {
       this.deps.setSyncStatus("up_to_date");
@@ -228,7 +234,9 @@ export class SyncEngine {
     plugin: this.deps.plugin,
     vaultAdapter: this.vaultAdapter,
     eventRecorder: this.syncEventRecorder,
-    autoLoop: this.syncAutoLoop,
+    autoLoop: {
+      notifyLocalChange: () => this.notifyLocalChange(),
+    },
     runLocalMutationWork: async (work) => await this.runLocalMutationWork(work),
     hasActiveRemoteVaultSession: () => this.deps.hasActiveRemoteVaultSession(),
     onError: (error) => {
@@ -337,7 +345,12 @@ export class SyncEngine {
   }
 
   notifyLocalChange(): void {
+    this.deps.onLocalChangeQueued?.();
     this.syncAutoLoop.notifyLocalChange();
+  }
+
+  async syncNow(): Promise<void> {
+    await this.syncAutoLoop.syncNow();
   }
 
   setStorageStatusWatching(enabled: boolean): void {
@@ -493,7 +506,7 @@ export class SyncEngine {
       return;
     }
 
-    this.hiddenFolderReconcileTimer = setInterval(() => {
+    this.hiddenFolderReconcileTimer = window.setInterval(() => {
       void this.reconcileHiddenFoldersFromTimer();
     }, HIDDEN_FOLDER_RECONCILE_INTERVAL_MS);
   }
@@ -503,7 +516,7 @@ export class SyncEngine {
       return;
     }
 
-    clearInterval(this.hiddenFolderReconcileTimer);
+    window.clearInterval(this.hiddenFolderReconcileTimer);
     this.hiddenFolderReconcileTimer = null;
   }
 

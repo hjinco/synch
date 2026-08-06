@@ -285,6 +285,7 @@ describe("SyncEngine", () => {
         ...DEFAULT_VAULT_CONFIG_SYNC_RULES,
         enabled: true,
       }),
+      shouldDeferSyncWork: () => false,
     });
     engine.setStore(store);
 
@@ -461,6 +462,7 @@ function createEngine(
     getRemoteVaultKey: () => TEST_VAULT_KEY,
     getSyncFileRules: () => DEFAULT_SYNC_FILE_RULES,
     getVaultConfigSyncRules: () => DEFAULT_VAULT_CONFIG_SYNC_RULES,
+    shouldDeferSyncWork: () => false,
     hasActiveRemoteVaultSession: () => true,
     notify: vi.fn(),
     notifyError: vi.fn(),

@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   getButtonComponents,
   getCreatedElements,
+  getDropdownComponents,
   getExtraButtonComponents,
   getProgressBarComponents,
   getSettingClasses,
@@ -250,6 +251,57 @@ describe("SynchSettingTab sync status", () => {
     await getButtonComponents()[0]?.click();
     expect(setSyncEnabled).toHaveBeenCalledWith(false);
     expect(getExtraButtonComponents()).toEqual([]);
+  });
+
+  it("shows sync frequency as the final settings section", async () => {
+    const setSyncIntervalMs = vi.fn(async () => {});
+    const tab = createSettingsTab({
+      hasAuthenticatedSession: () => true,
+      hasConnectedRemoteVault: () => true,
+      getSyncIntervalMs: () => 180_000,
+      setSyncIntervalMs,
+    });
+
+    tab.display();
+
+    expect(getSettingNames().at(-1)).toBe("Sync frequency");
+    const dropdown = getDropdownComponents()[0];
+    expect(dropdown?.value).toBe("180000");
+    expect([...dropdown?.options.entries() ?? []]).toContainEqual([
+      "0",
+      "Real-time",
+    ]);
+    await dropdown?.change("300000");
+    expect(setSyncIntervalMs).toHaveBeenCalledWith(300_000);
+  });
+
+  it("runs a manual sync from the sync status row", async () => {
+    const syncNow = vi.fn(async () => {});
+    const tab = createSettingsTab({
+      hasAuthenticatedSession: () => true,
+      hasConnectedRemoteVault: () => true,
+      getSyncIntervalMs: () => 180_000,
+      syncNow,
+    });
+
+    tab.display();
+
+    await getButtonComponents().find((button) => button.text === "Sync now")?.click();
+    expect(syncNow).toHaveBeenCalledTimes(1);
+  });
+
+  it("hides manual sync while realtime sync is selected", () => {
+    const tab = createSettingsTab({
+      hasAuthenticatedSession: () => true,
+      hasConnectedRemoteVault: () => true,
+      getSyncIntervalMs: () => 0,
+    });
+
+    tab.display();
+
+    expect(
+      getButtonComponents().some((button) => button.text === "Sync now"),
+    ).toBe(false);
   });
 
   it("shows a file size warning tooltip when files are blocked by sync limits", async () => {

@@ -17,6 +17,7 @@ describe("normalizeSynchPluginSettings", () => {
 
     expect(settings.apiBaseUrl).toBe(defaultApiBaseUrl);
     expect(settings.syncEnabled).toBe(true);
+    expect(settings.syncIntervalMs).toBe(0);
     expect(settings.vaultConfigSync).toEqual(DEFAULT_VAULT_CONFIG_SYNC_RULES);
   });
 
@@ -120,5 +121,20 @@ describe("normalizeSynchPluginSettings", () => {
       configDir: ".obsidian-mobile",
       communityPluginFiles: true,
     });
+  });
+
+  it("accepts supported sync intervals and defaults invalid values to realtime", () => {
+    expect(
+      normalizeSynchPluginSettings(
+        { syncIntervalMs: 180_000 },
+        defaultApiBaseUrl,
+      ).syncIntervalMs,
+    ).toBe(180_000);
+    expect(
+      normalizeSynchPluginSettings(
+        { syncIntervalMs: 42_000 },
+        defaultApiBaseUrl,
+      ).syncIntervalMs,
+    ).toBe(0);
   });
 });

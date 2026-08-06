@@ -49,6 +49,7 @@ export interface SyncControllerDeps {
   getRemoteVaultKey: () => Uint8Array;
   getSyncFileRules: () => SyncFileRules;
   getVaultConfigSyncRules: () => VaultConfigSyncRules;
+  getSyncIntervalMs: () => number;
   hasActiveRemoteVaultSession: () => boolean;
   hasConnectedRemoteVault: () => boolean;
   hasAuthenticatedSession: () => boolean;
@@ -78,6 +79,7 @@ export class SyncController {
     getRemoteVaultKey: () => this.deps.getRemoteVaultKey(),
     getSyncFileRules: () => this.deps.getSyncFileRules(),
     getVaultConfigSyncRules: () => this.deps.getVaultConfigSyncRules(),
+    shouldDeferSyncWork: () => this.deps.getSyncIntervalMs() > 0,
     hasActiveRemoteVaultSession: () => this.deps.hasActiveRemoteVaultSession(),
     notify: (message, timeout) => this.notify(message, timeout),
     notifyError: (error, prefix) => this.deps.notifyError(error, prefix),
@@ -89,6 +91,15 @@ export class SyncController {
     onFileSizeBlockedFilesChange: () => {
       this.deps.onFileSizeBlockedFilesChange?.();
     },
+    onLocalChangeQueued: () => {
+      if (
+        this.deps.getSyncIntervalMs() > 0 &&
+        !this.periodicSyncPromise &&
+        this.syncStatus === "up_to_date"
+      ) {
+        this.setSyncStatus("pending");
+      }
+    },
     onStorageQuotaExceeded: async () => {
       await this.deps.onStorageQuotaExceeded?.();
     },
@@ -98,6 +109,9 @@ export class SyncController {
     isOffline: this.deps.isOffline,
   });
   private storageStatus: SyncStorageStatus | null = null;
+  private periodicSyncTimer: number | null = null;
+  private periodicSyncPromise: Promise<void> | null = null;
+  private periodicSyncEnabled = false;
 
   constructor(private readonly deps: SyncControllerDeps) {}
 
@@ -119,9 +133,11 @@ export class SyncController {
   }
 
   async stop(): Promise<void> {
+    this.stopPeriodicSync();
     this.syncEngine.setStorageStatusWatching(false);
     this.syncEngine.stopAutoSync();
     this.setStorageStatus(null);
+    await this.periodicSyncPromise?.catch(() => {});
     await this.syncEngine.closeStore();
   }
 
@@ -142,6 +158,7 @@ export class SyncController {
   }
 
   stopAutoSyncAndMarkNotReady(): void {
+    this.stopPeriodicSync();
     this.syncEngine.setStorageStatusWatching(false);
     this.syncEngine.stopAutoSync();
     this.setStorageStatus(null);
@@ -153,6 +170,7 @@ export class SyncController {
   }
 
   stopAutoSyncAndMarkPaused(): void {
+    this.stopPeriodicSync();
     this.syncEngine.setStorageStatusWatching(false);
     this.syncEngine.stopAutoSync();
     this.setStorageStatus(null);
@@ -160,6 +178,7 @@ export class SyncController {
   }
 
   async resetLocalSyncState(): Promise<void> {
+    this.stopPeriodicSync();
     this.syncEngine.setStorageStatusWatching(false);
     this.syncEngine.stopAutoSync();
     this.setStorageStatus(null);
@@ -211,6 +230,7 @@ export class SyncController {
 
   async ensureAutoSyncState(): Promise<void> {
     if (!this.deps.hasActiveRemoteVaultSession() || !this.deps.hasAuthenticatedSession()) {
+      this.stopPeriodicSync();
       this.syncEngine.setStorageStatusWatching(false);
       this.syncEngine.stopAutoSync();
       this.setStorageStatus(null);
@@ -227,11 +247,29 @@ export class SyncController {
       return;
     }
 
+    if (this.deps.getSyncIntervalMs() > 0) {
+      try {
+        this.syncEngine.setStorageStatusWatching(true);
+        this.periodicSyncEnabled = true;
+        await this.syncEngine.startAutoSync();
+        await this.runPeriodicSyncAndSchedule();
+      } catch (error) {
+        this.handleSyncError(error, "error.autoSyncInitialization");
+      }
+      return;
+    }
+
+    const wasPeriodic = this.periodicSyncEnabled;
+    await this.stopPeriodicSyncAndWait();
     try {
       this.syncEngine.setStorageStatusWatching(true);
       const reconcile = await this.syncEngine.reconcileOnce();
       await this.syncEngine.waitForLocalMutationWork();
       await this.syncEngine.startAutoSync();
+      if (wasPeriodic) {
+        await this.syncEngine.syncNow();
+        return;
+      }
       const hasPendingMutations = await this.syncEngine.hasPendingMutations();
       if (
         hasPendingMutations ||
@@ -271,15 +309,55 @@ export class SyncController {
       return;
     }
 
+    if (this.deps.getSyncIntervalMs() > 0) {
+      this.syncEngine.setStorageStatusWatching(true);
+      this.periodicSyncEnabled = true;
+      if (this.periodicSyncTimer || this.periodicSyncPromise) {
+        return;
+      }
+      const started = await this.syncEngine.startAutoSync();
+      if (!started) {
+        await this.syncEngine.resumeAutoSyncConnection();
+      }
+      await this.runPeriodicSyncAndSchedule();
+      return;
+    }
+
+    const wasPeriodic = this.periodicSyncEnabled;
+    await this.stopPeriodicSyncAndWait();
     this.syncEngine.setStorageStatusWatching(true);
     const started = await this.syncEngine.startAutoSync();
     if (!started) {
       await this.syncEngine.resumeAutoSyncConnection();
     }
+    if (wasPeriodic) {
+      await this.syncEngine.syncNow();
+    }
   }
 
   registerVaultEvents(): void {
     this.syncEngine.registerVaultEvents();
+  }
+
+  async syncNow(): Promise<void> {
+    if (!this.deps.hasActiveRemoteVaultSession() || !this.deps.hasAuthenticatedSession()) {
+      return;
+    }
+
+    if (this.deps.getSyncIntervalMs() > 0) {
+      this.periodicSyncEnabled = true;
+      await this.runPeriodicSyncAndSchedule();
+      return;
+    }
+
+    try {
+      this.setSyncStatus("syncing");
+      await this.syncEngine.reconcileOnce();
+      await this.syncEngine.waitForLocalMutationWork();
+      await this.syncEngine.syncNow();
+    } catch (error) {
+      this.handleSyncError(error, "error.autoSync");
+    }
   }
 
   async reconcileAfterFileRuleChange(): Promise<void> {
@@ -290,6 +368,11 @@ export class SyncController {
     try {
       this.setSyncStatus("syncing");
       await this.syncEngine.reapplyAllowedRemoteVaultConfig();
+      if (this.deps.getSyncIntervalMs() > 0) {
+        this.periodicSyncEnabled = true;
+        await this.runPeriodicSyncAndSchedule();
+        return;
+      }
       await this.syncEngine.reconcileOnce();
       this.syncEngine.refreshHiddenFolderReconcileTimer();
       this.syncEngine.notifyLocalChange();
@@ -398,6 +481,82 @@ export class SyncController {
 
     this.syncStatus = status;
     this.deps.onSyncStatusChange?.();
+  }
+
+  private async runPeriodicSyncAndSchedule(): Promise<void> {
+    this.clearPeriodicSyncTimer();
+    if (this.periodicSyncPromise) {
+      await this.periodicSyncPromise;
+      return;
+    }
+
+    this.periodicSyncPromise = this.runPeriodicSyncCycle();
+    try {
+      await this.periodicSyncPromise;
+    } finally {
+      this.periodicSyncPromise = null;
+      this.scheduleNextPeriodicSync();
+    }
+  }
+
+  private async runPeriodicSyncCycle(): Promise<void> {
+    try {
+      this.setSyncStatus("syncing");
+      await this.syncEngine.reconcileOnce();
+      await this.syncEngine.waitForLocalMutationWork();
+      await this.syncEngine.syncNow();
+    } catch (error) {
+      if (!this.periodicSyncEnabled) {
+        return;
+      }
+      this.handleSyncError(error, "error.autoSync");
+    }
+  }
+
+  private scheduleNextPeriodicSync(): void {
+    const intervalMs = this.deps.getSyncIntervalMs();
+    if (!this.periodicSyncEnabled || intervalMs <= 0 || this.periodicSyncTimer) {
+      return;
+    }
+
+    this.periodicSyncTimer = window.setTimeout(() => {
+      this.periodicSyncTimer = null;
+      void this.runPeriodicSyncAndSchedule();
+    }, intervalMs);
+  }
+
+  private stopPeriodicSync(): void {
+    this.periodicSyncEnabled = false;
+    this.clearPeriodicSyncTimer();
+  }
+
+  private async stopPeriodicSyncAndWait(): Promise<void> {
+    this.stopPeriodicSync();
+    if (!this.periodicSyncPromise) {
+      return;
+    }
+    await this.periodicSyncPromise;
+  }
+
+  private clearPeriodicSyncTimer(): void {
+    if (!this.periodicSyncTimer) {
+      return;
+    }
+    window.clearTimeout(this.periodicSyncTimer);
+    this.periodicSyncTimer = null;
+  }
+
+  private handleSyncError(error: unknown, contextKey: SynchErrorContextKey): void {
+    if (isRemoteVaultUnavailableError(error)) {
+      void this.handleRemoteVaultUnavailable(error);
+      return;
+    }
+    if (isOfflineLikeError(error, this.deps.isOffline)) {
+      this.setSyncStatus("offline");
+      return;
+    }
+    this.setSyncStatus("attention_needed");
+    this.deps.notifyError(error, contextKey);
   }
 
   private setSyncProgress(progress: UserVisibleSyncProgress | null): void {

@@ -5,6 +5,7 @@ let language = "en";
 const buttonComponents: MockButtonComponent[] = [];
 const textComponents: MockTextComponent[] = [];
 const toggleComponents: MockToggleComponent[] = [];
+const dropdownComponents: MockDropdownComponent[] = [];
 const progressBarComponents: MockProgressBarComponent[] = [];
 const extraButtonComponents: MockExtraButtonComponent[] = [];
 const createdElementTexts: string[] = [];
@@ -207,6 +208,32 @@ export class MockProgressBarComponent {
   setValue(value: number): this {
     this.value = value;
     return this;
+  }
+}
+
+export class MockDropdownComponent {
+  options = new Map<string, string>();
+  value = "";
+  private changeCallback: ((value: string) => void | Promise<void>) | null = null;
+
+  addOption(value: string, display: string): this {
+    this.options.set(value, display);
+    return this;
+  }
+
+  setValue(value: string): this {
+    this.value = value;
+    return this;
+  }
+
+  onChange(callback: (value: string) => void | Promise<void>): this {
+    this.changeCallback = callback;
+    return this;
+  }
+
+  async change(value: string): Promise<void> {
+    this.value = value;
+    await this.changeCallback?.(value);
   }
 }
 
@@ -431,6 +458,13 @@ export class Setting {
     return this;
   }
 
+  addDropdown(callback: (dropdown: MockDropdownComponent) => void): this {
+    const dropdown = new MockDropdownComponent();
+    dropdownComponents.push(dropdown);
+    callback(dropdown);
+    return this;
+  }
+
   addProgressBar(callback: (progressBar: MockProgressBarComponent) => void): this {
     const progressBar = new MockProgressBarComponent();
     progressBarComponents.push(progressBar);
@@ -490,6 +524,10 @@ export function getToggleComponents(): MockToggleComponent[] {
   return [...toggleComponents];
 }
 
+export function getDropdownComponents(): MockDropdownComponent[] {
+  return [...dropdownComponents];
+}
+
 export function getProgressBarComponents(): MockProgressBarComponent[] {
   return [...progressBarComponents];
 }
@@ -539,6 +577,7 @@ export function resetObsidianMocks(): void {
   buttonComponents.length = 0;
   textComponents.length = 0;
   toggleComponents.length = 0;
+  dropdownComponents.length = 0;
   progressBarComponents.length = 0;
   extraButtonComponents.length = 0;
   createdElementTexts.length = 0;

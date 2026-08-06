@@ -227,6 +227,16 @@ export function renderSyncStatusSetting(
         await controller.setSyncEnabled(!controller.isSyncEnabled());
       }),
   );
+  if (controller.getSyncIntervalMs() > 0) {
+    syncSetting.addButton((button) =>
+      button
+        .setButtonText(t("sync.now"))
+        .setDisabled(!controller.isSyncEnabled())
+        .onClick(async () => {
+          await controller.syncNow();
+        }),
+    );
+  }
 
   let storageProgressBar: ProgressBarControl | null = null;
   const storageSetting = new Setting(containerEl)
@@ -260,8 +270,41 @@ export function renderSyncStatusSetting(
         isStorageWarningStatus(nextStorageStatus),
       );
     },
-    refreshFileSizeBlockedWarning: fileSizeWarning.refreshFileSizeBlockedWarning,
+    refreshFileSizeBlockedWarning: () => {
+      fileSizeWarning.refreshFileSizeBlockedWarning();
+    },
   };
+}
+
+export function renderSyncFrequencySettings(
+  containerEl: HTMLElement,
+  controller: SynchSettingsController,
+  hasConnectedRemoteVault: boolean,
+): void {
+  const serverCompatibility = controller.getServerCompatibilityStatus();
+  if (
+    !hasConnectedRemoteVault ||
+    serverCompatibility.state === "update_required" ||
+    serverCompatibility.state === "incompatible"
+  ) {
+    return;
+  }
+
+  new Setting(containerEl).setName(t("sync.frequency")).setHeading();
+  new Setting(containerEl)
+    .setDesc(t("sync.frequencyDesc"))
+    .addDropdown((dropdown) =>
+      dropdown
+        .addOption("0", t("sync.frequencyRealtime"))
+        .addOption("30000", t("sync.frequency30Seconds"))
+        .addOption("60000", t("sync.frequency1Minute"))
+        .addOption("180000", t("sync.frequency3Minutes"))
+        .addOption("300000", t("sync.frequency5Minutes"))
+        .setValue(String(controller.getSyncIntervalMs()))
+        .onChange(async (value) => {
+          await controller.setSyncIntervalMs(Number(value));
+        }),
+    );
 }
 
 function createFileSizeBlockedWarningControls(

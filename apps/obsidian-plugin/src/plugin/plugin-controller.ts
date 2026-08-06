@@ -139,6 +139,7 @@ export class SynchPluginController implements SynchSettingsController {
     getRemoteVaultKey: () => this.getActiveRemoteVaultKey(),
     getSyncFileRules: () => this.getSyncFileRules(),
     getVaultConfigSyncRules: () => this.getVaultConfigSyncRules(),
+    getSyncIntervalMs: () => this.getSyncIntervalMs(),
     hasActiveRemoteVaultSession: () => this.hasActiveRemoteVaultSession(),
     hasConnectedRemoteVault: () => this.hasConnectedRemoteVault(),
     hasAuthenticatedSession: () => this.hasAuthenticatedSession(),
@@ -398,6 +399,26 @@ export class SynchPluginController implements SynchSettingsController {
       this.refreshUi();
     }
     await this.ensureAutoSyncState();
+  }
+
+  getSyncIntervalMs(): number {
+    return this.settingsStore.getSnapshot().syncIntervalMs;
+  }
+
+  async setSyncIntervalMs(value: number): Promise<void> {
+    const changed = await this.settingsStore.updateSyncIntervalMs(value);
+    if (!changed) {
+      return;
+    }
+
+    this.refreshUi();
+    if (this.isSyncEnabled()) {
+      await this.ensureAutoSyncState();
+    }
+  }
+
+  async syncNow(): Promise<void> {
+    await this.runReadyAutoSync(() => this.syncController.syncNow());
   }
 
   getStorageStatus(): SynchStorageStatus | null {

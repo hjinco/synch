@@ -2,6 +2,8 @@
 
 ## Added
 
+- Added configurable real-time or periodic bidirectional sync, with a manual Sync now action.
+
 ## Changed
 
 ## Fixed
