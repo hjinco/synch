@@ -40,6 +40,12 @@ jobs:
           BETTER_AUTH_SECRET: ci-better-auth-secret-that-is-long-enough
           SYNC_TOKEN_SECRET: ci-sync-token-secret-that-is-long-enough
 
+      - name: Build Node artifact
+        run: pnpm -C apps/api build:node
+
+      - name: Build Cloudflare managed artifact
+        run: pnpm -C apps/api build:cloudflare:managed
+
       - name: Validate deployment configuration
         run: |
           test -n "$CLOUDFLARE_API_TOKEN" || {

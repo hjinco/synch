@@ -69,7 +69,7 @@ docker compose up -d --build
 
 ## Docker なしで systemd を実行
 
-サーバーは単純な Node.js プロセス（`src/self-host.ts`）で、[tsx](https://tsx.is/) を使って実行します。Docker は便利な選択肢ですが必須ではありません。すでに VM（Incus/LXC コンテナなど）を使っていて、Docker を依存関係として追加したくない場合に適した方法です。
+サーバーは事前にビルドした Node.js 成果物（`dist/server.mjs`）として実行します。Docker は便利な選択肢ですが必須ではありません。すでに VM（Incus/LXC コンテナなど）を使っていて、Docker を依存関係として追加したくない場合に適した方法です。
 
 Debian/Ubuntu では、[`install.sh`](https://github.com/hjinco/synch/blob/main/apps/api/install.sh) が以下の手順を自動化します。リポジトリを clone して `cd apps/api && sudo ./install.sh` を実行してください。`git pull` 後の更新や再起動のために再実行しても安全です。手動で設定する場合は次の手順に従います。
 
@@ -81,12 +81,14 @@ Debian/Ubuntu では、[`install.sh`](https://github.com/hjinco/synch/blob/main/
    sudo corepack enable
    ```
 
-2. リポジトリを clone して production 依存関係をインストールします。
+2. リポジトリを clone し、Node 成果物をビルドして production 依存関係だけを残します。
 
    ```bash
    git clone https://github.com/hjinco/synch.git /opt/synch
    cd /opt/synch/apps/api
-   pnpm install --frozen-lockfile --filter @synch/api... --prod
+   pnpm install --frozen-lockfile --filter @synch/api...
+   pnpm build:node
+   pnpm install --frozen-lockfile --filter @synch/api... --prod --offline
    ```
 
 3. `.env.example` を `.env` にコピーし、上記の Docker Compose の手順と同じ値を設定します。
@@ -114,7 +116,9 @@ Debian/Ubuntu では、[`install.sh`](https://github.com/hjinco/synch/blob/main/
 cd /opt/synch
 git pull
 cd apps/api
-pnpm install --frozen-lockfile --filter @synch/api... --prod
+pnpm install --frozen-lockfile --filter @synch/api...
+pnpm build:node
+pnpm install --frozen-lockfile --filter @synch/api... --prod --offline
 sudo systemctl restart synch-api
 ```
 

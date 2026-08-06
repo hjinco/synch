@@ -69,7 +69,7 @@ Database migrations run automatically on startup.
 
 ## Run without Docker (systemd)
 
-The server is just a Node.js process (`src/self-host.ts`, run with [tsx](https://tsx.is/)) - Docker is a convenience, not a requirement. This is a reasonable choice if you're already running a VM (an Incus/LXC container, for example) and would rather not add Docker as a dependency.
+The server runs as a prebuilt Node.js artifact (`dist/server.mjs`) - Docker is a convenience, not a requirement. This is a reasonable choice if you're already running a VM (an Incus/LXC container, for example) and would rather not add Docker as a dependency.
 
 On Debian/Ubuntu, [`install.sh`](https://github.com/hjinco/synch/blob/main/apps/api/install.sh) automates everything below - clone the repo, then `cd apps/api && sudo ./install.sh`. It's safe to re-run (e.g. after `git pull`) to update and restart. The manual steps:
 
@@ -81,12 +81,14 @@ On Debian/Ubuntu, [`install.sh`](https://github.com/hjinco/synch/blob/main/apps/
    sudo corepack enable
    ```
 
-2. Clone the repository and install production dependencies:
+2. Clone the repository, build the Node artifact, and retain only production dependencies:
 
    ```bash
    git clone https://github.com/hjinco/synch.git /opt/synch
    cd /opt/synch/apps/api
-   pnpm install --frozen-lockfile --filter @synch/api... --prod
+   pnpm install --frozen-lockfile --filter @synch/api...
+   pnpm build:node
+   pnpm install --frozen-lockfile --filter @synch/api... --prod --offline
    ```
 
 3. Copy `.env.example` to `.env` and fill it in exactly as in the Docker Compose steps above.
@@ -114,7 +116,9 @@ On Debian/Ubuntu, [`install.sh`](https://github.com/hjinco/synch/blob/main/apps/
 cd /opt/synch
 git pull
 cd apps/api
-pnpm install --frozen-lockfile --filter @synch/api... --prod
+pnpm install --frozen-lockfile --filter @synch/api...
+pnpm build:node
+pnpm install --frozen-lockfile --filter @synch/api... --prod --offline
 sudo systemctl restart synch-api
 ```
 

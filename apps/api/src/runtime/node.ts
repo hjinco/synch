@@ -4,20 +4,17 @@ import { drizzle as drizzleLibsql } from "drizzle-orm/libsql";
 import { migrate as migrateLibsql } from "drizzle-orm/libsql/migrator";
 import { mkdirSync } from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 
 import { createApiApplication } from "../composition/create-api-application";
 import { NODE_COMMUNITY_PROFILE } from "../config/deployment-profile";
+import { resolveNodeAsset } from "../config/node-assets";
 import { createLibsqlDb } from "../db/client";
 import * as schema from "../db/d1";
 import type { BlobStorage } from "../sync/blob/storage";
 import { InlineVaultPurgeQueue } from "../vault/inline-purge-queue";
 import { NodeCoordinatorNamespace } from "./node-coordinator-namespace";
 
-const DEFAULT_MIGRATIONS_FOLDER = path.resolve(
-	path.dirname(fileURLToPath(import.meta.url)),
-	"../../drizzle",
-);
+const DEFAULT_MIGRATIONS_FOLDER = resolveNodeAsset("drizzle");
 
 // On Cloudflare, `wrangler.jsonc`'s "assets" binding serves apps/api/public/*
 // (device.html, signin.html, ...) ahead of the Worker entirely - the Worker
@@ -25,7 +22,7 @@ const DEFAULT_MIGRATIONS_FOLDER = path.resolve(
 // Workers, so the Node runtime needs to serve them itself, including the
 // extensionless "clean URL" routes (e.g. /device -> device.html) that the
 // device-authorization flow and the auth pages link to.
-const PUBLIC_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../public");
+const PUBLIC_DIR = resolveNodeAsset("public");
 const STATIC_PAGES: Record<string, string> = {
 	"/device": "device.html",
 	"/signin": "signin.html",

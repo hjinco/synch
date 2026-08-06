@@ -78,9 +78,11 @@ if [ "$REPO_ROOT" != "$INSTALL_DIR" ]; then
 		"$REPO_ROOT"/ "$INSTALL_DIR"/
 fi
 
-log "Installing production dependencies"
+log "Installing dependencies and building the Node artifact"
 cd "$INSTALL_DIR"
-pnpm install --frozen-lockfile --filter @synch/api... --prod
+pnpm install --frozen-lockfile --filter @synch/api...
+pnpm -C apps/api build:node
+CI=true pnpm install --frozen-lockfile --filter @synch/api... --prod --offline
 
 log "Setting up .env"
 if [ ! -f "$API_DIR/.env" ]; then

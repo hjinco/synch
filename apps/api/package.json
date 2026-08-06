@@ -4,6 +4,9 @@
 	"private": true,
 	"packageManager": "pnpm@10.33.0",
 	"scripts": {
+		"build:node": "node ./scripts/build-node.mjs",
+		"build:cloudflare:community": "wrangler deploy --dry-run --env \"\" --outdir dist/cloudflare-community",
+		"build:cloudflare:managed": "wrangler deploy --dry-run --env managed --outdir dist/cloudflare-managed",
 		"db:generate": "drizzle-kit generate",
 		"db:generate:do": "drizzle-kit generate --config=./drizzle-do.config.ts",
 		"db:migrate:cloudflare:local": "wrangler d1 migrations apply DB --local --env managed",
@@ -11,6 +14,7 @@
 		"db:migrate:cloudflare:managed": "wrangler d1 migrations apply DB --remote --env managed",
 		"db:studio": "drizzle-kit studio",
 		"dev:cloudflare:managed": "wrangler dev --env managed --var DEV_MODE:true",
+		"dev:node": "tsx src/self-host.ts",
 		"dev": "pnpm run dev:cloudflare:managed",
 		"deploy:cloudflare:community": "wrangler deploy && pnpm run db:migrate:cloudflare:community",
 		"deploy:cloudflare:managed": "wrangler deploy --env managed",
@@ -22,7 +26,7 @@
 		"test:smoke": "node ./scripts/e2e-smoke.mjs",
 		"cf-typegen": "wrangler types",
 		"typecheck": "pnpm run cf-typegen && tsgo --noEmit",
-		"start:node": "tsx src/self-host.ts",
+		"start:node": "node dist/server.mjs",
 		"start": "pnpm run start:node"
 	},
 	"cloudflare": {
@@ -46,6 +50,8 @@
 		"@typescript/native-preview": "^7.0.0-dev.20260423.1",
 		"dotenv": "^17.4.2",
 		"drizzle-kit": "^0.31.10",
+		"esbuild": "^0.28.1",
+		"tsx": "^4.21.0",
 		"vitest": "^4.1.4",
 		"wrangler": "^4.82.2"
 	},
@@ -62,7 +68,6 @@
 		"drizzle-orm": "^0.45.2",
 		"hono": "^4.12.14",
 		"jose": "^6.2.2",
-		"tsx": "^4.21.0",
 		"ws": "^8.20.0",
 		"zod": "^4.3.6"
 	}

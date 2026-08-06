@@ -69,7 +69,7 @@ docker compose up -d --build
 
 ## 不使用 Docker，使用 systemd 运行
 
-服务器只是一个 Node.js 进程（`src/self-host.ts`），通过 [tsx](https://tsx.is/) 运行。Docker 只是方便的选择，并非必需。如果你已经在使用 VM（例如 Incus/LXC 容器），又不想增加 Docker 依赖，这种方式会比较合适。
+服务器以预构建的 Node.js 产物（`dist/server.mjs`）运行。Docker 只是方便的选择，并非必需。如果你已经在使用 VM（例如 Incus/LXC 容器），又不想增加 Docker 依赖，这种方式会比较合适。
 
 在 Debian/Ubuntu 上，[`install.sh`](https://github.com/hjinco/synch/blob/main/apps/api/install.sh) 可以自动完成以下步骤。克隆仓库后，运行 `cd apps/api && sudo ./install.sh`。之后运行 `git pull` 时可以安全地再次执行它来更新并重启服务。手动设置时，请按以下步骤操作：
 
@@ -81,12 +81,14 @@ docker compose up -d --build
    sudo corepack enable
    ```
 
-2. 克隆仓库并安装生产环境依赖：
+2. 克隆仓库、构建 Node 产物，并仅保留生产环境依赖：
 
    ```bash
    git clone https://github.com/hjinco/synch.git /opt/synch
    cd /opt/synch/apps/api
-   pnpm install --frozen-lockfile --filter @synch/api... --prod
+   pnpm install --frozen-lockfile --filter @synch/api...
+   pnpm build:node
+   pnpm install --frozen-lockfile --filter @synch/api... --prod --offline
    ```
 
 3. 将 `.env.example` 复制为 `.env`，并按照上面 Docker Compose 步骤中的说明填写配置。
@@ -114,7 +116,9 @@ docker compose up -d --build
 cd /opt/synch
 git pull
 cd apps/api
-pnpm install --frozen-lockfile --filter @synch/api... --prod
+pnpm install --frozen-lockfile --filter @synch/api...
+pnpm build:node
+pnpm install --frozen-lockfile --filter @synch/api... --prod --offline
 sudo systemctl restart synch-api
 ```
 

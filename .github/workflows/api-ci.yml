@@ -50,3 +50,35 @@ jobs:
           BETTER_AUTH_URL: http://127.0.0.1:8787
           BETTER_AUTH_SECRET: ci-better-auth-secret-that-is-long-enough
           SYNC_TOKEN_SECRET: ci-sync-token-secret-that-is-long-enough
+
+      - name: Build Node artifact
+        run: pnpm -C apps/api build:node
+
+      - name: Build Cloudflare community artifact
+        run: pnpm -C apps/api build:cloudflare:community
+
+      - name: Build Cloudflare managed artifact
+        run: pnpm -C apps/api build:cloudflare:managed
+
+      - name: Build Docker image
+        run: docker build -f apps/api/Dockerfile -t synch-api:ci .
+
+      - name: Smoke test Docker image
+        run: |
+          docker run --detach --name synch-api-smoke \
+            --publish 127.0.0.1:8787:8787 \
+            --env PUBLIC_URL=http://127.0.0.1:8787 \
+            --env BETTER_AUTH_SECRET=ci-better-auth-secret-that-is-long-enough \
+            --env SYNC_TOKEN_SECRET=ci-sync-token-secret-that-is-long-enough \
+            --env AUTH_ALLOWED_EMAILS=ci@example.com \
+            synch-api:ci
+          cleanup() { docker rm --force synch-api-smoke >/dev/null 2>&1 || true; }
+          trap cleanup EXIT
+          for _ in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:8787/health >/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          docker logs synch-api-smoke
+          exit 1

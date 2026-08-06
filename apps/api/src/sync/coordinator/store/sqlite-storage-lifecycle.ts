@@ -1,19 +1,12 @@
 import type Database from "better-sqlite3";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
 
+import { resolveNodeAsset } from "../../../config/node-assets";
 import * as doSchema from "../../../db/do";
 import type { CoordinatorStorageLifecycle } from "../ports";
 
-// `import.meta.url` is a plain string, so this avoids constructing a `URL`
-// instance: under this project's Workers tsconfig, the global `URL` type is
-// the Workers runtime's, not node:url's, and the two aren't assignable.
-const DEFAULT_MIGRATIONS_FOLDER = path.resolve(
-	path.dirname(fileURLToPath(import.meta.url)),
-	"../../../../drizzle-do",
-);
+const DEFAULT_MIGRATIONS_FOLDER = resolveNodeAsset("drizzle-do");
 
 export class SqliteCoordinatorStorage implements CoordinatorStorageLifecycle {
 	constructor(
