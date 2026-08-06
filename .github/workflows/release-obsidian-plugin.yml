@@ -20,6 +20,8 @@ on:
 
 permissions:
   contents: write
+  id-token: write
+  attestations: write
 
 jobs:
   release:
@@ -61,6 +63,13 @@ jobs:
 
       - run: pnpm -C apps/obsidian-plugin test
       - run: pnpm -C apps/obsidian-plugin build
+
+      - name: Generate release artifact attestation
+        uses: actions/attest@v4
+        with:
+          subject-path: |
+            apps/obsidian-plugin/dist/main.js
+            apps/obsidian-plugin/dist/styles.css
 
       - name: Prepare release notes
         env:
