@@ -7,6 +7,7 @@ import type {
   SynchEntryVersionsPage,
   SynchVersionPreview,
 } from "./view-models";
+import { openConfirmModal } from "./confirm-modal";
 import { VersionPreviewModal } from "./version-preview-modal";
 
 export const SYNCH_VERSION_HISTORY_VIEW_TYPE = "synch-version-history";
@@ -232,11 +233,12 @@ export class SynchVersionHistoryView extends ItemView {
   }
 
   private async restoreVersion(version: SynchEntryVersion): Promise<void> {
-    if (
-      !confirm(
-        t("version.restoreConfirm", { capturedAt: formatCapturedAt(version.capturedAt) }),
-      )
-    ) {
+    const confirmed = await openConfirmModal(
+      this.app,
+      t("version.restoreConfirm", { capturedAt: formatCapturedAt(version.capturedAt) }),
+      t("version.restore"),
+    );
+    if (!confirmed) {
       return;
     }
 

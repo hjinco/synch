@@ -62,8 +62,8 @@ export default class SynchPlugin extends Plugin {
     });
   }
 
-  async onunload(): Promise<void> {
-    await this.controller?.stop();
+  onunload(): void {
+    void this.controller?.stop();
   }
 
   private registerConnectivityEvents(controller: SynchPluginController): void {
@@ -73,8 +73,8 @@ export default class SynchPlugin extends Plugin {
 
     this.registerDomEvent(window, "online", resume);
     this.registerDomEvent(window, "focus", resume);
-    this.registerDomEvent(document, "visibilitychange", () => {
-      if (document.visibilityState === "visible") {
+    this.registerDomEvent(activeDocument, "visibilitychange", () => {
+      if (activeDocument.visibilityState === "visible") {
         resume();
       }
     });

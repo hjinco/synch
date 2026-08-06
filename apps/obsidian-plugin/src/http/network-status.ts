@@ -16,8 +16,8 @@ const OFFLINE_ERROR_MARKERS = [
 
 export function isBrowserOffline(): boolean {
   return (
-    typeof globalThis.navigator !== "undefined" &&
-    globalThis.navigator.onLine === false
+    typeof window.navigator !== "undefined" &&
+    window.navigator.onLine === false
   );
 }
 

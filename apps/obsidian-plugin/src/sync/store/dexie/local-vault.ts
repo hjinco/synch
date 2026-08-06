@@ -3,8 +3,8 @@ import type { Plugin } from "obsidian";
 const LOCAL_VAULT_ID_KEY = "synch.localVaultId";
 
 interface VaultLocalStorageLike {
-  loadLocalStorage(key: string): unknown | null;
-  saveLocalStorage(key: string, data: unknown | null): void;
+  loadLocalStorage(key: string): unknown;
+  saveLocalStorage(key: string, data: unknown): void;
 }
 
 export function getOrCreateLocalVaultId(plugin: Plugin): string {
@@ -31,10 +31,10 @@ function readString(plugin: Plugin, key: string): string {
   return typeof value === "string" ? value.trim() : "";
 }
 
-function writeVaultLocalStorage(plugin: Plugin, key: string, value: unknown | null): void {
+function writeVaultLocalStorage(plugin: Plugin, key: string, value: unknown): void {
   vaultLocalStorage(plugin).saveLocalStorage(key, value);
 }
 
 function vaultLocalStorage(plugin: Plugin): VaultLocalStorageLike {
-  return plugin.app as unknown as VaultLocalStorageLike;
+  return plugin.app;
 }

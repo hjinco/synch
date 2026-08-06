@@ -12,9 +12,13 @@ export interface VaultConfigSyncRules {
   communityPluginData: boolean;
 }
 
+// Pure settings normalization has no Vault instance; preserve the legacy schema fallback.
+// eslint-disable-next-line obsidianmd/hardcoded-config-path
+export const DEFAULT_VAULT_CONFIG_DIR = ".obsidian";
+
 export const DEFAULT_VAULT_CONFIG_SYNC_RULES: VaultConfigSyncRules = {
   enabled: false,
-  configDir: ".obsidian",
+  configDir: DEFAULT_VAULT_CONFIG_DIR,
   mainSettings: true,
   appearance: true,
   themesAndSnippets: true,

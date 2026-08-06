@@ -1,9 +1,9 @@
 export type AutoSyncTimerType = "push" | "reconnect" | "syncRetry";
 
 export class AutoSyncTimers {
-  private pushTimer: ReturnType<typeof setTimeout> | null = null;
-  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
-  private syncRetryTimer: ReturnType<typeof setTimeout> | null = null;
+  private pushTimer: number | null = null;
+  private reconnectTimer: number | null = null;
+  private syncRetryTimer: number | null = null;
 
   has(type: AutoSyncTimerType): boolean {
     return this.get(type) !== null;
@@ -11,7 +11,7 @@ export class AutoSyncTimers {
 
   set(type: AutoSyncTimerType, callback: () => void, delayMs: number): void {
     this.clear(type);
-    const timer = setTimeout(() => {
+    const timer = window.setTimeout(() => {
       this.assign(type, null);
       callback();
     }, delayMs);
@@ -24,7 +24,7 @@ export class AutoSyncTimers {
       return;
     }
 
-    clearTimeout(timer);
+    window.clearTimeout(timer);
     this.assign(type, null);
   }
 
@@ -34,7 +34,7 @@ export class AutoSyncTimers {
     this.clear("syncRetry");
   }
 
-  private get(type: AutoSyncTimerType): ReturnType<typeof setTimeout> | null {
+  private get(type: AutoSyncTimerType): number | null {
     if (type === "push") {
       return this.pushTimer;
     }
@@ -46,7 +46,7 @@ export class AutoSyncTimers {
 
   private assign(
     type: AutoSyncTimerType,
-    timer: ReturnType<typeof setTimeout> | null,
+    timer: number | null,
   ): void {
     if (type === "push") {
       this.pushTimer = timer;

@@ -344,7 +344,6 @@ describe("SynchSettingTab remote vault settings", () => {
   });
 
   it("purges selected deleted files from the modal", async () => {
-    vi.stubGlobal("confirm", vi.fn(() => true));
     const purgeDeletedFiles = vi.fn(async (files) => ({
       purged: files.length,
       failures: [],
@@ -381,11 +380,12 @@ describe("SynchSettingTab remote vault settings", () => {
 
     await getToggleComponents().slice(-2)[0]?.change(true);
     await getLatestButton("Permanently remove selected (1)")?.click();
-    await nextTask();
-
-    expect(globalThis.confirm).toHaveBeenCalledWith(
+    expect(getCreatedElementTexts()).toContain(
       "Permanently remove version history for 1 selected deleted file? These files will disappear from deleted files and cannot be previewed or restored.",
     );
+    await getLatestButton("Permanently remove selected")?.click();
+    await nextTask();
+
     expect(purgeDeletedFiles).toHaveBeenCalledWith([
       {
         entryId: "entry-ready",
@@ -401,7 +401,6 @@ describe("SynchSettingTab remote vault settings", () => {
   });
 
   it("does not purge selected deleted files when confirmation is cancelled", async () => {
-    vi.stubGlobal("confirm", vi.fn(() => false));
     const purgeDeletedFiles = vi.fn(async (files) => ({
       purged: files.length,
       failures: [],
@@ -432,6 +431,7 @@ describe("SynchSettingTab remote vault settings", () => {
 
     await getToggleComponents().slice(-1)[0]?.change(true);
     await getLatestButton("Permanently remove selected (1)")?.click();
+    await getLatestButton("Cancel")?.click();
     await nextTask();
 
     expect(purgeDeletedFiles).not.toHaveBeenCalled();

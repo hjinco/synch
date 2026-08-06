@@ -36,7 +36,7 @@ export class ObsidianHttpClient implements HttpClient {
       throw: false,
       headers: input.headers,
       body: input.body,
-    })) as HttpResponseLike;
+    }));
   }
 }
 

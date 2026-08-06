@@ -25,7 +25,7 @@ export class SynchMobileStatusIndicator {
   ) {}
 
   initialize(): void {
-    const rootEl = this.rootEl ?? document.body;
+    const rootEl = this.rootEl ?? activeDocument.body;
     this.indicator = rootEl.createEl("button", {
       cls: "synch-mobile-status-indicator",
     });

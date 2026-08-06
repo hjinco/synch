@@ -1,6 +1,7 @@
 import { App, Plugin } from "obsidian";
 import { vi } from "vitest";
 
+import type { SynchDeletedFile } from "../../plugin/view-models";
 import { DEFAULT_SYNC_FILE_RULES } from "../../sync/core/file-rules";
 import { DEFAULT_VAULT_CONFIG_SYNC_RULES } from "../../sync/core/vault-config-rules";
 import type { SynchSettingsController } from "../controller";
@@ -80,11 +81,11 @@ export function createSettingsTab(
       capturedAt: null,
       message: "This version has no previewable content.",
     })),
-    restoreDeletedFiles: vi.fn(async (files) => ({
+    restoreDeletedFiles: vi.fn(async (files: SynchDeletedFile[]) => ({
       restored: files.length,
       failures: [],
     })),
-    purgeDeletedFiles: vi.fn(async (files) => ({
+    purgeDeletedFiles: vi.fn(async (files: SynchDeletedFile[]) => ({
       purged: files.length,
       failures: [],
     })),

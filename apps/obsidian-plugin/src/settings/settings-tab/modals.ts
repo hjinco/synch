@@ -9,6 +9,7 @@ import type {
   SynchDeletedFilesRestoreResult,
   SynchVersionPreview,
 } from "../../plugin/view-models";
+import { openConfirmModal } from "../../plugin/confirm-modal";
 import { VersionPreviewModal } from "../../plugin/version-preview-modal";
 import { formatDeletedFileTimestamp } from "./format";
 
@@ -77,7 +78,7 @@ class FolderSelectionModal extends Modal {
 
         const setting = new Setting(contentEl).setName(folder);
         if (isInherited) {
-          setting.setDesc(this.options.labels.inherited(inheritedFrom as string));
+          setting.setDesc(this.options.labels.inherited(inheritedFrom));
         }
         setting.addToggle((toggle) =>
           toggle
@@ -468,7 +469,12 @@ export class DeletedFilesModal extends Modal {
       return;
     }
 
-    if (!confirm(t("deleted.purgeConfirm", { count: selectedFiles.length }))) {
+    const confirmed = await openConfirmModal(
+      this.app,
+      t("deleted.purgeConfirm", { count: selectedFiles.length }),
+      t("deleted.purgeSelected"),
+    );
+    if (!confirmed) {
       return;
     }
 

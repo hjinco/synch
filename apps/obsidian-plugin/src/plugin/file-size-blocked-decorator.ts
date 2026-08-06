@@ -13,7 +13,7 @@ export interface SynchFileSizeBlockedDecoratorState {
 }
 
 export class SynchFileSizeBlockedDecorator {
-  private refreshTimer: ReturnType<typeof setTimeout> | null = null;
+  private refreshTimer: number | null = null;
   private refreshRun = 0;
   private blockedFiles: SynchFileSizeBlockedFile[] = [];
 
@@ -30,7 +30,7 @@ export class SynchFileSizeBlockedDecorator {
     );
     this.plugin.register(() => {
       if (this.refreshTimer) {
-        clearTimeout(this.refreshTimer);
+        window.clearTimeout(this.refreshTimer);
         this.refreshTimer = null;
       }
       this.blockedFiles = [];
@@ -40,10 +40,10 @@ export class SynchFileSizeBlockedDecorator {
 
   queueRefresh(): void {
     if (this.refreshTimer) {
-      clearTimeout(this.refreshTimer);
+      window.clearTimeout(this.refreshTimer);
     }
 
-    this.refreshTimer = setTimeout(() => {
+    this.refreshTimer = window.setTimeout(() => {
       this.refreshTimer = null;
       void this.refresh();
     }, 100);
@@ -83,14 +83,14 @@ export function decorateFileExplorerElement(
   root: HTMLElement,
   blockedByPath: ReadonlyMap<string, SynchFileSizeBlockedFile>,
 ): void {
-  for (const icon of root.querySelectorAll<HTMLElement>(`.${ICON_CLASS}`)) {
+  for (const icon of queryHtmlElements(root, `.${ICON_CLASS}`)) {
     icon.remove();
   }
-  for (const titleEl of root.querySelectorAll<HTMLElement>(`.${BLOCKED_CLASS}`)) {
+  for (const titleEl of queryHtmlElements(root, `.${BLOCKED_CLASS}`)) {
     titleEl.classList.remove(BLOCKED_CLASS);
   }
 
-  for (const titleEl of root.querySelectorAll<HTMLElement>(FILE_TITLE_SELECTOR)) {
+  for (const titleEl of queryHtmlElements(root, FILE_TITLE_SELECTOR)) {
     const path = titleEl.getAttribute("data-path");
     const blocked = path ? blockedByPath.get(path) : undefined;
     if (!blocked) {
@@ -109,6 +109,11 @@ export function decorateFileExplorerElement(
       placement: "right",
     });
   }
+}
+
+function queryHtmlElements(root: HTMLElement, selector: string): HTMLElement[] {
+  const elements = root.querySelectorAll(selector) as unknown as NodeListOf<HTMLElement>;
+  return Array.from(elements);
 }
 
 export function formatFileSizeBlockedTooltip(file: SynchFileSizeBlockedFile): string {

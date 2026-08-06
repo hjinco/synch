@@ -1,3 +1,5 @@
+import { DEFAULT_VAULT_CONFIG_DIR } from "./vault-config-rules";
+
 const NEVER_SYNC_RESERVED_SEGMENTS = new Set([
   ".git",
   ".trash",
@@ -12,7 +14,7 @@ export type SyncPathSafetyClass =
 
 export function classifySyncPath(
   path: string,
-  configDir = ".obsidian",
+  configDir = DEFAULT_VAULT_CONFIG_DIR,
 ): SyncPathSafetyClass {
   const normalized = normalizeReservedPath(path);
   if (!normalized) {

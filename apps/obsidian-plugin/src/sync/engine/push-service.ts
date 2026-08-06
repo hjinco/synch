@@ -403,7 +403,9 @@ async function mapWithConcurrency<T, U>(
   );
 
   if (firstError) {
-    throw firstError;
+    throw firstError instanceof Error
+      ? firstError
+      : new Error(typeof firstError === "string" ? firstError : "Concurrent operation failed");
   }
 
   return results;

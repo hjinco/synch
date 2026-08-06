@@ -1,12 +1,11 @@
 import { shouldSyncPath, type SyncFileRules } from "./file-rules";
 import { classifySyncPath } from "./reserved-paths";
 import {
+  DEFAULT_VAULT_CONFIG_DIR,
   isDeniedVaultConfigPath,
   shouldSyncVaultConfigPath,
   type VaultConfigSyncRules,
 } from "./vault-config-rules";
-
-const DEFAULT_OBSIDIAN_CONFIG_DIR = ".obsidian";
 
 export type VaultPathPolicyDecision =
   | { kind: "sync" }
@@ -80,9 +79,9 @@ export function isForbiddenVaultPath(
 }
 
 function isProtectedDefaultConfigPath(path: string, configDir: string): boolean {
-  if (configDir === DEFAULT_OBSIDIAN_CONFIG_DIR) {
+  if (configDir === DEFAULT_VAULT_CONFIG_DIR) {
     return false;
   }
 
-  return classifySyncPath(path, DEFAULT_OBSIDIAN_CONFIG_DIR) !== "normal";
+  return classifySyncPath(path, DEFAULT_VAULT_CONFIG_DIR) !== "normal";
 }

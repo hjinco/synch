@@ -83,12 +83,12 @@ type RequestClientMessageInput = RequestClientMessage extends infer Message
 type PendingRequest = {
   resolve(message: ServerMessage): void;
   reject(error: Error): void;
-  timeout: ReturnType<typeof setTimeout> | null;
+  timeout: number | null;
 };
 
 export class SyncRealtimeSocketSession {
   private readonly pendingRequests = new Map<string, PendingRequest>();
-  private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+  private heartbeatTimer: number | null = null;
   private closed = false;
   private receivedSessionError = false;
   private nextRequestId = 0;
@@ -108,7 +108,7 @@ export class SyncRealtimeSocketSession {
       return;
     }
 
-    this.heartbeatTimer = setInterval(() => {
+    this.heartbeatTimer = window.setInterval(() => {
       void this.sendHeartbeat();
     }, this.options.heartbeatIntervalMs);
   }
@@ -122,7 +122,7 @@ export class SyncRealtimeSocketSession {
       {
         ...message,
         requestId: this.createRequestId(),
-      } as RequestClientMessage,
+      },
       timeoutMs,
       reportConnectionError,
     );
@@ -146,7 +146,7 @@ export class SyncRealtimeSocketSession {
 
       const timeout =
         timeoutMs > 0
-          ? setTimeout(() => {
+          ? window.setTimeout(() => {
               if (!this.pendingRequests.has(message.requestId)) {
                 return;
               }
@@ -355,7 +355,7 @@ export class SyncRealtimeSocketSession {
 
   private clearPendingTimeout(request: PendingRequest): void {
     if (request.timeout) {
-      clearTimeout(request.timeout);
+      window.clearTimeout(request.timeout);
     }
   }
 
@@ -364,7 +364,7 @@ export class SyncRealtimeSocketSession {
       return;
     }
 
-    clearInterval(this.heartbeatTimer);
+    window.clearInterval(this.heartbeatTimer);
     this.heartbeatTimer = null;
   }
 }
