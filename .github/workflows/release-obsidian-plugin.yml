@@ -30,6 +30,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: pnpm/action-setup@v4
         with:
@@ -61,6 +63,9 @@ jobs:
       - run: pnpm -C apps/obsidian-plugin build
 
       - name: Prepare release notes
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          OBSIDIAN_RELEASE_MAINTAINER: hhhjin
         run: pnpm -C apps/obsidian-plugin release-notes:prepare ${{ steps.version.outputs.version }}
 
       - name: Commit release metadata
