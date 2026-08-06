@@ -42,12 +42,10 @@ import {
 } from "./server-version-checker";
 import { SynchPluginUpdateChecker } from "./update-checker";
 import {
-  normalizeExcludedFolders,
-  normalizeIncludedHiddenFolders,
+  normalizeSyncFileRules,
   normalizeVaultPath,
   type SyncFileRules,
 } from "../sync/core/file-rules";
-import type { VaultConfigSyncRules } from "../sync/core/vault-config-rules";
 import { isReservedSyncPath } from "../sync/core/reserved-paths";
 import type { SyncTokenResponse } from "../sync/remote/client";
 import { SyncController } from "../sync/runtime/controller";
@@ -442,7 +440,10 @@ export class SynchPluginController implements SynchSettingsController {
   }
 
   getSyncFileRules(): SynchFileRules {
-    return this.settingsStore.getSnapshot().fileRules;
+    return normalizeSyncFileRules(
+      this.settingsStore.getSnapshot().fileRules,
+      this.configDir(),
+    );
   }
 
   getVaultConfigSyncRules(): SynchVaultConfigSyncRules {
@@ -472,14 +473,14 @@ export class SynchPluginController implements SynchSettingsController {
   async updateExcludedFolders(paths: string[]): Promise<void> {
     await this.updateSyncFileRules({
       ...this.getSyncFileRules(),
-      excludedFolders: normalizeExcludedFolders(paths),
+      excludedFolders: paths,
     });
   }
 
   async updateIncludedHiddenFolders(paths: string[]): Promise<void> {
     await this.updateSyncFileRules({
       ...this.getSyncFileRules(),
-      includedHiddenFolders: normalizeIncludedHiddenFolders(paths),
+      includedHiddenFolders: paths,
     });
   }
 
@@ -1003,7 +1004,10 @@ export class SynchPluginController implements SynchSettingsController {
   }
 
   private async updateSyncFileRules(nextRules: SyncFileRules): Promise<void> {
-    const changed = await this.settingsStore.updateFileRules(nextRules);
+    const changed = await this.settingsStore.updateFileRules(
+      nextRules,
+      this.configDir(),
+    );
     if (!changed) {
       return;
     }
@@ -1017,7 +1021,7 @@ export class SynchPluginController implements SynchSettingsController {
   }
 
   private async updateVaultConfigSyncRules(
-    nextRules: VaultConfigSyncRules,
+    nextRules: SynchVaultConfigSyncRules,
   ): Promise<void> {
     const changed = await this.settingsStore.updateVaultConfigSyncRules(nextRules);
     if (!changed) {
@@ -1049,7 +1053,10 @@ export class SynchPluginController implements SynchSettingsController {
 
     for (const child of listed.folders) {
       const normalized = normalizeVaultPath(child);
-      if (!normalized || isReservedSyncPath(normalized)) {
+      if (
+        !normalized ||
+        isReservedSyncPath(normalized, this.configDir())
+      ) {
         continue;
       }
 
@@ -1059,5 +1066,9 @@ export class SynchPluginController implements SynchSettingsController {
 
       await this.collectSelectableHiddenFolders(normalized, result);
     }
+  }
+
+  private configDir(): string {
+    return this.plugin.app.vault.configDir;
   }
 }

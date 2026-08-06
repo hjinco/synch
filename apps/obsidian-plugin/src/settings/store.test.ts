@@ -64,6 +64,27 @@ describe("SynchSettingsStore", () => {
     });
   });
 
+  it("strips the active config folder from included hidden folders", async () => {
+    const pluginDataStore = new MemoryPluginDataStore({
+      apiBaseUrl: "https://custom.synch.test",
+      syncEnabled: true,
+      fileRules: DEFAULT_SYNC_FILE_RULES,
+      vaultConfigSync: DEFAULT_VAULT_CONFIG_SYNC_RULES,
+    });
+    const store = new SynchSettingsStore(pluginDataStore, "https://default.synch.test");
+    store.initialize();
+
+    await store.updateFileRules(
+      {
+        ...DEFAULT_SYNC_FILE_RULES,
+        includedHiddenFolders: [".obsidian", ".assets"],
+      },
+      ".obsidian",
+    );
+
+    expect(store.getSnapshot().fileRules.includedHiddenFolders).toEqual([".assets"]);
+  });
+
   it("rejects invalid API base URL updates without saving", async () => {
     const pluginDataStore = new MemoryPluginDataStore({
       apiBaseUrl: "https://api.synch.test",

@@ -1,5 +1,3 @@
-import { DEFAULT_VAULT_CONFIG_DIR } from "./vault-config-rules";
-
 const NEVER_SYNC_RESERVED_SEGMENTS = new Set([
   ".git",
   ".trash",
@@ -14,7 +12,7 @@ export type SyncPathSafetyClass =
 
 export function classifySyncPath(
   path: string,
-  configDir = DEFAULT_VAULT_CONFIG_DIR,
+  configDir = "",
 ): SyncPathSafetyClass {
   const normalized = normalizeReservedPath(path);
   if (!normalized) {
@@ -26,15 +24,15 @@ export function classifySyncPath(
     return "reserved-never-sync";
   }
 
-  if (segments[0] === configDir) {
+  if (configDir && segments[0] === configDir) {
     return "reserved-config-managed";
   }
 
   return "normal";
 }
 
-export function isReservedSyncPath(path: string): boolean {
-  return classifySyncPath(path) !== "normal";
+export function isReservedSyncPath(path: string, configDir = ""): boolean {
+  return classifySyncPath(path, configDir) !== "normal";
 }
 
 export function isNeverSyncReservedPath(path: string): boolean {

@@ -1,6 +1,5 @@
 export interface VaultConfigSyncRules {
   enabled: boolean;
-  configDir: string;
   mainSettings: boolean;
   appearance: boolean;
   themesAndSnippets: boolean;
@@ -12,13 +11,8 @@ export interface VaultConfigSyncRules {
   communityPluginData: boolean;
 }
 
-// Pure settings normalization has no Vault instance; preserve the legacy schema fallback.
-// eslint-disable-next-line obsidianmd/hardcoded-config-path
-export const DEFAULT_VAULT_CONFIG_DIR = ".obsidian";
-
 export const DEFAULT_VAULT_CONFIG_SYNC_RULES: VaultConfigSyncRules = {
   enabled: false,
-  configDir: DEFAULT_VAULT_CONFIG_DIR,
   mainSettings: true,
   appearance: true,
   themesAndSnippets: true,
@@ -46,7 +40,6 @@ export function normalizeVaultConfigSyncRules(
   const record = value as Record<string, unknown>;
   return {
     enabled: asBoolean(record.enabled, DEFAULT_VAULT_CONFIG_SYNC_RULES.enabled),
-    configDir: normalizeConfigDir(record.configDir),
     mainSettings: asBoolean(
       record.mainSettings,
       DEFAULT_VAULT_CONFIG_SYNC_RULES.mainSettings,
@@ -86,12 +79,13 @@ export function normalizeVaultConfigSyncRules(
 export function shouldSyncVaultConfigPath(
   path: string,
   rules: VaultConfigSyncRules,
+  configDir: string,
 ): boolean {
   if (!rules.enabled) {
     return false;
   }
 
-  const relativePath = getConfigRelativePath(path, rules.configDir);
+  const relativePath = getConfigRelativePath(path, configDir);
   if (!relativePath || isDeniedConfigRelativePath(relativePath)) {
     return false;
   }
@@ -145,7 +139,10 @@ export function isDeniedVaultConfigPath(
 
 function getConfigRelativePath(path: string, configDir: string): string | null {
   const normalizedPath = normalizeVaultPath(path);
-  const normalizedConfigDir = normalizeConfigDir(configDir);
+  const normalizedConfigDir = normalizeVaultPath(configDir);
+  if (!normalizedConfigDir) {
+    return null;
+  }
   if (normalizedPath === normalizedConfigDir) {
     return "";
   }
@@ -191,19 +188,6 @@ function isRootConfigJson(relativePath: string): boolean {
 function isCommunityPluginData(relativePath: string): boolean {
   const parts = relativePath.split("/");
   return parts.length === 3 && parts[0] === "plugins" && parts[2] === "data.json";
-}
-
-function normalizeConfigDir(value: unknown): string {
-  if (typeof value !== "string") {
-    return DEFAULT_VAULT_CONFIG_SYNC_RULES.configDir;
-  }
-
-  const normalized = normalizeVaultPath(value);
-  if (!normalized.startsWith(".") || normalized.includes("/")) {
-    return DEFAULT_VAULT_CONFIG_SYNC_RULES.configDir;
-  }
-
-  return normalized;
 }
 
 function normalizeVaultPath(path: string): string {

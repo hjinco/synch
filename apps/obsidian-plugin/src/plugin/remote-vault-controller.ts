@@ -106,8 +106,9 @@ export class SynchRemoteVaultController {
 
   private hasSyncableLocalFiles(): boolean {
     const fileRules = this.deps.getSyncFileRules();
+    const configDir = this.deps.plugin.app.vault.configDir;
     return this.deps.plugin.app.vault
       .getFiles()
-      .some((file) => shouldSyncPath(file.path, fileRules));
+      .some((file) => shouldSyncPath(file.path, fileRules, configDir));
   }
 }

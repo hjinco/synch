@@ -21,6 +21,7 @@ import {
   decideVaultPathSync,
   shouldApplyRemoteVaultPath,
   shouldUseLatestRemoteVaultConfig,
+  type VaultPathPolicyRules,
 } from "../core/vault-path-policy";
 import { decryptSyncBlob, decryptSyncMetadata } from "../core/crypto";
 import {
@@ -119,7 +120,6 @@ export class SyncEngine {
   private readonly vaultAdapter = new ObsidianSyncVaultAdapter(
     this.deps.plugin,
     () => this.deps.getSyncFileRules(),
-    () => this.deps.getVaultConfigSyncRules(),
   );
   private readonly vaultConfigSource = new ObsidianVaultConfigSource(
     this.deps.plugin,
@@ -251,13 +251,9 @@ export class SyncEngine {
     getSyncStore: () => this.syncStore,
     getRemoteVaultKey: () => this.deps.getRemoteVaultKey(),
     shouldApplyRemotePath: (path) =>
-      shouldApplyRemoteVaultPath(path, {
-        vaultConfigRules: this.deps.getVaultConfigSyncRules(),
-      }),
+      shouldApplyRemoteVaultPath(path, this.vaultPathPolicyRules()),
     shouldUseLatestRemoteVersion: (path) =>
-      shouldUseLatestRemoteVaultConfig(path, {
-        vaultConfigRules: this.deps.getVaultConfigSyncRules(),
-      }),
+      shouldUseLatestRemoteVaultConfig(path, this.vaultPathPolicyRules()),
     eventGate: this.syncEventGate,
     vaultAdapter: this.vaultAdapter,
     pullClient: this.syncPullClient,
@@ -382,7 +378,9 @@ export class SyncEngine {
     }
 
     const remotes = (await store.listRemoteStates()).filter(
-      (entry) => entry.path && shouldSyncVaultConfigPath(entry.path, rules),
+      (entry) =>
+        entry.path &&
+        shouldSyncVaultConfigPath(entry.path, rules, this.configDir()),
     );
     if (remotes.length === 0) {
       return 0;
@@ -563,10 +561,19 @@ export class SyncEngine {
   }
 
   private decideVaultPathSync(path: string) {
-    return decideVaultPathSync(path, {
+    return decideVaultPathSync(path, this.vaultPathPolicyRules());
+  }
+
+  private vaultPathPolicyRules(): VaultPathPolicyRules {
+    return {
       fileRules: this.deps.getSyncFileRules(),
       vaultConfigRules: this.deps.getVaultConfigSyncRules(),
-    });
+      configDir: this.configDir(),
+    };
+  }
+
+  private configDir(): string {
+    return this.deps.plugin.app.vault.configDir;
   }
 
   async listFileSizeBlockedFiles(): Promise<SyncFileSizeBlockedFile[]> {

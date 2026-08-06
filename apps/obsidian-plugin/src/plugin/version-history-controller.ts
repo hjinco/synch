@@ -92,7 +92,13 @@ export class SynchVersionHistoryController
       };
     }
 
-    if (!shouldSyncPath(file.path, this.deps.getSyncFileRules())) {
+    if (
+      !shouldSyncPath(
+        file.path,
+        this.deps.getSyncFileRules(),
+        this.deps.plugin.app.vault.configDir,
+      )
+    ) {
       return {
         status: "not_syncable",
         path: file.path,

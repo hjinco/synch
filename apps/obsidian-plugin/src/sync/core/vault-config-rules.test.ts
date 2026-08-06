@@ -2,9 +2,10 @@ import { describe, expect, it } from "vitest";
 
 import {
   DEFAULT_VAULT_CONFIG_SYNC_RULES,
-  normalizeVaultConfigSyncRules,
   shouldSyncVaultConfigPath,
 } from "./vault-config-rules";
+
+const DEFAULT_CONFIG_DIR = ".obsidian";
 
 describe("shouldSyncVaultConfigPath", () => {
   it("excludes all config paths when disabled", () => {
@@ -12,12 +13,13 @@ describe("shouldSyncVaultConfigPath", () => {
       shouldSyncVaultConfigPath(
         ".obsidian/app.json",
         DEFAULT_VAULT_CONFIG_SYNC_RULES,
+        DEFAULT_CONFIG_DIR,
       ),
     ).toBe(false);
   });
 
   it("allows selected Obsidian configuration categories", () => {
-    const rules = {
+    const syncRules = {
       ...DEFAULT_VAULT_CONFIG_SYNC_RULES,
       enabled: true,
       communityPluginList: true,
@@ -25,56 +27,126 @@ describe("shouldSyncVaultConfigPath", () => {
       communityPluginData: true,
     };
 
-    expect(shouldSyncVaultConfigPath(".obsidian/app.json", rules)).toBe(true);
-    expect(shouldSyncVaultConfigPath(".obsidian/appearance.json", rules)).toBe(true);
-    expect(shouldSyncVaultConfigPath(".obsidian/hotkeys.json", rules)).toBe(true);
-    expect(shouldSyncVaultConfigPath(".obsidian/core-plugins.json", rules)).toBe(true);
-    expect(shouldSyncVaultConfigPath(".obsidian/graph.json", rules)).toBe(true);
-    expect(shouldSyncVaultConfigPath(".obsidian/snippets/tweaks.css", rules)).toBe(true);
-    expect(shouldSyncVaultConfigPath(".obsidian/themes/theme.json", rules)).toBe(true);
+    expect(
+      shouldSyncVaultConfigPath(".obsidian/app.json", syncRules, DEFAULT_CONFIG_DIR),
+    ).toBe(true);
     expect(
       shouldSyncVaultConfigPath(
-        ".obsidian/plugins/calendar/manifest.json",
-        rules,
+        ".obsidian/appearance.json",
+        syncRules,
+        DEFAULT_CONFIG_DIR,
       ),
     ).toBe(true);
     expect(
-      shouldSyncVaultConfigPath(".obsidian/plugins/calendar/data.json", rules),
+      shouldSyncVaultConfigPath(".obsidian/hotkeys.json", syncRules, DEFAULT_CONFIG_DIR),
+    ).toBe(true);
+    expect(
+      shouldSyncVaultConfigPath(
+        ".obsidian/core-plugins.json",
+        syncRules,
+        DEFAULT_CONFIG_DIR,
+      ),
+    ).toBe(true);
+    expect(
+      shouldSyncVaultConfigPath(".obsidian/graph.json", syncRules, DEFAULT_CONFIG_DIR),
+    ).toBe(true);
+    expect(
+      shouldSyncVaultConfigPath(
+        ".obsidian/snippets/tweaks.css",
+        syncRules,
+        DEFAULT_CONFIG_DIR,
+      ),
+    ).toBe(true);
+    expect(
+      shouldSyncVaultConfigPath(
+        ".obsidian/themes/theme.json",
+        syncRules,
+        DEFAULT_CONFIG_DIR,
+      ),
+    ).toBe(true);
+    expect(
+      shouldSyncVaultConfigPath(
+        ".obsidian/plugins/calendar/manifest.json",
+        syncRules,
+        DEFAULT_CONFIG_DIR,
+      ),
+    ).toBe(true);
+    expect(
+      shouldSyncVaultConfigPath(
+        ".obsidian/plugins/calendar/data.json",
+        syncRules,
+        DEFAULT_CONFIG_DIR,
+      ),
     ).toBe(true);
   });
 
   it("keeps device-local and Synch-owned config files excluded", () => {
-    const rules = {
+    const syncRules = {
       ...DEFAULT_VAULT_CONFIG_SYNC_RULES,
       enabled: true,
       communityPluginFiles: true,
       communityPluginData: true,
     };
 
-    expect(shouldSyncVaultConfigPath(".obsidian/workspace.json", rules)).toBe(false);
-    expect(shouldSyncVaultConfigPath(".obsidian/workspace-mobile.json", rules)).toBe(false);
     expect(
-      shouldSyncVaultConfigPath(".obsidian/plugins/synch/manifest.json", rules),
+      shouldSyncVaultConfigPath(
+        ".obsidian/workspace.json",
+        syncRules,
+        DEFAULT_CONFIG_DIR,
+      ),
     ).toBe(false);
     expect(
-      shouldSyncVaultConfigPath(".obsidian/plugins/synch/main.js", rules),
+      shouldSyncVaultConfigPath(
+        ".obsidian/workspace-mobile.json",
+        syncRules,
+        DEFAULT_CONFIG_DIR,
+      ),
     ).toBe(false);
     expect(
-      shouldSyncVaultConfigPath(".obsidian/plugins/synch/styles.css", rules),
+      shouldSyncVaultConfigPath(
+        ".obsidian/plugins/synch/manifest.json",
+        syncRules,
+        DEFAULT_CONFIG_DIR,
+      ),
     ).toBe(false);
     expect(
-      shouldSyncVaultConfigPath(".obsidian/plugins/synch/data.json", rules),
+      shouldSyncVaultConfigPath(
+        ".obsidian/plugins/synch/main.js",
+        syncRules,
+        DEFAULT_CONFIG_DIR,
+      ),
+    ).toBe(false);
+    expect(
+      shouldSyncVaultConfigPath(
+        ".obsidian/plugins/synch/styles.css",
+        syncRules,
+        DEFAULT_CONFIG_DIR,
+      ),
+    ).toBe(false);
+    expect(
+      shouldSyncVaultConfigPath(
+        ".obsidian/plugins/synch/data.json",
+        syncRules,
+        DEFAULT_CONFIG_DIR,
+      ),
     ).toBe(false);
   });
 
-  it("supports override config folders", () => {
-    const rules = normalizeVaultConfigSyncRules({
+  it("uses the provided Vault#configDir", () => {
+    const syncRules = {
       ...DEFAULT_VAULT_CONFIG_SYNC_RULES,
       enabled: true,
-      configDir: ".obsidian-mobile",
-    });
+    };
 
-    expect(shouldSyncVaultConfigPath(".obsidian-mobile/app.json", rules)).toBe(true);
-    expect(shouldSyncVaultConfigPath(".obsidian/app.json", rules)).toBe(false);
+    expect(
+      shouldSyncVaultConfigPath(
+        ".obsidian-mobile/app.json",
+        syncRules,
+        ".obsidian-mobile",
+      ),
+    ).toBe(true);
+    expect(
+      shouldSyncVaultConfigPath(".obsidian/app.json", syncRules, ".obsidian-mobile"),
+    ).toBe(false);
   });
 });

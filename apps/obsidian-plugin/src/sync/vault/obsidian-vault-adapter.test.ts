@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 
 import { DEFAULT_SYNC_FILE_RULES } from "../core/file-rules";
-import { DEFAULT_VAULT_CONFIG_SYNC_RULES } from "../core/vault-config-rules";
 import { createTestPlugin } from "../../test-support/test-plugin";
 import { ObsidianSyncVaultAdapter } from "./obsidian-vault-adapter";
 
@@ -19,14 +18,10 @@ describe("ObsidianSyncVaultAdapter", () => {
       ".git/config",
       new TextEncoder().encode("ignored").buffer,
     );
-    const adapter = new ObsidianSyncVaultAdapter(
-      plugin,
-      () => ({
-        ...DEFAULT_SYNC_FILE_RULES,
-        includedHiddenFolders: [".assets", ".git"],
-      }),
-      () => DEFAULT_VAULT_CONFIG_SYNC_RULES,
-    );
+    const adapter = new ObsidianSyncVaultAdapter(plugin, () => ({
+      ...DEFAULT_SYNC_FILE_RULES,
+      includedHiddenFolders: [".assets", ".git"],
+    }));
 
     const files = await adapter.listFiles();
 

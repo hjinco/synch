@@ -39,7 +39,10 @@ export const DEFAULT_SYNC_FILE_RULES: SyncFileRules = {
   includedHiddenFolders: [],
 };
 
-export function normalizeSyncFileRules(value: unknown): SyncFileRules {
+export function normalizeSyncFileRules(
+  value: unknown,
+  configDir = "",
+): SyncFileRules {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return {
       ...DEFAULT_SYNC_FILE_RULES,
@@ -61,11 +64,16 @@ export function normalizeSyncFileRules(value: unknown): SyncFileRules {
     excludedFolders: normalizeExcludedFolders(record.excludedFolders),
     includedHiddenFolders: normalizeIncludedHiddenFolders(
       record.includedHiddenFolders,
+      configDir,
     ),
   };
 }
 
-export function shouldSyncPath(path: string, rules: SyncFileRules): boolean {
+export function shouldSyncPath(
+  path: string,
+  rules: SyncFileRules,
+  configDir = "",
+): boolean {
   const normalizedPath = normalizeVaultPath(path);
   if (!normalizedPath) {
     return false;
@@ -79,13 +87,13 @@ export function shouldSyncPath(path: string, rules: SyncFileRules): boolean {
     return false;
   }
 
-  if (isReservedSyncPath(normalizedPath)) {
+  if (isReservedSyncPath(normalizedPath, configDir)) {
     return false;
   }
 
   if (
-    hasHiddenSegment(normalizedPath) &&
-    !isIncludedByFolder(normalizedPath, rules.includedHiddenFolders)
+    pathHasHiddenSegment(normalizedPath) &&
+    !isPathUnderFolders(normalizedPath, rules.includedHiddenFolders)
   ) {
     return false;
   }
@@ -126,7 +134,11 @@ export function normalizeExcludedFolders(value: unknown): string[] {
     }
 
     const normalized = normalizeVaultPath(entry);
-    if (!normalized || hasHiddenSegment(normalized) || isReservedSyncPath(normalized)) {
+    if (
+      !normalized ||
+      pathHasHiddenSegment(normalized) ||
+      isReservedSyncPath(normalized)
+    ) {
       continue;
     }
 
@@ -137,7 +149,10 @@ export function normalizeExcludedFolders(value: unknown): string[] {
   return pruneSubpaths(sorted);
 }
 
-export function normalizeIncludedHiddenFolders(value: unknown): string[] {
+export function normalizeIncludedHiddenFolders(
+  value: unknown,
+  configDir = "",
+): string[] {
   if (!Array.isArray(value)) {
     return [];
   }
@@ -151,8 +166,8 @@ export function normalizeIncludedHiddenFolders(value: unknown): string[] {
     const normalized = normalizeVaultPath(entry);
     if (
       !normalized ||
-      !hasHiddenSegment(normalized) ||
-      isReservedSyncPath(normalized)
+      !pathHasHiddenSegment(normalized) ||
+      isReservedSyncPath(normalized, configDir)
     ) {
       continue;
     }
@@ -168,6 +183,19 @@ export function normalizeVaultPath(path: string): string {
   return path.trim().replace(/^\/+/, "").replace(/\/+$/, "");
 }
 
+export function pathHasHiddenSegment(path: string): boolean {
+  return path.split("/").some((segment) => segment.startsWith("."));
+}
+
+export function isPathUnderFolders(
+  path: string,
+  folders: ReadonlyArray<string>,
+): boolean {
+  return folders.some(
+    (folder) => path === folder || path.startsWith(`${folder}/`),
+  );
+}
+
 function pruneSubpaths(sortedPaths: readonly string[]): string[] {
   const result: string[] = [];
   for (const path of sortedPaths) {
@@ -181,18 +209,11 @@ function pruneSubpaths(sortedPaths: readonly string[]): string[] {
   return result;
 }
 
-function isExcludedByFolder(path: string, excludedFolders: ReadonlyArray<string>): boolean {
-  return isIncludedByFolder(path, excludedFolders);
-}
-
-function isIncludedByFolder(path: string, folders: ReadonlyArray<string>): boolean {
-  return folders.some(
-    (folder) => path === folder || path.startsWith(`${folder}/`),
-  );
-}
-
-function hasHiddenSegment(path: string): boolean {
-  return path.split("/").some((segment) => segment.startsWith("."));
+function isExcludedByFolder(
+  path: string,
+  excludedFolders: ReadonlyArray<string>,
+): boolean {
+  return isPathUnderFolders(path, excludedFolders);
 }
 
 function isSyncConflictFile(path: string): boolean {

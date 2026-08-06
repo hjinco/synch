@@ -13,7 +13,11 @@ export class ObsidianVaultConfigSource {
   ) {}
 
   isSyncablePath(path: string): boolean {
-    return shouldSyncVaultConfigPath(path, this.getVaultConfigSyncRules());
+    return shouldSyncVaultConfigPath(
+      path,
+      this.getVaultConfigSyncRules(),
+      this.configDir(),
+    );
   }
 
   async listFiles(): Promise<SyncVaultFile[]> {
@@ -22,13 +26,14 @@ export class ObsidianVaultConfigSource {
       return [];
     }
 
-    const stat = await this.plugin.app.vault.adapter.stat(rules.configDir);
+    const configDir = this.configDir();
+    const stat = await this.plugin.app.vault.adapter.stat(configDir);
     if (!stat || stat.type !== "folder") {
       return [];
     }
 
     const files: SyncVaultFile[] = [];
-    await this.collectFiles(rules.configDir, files);
+    await this.collectFiles(configDir, files);
     return files;
   }
 
@@ -59,5 +64,9 @@ export class ObsidianVaultConfigSource {
           new Uint8Array(await this.plugin.app.vault.adapter.readBinary(filePath)),
       });
     }
+  }
+
+  private configDir(): string {
+    return this.plugin.app.vault.configDir;
   }
 }

@@ -118,7 +118,6 @@ describe("normalizeSynchPluginSettings", () => {
     ).toEqual({
       ...DEFAULT_VAULT_CONFIG_SYNC_RULES,
       enabled: true,
-      configDir: ".obsidian-mobile",
       communityPluginFiles: true,
     });
   });

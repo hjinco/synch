@@ -1,7 +1,11 @@
-import { shouldSyncPath, type SyncFileRules } from "./file-rules";
+import {
+  isPathUnderFolders,
+  pathHasHiddenSegment,
+  shouldSyncPath,
+  type SyncFileRules,
+} from "./file-rules";
 import { classifySyncPath } from "./reserved-paths";
 import {
-  DEFAULT_VAULT_CONFIG_DIR,
   isDeniedVaultConfigPath,
   shouldSyncVaultConfigPath,
   type VaultConfigSyncRules,
@@ -15,28 +19,24 @@ export type VaultPathPolicyDecision =
 export interface VaultPathPolicyRules {
   fileRules: SyncFileRules;
   vaultConfigRules: VaultConfigSyncRules;
+  configDir: string;
 }
 
 export function decideVaultPathSync(
   path: string,
   rules: VaultPathPolicyRules,
 ): VaultPathPolicyDecision {
-  const safetyClass = classifySyncPath(path, rules.vaultConfigRules.configDir);
-  if (
-    safetyClass === "reserved-never-sync" ||
-    isDeniedVaultConfigPath(path, rules.vaultConfigRules.configDir) ||
-    isProtectedDefaultConfigPath(path, rules.vaultConfigRules.configDir)
-  ) {
+  if (isForbiddenVaultPath(path, rules.configDir)) {
     return { kind: "forbidden" };
   }
 
-  if (safetyClass === "reserved-config-managed") {
-    return shouldSyncVaultConfigPath(path, rules.vaultConfigRules)
+  if (classifySyncPath(path, rules.configDir) === "reserved-config-managed") {
+    return shouldSyncVaultConfigPath(path, rules.vaultConfigRules, rules.configDir)
       ? { kind: "sync" }
       : { kind: "ignore-local" };
   }
 
-  if (shouldSyncPath(path, rules.fileRules)) {
+  if (shouldSyncPath(path, rules.fileRules, rules.configDir)) {
     return { kind: "sync" };
   }
 
@@ -45,22 +45,22 @@ export function decideVaultPathSync(
 
 export function shouldApplyRemoteVaultPath(
   path: string,
-  rules: Pick<VaultPathPolicyRules, "vaultConfigRules">,
+  rules: VaultPathPolicyRules,
 ): boolean {
-  const safetyClass = classifySyncPath(path, rules.vaultConfigRules.configDir);
-  if (safetyClass === "reserved-never-sync") {
+  if (isForbiddenVaultPath(path, rules.configDir)) {
     return false;
   }
 
-  if (
-    isDeniedVaultConfigPath(path, rules.vaultConfigRules.configDir) ||
-    isProtectedDefaultConfigPath(path, rules.vaultConfigRules.configDir)
-  ) {
-    return false;
+  if (classifySyncPath(path, rules.configDir) === "reserved-config-managed") {
+    return shouldSyncVaultConfigPath(
+      path,
+      rules.vaultConfigRules,
+      rules.configDir,
+    );
   }
 
-  if (safetyClass === "reserved-config-managed") {
-    return shouldSyncVaultConfigPath(path, rules.vaultConfigRules);
+  if (pathHasHiddenSegment(path)) {
+    return isPathUnderFolders(path, rules.fileRules.includedHiddenFolders);
   }
 
   return true;
@@ -68,31 +68,17 @@ export function shouldApplyRemoteVaultPath(
 
 export function shouldUseLatestRemoteVaultConfig(
   path: string,
-  rules: Pick<VaultPathPolicyRules, "vaultConfigRules">,
+  rules: Pick<VaultPathPolicyRules, "vaultConfigRules" | "configDir">,
 ): boolean {
   return (
-    classifySyncPath(path, rules.vaultConfigRules.configDir) ===
-      "reserved-config-managed" &&
-    shouldSyncVaultConfigPath(path, rules.vaultConfigRules)
+    classifySyncPath(path, rules.configDir) === "reserved-config-managed" &&
+    shouldSyncVaultConfigPath(path, rules.vaultConfigRules, rules.configDir)
   );
 }
 
-export function isForbiddenVaultPath(
-  path: string,
-  vaultConfigRules: Pick<VaultConfigSyncRules, "configDir">,
-): boolean {
+export function isForbiddenVaultPath(path: string, configDir: string): boolean {
   return (
-    classifySyncPath(path, vaultConfigRules.configDir) ===
-      "reserved-never-sync" ||
-    isDeniedVaultConfigPath(path, vaultConfigRules.configDir) ||
-    isProtectedDefaultConfigPath(path, vaultConfigRules.configDir)
+    classifySyncPath(path, configDir) === "reserved-never-sync" ||
+    isDeniedVaultConfigPath(path, configDir)
   );
-}
-
-function isProtectedDefaultConfigPath(path: string, configDir: string): boolean {
-  if (configDir === DEFAULT_VAULT_CONFIG_DIR) {
-    return false;
-  }
-
-  return classifySyncPath(path, DEFAULT_VAULT_CONFIG_DIR) !== "normal";
 }

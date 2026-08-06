@@ -10,7 +10,6 @@ export interface SynchFileRules {
 
 export interface SynchVaultConfigSyncRules {
   enabled: boolean;
-  configDir: string;
   mainSettings: boolean;
   appearance: boolean;
   themesAndSnippets: boolean;

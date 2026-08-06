@@ -9,12 +9,15 @@ import {
   shouldUseLatestRemoteVaultConfig,
 } from "./vault-path-policy";
 
+const DEFAULT_CONFIG_DIR = ".obsidian";
+
 describe("decideVaultPathSync", () => {
   it("syncs normal vault files selected by file rules", () => {
     expect(
       decideVaultPathSync("Notes/daily.md", {
         fileRules: DEFAULT_SYNC_FILE_RULES,
         vaultConfigRules: DEFAULT_VAULT_CONFIG_SYNC_RULES,
+        configDir: DEFAULT_CONFIG_DIR,
       }).kind,
     ).toBe("sync");
   });
@@ -29,12 +32,14 @@ describe("decideVaultPathSync", () => {
       decideVaultPathSync(".obsidian/app.json", {
         fileRules: DEFAULT_SYNC_FILE_RULES,
         vaultConfigRules,
+        configDir: DEFAULT_CONFIG_DIR,
       }).kind,
     ).toBe("sync");
     expect(
       decideVaultPathSync(".assets/file.md", {
         fileRules: DEFAULT_SYNC_FILE_RULES,
         vaultConfigRules,
+        configDir: DEFAULT_CONFIG_DIR,
       }).kind,
     ).toBe("ignore-local");
   });
@@ -43,8 +48,8 @@ describe("decideVaultPathSync", () => {
     const vaultConfigRules = {
       ...DEFAULT_VAULT_CONFIG_SYNC_RULES,
       enabled: false,
-      configDir: ".obsidian-mobile",
     };
+    const configDir = ".obsidian-mobile";
 
     expect(
       decideVaultPathSync(".obsidian-mobile/app.json", {
@@ -53,51 +58,70 @@ describe("decideVaultPathSync", () => {
           includedHiddenFolders: [".obsidian-mobile"],
         },
         vaultConfigRules,
+        configDir,
       }).kind,
     ).toBe("ignore-local");
     expect(
       decideVaultPathSync(".obsidian/app.json", {
         fileRules: DEFAULT_SYNC_FILE_RULES,
         vaultConfigRules,
+        configDir,
       }).kind,
-    ).toBe("forbidden");
+    ).toBe("ignore-local");
   });
 
   it("marks never-sync and device-local config paths as forbidden", () => {
-    expect(isForbiddenVaultPath(".git/config", DEFAULT_VAULT_CONFIG_SYNC_RULES)).toBe(
-      true,
+    expect(isForbiddenVaultPath(".git/config", DEFAULT_CONFIG_DIR)).toBe(true);
+    expect(
+      isForbiddenVaultPath(".obsidian/workspace.json", DEFAULT_CONFIG_DIR),
+    ).toBe(true);
+    expect(
+      isForbiddenVaultPath(".obsidian/plugins/synch/data.json", DEFAULT_CONFIG_DIR),
+    ).toBe(true);
+    expect(isForbiddenVaultPath(".obsidian/app.json", DEFAULT_CONFIG_DIR)).toBe(
+      false,
     );
-    expect(
-      isForbiddenVaultPath(
-        ".obsidian/workspace.json",
-        DEFAULT_VAULT_CONFIG_SYNC_RULES,
-      ),
-    ).toBe(true);
-    expect(
-      isForbiddenVaultPath(
-        ".obsidian/plugins/synch/data.json",
-        DEFAULT_VAULT_CONFIG_SYNC_RULES,
-      ),
-    ).toBe(true);
-    expect(
-      isForbiddenVaultPath(".obsidian/app.json", DEFAULT_VAULT_CONFIG_SYNC_RULES),
-    ).toBe(false);
   });
 
-  it("keeps the default Obsidian config folder protected when another config folder is active", () => {
+  it("treats inactive Obsidian config folders as unmanaged hidden paths", () => {
     const vaultConfigRules = {
       ...DEFAULT_VAULT_CONFIG_SYNC_RULES,
       enabled: true,
-      configDir: ".obsidian-mobile",
     };
+    const configDir = ".obsidian-mobile";
 
-    expect(isForbiddenVaultPath(".obsidian/app.json", vaultConfigRules)).toBe(true);
+    expect(isForbiddenVaultPath(".obsidian/app.json", configDir)).toBe(false);
+    expect(isForbiddenVaultPath(".obsidian/workspace.json", configDir)).toBe(false);
+    expect(isForbiddenVaultPath(".obsidian-mobile/app.json", configDir)).toBe(false);
     expect(
-      isForbiddenVaultPath(".obsidian/workspace.json", vaultConfigRules),
-    ).toBe(true);
+      decideVaultPathSync(".obsidian/app.json", {
+        fileRules: DEFAULT_SYNC_FILE_RULES,
+        vaultConfigRules,
+        configDir,
+      }).kind,
+    ).toBe("ignore-local");
     expect(
-      isForbiddenVaultPath(".obsidian-mobile/app.json", vaultConfigRules),
-    ).toBe(false);
+      decideVaultPathSync(".obsidian/app.json", {
+        fileRules: {
+          ...DEFAULT_SYNC_FILE_RULES,
+          includeOtherFiles: true,
+          includedHiddenFolders: [".obsidian"],
+        },
+        vaultConfigRules,
+        configDir,
+      }).kind,
+    ).toBe("sync");
+    expect(
+      decideVaultPathSync(".obsidian/app.json", {
+        fileRules: {
+          ...DEFAULT_SYNC_FILE_RULES,
+          includeOtherFiles: true,
+          includedHiddenFolders: [".obsidian"],
+        },
+        vaultConfigRules: DEFAULT_VAULT_CONFIG_SYNC_RULES,
+        configDir: DEFAULT_CONFIG_DIR,
+      }).kind,
+    ).toBe("ignore-local");
   });
 });
 
@@ -105,41 +129,71 @@ describe("shouldApplyRemoteVaultPath", () => {
   it("keeps normal remote files eligible while honoring vault config rules", () => {
     expect(
       shouldApplyRemoteVaultPath("Notes/daily.md", {
+        fileRules: DEFAULT_SYNC_FILE_RULES,
         vaultConfigRules: DEFAULT_VAULT_CONFIG_SYNC_RULES,
+        configDir: DEFAULT_CONFIG_DIR,
       }),
     ).toBe(true);
     expect(
       shouldApplyRemoteVaultPath(".obsidian/app.json", {
+        fileRules: DEFAULT_SYNC_FILE_RULES,
         vaultConfigRules: DEFAULT_VAULT_CONFIG_SYNC_RULES,
+        configDir: DEFAULT_CONFIG_DIR,
       }),
     ).toBe(false);
     expect(
       shouldApplyRemoteVaultPath(".obsidian/app.json", {
+        fileRules: DEFAULT_SYNC_FILE_RULES,
         vaultConfigRules: {
           ...DEFAULT_VAULT_CONFIG_SYNC_RULES,
           enabled: true,
         },
+        configDir: DEFAULT_CONFIG_DIR,
       }),
     ).toBe(true);
   });
 
-  it("does not apply default Obsidian config paths as generic remote files when using a custom config folder", () => {
+  it("does not apply inactive Obsidian config paths as generic remote files", () => {
     const vaultConfigRules = {
       ...DEFAULT_VAULT_CONFIG_SYNC_RULES,
       enabled: true,
-      configDir: ".obsidian-mobile",
     };
+    const configDir = ".obsidian-mobile";
 
     expect(
       shouldApplyRemoteVaultPath(".obsidian/app.json", {
+        fileRules: DEFAULT_SYNC_FILE_RULES,
         vaultConfigRules,
+        configDir,
       }),
     ).toBe(false);
     expect(
       shouldApplyRemoteVaultPath(".obsidian-mobile/app.json", {
+        fileRules: DEFAULT_SYNC_FILE_RULES,
         vaultConfigRules,
+        configDir,
       }),
     ).toBe(true);
+  });
+
+  it("applies explicitly included hidden folders from remote", () => {
+    expect(
+      shouldApplyRemoteVaultPath(".assets/image.png", {
+        fileRules: {
+          ...DEFAULT_SYNC_FILE_RULES,
+          includedHiddenFolders: [".assets"],
+        },
+        vaultConfigRules: DEFAULT_VAULT_CONFIG_SYNC_RULES,
+        configDir: DEFAULT_CONFIG_DIR,
+      }),
+    ).toBe(true);
+    expect(
+      shouldApplyRemoteVaultPath(".assets/image.png", {
+        fileRules: DEFAULT_SYNC_FILE_RULES,
+        vaultConfigRules: DEFAULT_VAULT_CONFIG_SYNC_RULES,
+        configDir: DEFAULT_CONFIG_DIR,
+      }),
+    ).toBe(false);
   });
 });
 
@@ -153,14 +207,19 @@ describe("shouldUseLatestRemoteVaultConfig", () => {
     expect(
       shouldUseLatestRemoteVaultConfig(".obsidian/graph.json", {
         vaultConfigRules,
+        configDir: DEFAULT_CONFIG_DIR,
       }),
     ).toBe(true);
     expect(
-      shouldUseLatestRemoteVaultConfig("Notes/daily.md", { vaultConfigRules }),
+      shouldUseLatestRemoteVaultConfig("Notes/daily.md", {
+        vaultConfigRules,
+        configDir: DEFAULT_CONFIG_DIR,
+      }),
     ).toBe(false);
     expect(
       shouldUseLatestRemoteVaultConfig(".obsidian/workspace.json", {
         vaultConfigRules,
+        configDir: DEFAULT_CONFIG_DIR,
       }),
     ).toBe(false);
   });

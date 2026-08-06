@@ -503,6 +503,7 @@ function createPlugin(
         localStorage.set(key, value);
       },
       vault: {
+        configDir: ".obsidian",
         getFiles: vi.fn(() => visibleFiles),
         readBinary: vi.fn(async () => toArrayBuffer(await readBinary())),
         on: vi.fn((eventName: string, callback: VaultEventCallback) => {

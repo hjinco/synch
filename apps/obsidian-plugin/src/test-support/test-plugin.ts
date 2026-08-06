@@ -41,6 +41,7 @@ export function createTestPlugin(): Plugin {
         localStorage.set(key, value);
       },
       vault: {
+        configDir: ".obsidian",
         getFiles(): [] {
           return [];
         },

@@ -799,14 +799,9 @@ function addVaultConfigRuleToggle<K extends keyof SynchVaultConfigSyncRules>(
     .setName(name)
     .setDesc(description)
     .addToggle((toggle) =>
-      toggle
-        .setValue(rules[key] as boolean)
-        .onChange(async (value) => {
-          await controller.updateVaultConfigSyncRule(
-            key,
-            value as SynchVaultConfigSyncRules[K],
-          );
-        }),
+      toggle.setValue(rules[key]).onChange(async (value) => {
+        await controller.updateVaultConfigSyncRule(key, value);
+      }),
     );
 }
 
