@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 
 import { DomainError } from "../../../../errors";
+import { STAGED_BLOB_STALE_MS } from "../../store/health-store";
 import { closeAllTestSqliteCoordinators, createSqliteCoordinator, testSession } from "./helpers";
 
 afterEach(() => {
@@ -19,6 +20,27 @@ describe("sqlite backend: blob staging", () => {
 			size_bytes: 1_000,
 		});
 		expect(healthStore.readStorageStatus().storageUsedBytes).toBe(1_000);
+	});
+
+	it("atomically pauses sync when a stale staged blob is retried", async () => {
+		const { blobStore, cursorStore } = await createSqliteCoordinator();
+		await blobStore.stageBlob("blob-stale", 1_000, 100, 200);
+
+		const retriedAt = 100 + STAGED_BLOB_STALE_MS;
+		await expect(
+			blobStore.stageBlob("blob-stale", 1_000, retriedAt, retriedAt + 100),
+		).resolves.toEqual({
+			status: "sync_paused",
+		});
+		expect(cursorStore.readSyncPause()).toEqual({
+			pausedAt: retriedAt,
+			reason: "staged blob blob-stale remained staged for at least one hour",
+		});
+		expect(blobStore.readBlob("blob-stale")).toMatchObject({
+			created_at: 100,
+			last_uploaded_at: 100,
+			delete_after: 200,
+		});
 	});
 
 	it("rejects a blob larger than the configured max file size", async () => {

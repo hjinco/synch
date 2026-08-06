@@ -101,6 +101,8 @@ export const coordinatorState = sqliteTable("coordinator_state", {
 	healthFlushRetryCount: integer("health_flush_retry_count").notNull().default(0),
 	lastHealthFlushError: text("last_health_flush_error"),
 	lastHealthFlushErrorAt: integer("last_health_flush_error_at"),
+	syncPausedAt: integer("sync_paused_at"),
+	syncPauseReason: text("sync_pause_reason"),
 });
 
 export const maintenanceJobs = sqliteTable(

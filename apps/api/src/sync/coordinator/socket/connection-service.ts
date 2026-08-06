@@ -11,7 +11,7 @@ export interface VaultInitializer {
 
 export class CoordinatorSocketConnectionService {
 	constructor(
-		private readonly socketGateway: Pick<SocketGateway, "openSocket">,
+		private readonly socketGateway: Pick<SocketGateway, "openSocket" | "closeAllSockets">,
 		private readonly syncTokenService: SyncTokenVerifier,
 		private readonly vaultInitializer: VaultInitializer,
 		private readonly healthSummaryScheduler: HealthSummaryScheduler,
@@ -22,6 +22,15 @@ export class CoordinatorSocketConnectionService {
 		const response = await this.socketGateway.openSocket(request, session);
 		await this.completeSocketOpen();
 		return response;
+	}
+
+	/**
+	 * Completes an accepted socket while it is registered with the gateway.
+	 * Both the Durable Object and Node upgrade paths must call this so the
+	 * health summary observes the new connection.
+	 */
+	async completeSocketOpen(): Promise<void> {
+		await this.healthSummaryScheduler.scheduleSummaryFlush();
 	}
 
 	/**
@@ -40,9 +49,5 @@ export class CoordinatorSocketConnectionService {
 			vaultId: claims.vaultId,
 			wantsStorageStatus: false,
 		};
-	}
-
-	async completeSocketOpen(): Promise<void> {
-		await this.healthSummaryScheduler.scheduleSummaryFlush();
 	}
 }

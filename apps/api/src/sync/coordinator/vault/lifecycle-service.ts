@@ -6,6 +6,7 @@ import type {
 	HealthSummaryScheduler,
 	InitialVaultLimitReader,
 	SocketGateway,
+	SyncPauseState,
 	VaultStateStore,
 } from "../ports";
 import type { SocketSession, VaultStateLimits } from "../types";
@@ -28,6 +29,13 @@ export class VaultLifecycleService {
 
 	isPurged(): boolean {
 		return this.purged;
+	}
+
+	readSyncPause(vaultId: string): SyncPauseState | null {
+		if (!this.vaultStateStore.vaultStateExistsFor(vaultId)) {
+			return null;
+		}
+		return this.vaultStateStore.readSyncPause();
 	}
 
 	async ensureVaultState(vaultId: string): Promise<void> {

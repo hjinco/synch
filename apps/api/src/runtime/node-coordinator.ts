@@ -203,7 +203,8 @@ export function createNodeCoordinatorRuntime(
 		socketConnectionService: {
 			prepareSocketSession: (request: Request, id: string) =>
 				vaultLock.run(vaultId, () => socketConnectionService.prepareSocketSession(request, id)),
-			completeSocketOpen: () => vaultLock.run(vaultId, () => socketConnectionService.completeSocketOpen()),
+			completeSocketOpen: () =>
+				vaultLock.run(vaultId, () => socketConnectionService.completeSocketOpen()),
 		},
 		socketGateway: socketService,
 		ready,

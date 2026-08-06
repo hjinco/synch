@@ -1,9 +1,14 @@
 import { apiError } from "../../errors";
+import type { SyncPauseState } from "../coordinator/ports";
 import type { VaultService } from "../../vault/service";
 import type { SyncTokenClaims } from "./token";
 import { SyncTokenService } from "./token-service";
 
 const DEFAULT_SYNC_TOKEN_TTL_SECONDS = 120;
+
+export interface SyncPauseReader {
+	readSyncPause(vaultId: string): Promise<SyncPauseState | null>;
+}
 
 export type SyncTokenIssueResponse = {
 	token: string;
@@ -20,6 +25,7 @@ export class SyncService {
 		private readonly vaultService: VaultService,
 		private readonly syncTokenService: SyncTokenService,
 		syncTokenTtlSeconds = DEFAULT_SYNC_TOKEN_TTL_SECONDS,
+		private readonly syncPauseReader?: SyncPauseReader,
 	) {
 		this.syncTokenTtlSeconds = syncTokenTtlSeconds;
 	}
@@ -31,6 +37,11 @@ export class SyncService {
 		const vault = await this.vaultService.getAccessibleVault(session.userId, input.vaultId);
 		if (!vault) {
 			throw apiError(403, "forbidden", "vault access denied");
+		}
+
+		const syncPause = await this.syncPauseReader?.readSyncPause(vault.id);
+		if (syncPause) {
+			throw apiError(403, "forbidden", "vault sync is temporarily paused for repair");
 		}
 
 		const now = Math.floor(Date.now() / 1000);

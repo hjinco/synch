@@ -1,6 +1,7 @@
 import { and, eq } from "drizzle-orm";
 
 import * as doSchema from "../../../db/do";
+import type { SyncPauseState } from "../ports";
 import type { VaultStateLimits } from "../types";
 import type { CoordinatorDb, CoordinatorStorageHandle } from "./storage-handle";
 
@@ -27,6 +28,29 @@ export class CoordinatorCursorStore {
 			.limit(1)
 			.get();
 		return row?.vaultId ?? null;
+	}
+
+	readSyncPause(): SyncPauseState | null {
+		const row = this.handle
+			.exec<{
+				sync_paused_at: number | null;
+				sync_pause_reason: string | null;
+			}>(
+				`
+				SELECT sync_paused_at, sync_pause_reason
+				FROM coordinator_state
+				WHERE id = 1
+				`,
+			)
+			.toArray()[0];
+		if (row?.sync_paused_at === null || row?.sync_paused_at === undefined) {
+			return null;
+		}
+
+		return {
+			pausedAt: Number(row.sync_paused_at),
+			reason: row.sync_pause_reason ?? "vault sync paused",
+		};
 	}
 
 	vaultStateExistsFor(vaultId: string): boolean {

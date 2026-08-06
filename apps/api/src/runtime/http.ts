@@ -112,6 +112,7 @@ export function createRuntimeApp(env: RuntimeEnv, request: Request) {
 		vaultService,
 		syncTokenService,
 		env.SYNC_TOKEN_TTL_SECONDS,
+		coordinatorProxyRepository,
 	);
 
 	const app = createApp(

@@ -11,6 +11,50 @@ import {
 } from "./helpers";
 
 describe("coordinator blob lifecycle", () => {
+	it("quarantines a vault when a stale staged blob is retried", async () => {
+		const syncTokenService = {
+			requireSyncToken: vi.fn(async () => ({
+				sub: "user-1",
+				vaultId: "vault-1",
+				localVaultId: "local-vault-1",
+				scope: "vault:sync" as const,
+				iat: 100,
+				exp: 200,
+			})),
+		} as unknown as SyncTokenService;
+		const stateRepository = createTestCoordinatorState({
+			stageBlob: vi.fn(async () => ({
+				status: "sync_paused" as const,
+			})),
+		});
+		const socketService = socketServiceMock();
+		const service = createCoordinatorService({
+			syncTokenService,
+			stateRepository,
+			socketService,
+		});
+
+		await expect(
+			service.stageBlob(
+				new Request("http://example.com"),
+				"vault-1",
+				"blob-stale",
+				66_701,
+			),
+		).rejects.toMatchObject({ status: 403 });
+
+		expect(stateRepository.stageBlob).toHaveBeenCalledWith(
+			"blob-stale",
+			66_701,
+			expect.any(Number),
+			expect.any(Number),
+		);
+		expect(socketService.closeAllSockets).toHaveBeenCalledWith(
+			4403,
+			"sync paused for vault repair",
+		);
+	});
+
 	it("skips explicit blob deletion when the blob is still referenced", async () => {
 		const syncTokenService = {
 			requireSyncToken: vi.fn(async () => ({

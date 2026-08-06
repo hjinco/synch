@@ -50,6 +50,7 @@ export interface VaultStateStore {
 	currentCursor(): number;
 	ensureVaultState(vaultId: string, initialLimits: VaultStateLimits): void;
 	readVaultId(): string | null;
+	readSyncPause(): SyncPauseState | null;
 	vaultStateExistsFor(vaultId: string): boolean;
 	recordLocalVaultConnection(userId: string, localVaultId: string): void;
 	deleteLocalVaultConnection(userId: string, localVaultId: string): void;
@@ -61,6 +62,11 @@ export interface VaultStateStore {
 	applyVaultPolicy(vaultId: string, limits: VaultStateLimits): boolean;
 	readVersionHistoryRetentionDays(): number;
 }
+
+export type SyncPauseState = {
+	pausedAt: number;
+	reason: string;
+};
 
 export interface EntryStateStore {
 	listEntryStates(
@@ -118,7 +124,7 @@ export interface BlobStateStore {
 		sizeBytes: number,
 		now: number,
 		deleteAfter: number,
-	): Promise<void>;
+	): Promise<StageBlobResult>;
 	readBlob(blobId: string): BlobRow | null;
 	deleteBlobRecord(blobId: string): void;
 	abortStagedBlob(blobId: string, now?: number): void;
@@ -128,6 +134,10 @@ export interface BlobStateStore {
 	markBlobPendingDeleteIfUnpinned(blobId: string, now?: number): void;
 	nextBlobGcAt(): number | null;
 }
+
+export type StageBlobResult =
+	| { status: "staged" }
+	| { status: "sync_paused" };
 
 export interface HealthStateStore {
 	recordGcCompleted(now?: number): void;

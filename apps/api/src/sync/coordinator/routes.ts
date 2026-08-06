@@ -7,6 +7,10 @@ import { BLOB_SIZE_HEADER, parseBlobSizeHeader } from "../blob/size";
 import type { VaultStateLimits } from "./types";
 
 export interface CoordinatorHttpUseCases {
+	readSyncPause(vaultId: string): {
+		pausedAt: number;
+		reason: string;
+	} | null;
 	stageBlob(
 		request: Request,
 		vaultId: string,
@@ -32,6 +36,20 @@ export function createCoordinatorApp(
 	deps: { useCases: CoordinatorHttpUseCases },
 ) {
 	const app = new Hono();
+
+	app.get(
+		"/internal/v1/vaults/:vaultId/sync-state",
+		zValidator(
+			"param",
+			z.object({
+				vaultId: z.string().trim().min(1),
+			}),
+		),
+		async (c) => {
+			const { vaultId } = c.req.valid("param");
+			return c.json({ syncPause: deps.useCases.readSyncPause(vaultId) });
+		},
+	);
 
 	app.put(
 		"/internal/v1/vaults/:vaultId/blobs/:blobId/stage",

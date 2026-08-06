@@ -85,6 +85,7 @@ describe("CoordinatorSocketConnectionService", () => {
 		expect(socketGateway.openSocket).not.toHaveBeenCalled();
 		expect(healthSummaryScheduler.scheduleSummaryFlush).not.toHaveBeenCalled();
 	});
+
 });
 
 function createSyncTokenVerifier(): SyncTokenVerifier {
@@ -108,9 +109,10 @@ function createVaultInitializer(): VaultInitializer {
 
 function createSocketGateway(
 	response = new Response(null, { status: 200 }),
-): Pick<SocketGateway, "openSocket"> {
+): Pick<SocketGateway, "openSocket" | "closeAllSockets"> {
 	return {
 		openSocket: vi.fn(async () => response),
+		closeAllSockets: vi.fn(),
 	};
 }
 

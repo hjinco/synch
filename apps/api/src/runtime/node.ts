@@ -130,6 +130,7 @@ export async function createNodeRuntime(config: NodeRuntimeConfig) {
 		vaultService,
 		syncTokenService,
 		config.syncTokenTtlSeconds,
+		coordinatorProxyRepository,
 	);
 
 	const app = createApp(

@@ -18,6 +18,7 @@ import type {
 	SocketSession,
 	VaultStateLimits,
 } from "./types";
+import type { SyncPauseState } from "./ports";
 
 type MutationOptions = { forcedHistoryBefore?: "before_restore" | null };
 type GcOptions = {
@@ -101,6 +102,7 @@ export interface SocketConnectionUseCases {
 
 export interface VaultLifecycleUseCases {
 	isPurged(): boolean;
+	readSyncPause(vaultId: string): SyncPauseState | null;
 	detachLocalVault(session: SocketSession): Promise<void>;
 	applyVaultPolicy(
 		vaultId: string,
@@ -126,6 +128,10 @@ export class CoordinatorService {
 
 	async openSocket(request: Request, vaultId: string): Promise<Response> {
 		return await this.services.socketConnectionService.openSocket(request, vaultId);
+	}
+
+	readSyncPause(vaultId: string): SyncPauseState | null {
+		return this.services.vaultLifecycleService.readSyncPause(vaultId);
 	}
 
 	listEntryStates(

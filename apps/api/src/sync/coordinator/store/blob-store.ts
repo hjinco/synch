@@ -2,7 +2,9 @@ import { and, eq, sql } from "drizzle-orm";
 
 import * as doSchema from "../../../db/do";
 import { DomainError } from "../../../errors";
+import type { StageBlobResult } from "../ports";
 import type { BlobRow, BlobState } from "../types";
+import { STAGED_BLOB_STALE_MS } from "./health-store";
 import type { CoordinatorDb, CoordinatorStorageHandle } from "./storage-handle";
 
 type BlobDb = Pick<CoordinatorDb, "delete" | "insert" | "select" | "update">;
@@ -15,8 +17,8 @@ export class CoordinatorBlobStore {
 		sizeBytes: number,
 		now: number,
 		deleteAfter: number,
-	): Promise<void> {
-		this.handle.db.transaction((tx) => {
+	): Promise<StageBlobResult> {
+		return this.handle.db.transaction((tx) => {
 			const storage = tx
 				.select({
 					usedBytes: doSchema.coordinatorState.storageUsedBytes,
@@ -36,6 +38,36 @@ export class CoordinatorBlobStore {
 
 			const storageLimitBytes = Number(storage.storageLimitBytes);
 			const maxFileSizeBytes = Number(storage.maxFileSizeBytes);
+			const existing = tx
+				.select({
+					state: doSchema.blobs.state,
+					sizeBytes: doSchema.blobs.sizeBytes,
+					createdAt: doSchema.blobs.createdAt,
+				})
+				.from(doSchema.blobs)
+				.where(eq(doSchema.blobs.blobId, blobId))
+				.limit(1)
+				.get();
+
+			// Older clients may retry the same PUT indefinitely after losing the
+			// upload/commit result. Detect that retry while we already hold the blob
+			// row, and persist the quarantine in this same transaction.
+			if (
+				existing?.state === "staged" &&
+				now - Number(existing.createdAt) >= STAGED_BLOB_STALE_MS
+			) {
+				const reason =
+					`staged blob ${blobId} remained staged for at least one hour`;
+				tx.update(doSchema.coordinatorState)
+					.set({
+						syncPausedAt: sql`coalesce(${doSchema.coordinatorState.syncPausedAt}, ${now})`,
+						syncPauseReason: sql`coalesce(${doSchema.coordinatorState.syncPauseReason}, ${reason})`,
+					})
+					.where(eq(doSchema.coordinatorState.id, 1))
+					.run();
+				return { status: "sync_paused" };
+			}
+
 			if (maxFileSizeBytes > 0 && sizeBytes > maxFileSizeBytes) {
 				throw new DomainError(
 					"file_too_large",
@@ -43,16 +75,6 @@ export class CoordinatorBlobStore {
 					{ maxFileSizeBytes, sizeBytes },
 				);
 			}
-
-			const existing = tx
-				.select({
-					state: doSchema.blobs.state,
-					sizeBytes: doSchema.blobs.sizeBytes,
-				})
-				.from(doSchema.blobs)
-				.where(eq(doSchema.blobs.blobId, blobId))
-				.limit(1)
-				.get();
 
 			if (existing && this.isBlobPinned(blobId, false, now)) {
 				throw new DomainError("blob_already_live", `blob ${blobId} is already live`, {
@@ -105,6 +127,7 @@ export class CoordinatorBlobStore {
 					},
 				})
 				.run();
+			return { status: "staged" };
 		});
 	}
 

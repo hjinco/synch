@@ -1,4 +1,4 @@
-import { DomainError, domainApiError } from "../../../errors";
+import { DomainError, apiError, domainApiError } from "../../../errors";
 import { blobObjectKey } from "../../blob/object-key";
 import type { MaintenanceScheduler } from "../maintenance-scheduler";
 import type {
@@ -22,7 +22,10 @@ export class BlobSyncService {
 			HealthStateStore,
 			"recordGcCompleted" | "readStorageStatus"
 		>,
-		private readonly socketService: Pick<SocketGateway, "broadcastStorageStatus">,
+		private readonly socketService: Pick<
+			SocketGateway,
+			"broadcastStorageStatus" | "closeAllSockets"
+		>,
 		private readonly blobRepository: BlobObjectRepository,
 		private readonly blobGracePeriodMs: number,
 		private readonly maintenanceScheduler: MaintenanceScheduler,
@@ -39,12 +42,16 @@ export class BlobSyncService {
 
 		const now = Date.now();
 		try {
-			await this.blobStore.stageBlob(
+			const result = await this.blobStore.stageBlob(
 				blobId,
 				sizeBytes,
 				now,
 				now + this.blobGracePeriodMs,
 			);
+			if (result.status === "sync_paused") {
+				this.socketService.closeAllSockets(4403, "sync paused for vault repair");
+				throw syncPausedError();
+			}
 			await this.maintenanceScheduler.defer(
 				"blob_gc",
 				now + this.blobGracePeriodMs,
@@ -172,4 +179,8 @@ export class BlobSyncService {
 			storageStatus,
 		});
 	}
+}
+
+function syncPausedError() {
+	return apiError(403, "forbidden", "vault sync is temporarily paused for repair");
 }

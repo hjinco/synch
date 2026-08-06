@@ -1,4 +1,5 @@
 import type { SubscriptionPlanPolicy } from "../../subscription/policy";
+import type { SyncPauseState } from "./ports";
 
 export type CoordinatorStub = {
 	fetch(request: Request): Promise<Response>;
@@ -19,6 +20,23 @@ export class CoordinatorProxyRepository {
 	async fetch(vaultId: string, request: Request): Promise<Response> {
 		const stub = this.namespace.getByName(vaultId);
 		return await stub.fetch(request);
+	}
+
+	async readSyncPause(vaultId: string): Promise<SyncPauseState | null> {
+		const stub = this.namespace.getByName(vaultId);
+		const response = await stub.fetch(
+			new Request(
+				`https://internal/internal/v1/vaults/${encodeURIComponent(vaultId)}/sync-state`,
+			),
+		);
+		if (!response.ok) {
+			throw new Error(`failed to read sync state for vault ${vaultId}: ${response.status}`);
+		}
+
+		const body = (await response.json()) as {
+			syncPause: SyncPauseState | null;
+		};
+		return body.syncPause;
 	}
 
 	async stageBlob(

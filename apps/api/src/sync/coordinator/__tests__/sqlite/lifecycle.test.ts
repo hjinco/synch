@@ -63,4 +63,5 @@ describe("sqlite backend: storage lifecycle", () => {
 		});
 		expect(cursorStore.readVaultId()).toBe("vault-1");
 	});
+
 });
