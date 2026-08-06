@@ -218,6 +218,149 @@ describe("AuthManager", () => {
     expect(manager.isDeviceLoginInProgress()).toBe(false);
   });
 
+  it("cancels device login while waiting without polling", async () => {
+    const authorization = createAuthorization();
+    const delay = createDeferred<void>();
+    const pollDeviceAuthorization = vi.fn(async () => ({
+      status: "expired" as const,
+      message: "expired",
+    }));
+    const notify = vi.fn();
+    const manager = createManager({
+      authClient: {
+        startDeviceAuthorization: vi.fn(async () => authorization),
+        pollDeviceAuthorization,
+      } as unknown as AuthClient,
+      delay: async () => await delay.promise,
+      notify,
+    });
+
+    const login = manager.beginDeviceLogin();
+    await flushPromises();
+
+    expect(manager.isDeviceLoginInProgress()).toBe(true);
+
+    manager.cancelDeviceLogin();
+
+    expect(manager.isDeviceLoginInProgress()).toBe(false);
+    expect(notify).toHaveBeenLastCalledWith("Device sign-in canceled.");
+
+    delay.resolve();
+    await login;
+
+    expect(pollDeviceAuthorization).not.toHaveBeenCalled();
+  });
+
+  it("does not open a late authorization response after cancellation", async () => {
+    const authorization = createAuthorization();
+    const start = createDeferred<DeviceAuthorizationStart>();
+    const openExternalUrl = vi.fn();
+    const manager = createManager({
+      authClient: {
+        startDeviceAuthorization: vi.fn(async () => await start.promise),
+      } as unknown as AuthClient,
+      openExternalUrl,
+    });
+
+    const login = manager.beginDeviceLogin();
+    await flushPromises();
+
+    manager.cancelDeviceLogin();
+    start.resolve(authorization);
+    await login;
+
+    expect(openExternalUrl).not.toHaveBeenCalled();
+    expect(manager.isDeviceLoginInProgress()).toBe(false);
+  });
+
+  it("does not let a canceled login clear a newer login run", async () => {
+    const firstAuthorization = createAuthorization();
+    const secondAuthorization = {
+      ...createAuthorization(),
+      userCode: "SECOND-CODE",
+      verificationUriComplete: "https://example.com/device?user_code=SECOND-CODE",
+    };
+    const firstStart = createDeferred<DeviceAuthorizationStart>();
+    const secondDelay = createDeferred<void>();
+    const startDeviceAuthorization = vi
+      .fn<() => Promise<DeviceAuthorizationStart>>()
+      .mockImplementationOnce(async () => await firstStart.promise)
+      .mockResolvedValueOnce(secondAuthorization);
+    const openExternalUrl = vi.fn();
+    const manager = createManager({
+      authClient: {
+        startDeviceAuthorization,
+        pollDeviceAuthorization: vi.fn(async () => ({
+          status: "expired" as const,
+          message: "expired",
+        })),
+      } as unknown as AuthClient,
+      delay: async () => await secondDelay.promise,
+      openExternalUrl,
+    });
+
+    const firstLogin = manager.beginDeviceLogin();
+    await flushPromises();
+    manager.cancelDeviceLogin();
+
+    const secondLogin = manager.beginDeviceLogin();
+    await flushPromises();
+
+    expect(manager.isDeviceLoginInProgress()).toBe(true);
+    expect(openExternalUrl).toHaveBeenCalledTimes(1);
+    expect(openExternalUrl).toHaveBeenLastCalledWith(
+      "https://example.com/device?user_code=SECOND-CODE&lang=en",
+    );
+
+    firstStart.resolve(firstAuthorization);
+    await firstLogin;
+
+    expect(manager.isDeviceLoginInProgress()).toBe(true);
+
+    secondDelay.resolve();
+    await secondLogin;
+
+    expect(manager.isDeviceLoginInProgress()).toBe(false);
+  });
+
+  it("ignores a late poll response after cancellation", async () => {
+    const authorization = createAuthorization();
+    const poll = createDeferred<{
+      status: "approved";
+      accessToken: string;
+      expiresIn: number;
+      scope: string;
+    }>();
+    const getAuthenticatedUser = vi.fn(async () => ({
+      userId: "user-1",
+      email: "user@example.com",
+      name: "User One",
+    }));
+    const manager = createManager({
+      authClient: {
+        startDeviceAuthorization: vi.fn(async () => authorization),
+        pollDeviceAuthorization: vi.fn(async () => await poll.promise),
+        getAuthenticatedUser,
+      } as unknown as AuthClient,
+      delay: async () => {},
+    });
+
+    const login = manager.beginDeviceLogin();
+    await flushPromises();
+
+    manager.cancelDeviceLogin();
+    poll.resolve({
+      status: "approved",
+      accessToken: "approved-token",
+      expiresIn: 3600,
+      scope: "sync",
+    });
+    await login;
+
+    expect(getAuthenticatedUser).not.toHaveBeenCalled();
+    expect(manager.hasAuthenticatedSession()).toBe(false);
+  });
+
   it("opens the device sign-in page with the Obsidian language", async () => {
     setLanguage("ko-KR");
     const authorization = createAuthorization();

@@ -49,6 +49,7 @@ export interface SynchSettingsController {
   isDeviceLoginInProgress(): boolean;
   hasConnectedRemoteVault(): boolean;
   beginDeviceLogin(): Promise<void>;
+  cancelDeviceLogin(): void;
   signOutDevice(): Promise<void>;
   createRemoteVaultFromPrompt(): Promise<void>;
   connectRemoteVaultFromPrompt(): Promise<void>;

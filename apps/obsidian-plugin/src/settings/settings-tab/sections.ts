@@ -373,18 +373,31 @@ export function renderAuthenticationSetting(
     .setDesc(controller.getAuthStatusLabel());
 
   if (!controller.hasAuthenticatedSession()) {
-    authSetting.addButton((button) =>
-      button
-        .setButtonText(
-          isDeviceLoginInProgress
-            ? t("auth.openSignInAgain")
-            : t("auth.signInOnThisDevice"),
-        )
-        .onClick(async () => {
-          await controller.beginDeviceLogin();
+    if (isDeviceLoginInProgress) {
+      authSetting.addButton((button) =>
+        button
+          .setButtonText(t("auth.openSignInAgain"))
+          .onClick(async () => {
+            await controller.beginDeviceLogin();
+            refresh();
+          }),
+      );
+      authSetting.addButton((button) =>
+        button.setButtonText(t("cancel")).onClick(() => {
+          controller.cancelDeviceLogin();
           refresh();
         }),
-    );
+      );
+    } else {
+      authSetting.addButton((button) =>
+        button
+          .setButtonText(t("auth.signInOnThisDevice"))
+          .onClick(async () => {
+            await controller.beginDeviceLogin();
+            refresh();
+          }),
+      );
+    }
   } else {
     authSetting.addButton((button) =>
       button

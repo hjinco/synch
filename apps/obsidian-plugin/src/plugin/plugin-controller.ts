@@ -338,6 +338,10 @@ export class SynchPluginController implements SynchSettingsController {
     return this.authManager.isDeviceLoginInProgress();
   }
 
+  cancelDeviceLogin(): void {
+    this.authManager.cancelDeviceLogin();
+  }
+
   getRemoteVaultStatusLabel(): string {
     return this.remoteVaultManager.getRemoteVaultStatusLabel();
   }

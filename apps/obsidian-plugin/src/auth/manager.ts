@@ -37,6 +37,10 @@ export interface AuthManagerDeps {
   isOffline?: OfflineDetector;
 }
 
+interface DeviceLoginRun {
+  cancelled: boolean;
+}
+
 export class AuthManager {
   private authSessionToken = "";
   private authSessionVerified = false;
@@ -44,7 +48,7 @@ export class AuthManager {
   private authPendingNetworkVerification = false;
   private authDisplayName = "";
   private readonly authClient: AuthClient;
-  private deviceLoginInFlight = false;
+  private deviceLoginRun: DeviceLoginRun | null = null;
   private deviceAuthorization: DeviceAuthorizationStart | null = null;
 
   constructor(private readonly deps: AuthManagerDeps) {
@@ -138,16 +142,18 @@ export class AuthManager {
   }
 
   isDeviceLoginInProgress(): boolean {
-    return this.deviceLoginInFlight;
+    return this.deviceLoginRun !== null && !this.deviceLoginRun.cancelled;
   }
 
   async beginDeviceLogin(): Promise<boolean> {
-    if (this.deviceLoginInFlight) {
+    const activeRun = this.deviceLoginRun;
+    if (activeRun && !activeRun.cancelled) {
       this.reopenDeviceLogin();
       return false;
     }
 
-    this.deviceLoginInFlight = true;
+    const run: DeviceLoginRun = { cancelled: false };
+    this.deviceLoginRun = run;
     this.deviceAuthorization = null;
     this.deps.refreshUi();
     const apiBaseUrl = this.deps.getApiBaseUrl();
@@ -156,19 +162,22 @@ export class AuthManager {
       const authorization = await this.authClient.startDeviceAuthorization(
         apiBaseUrl,
       );
+      if (!this.isActiveDeviceLoginRun(run)) {
+        return true;
+      }
+
       this.deviceAuthorization = authorization;
       this.deps.refreshUi();
 
-      let cancelled = false;
       this.openDeviceLogin(authorization);
 
       let pollDelayMs = authorization.interval * 1000;
       const deadline = Date.now() + authorization.expiresIn * 1000;
 
-      while (!cancelled && Date.now() < deadline) {
+      while (this.isActiveDeviceLoginRun(run) && Date.now() < deadline) {
         await this.wait(pollDelayMs);
 
-        if (cancelled) {
+        if (!this.isActiveDeviceLoginRun(run)) {
           break;
         }
 
@@ -177,10 +186,16 @@ export class AuthManager {
           authorization.deviceCode,
         );
 
+        if (!this.isActiveDeviceLoginRun(run)) {
+          break;
+        }
+
         if (poll.status === "approved") {
           this.notify(t("auth.approvalReceived"));
-          await this.completeDeviceLogin(poll);
-          this.notify(this.getAuthStatusLabel());
+          const completed = await this.completeDeviceLogin(poll, run);
+          if (completed) {
+            this.notify(this.getAuthStatusLabel());
+          }
           return true;
         }
 
@@ -193,22 +208,39 @@ export class AuthManager {
         return true;
       }
 
-      if (cancelled) {
-        this.notify(t("auth.deviceSignInCanceled"));
+      if (!this.isActiveDeviceLoginRun(run)) {
         return true;
       }
 
       this.notify(t("auth.deviceSignInExpired"));
       return true;
     } catch (error) {
+      if (!this.isActiveDeviceLoginRun(run)) {
+        return true;
+      }
+
       const message = error instanceof Error ? error.message : String(error);
       this.notify(t("auth.deviceSignInFailed", { message }));
       return true;
     } finally {
-      this.deviceLoginInFlight = false;
-      this.deviceAuthorization = null;
-      this.deps.refreshUi();
+      if (this.deviceLoginRun === run) {
+        this.deviceLoginRun = null;
+        this.deviceAuthorization = null;
+        this.deps.refreshUi();
+      }
     }
+  }
+
+  cancelDeviceLogin(): void {
+    const run = this.deviceLoginRun;
+    if (!run || run.cancelled) {
+      return;
+    }
+
+    run.cancelled = true;
+    this.deviceAuthorization = null;
+    this.notify(t("auth.deviceSignInCanceled"));
+    this.deps.refreshUi();
   }
 
   async signOutDevice(): Promise<void> {
@@ -235,7 +267,12 @@ export class AuthManager {
 
   private async completeDeviceLogin(
     poll: Extract<DeviceAuthorizationPollResult, { status: "approved" }>,
-  ): Promise<void> {
+    run: DeviceLoginRun,
+  ): Promise<boolean> {
+    if (!this.isActiveDeviceLoginRun(run)) {
+      return false;
+    }
+
     const session = await this.authClient.getAuthenticatedUser(
       this.deps.getApiBaseUrl(),
       poll.accessToken,
@@ -244,10 +281,15 @@ export class AuthManager {
       throw new Error("approved device authorization did not create a session");
     }
 
+    if (!this.isActiveDeviceLoginRun(run)) {
+      return false;
+    }
+
     this.authSessionToken = poll.accessToken;
     this.applyVerifiedSession(session);
     await writeAuthSessionToken(this.deps.plugin, this.authSessionToken);
     this.deps.refreshUi();
+    return true;
   }
 
   private notify(message: string): void {
@@ -266,6 +308,10 @@ export class AuthManager {
     }
 
     this.openDeviceLogin(this.deviceAuthorization);
+  }
+
+  private isActiveDeviceLoginRun(run: DeviceLoginRun): boolean {
+    return this.deviceLoginRun === run && !run.cancelled;
   }
 
   private openDeviceLogin(authorization: DeviceAuthorizationStart): void {

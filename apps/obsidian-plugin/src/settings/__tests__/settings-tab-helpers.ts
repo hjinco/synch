@@ -50,6 +50,7 @@ export function createSettingsTab(
     isDeviceLoginInProgress: () => false,
     hasConnectedRemoteVault: () => false,
     beginDeviceLogin: vi.fn(async () => {}),
+    cancelDeviceLogin: vi.fn(() => {}),
     signOutDevice: vi.fn(async () => {}),
     createRemoteVaultFromPrompt: vi.fn(async () => {}),
     connectRemoteVaultFromPrompt: vi.fn(async () => {}),

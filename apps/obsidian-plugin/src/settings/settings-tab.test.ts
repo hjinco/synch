@@ -21,16 +21,27 @@ describe("SynchSettingTab", () => {
     resetObsidianMocks();
   });
 
-  it("offers to reopen the sign-in page while device login is in progress", () => {
+  it("offers to reopen or cancel the sign-in page while device login is in progress", async () => {
+    let isDeviceLoginInProgress = true;
+    const cancelDeviceLogin = vi.fn(() => {
+      isDeviceLoginInProgress = false;
+    });
     const tab = createSettingsTab({
-      isDeviceLoginInProgress: () => true,
+      isDeviceLoginInProgress: () => isDeviceLoginInProgress,
+      cancelDeviceLogin,
     });
 
     tab.display();
 
-    const signInButton = getButtonComponents()[0];
-    expect(signInButton?.text).toBe("Open sign-in page again");
-    expect(signInButton?.disabled).toBe(false);
+    expect(getButtonComponents().map((button) => button.text)).toEqual([
+      "Open sign-in page again",
+      "Cancel",
+    ]);
+
+    await getButtonComponents()[1]?.click();
+
+    expect(cancelDeviceLogin).toHaveBeenCalledTimes(1);
+    expect(getButtonComponents().at(-1)?.text).toBe("Sign in on this device");
   });
 
   it("shows the normal sign-in button when device login is idle", () => {
@@ -43,6 +54,9 @@ describe("SynchSettingTab", () => {
     const signInButton = getButtonComponents()[0];
     expect(signInButton?.text).toBe("Sign in on this device");
     expect(signInButton?.disabled).toBe(false);
+    expect(getButtonComponents().map((button) => button.text)).not.toContain(
+      "Cancel",
+    );
   });
 
   it("shows account before server settings before sign-in", () => {
@@ -385,7 +399,7 @@ describe("SynchSettingTab", () => {
 
     expect(getToggleComponents()[0]?.disabled).toBe(true);
     const apiBaseUrlInput = getTextComponents()[0];
-    const saveButton = getButtonComponents()[1];
+    const saveButton = getButtonComponents().find((button) => button.text === "Save");
     expect(apiBaseUrlInput?.disabled).toBe(true);
     expect(saveButton?.disabled).toBe(true);
 
@@ -431,6 +445,7 @@ describe("SynchSettingTab", () => {
     const buttonTexts = getButtonComponents().map((button) => button.text);
     expect(buttonTexts).not.toContain("Sign in on this device");
     expect(buttonTexts).not.toContain("Open sign-in page again");
+    expect(buttonTexts).not.toContain("Cancel");
     expect(buttonTexts).toContain("Sign out");
   });
 
