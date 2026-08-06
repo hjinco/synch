@@ -77,8 +77,8 @@ export async function createNodeRuntime(config: NodeRuntimeConfig) {
 		db,
 		blobStorage: config.blobStorage,
 		syncTokenSecret: config.syncTokenSecret,
-		edition: NODE_COMMUNITY_PROFILE.edition,
-		polarProductIdsByPlanId: {},
+		profile: NODE_COMMUNITY_PROFILE,
+		productIdsByPlanId: {},
 	});
 	const application = createApiApplication(
 		{
