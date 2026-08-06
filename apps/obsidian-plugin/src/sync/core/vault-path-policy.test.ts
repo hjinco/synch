@@ -6,6 +6,7 @@ import {
   decideVaultPathSync,
   isForbiddenVaultPath,
   shouldApplyRemoteVaultPath,
+  shouldUseLatestRemoteVaultConfig,
 } from "./vault-path-policy";
 
 describe("decideVaultPathSync", () => {
@@ -139,5 +140,28 @@ describe("shouldApplyRemoteVaultPath", () => {
         vaultConfigRules,
       }),
     ).toBe(true);
+  });
+});
+
+describe("shouldUseLatestRemoteVaultConfig", () => {
+  const vaultConfigRules = {
+    ...DEFAULT_VAULT_CONFIG_SYNC_RULES,
+    enabled: true,
+  };
+
+  it("uses latest-remote conflict handling only for enabled vault config paths", () => {
+    expect(
+      shouldUseLatestRemoteVaultConfig(".obsidian/graph.json", {
+        vaultConfigRules,
+      }),
+    ).toBe(true);
+    expect(
+      shouldUseLatestRemoteVaultConfig("Notes/daily.md", { vaultConfigRules }),
+    ).toBe(false);
+    expect(
+      shouldUseLatestRemoteVaultConfig(".obsidian/workspace.json", {
+        vaultConfigRules,
+      }),
+    ).toBe(false);
   });
 });

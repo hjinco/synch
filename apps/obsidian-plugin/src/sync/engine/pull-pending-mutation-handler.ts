@@ -66,6 +66,16 @@ export class PullPendingMutationHandler {
       };
     }
 
+    if (this.deps.shouldUseLatestRemoteVersion?.(metadata.path)) {
+      return {
+        plan,
+        pending,
+        event: null,
+        conflictBytes: null,
+        merge: { kind: "remote" },
+      };
+    }
+
     const entryState = await store.getEntryStateById(pending.entryId);
     const merge = await this.preparePendingTextMerge(
       store,
@@ -262,7 +272,9 @@ export class PullPendingMutationHandler {
 
     const candidatePaths = new Set(
       (plan.state.deleted
-        ? [plan.metadata.path, plan.existing?.path]
+        // A tombstone must not consume another entry's pending mutation merely
+        // because its historical metadata names the same path.
+        ? [plan.existing?.path]
         : [plan.finalPath, plan.existing?.path]
       ).filter((path): path is string => !!path),
     );

@@ -41,6 +41,7 @@ export type PlannedEntryState = {
   hash: string | null;
   pathConflict: PullConflictEvent | null;
   pendingConflict: PullConflictEvent | null;
+  supersededPathOwner: SyncEntryRow | null;
 };
 
 export type PlannedVaultMove = {
@@ -88,6 +89,8 @@ export type PreparedPathBatch = {
 
 export type PreparedManifestApplication = {
   plans: PlannedEntryState[];
+  superseded: PullEntryStateManifestItem[];
+  supersededPathsToRemove: string[];
   pathsToWrite: string[];
   pendingConflicts: PreparedPendingConflict[];
   batches: PreparedPathBatch[];
@@ -252,7 +255,9 @@ export function pathsToRemoveForPlan(
   plan: PlannedEntryState,
 ): Array<string | null | undefined> {
   if (plan.state.deleted) {
-    return [plan.existing?.path ?? plan.metadata.path];
+    // Metadata keeps the entry's historical path, which another entry may now
+    // own. Only remove a path still associated with the deleted entry itself.
+    return [plan.existing?.path];
   }
 
   if (plan.vaultMove) {
