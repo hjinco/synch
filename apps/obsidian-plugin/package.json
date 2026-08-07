@@ -1,7 +1,7 @@
 {
   "name": "@synch/obsidian-plugin",
   "private": true,
-  "version": "0.3.3",
+  "version": "0.3.4",
   "description": "End-to-end encrypted sync for Obsidian vaults.",
   "main": "main.js",
   "scripts": {
