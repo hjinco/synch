@@ -2,36 +2,22 @@ import { describe, expect, it, vi } from "vitest";
 
 import type { HttpClient } from "../http/request";
 import {
-  compareStrictSemver,
-  SYNCH_PLUGIN_UPDATE_MANIFEST_URL,
+  SYNCH_PLUGIN_COMMUNITY_RELEASE_FEED_URL,
   SynchPluginUpdateChecker,
 } from "./update-checker";
 
-describe("compareStrictSemver", () => {
-  it("compares newer, equal, and older versions", () => {
-    expect(compareStrictSemver("1.2.4", "1.2.3")).toBeGreaterThan(0);
-    expect(compareStrictSemver("1.2.3", "1.2.3")).toBe(0);
-    expect(compareStrictSemver("1.2.3", "1.3.0")).toBeLessThan(0);
-  });
-
-  it("rejects malformed versions", () => {
-    expect(() => compareStrictSemver("1.2", "1.2.3")).toThrow(
-      "Expected strict x.y.z versions.",
-    );
-    expect(() => compareStrictSemver("1.2.3-beta.1", "1.2.3")).toThrow(
-      "Expected strict x.y.z versions.",
-    );
-    expect(() => compareStrictSemver("01.2.3", "1.2.3")).toThrow(
-      "Expected strict x.y.z versions.",
-    );
-  });
-});
+function communityReleaseFeed(versions: string[]): string {
+  const items = versions
+    .map((version) => `<guid isPermaLink="false">release:plugin:synch:${version}</guid>`)
+    .join("");
+  return `<rss><channel>${items}</channel></rss>`;
+}
 
 describe("SynchPluginUpdateChecker", () => {
-  it("reports an available update from the main branch manifest", async () => {
+  it("reports an available update from the community release feed", async () => {
     const request = vi.fn(async () => ({
       status: 200,
-      json: { version: "0.0.2" },
+      text: communityReleaseFeed(["0.0.2", "0.0.1"]),
     }));
     const checker = new SynchPluginUpdateChecker({ request } satisfies HttpClient);
 
@@ -41,14 +27,14 @@ describe("SynchPluginUpdateChecker", () => {
       latestVersion: "0.0.2",
     });
     expect(request).toHaveBeenCalledWith({
-      url: SYNCH_PLUGIN_UPDATE_MANIFEST_URL,
+      url: SYNCH_PLUGIN_COMMUNITY_RELEASE_FEED_URL,
     });
   });
 
-  it("reports up to date when the remote version is equal or older", async () => {
+  it("reports up to date when the community version is equal or older", async () => {
     const request = vi.fn(async () => ({
       status: 200,
-      json: { version: "0.0.1" },
+      text: communityReleaseFeed(["0.0.1"]),
     }));
     const checker = new SynchPluginUpdateChecker({ request } satisfies HttpClient);
 
@@ -72,36 +58,27 @@ describe("SynchPluginUpdateChecker", () => {
       new SynchPluginUpdateChecker({
         request: vi.fn(async () => ({
           status: 404,
-          json: {},
+          text: "",
         })),
       }).check("0.0.1"),
-    ).rejects.toThrow("GitHub manifest request failed with status 404.");
+    ).rejects.toThrow("Community plugin release feed request failed with status 404.");
   });
 
-  it("fails on malformed manifests and versions", async () => {
+  it("fails on malformed feeds and versions", async () => {
     await expect(
       new SynchPluginUpdateChecker({
         request: vi.fn(async () => ({
           status: 200,
-          json: {},
+          text: "<rss></rss>",
         })),
       }).check("0.0.1"),
-    ).rejects.toThrow("GitHub manifest does not contain a version.");
+    ).rejects.toThrow("Community plugin release feed does not contain a version.");
 
     await expect(
       new SynchPluginUpdateChecker({
         request: vi.fn(async () => ({
           status: 200,
-          json: { version: "0.0.2-beta.1" },
-        })),
-      }).check("0.0.1"),
-    ).rejects.toThrow("Invalid GitHub manifest version: 0.0.2-beta.1");
-
-    await expect(
-      new SynchPluginUpdateChecker({
-        request: vi.fn(async () => ({
-          status: 200,
-          json: { version: "0.0.2" },
+          text: communityReleaseFeed(["0.0.2"]),
         })),
       }).check("0.0"),
     ).rejects.toThrow("Invalid current plugin version: 0.0");

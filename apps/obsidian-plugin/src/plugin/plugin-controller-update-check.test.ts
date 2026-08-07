@@ -63,7 +63,7 @@ describe("SynchPluginController community plugin update check", () => {
 
     resolveRequest?.({
       status: 200,
-      json: { version: "0.0.2" },
+      text: '<guid isPermaLink="false">release:plugin:synch:0.0.2</guid>',
     });
     await Promise.all([firstCheck, secondCheck]);
 
@@ -79,7 +79,7 @@ describe("SynchPluginController community plugin update check", () => {
     setRequestUrlMock(
       vi.fn(async () => ({
         status: 200,
-        json: {},
+        text: "<rss></rss>",
       })),
     );
     const controller = new SynchPluginController({
@@ -92,7 +92,7 @@ describe("SynchPluginController community plugin update check", () => {
     expect(controller.getCommunityPluginUpdateStatus()).toEqual({
       state: "failed",
       currentVersion: "0.0.1",
-      error: "GitHub manifest does not contain a version.",
+      error: "Community plugin release feed does not contain a version.",
     });
   });
 
@@ -101,7 +101,7 @@ describe("SynchPluginController community plugin update check", () => {
     vi.setSystemTime(0);
     const request = vi.fn(async () => ({
       status: 200,
-      json: { version: "0.0.1" },
+      text: '<guid isPermaLink="false">release:plugin:synch:0.0.1</guid>',
     }));
     setRequestUrlMock(request);
     const controller = new SynchPluginController({

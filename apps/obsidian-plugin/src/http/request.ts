@@ -10,6 +10,7 @@ export interface HttpRequestInput {
 export interface HttpResponseLike {
   status: number;
   json?: unknown;
+  text?: string;
   arrayBuffer?: ArrayBuffer;
 }
 
