@@ -2,6 +2,4 @@
 
 ## Added
 
-## Changed
-
-## Fixed
+- Added in-settings sync diagnostics with live logs, copy, and clear for the current session.

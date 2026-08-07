@@ -20,6 +20,7 @@ import {
   ExcludedFoldersModal,
   IncludedHiddenFoldersModal,
 } from "./modals";
+import { SyncLogsModal } from "./sync-logs-modal";
 
 type RefreshSettings = () => void;
 
@@ -27,6 +28,10 @@ export interface SyncStatusSettingControls {
   refreshSyncStatus(): void;
   refreshStorageStatus(): void;
   refreshFileSizeBlockedWarning(): void;
+}
+
+export interface SyncDiagnosticsSettingControls {
+  refreshSyncLogs(): void;
 }
 
 interface FileSizeBlockedWarningControls {
@@ -305,6 +310,37 @@ export function renderSyncFrequencySettings(
           await controller.setSyncIntervalMs(Number(value));
         }),
     );
+}
+
+export function renderSyncDiagnosticsSetting(
+  app: App,
+  containerEl: HTMLElement,
+  controller: SynchSettingsController,
+): SyncDiagnosticsSettingControls {
+  const setting = new Setting(containerEl)
+    .setName(t("diagnostics.header"))
+    .setDesc(formatSyncDiagnosticsDescription(controller.getSyncLogs()))
+    .addButton((button) =>
+      button.setButtonText(t("diagnostics.open")).onClick(() => {
+        new SyncLogsModal(app, {
+          getSyncLogs: () => controller.getSyncLogs(),
+          clearSyncLogs: () => controller.clearSyncLogs(),
+          subscribeSyncLogs: (listener) => controller.subscribeSyncLogs(listener),
+        }).open();
+      }),
+    );
+
+  return {
+    refreshSyncLogs(): void {
+      setting.setDesc(formatSyncDiagnosticsDescription(controller.getSyncLogs()));
+    },
+  };
+}
+
+function formatSyncDiagnosticsDescription(
+  snapshot: ReturnType<SynchSettingsController["getSyncLogs"]>,
+): string {
+  return t("diagnostics.desc", { count: snapshot.count });
 }
 
 function createFileSizeBlockedWarningControls(

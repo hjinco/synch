@@ -11,6 +11,7 @@ import type {
   SynchCommunityPluginUpdateStatus,
   SynchServerCompatibilityStatus,
   SynchStorageStatus,
+  SynchSyncLogs,
   SynchSubscriptionStatus,
   SynchSyncProgress,
   SynchSyncState,
@@ -33,6 +34,9 @@ export interface SynchSettingsController {
   getSyncStatusLabel(): string;
   getSyncPercent(): number;
   getSyncProgress(): SynchSyncProgress;
+  getSyncLogs(): SynchSyncLogs;
+  clearSyncLogs(): void;
+  subscribeSyncLogs(listener: () => void): () => void;
   listFileSizeBlockedFiles(): Promise<SynchFileSizeBlockedFile[]>;
   isSyncEnabled(): boolean;
   setSyncEnabled(enabled: boolean): Promise<void>;

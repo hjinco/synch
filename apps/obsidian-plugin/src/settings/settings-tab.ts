@@ -10,16 +10,19 @@ import {
   renderFileSyncSettings,
   renderNetworkConnectionRequiredSetting,
   renderRemoteVaultSettings,
+  renderSyncDiagnosticsSetting,
   renderSettingsHeading,
   renderSubscriptionSetting,
   renderSyncFrequencySettings,
   renderSyncStatusSetting,
+  type SyncDiagnosticsSettingControls,
   type SyncStatusSettingControls,
 } from "./settings-tab/sections";
 
 export class SynchSettingTab extends PluginSettingTab {
   private isVisible = false;
   private syncStatusControls: SyncStatusSettingControls | null = null;
+  private syncDiagnosticsControls: SyncDiagnosticsSettingControls | null = null;
   private showSelfHostedServerUrl: boolean | null = null;
 
   constructor(
@@ -62,12 +65,16 @@ export class SynchSettingTab extends PluginSettingTab {
       case "file-size-blocked-changed":
         this.refreshFileSizeBlockedWarning();
         return;
+      case "sync-log-changed":
+        this.syncDiagnosticsControls?.refreshSyncLogs();
+        return;
     }
   }
 
   hide(): void {
     this.isVisible = false;
     this.syncStatusControls = null;
+    this.syncDiagnosticsControls = null;
     super.hide();
   }
 
@@ -75,6 +82,7 @@ export class SynchSettingTab extends PluginSettingTab {
     const { containerEl } = this;
     containerEl.empty();
     this.syncStatusControls = null;
+    this.syncDiagnosticsControls = null;
     const hasConnectedRemoteVault = this.controller.hasConnectedRemoteVault();
     const hasAuthenticatedSession = this.controller.hasAuthenticatedSession();
     const isOfficialCloud =
@@ -148,6 +156,11 @@ export class SynchSettingTab extends PluginSettingTab {
       containerEl,
       this.controller,
       hasConnectedRemoteVault,
+    );
+    this.syncDiagnosticsControls = renderSyncDiagnosticsSetting(
+      this.app,
+      containerEl,
+      this.controller,
     );
   }
 

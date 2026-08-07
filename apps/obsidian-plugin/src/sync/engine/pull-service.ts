@@ -35,6 +35,20 @@ export interface SyncPullServiceDeps {
   onProgress: (progress: SyncProgressCounts) => Promise<void>;
   onConflict?: (event: PullConflictEvent) => void;
   onRollbackDetected?: (event: PullRollbackEvent) => void;
+  onFileSyncStarted?: (event: {
+    operation: "upsert" | "delete";
+    path: string;
+  }) => void;
+  onFileSyncCompleted?: (event: {
+    operation: "upsert" | "delete";
+    path: string;
+    revision: number;
+  }) => void;
+  onFileSyncFailed?: (event: {
+    operation: "upsert" | "delete";
+    path: string;
+    reason: string;
+  }) => void;
   now?: () => number;
 }
 
@@ -72,6 +86,9 @@ export class SyncPullService {
       },
       onConflict: this.deps.onConflict,
       onRollbackDetected: this.deps.onRollbackDetected,
+      onFileSyncStarted: this.deps.onFileSyncStarted,
+      onFileSyncCompleted: this.deps.onFileSyncCompleted,
+      onFileSyncFailed: this.deps.onFileSyncFailed,
       now: this.deps.now,
     });
   }

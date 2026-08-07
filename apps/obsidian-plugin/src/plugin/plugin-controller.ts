@@ -31,6 +31,7 @@ import type {
   SynchServerCompatibilityStatus,
   SynchStorageStatus,
   SynchSubscriptionStatus,
+  SynchSyncLogs,
   SynchSyncProgress,
   SynchSyncState,
   SynchVaultConfigSyncRules,
@@ -48,6 +49,7 @@ import {
 } from "../sync/core/file-rules";
 import { isReservedSyncPath } from "../sync/core/reserved-paths";
 import type { SyncTokenResponse } from "../sync/remote/client";
+import { InMemorySyncDiagnostics } from "../sync/diagnostics/in-memory";
 import { SyncController } from "../sync/runtime/controller";
 import { SyncTokenManager } from "../sync/remote/token-manager";
 import type { StoredRemoteVaultKeySecret } from "../remote-vault/device-storage";
@@ -74,6 +76,10 @@ export interface SynchPluginControllerDeps {
 
 export class SynchPluginController implements SynchSettingsController {
   private readonly plugin = this.deps.plugin;
+  private readonly diagnostics = new InMemorySyncDiagnostics(
+    this.plugin.manifest.version,
+  );
+  private diagnosticsUnsubscribe: (() => void) | null = null;
   private readonly pluginDataStore = new SynchPluginDataStore(this.plugin);
   private readonly settingsStore = new SynchSettingsStore(this.pluginDataStore);
   private readonly billingClient = new BillingClient();
@@ -141,6 +147,7 @@ export class SynchPluginController implements SynchSettingsController {
     hasActiveRemoteVaultSession: () => this.hasActiveRemoteVaultSession(),
     hasConnectedRemoteVault: () => this.hasConnectedRemoteVault(),
     hasAuthenticatedSession: () => this.hasAuthenticatedSession(),
+    diagnostics: this.diagnostics,
     notifyError: (error, contextKey) => {
       this.notifyError(error, contextKey);
     },
@@ -197,7 +204,11 @@ export class SynchPluginController implements SynchSettingsController {
     },
   });
 
-  constructor(private readonly deps: SynchPluginControllerDeps) {}
+  constructor(private readonly deps: SynchPluginControllerDeps) {
+    this.diagnosticsUnsubscribe = this.diagnostics.subscribe(() => {
+      this.emitUiEvent({ type: "sync-log-changed" });
+    });
+  }
 
   async initialize(): Promise<void> {
     await this.pluginDataStore.initialize();
@@ -209,6 +220,8 @@ export class SynchPluginController implements SynchSettingsController {
   }
 
   async stop(): Promise<void> {
+    this.diagnosticsUnsubscribe?.();
+    this.diagnosticsUnsubscribe = null;
     await this.syncController.stop();
   }
 
@@ -374,6 +387,18 @@ export class SynchPluginController implements SynchSettingsController {
 
   getSyncProgress(): SynchSyncProgress {
     return this.syncController.getSyncProgress();
+  }
+
+  getSyncLogs(): SynchSyncLogs {
+    return this.diagnostics.getSnapshot();
+  }
+
+  clearSyncLogs(): void {
+    this.diagnostics.clear();
+  }
+
+  subscribeSyncLogs(listener: () => void): () => void {
+    return this.diagnostics.subscribe(listener);
   }
 
   isSyncEnabled(): boolean {
@@ -876,6 +901,7 @@ export class SynchPluginController implements SynchSettingsController {
       await this.syncController.resetLocalSyncState();
       this.storedSyncConnection = null;
     } catch (error) {
+      void this.syncController.recordSyncError(error, "local_state_reset");
       this.notifyError(error, "error.localSyncStateReset");
       this.syncController.stopAutoSyncAndMarkNotReady();
     }

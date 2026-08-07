@@ -136,8 +136,15 @@ export class MockButtonComponent {
 export class MockTextComponent {
   inputEl = {
     type: "text",
+    value: "",
     autocomplete: "",
+    readOnly: false,
+    rows: 0,
+    classList: {
+      add(_value: string): void {},
+    },
     focus(): void {},
+    select(): void {},
   };
   value = "";
   placeholder = "";
@@ -151,6 +158,7 @@ export class MockTextComponent {
 
   setValue(value: string): this {
     this.value = value;
+    this.inputEl.value = value;
     return this;
   }
 

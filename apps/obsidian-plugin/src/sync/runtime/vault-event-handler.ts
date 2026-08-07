@@ -15,6 +15,17 @@ export interface SyncVaultEventHandlerDeps {
   runLocalMutationWork: <T>(work: () => Promise<T>) => Promise<T>;
   hasActiveRemoteVaultSession: () => boolean;
   onError: (error: unknown) => void;
+  onFileQueued?: (event: {
+    operation: "create" | "modify" | "rename" | "delete";
+    path: string;
+    oldPath?: string;
+  }) => void;
+  onFileError?: (event: {
+    operation: "create" | "modify" | "rename" | "delete";
+    path: string;
+    oldPath?: string;
+    error: unknown;
+  }) => void;
 }
 
 export class SyncVaultEventHandler {
@@ -31,8 +42,8 @@ export class SyncVaultEventHandler {
           return;
         }
 
-        this.run(async () => {
-          await this.recordUpsert(path, syncableFile);
+        this.run({ operation: "create", path }, async () => {
+          await this.recordUpsert("create", path, syncableFile);
         });
       }),
     );
@@ -45,8 +56,8 @@ export class SyncVaultEventHandler {
           return;
         }
 
-        this.run(async () => {
-          await this.recordUpsert(path, syncableFile);
+        this.run({ operation: "modify", path }, async () => {
+          await this.recordUpsert("modify", path, syncableFile);
         });
       }),
     );
@@ -61,7 +72,7 @@ export class SyncVaultEventHandler {
           return;
         }
 
-        this.run(async () => {
+        this.run({ operation: "rename", path: nextPath ?? oldPath, oldPath }, async () => {
           if (renamedFromSyncable && renamedToSyncable && syncableFile && nextPath) {
             const changed = await this.deps.eventRecorder.recordRename(
               oldPath,
@@ -69,18 +80,26 @@ export class SyncVaultEventHandler {
               await this.deps.vaultAdapter.readFile(syncableFile),
               syncableFile.stat,
             );
-            this.notifyLocalChangeIfNeeded(changed);
+            this.notifyLocalChangeIfNeeded(changed, {
+              operation: "rename",
+              path: nextPath,
+              oldPath,
+            });
             return;
           }
 
           if (renamedFromSyncable) {
             const changed = await this.deps.eventRecorder.recordDelete(oldPath);
-            this.notifyLocalChangeIfNeeded(changed);
+            this.notifyLocalChangeIfNeeded(changed, {
+              operation: "rename",
+              path: oldPath,
+              oldPath,
+            });
             return;
           }
 
           if (syncableFile && nextPath) {
-            await this.recordUpsert(nextPath, syncableFile);
+            await this.recordUpsert("rename", nextPath, syncableFile, oldPath);
           }
         });
       }),
@@ -94,24 +113,36 @@ export class SyncVaultEventHandler {
           return;
         }
 
-        this.run(async () => {
+        this.run({ operation: "delete", path }, async () => {
           const changed = await this.deps.eventRecorder.recordDelete(path);
-          this.notifyLocalChangeIfNeeded(changed);
+          this.notifyLocalChangeIfNeeded(changed, { operation: "delete", path });
         });
       }),
     );
   }
 
-  private async recordUpsert(path: string, file: TFile): Promise<void> {
+  private async recordUpsert(
+    operation: "create" | "modify" | "rename",
+    path: string,
+    file: TFile,
+    oldPath?: string,
+  ): Promise<void> {
     const changed = await this.deps.eventRecorder.recordUpsert(
       path,
       await this.deps.vaultAdapter.readFile(file),
       file.stat,
     );
-    this.notifyLocalChangeIfNeeded(changed);
+    this.notifyLocalChangeIfNeeded(changed, { operation, path, oldPath });
   }
 
-  private run(work: () => Promise<void>): void {
+  private run(
+    event: {
+      operation: "create" | "modify" | "rename" | "delete";
+      path: string;
+      oldPath?: string;
+    },
+    work: () => Promise<void>,
+  ): void {
     if (!this.deps.hasActiveRemoteVaultSession()) {
       return;
     }
@@ -121,6 +152,7 @@ export class SyncVaultEventHandler {
         await work();
       } catch (error) {
         try {
+          this.deps.onFileError?.({ ...event, error });
           this.deps.onError(error);
         } catch {
           // Keep later vault events flowing even if the error reporter fails.
@@ -129,8 +161,16 @@ export class SyncVaultEventHandler {
     });
   }
 
-  private notifyLocalChangeIfNeeded(changed: boolean): void {
+  private notifyLocalChangeIfNeeded(
+    changed: boolean,
+    event: {
+      operation: "create" | "modify" | "rename" | "delete";
+      path: string;
+      oldPath?: string;
+    },
+  ): void {
     if (changed) {
+      this.deps.onFileQueued?.(event);
       this.deps.autoLoop.notifyLocalChange();
     }
   }

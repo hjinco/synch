@@ -37,6 +37,11 @@ export interface SynchSyncProgress {
   totalEntries: number;
 }
 
+export interface SynchSyncLogs {
+  count: number;
+  text: string;
+}
+
 export interface SynchStorageStatus {
   storageUsedBytes: number;
   storageLimitBytes: number;

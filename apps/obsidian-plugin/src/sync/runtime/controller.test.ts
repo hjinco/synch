@@ -6,6 +6,7 @@ import { DEFAULT_VAULT_CONFIG_SYNC_RULES } from "../core/vault-config-rules";
 import { createTestPlugin } from "../../test-support/test-plugin";
 import { SyncController } from "./controller";
 import { SyncEngine } from "./engine";
+import { InMemorySyncDiagnostics } from "../diagnostics/in-memory";
 
 describe("SyncController", () => {
   afterEach(() => {
@@ -21,7 +22,9 @@ describe("SyncController", () => {
       filesQueuedForDelete: 0,
     });
     vi.spyOn(SyncEngine.prototype, "waitForLocalMutationWork").mockResolvedValue();
-    const syncNow = vi.spyOn(SyncEngine.prototype, "syncNow").mockResolvedValue();
+    const syncNow = vi
+      .spyOn(SyncEngine.prototype, "syncNow")
+      .mockResolvedValue(true);
     const startAutoSync = vi
       .spyOn(SyncEngine.prototype, "startAutoSync")
       .mockResolvedValue(true);
@@ -45,7 +48,32 @@ describe("SyncController", () => {
     expect(syncNow).toHaveBeenCalledTimes(2);
   });
 
-  it("schedules a push on startup when persisted pending mutations remain", async () => {
+  it("records a sync failure once before showing the existing error notice", async () => {
+    const diagnostics = new InMemorySyncDiagnostics("test");
+    const notifyError = vi.fn();
+    vi.spyOn(SyncEngine.prototype, "reconcileOnce").mockRejectedValue(
+      new Error("sync failed"),
+    );
+    const controller = new SyncController(
+      createDeps({ diagnostics, notifyError }),
+    );
+
+    await controller.syncNow();
+
+    const snapshot = diagnostics.getSnapshot();
+    expect(snapshot.count).toBe(2);
+    expect(snapshot.text).toContain("sync_started");
+    expect(snapshot.text).toContain("ERROR sync_error");
+    expect(snapshot.text).toContain('name="Error"');
+    expect(snapshot.text).not.toContain("sync failed");
+    expect(notifyError).toHaveBeenCalledWith(
+      expect.any(Error),
+      "error.autoSync",
+    );
+  });
+
+  it("waits for startup sync when persisted pending mutations remain", async () => {
+    const diagnostics = new InMemorySyncDiagnostics("test");
     const reconcileOnce = vi.spyOn(SyncEngine.prototype, "reconcileOnce").mockResolvedValue({
       filesScanned: 1,
       filesQueuedForUpsert: 0,
@@ -57,22 +85,26 @@ describe("SyncController", () => {
     const startAutoSync = vi
       .spyOn(SyncEngine.prototype, "startAutoSync")
       .mockResolvedValue(true);
-    const notifyLocalChange = vi
-      .spyOn(SyncEngine.prototype, "notifyLocalChange")
-      .mockImplementation(() => {});
+    const syncNow = vi
+      .spyOn(SyncEngine.prototype, "syncNow")
+      .mockImplementation(async () => {
+        expect(diagnostics.getSnapshot().text).not.toContain("sync_completed");
+        return true;
+      });
 
-    const controller = new SyncController(createDeps());
+    const controller = new SyncController(createDeps({ diagnostics }));
 
     await controller.ensureAutoSyncState();
 
     expect(startAutoSync).toHaveBeenCalledTimes(1);
-    expect(notifyLocalChange).toHaveBeenCalledTimes(1);
+    expect(syncNow).toHaveBeenCalledTimes(1);
     expect(reconcileOnce.mock.invocationCallOrder[0]).toBeLessThan(
       hasPendingMutations.mock.invocationCallOrder[0] ?? 0,
     );
     expect(startAutoSync.mock.invocationCallOrder[0]).toBeLessThan(
-      notifyLocalChange.mock.invocationCallOrder[0] ?? 0,
+      syncNow.mock.invocationCallOrder[0] ?? 0,
     );
+    expect(diagnostics.getSnapshot().text).toContain("sync_completed");
   });
 
   it("does not schedule a startup push when reconcile found no changes and nothing is pending", async () => {
@@ -288,6 +320,7 @@ function createDeps(
     hasActiveRemoteVaultSession: () => true,
     hasConnectedRemoteVault: () => true,
     hasAuthenticatedSession: () => true,
+    diagnostics: new InMemorySyncDiagnostics("test"),
     notifyError: vi.fn(),
     ...overrides,
   };

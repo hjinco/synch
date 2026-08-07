@@ -12,6 +12,12 @@ import {
 } from "../../remote-vault/unavailable";
 import type { SyncTokenResponse } from "../remote/client";
 import type {
+  SyncDiagnosticErrorClassification,
+  SyncDiagnosticSource,
+  SyncDiagnostics,
+  SyncFailurePhase,
+} from "../diagnostics/types";
+import type {
   DeletedEntryPageCursor,
   EntryVersion,
   EntryVersionPageCursor,
@@ -25,6 +31,7 @@ import {
   readDexieSyncStoreConnection,
 } from "../store/dexie";
 import type { SyncConnection } from "../store/store";
+import type { ReconcileOnceResult } from "../engine/local-reconcile-service";
 import type { SyncDeletedEntriesPage } from "./version-history-service";
 import type { SyncDeletedEntriesRestoreResult } from "./version-history-service";
 import type { SyncDeletedEntriesPurgeResult } from "./version-history-service";
@@ -53,6 +60,7 @@ export interface SyncControllerDeps {
   hasActiveRemoteVaultSession: () => boolean;
   hasConnectedRemoteVault: () => boolean;
   hasAuthenticatedSession: () => boolean;
+  diagnostics: SyncDiagnostics;
   notifyError: (error: unknown, contextKey: SynchErrorContextKey) => void;
   notify?: (message: string, timeout?: number) => void;
   onSyncStatusChange?: () => void;
@@ -81,8 +89,14 @@ export class SyncController {
     getVaultConfigSyncRules: () => this.deps.getVaultConfigSyncRules(),
     shouldDeferSyncWork: () => this.deps.getSyncIntervalMs() > 0,
     hasActiveRemoteVaultSession: () => this.deps.hasActiveRemoteVaultSession(),
-    notify: (message, timeout) => this.notify(message, timeout),
-    notifyError: (error, prefix) => this.deps.notifyError(error, prefix),
+    diagnostics: this.deps.diagnostics,
+    onSyncError: (error, phase) => {
+      void this.handleSyncError(
+        error,
+        getErrorContextKeyForPhase(phase),
+        phase,
+      );
+    },
     notifySyncConflict: (event) => this.notifySyncConflict(event),
     notifyRollbackDetected: (event) => this.notifyRollbackDetected(event),
     setSyncProgress: (progress) => this.setSyncProgress(progress),
@@ -127,7 +141,11 @@ export class SyncController {
       await this.syncEngine.refreshSyncProgress();
     } catch (error) {
       this.setSyncStatus("attention_needed");
-      this.deps.notifyError(error, "error.localSyncStoreInitialization");
+      await this.handleSyncError(
+        error,
+        "error.localSyncStoreInitialization",
+        "store_initialization",
+      );
       throw error;
     }
   }
@@ -254,20 +272,28 @@ export class SyncController {
         await this.syncEngine.startAutoSync();
         await this.runPeriodicSyncAndSchedule();
       } catch (error) {
-        this.handleSyncError(error, "error.autoSyncInitialization");
+        await this.handleSyncError(
+          error,
+          "error.autoSyncInitialization",
+          "auto_sync_initialization",
+        );
       }
       return;
     }
 
     const wasPeriodic = this.periodicSyncEnabled;
     await this.stopPeriodicSyncAndWait();
+    this.recordSyncStarted("startup");
     try {
       this.syncEngine.setStorageStatusWatching(true);
       const reconcile = await this.syncEngine.reconcileOnce();
+      this.recordSyncReconciled("startup", reconcile);
       await this.syncEngine.waitForLocalMutationWork();
       await this.syncEngine.startAutoSync();
       if (wasPeriodic) {
-        await this.syncEngine.syncNow();
+        if (await this.syncEngine.syncNow()) {
+          this.recordSyncCompleted("startup");
+        }
         return;
       }
       const hasPendingMutations = await this.syncEngine.hasPendingMutations();
@@ -276,62 +302,63 @@ export class SyncController {
         reconcile.filesQueuedForUpsert > 0 ||
         reconcile.filesQueuedForDelete > 0
       ) {
-        this.syncEngine.notifyLocalChange();
+        if (await this.syncEngine.syncNow()) {
+          this.recordSyncCompleted("startup");
+        }
+        return;
       }
+      this.recordSyncCompleted("startup");
     } catch (error) {
       this.syncEngine.setStorageStatusWatching(false);
       this.setStorageStatus(null);
-      if (isRemoteVaultUnavailableError(error)) {
-        await this.handleRemoteVaultUnavailable(error);
-        return;
-      }
-
-      if (isOfflineLikeError(error, this.deps.isOffline)) {
-        this.setSyncStatus("offline");
-        return;
-      }
-
-      this.setSyncStatus("attention_needed");
-      this.deps.notifyError(error, "error.autoSyncInitialization");
+      await this.handleSyncError(
+        error,
+        "error.autoSyncInitialization",
+        "auto_sync_initialization",
+      );
     }
   }
 
   async resumeAutoSync(): Promise<void> {
-    if (!this.deps.hasActiveRemoteVaultSession() || !this.deps.hasAuthenticatedSession()) {
-      if (this.shouldShowOfflineBeforeReady()) {
-        this.setSyncStatus("offline");
-      }
-      return;
-    }
-
-    if (!this.syncEngine.hasStore()) {
-      await this.ensureAutoSyncState();
-      return;
-    }
-
-    if (this.deps.getSyncIntervalMs() > 0) {
-      this.syncEngine.setStorageStatusWatching(true);
-      this.periodicSyncEnabled = true;
-      if (this.periodicSyncTimer || this.periodicSyncPromise) {
+    try {
+      if (!this.deps.hasActiveRemoteVaultSession() || !this.deps.hasAuthenticatedSession()) {
+        if (this.shouldShowOfflineBeforeReady()) {
+          this.setSyncStatus("offline");
+        }
         return;
       }
+
+      if (!this.syncEngine.hasStore()) {
+        await this.ensureAutoSyncState();
+        return;
+      }
+
+      if (this.deps.getSyncIntervalMs() > 0) {
+        this.syncEngine.setStorageStatusWatching(true);
+        this.periodicSyncEnabled = true;
+        if (this.periodicSyncTimer || this.periodicSyncPromise) {
+          return;
+        }
+        const started = await this.syncEngine.startAutoSync();
+        if (!started) {
+          await this.syncEngine.resumeAutoSyncConnection();
+        }
+        await this.runPeriodicSyncAndSchedule();
+        return;
+      }
+
+      const wasPeriodic = this.periodicSyncEnabled;
+      await this.stopPeriodicSyncAndWait();
+      this.syncEngine.setStorageStatusWatching(true);
       const started = await this.syncEngine.startAutoSync();
       if (!started) {
         await this.syncEngine.resumeAutoSyncConnection();
       }
-      await this.runPeriodicSyncAndSchedule();
-      return;
-    }
-
-    const wasPeriodic = this.periodicSyncEnabled;
-    await this.stopPeriodicSyncAndWait();
-    this.syncEngine.setStorageStatusWatching(true);
-    const started = await this.syncEngine.startAutoSync();
-    if (!started) {
-      await this.syncEngine.resumeAutoSyncConnection();
-    }
-    if (wasPeriodic) {
-      await this.syncEngine.syncNow();
+      if (wasPeriodic) {
+        await this.syncEngine.syncNow();
+      }
+    } catch (error) {
+      await this.handleSyncError(error, "error.autoSyncResume", "auto_sync_resume");
     }
   }
 
@@ -351,12 +378,16 @@ export class SyncController {
     }
 
     try {
+      this.recordSyncStarted("manual");
       this.setSyncStatus("syncing");
-      await this.syncEngine.reconcileOnce();
+      const reconcile = await this.syncEngine.reconcileOnce();
+      this.recordSyncReconciled("manual", reconcile);
       await this.syncEngine.waitForLocalMutationWork();
-      await this.syncEngine.syncNow();
+      if (await this.syncEngine.syncNow()) {
+        this.recordSyncCompleted("manual");
+      }
     } catch (error) {
-      this.handleSyncError(error, "error.autoSync");
+      await this.handleSyncError(error, "error.autoSync", "auto_sync");
     }
   }
 
@@ -373,22 +404,19 @@ export class SyncController {
         await this.runPeriodicSyncAndSchedule();
         return;
       }
-      await this.syncEngine.reconcileOnce();
+      this.recordSyncStarted("local_change");
+      const reconcile = await this.syncEngine.reconcileOnce();
+      this.recordSyncReconciled("local_change", reconcile);
       this.syncEngine.refreshHiddenFolderReconcileTimer();
-      this.syncEngine.notifyLocalChange();
+      if (await this.syncEngine.syncNow()) {
+        this.recordSyncCompleted("local_change");
+      }
     } catch (error) {
-      if (isRemoteVaultUnavailableError(error)) {
-        await this.handleRemoteVaultUnavailable(error);
-        return;
-      }
-
-      if (isOfflineLikeError(error, this.deps.isOffline)) {
-        this.setSyncStatus("offline");
-        return;
-      }
-
-      this.setSyncStatus("attention_needed");
-      this.deps.notifyError(error, "error.syncFileRuleUpdate");
+      await this.handleSyncError(
+        error,
+        "error.syncFileRuleUpdate",
+        "file_rule_update",
+      );
     }
   }
 
@@ -483,6 +511,33 @@ export class SyncController {
     this.deps.onSyncStatusChange?.();
   }
 
+  private recordSyncStarted(source: SyncDiagnosticSource): void {
+    this.deps.diagnostics.record({
+      type: "sync_started",
+      source,
+    });
+  }
+
+  private recordSyncReconciled(
+    source: SyncDiagnosticSource,
+    result: ReconcileOnceResult,
+  ): void {
+    this.deps.diagnostics.record({
+      type: "sync_reconciled",
+      source,
+      filesScanned: result.filesScanned,
+      filesQueuedForUpsert: result.filesQueuedForUpsert,
+      filesQueuedForDelete: result.filesQueuedForDelete,
+    });
+  }
+
+  private recordSyncCompleted(source: SyncDiagnosticSource): void {
+    this.deps.diagnostics.record({
+      type: "sync_completed",
+      source,
+    });
+  }
+
   private async runPeriodicSyncAndSchedule(): Promise<void> {
     this.clearPeriodicSyncTimer();
     if (this.periodicSyncPromise) {
@@ -501,15 +556,19 @@ export class SyncController {
 
   private async runPeriodicSyncCycle(): Promise<void> {
     try {
+      this.recordSyncStarted("periodic");
       this.setSyncStatus("syncing");
-      await this.syncEngine.reconcileOnce();
+      const reconcile = await this.syncEngine.reconcileOnce();
+      this.recordSyncReconciled("periodic", reconcile);
       await this.syncEngine.waitForLocalMutationWork();
-      await this.syncEngine.syncNow();
+      if (await this.syncEngine.syncNow()) {
+        this.recordSyncCompleted("periodic");
+      }
     } catch (error) {
       if (!this.periodicSyncEnabled) {
         return;
       }
-      this.handleSyncError(error, "error.autoSync");
+      await this.handleSyncError(error, "error.autoSync", "auto_sync");
     }
   }
 
@@ -546,15 +605,34 @@ export class SyncController {
     this.periodicSyncTimer = null;
   }
 
-  private handleSyncError(error: unknown, contextKey: SynchErrorContextKey): void {
+  recordSyncError(
+    error: unknown,
+    phase: SyncFailurePhase,
+    classification: SyncDiagnosticErrorClassification = "unexpected",
+  ): void {
+    this.deps.diagnostics.recordError({
+      phase,
+      classification,
+      error,
+    });
+  }
+
+  private async handleSyncError(
+    error: unknown,
+    contextKey: SynchErrorContextKey,
+    phase: SyncFailurePhase,
+  ): Promise<void> {
     if (isRemoteVaultUnavailableError(error)) {
-      void this.handleRemoteVaultUnavailable(error);
+      this.recordSyncError(error, phase, "remote_vault_unavailable");
+      await this.handleRemoteVaultUnavailable(error);
       return;
     }
     if (isOfflineLikeError(error, this.deps.isOffline)) {
+      this.recordSyncError(error, phase, "offline");
       this.setSyncStatus("offline");
       return;
     }
+    this.recordSyncError(error, phase);
     this.setSyncStatus("attention_needed");
     this.deps.notifyError(error, contextKey);
   }
@@ -610,6 +688,10 @@ export class SyncController {
   private async handleRemoteVaultUnavailable(
     error: RemoteVaultUnavailableError,
   ): Promise<void> {
+    this.deps.diagnostics.record({
+      type: "remote_vault_unavailable",
+      reason: error.reason === "not_found" ? "not_found" : "access_denied",
+    });
     this.stopAutoSyncAndMarkNotReady();
     await this.deps.onRemoteVaultUnavailable?.(error);
   }
@@ -645,14 +727,11 @@ export class SyncController {
     localRevision: number;
     remoteRevision: number;
   }): void {
-    // Always logged, regardless of whether a Notice is shown - this is the
-    // durable record that the server sent a stale revision, which shouldn't
-    // happen under normal operation (see the check in PullManifestPlanner).
-    console.warn(
-      `[synch] rejected a rollback attempt for entry ${event.entryId}` +
-        (event.path ? ` (${event.path})` : "") +
-        `: server sent revision ${event.remoteRevision}, already had ${event.localRevision}`,
-    );
+    this.deps.diagnostics.record({
+      type: "rollback_rejected",
+      localRevision: event.localRevision,
+      remoteRevision: event.remoteRevision,
+    });
     this.notify(
       t("sync.rollbackDetected", { path: event.path ?? event.entryId }),
     );
@@ -664,5 +743,28 @@ export class SyncController {
       this.deps.hasConnectedRemoteVault() &&
       (this.syncStatus === "offline" || detectOffline(this.deps.isOffline))
     );
+  }
+}
+
+function getErrorContextKeyForPhase(
+  phase: SyncFailurePhase,
+): SynchErrorContextKey {
+  switch (phase) {
+    case "store_initialization":
+      return "error.localSyncStoreInitialization";
+    case "auto_sync_initialization":
+      return "error.autoSyncInitialization";
+    case "auto_sync_resume":
+      return "error.autoSyncResume";
+    case "sync_event_handling":
+      return "error.syncEventHandling";
+    case "file_rule_update":
+      return "error.syncFileRuleUpdate";
+    case "local_state_reset":
+      return "error.localSyncStateReset";
+    case "hidden_folder_scan":
+      return "error.hiddenFolderScan";
+    case "auto_sync":
+      return "error.autoSync";
   }
 }

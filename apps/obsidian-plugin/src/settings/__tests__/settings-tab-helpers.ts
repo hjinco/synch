@@ -22,6 +22,12 @@ export function createSettingsTab(
       completedEntries: 0,
       totalEntries: 0,
     }),
+    getSyncLogs: () => ({
+      count: 0,
+      text: "Synch sync diagnostics",
+    }),
+    clearSyncLogs: vi.fn(() => {}),
+    subscribeSyncLogs: () => () => {},
     listFileSizeBlockedFiles: vi.fn(async () => []),
     isSyncEnabled: () => true,
     setSyncEnabled: vi.fn(async () => {}),

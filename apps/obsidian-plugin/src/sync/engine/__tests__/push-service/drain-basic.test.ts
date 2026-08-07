@@ -56,6 +56,7 @@ describe("SyncPushService drain: basic queue", () => {
 
     const committed: Array<CommitMutationPayload> = [];
     const uploaded: Array<{ blobId: string; bytes: Uint8Array }> = [];
+    const fileSyncEvents: string[] = [];
     const progressUpdates: Array<{ completedEntries: number; totalEntries: number }> = [];
     let nextCursor = 10;
     const session = createPushSession(async (mutation) => {
@@ -95,6 +96,12 @@ describe("SyncPushService drain: basic queue", () => {
       onProgress: async (progress) => {
         progressUpdates.push(progress);
       },
+      onFileSyncStarted: ({ operation, path }) => {
+        fileSyncEvents.push(`started:${operation}:${path}`);
+      },
+      onFileSyncCompleted: ({ operation, path, revision }) => {
+        fileSyncEvents.push(`completed:${operation}:${path}:${revision}`);
+      },
     });
 
     const result = await service.pushPendingMutations(session);
@@ -125,6 +132,12 @@ describe("SyncPushService drain: basic queue", () => {
       ],
     );
     expect(uploaded).toHaveLength(1);
+    expect(fileSyncEvents).toEqual([
+      "started:upsert:Folder/new.md",
+      "started:delete:Folder/deleted.md",
+      "completed:upsert:Folder/new.md:1",
+      "completed:delete:Folder/deleted.md:3",
+    ]);
     expect(new TextDecoder().decode(uploaded[0]?.bytes ?? new Uint8Array())).not.toBe("new body");
     expect(new TextDecoder().decode(uploaded[0]?.bytes.slice(0, 4))).toBe("SYNB");
     await expect(

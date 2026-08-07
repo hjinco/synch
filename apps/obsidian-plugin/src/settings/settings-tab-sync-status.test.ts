@@ -5,10 +5,12 @@ import {
   getCreatedElements,
   getDropdownComponents,
   getExtraButtonComponents,
+  getNotices,
   getProgressBarComponents,
   getSettingClasses,
   getSettingDescriptions,
   getSettingNames,
+  getTextComponents,
   resetObsidianMocks,
 } from "../test-stubs/obsidian";
 import { createSettingsTab, nextTask } from "./__tests__/settings-tab-helpers";
@@ -253,7 +255,7 @@ describe("SynchSettingTab sync status", () => {
     expect(getExtraButtonComponents()).toEqual([]);
   });
 
-  it("shows sync frequency as the final settings section", async () => {
+  it("shows sync diagnostics after the sync frequency section", async () => {
     const setSyncIntervalMs = vi.fn(async () => {});
     const tab = createSettingsTab({
       hasAuthenticatedSession: () => true,
@@ -264,7 +266,8 @@ describe("SynchSettingTab sync status", () => {
 
     tab.display();
 
-    expect(getSettingNames().at(-1)).toBe("Sync frequency");
+    expect(getSettingNames().at(-2)).toBe("Sync frequency");
+    expect(getSettingNames().at(-1)).toBe("Sync diagnostics");
     const dropdown = getDropdownComponents()[0];
     expect(dropdown?.value).toBe("180000");
     expect([...dropdown?.options.entries() ?? []]).toContainEqual([
@@ -273,6 +276,70 @@ describe("SynchSettingTab sync status", () => {
     ]);
     await dropdown?.change("300000");
     expect(setSyncIntervalMs).toHaveBeenCalledWith(300_000);
+  });
+
+  it("opens, copies, and clears the current sync diagnostics from the final setting", async () => {
+    const writeText = vi.fn(async (_text: string) => {});
+    vi.stubGlobal("navigator", { clipboard: { writeText } });
+    let logText = "Synch sync diagnostics\nentry";
+    let logCount = 1;
+    let notifyLogChanged: (() => void) | null = null;
+    const clearSyncLogs = vi.fn(() => {
+      logCount = 0;
+      logText = "Synch sync diagnostics";
+      notifyLogChanged?.();
+    });
+    const tab = createSettingsTab({
+      hasAuthenticatedSession: () => true,
+      hasConnectedRemoteVault: () => true,
+      getSyncLogs: () => ({
+        count: logCount,
+        text: logText,
+      }),
+      clearSyncLogs,
+      subscribeSyncLogs: (listener) => {
+        notifyLogChanged = listener;
+        return () => {};
+      },
+    });
+
+    tab.display();
+
+    const openButton = getButtonComponents().find(
+      (button) => button.text === "View and copy logs",
+    );
+    await openButton?.click();
+
+    expect(getCreatedElements().map((element) => element.text)).not.toContain(
+      "Warning: Logs include file names and vault-relative folder paths. Review them before sharing. File contents, keys, and tokens are not included.",
+    );
+    logText = "Synch sync diagnostics\nentry\nfile_sync_completed";
+    notifyLogChanged?.();
+    expect(getTextComponents().at(-1)?.inputEl.value).toBe(logText);
+    const copyButton = getButtonComponents().find(
+      (button) => button.text === "Copy logs",
+    );
+    await copyButton?.click();
+
+    expect(writeText).toHaveBeenCalledWith(logText);
+    expect(getNotices()).toContainEqual({
+      message: "Sync logs copied to the clipboard.",
+      timeout: undefined,
+    });
+
+    const clearButton = getButtonComponents().find(
+      (button) => button.text === "Clear logs",
+    );
+    await clearButton?.click();
+    expect(clearSyncLogs).toHaveBeenCalledTimes(1);
+    expect(getCreatedElements().map((element) => element.text)).toContain(
+      "No sync diagnostics have been recorded in this session.",
+    );
+    expect(getNotices()).toContainEqual({
+      message: "Sync logs cleared.",
+      timeout: undefined,
+    });
+    vi.unstubAllGlobals();
   });
 
   it("runs a manual sync from the sync status row", async () => {

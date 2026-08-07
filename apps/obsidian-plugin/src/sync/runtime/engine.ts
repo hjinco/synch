@@ -1,12 +1,14 @@
 import type { Plugin } from "obsidian";
 
-import type { SynchErrorContextKey } from "../../i18n";
 import {
   isOffline as detectOffline,
-  isOfflineLikeError,
   type OfflineDetector,
 } from "../../http/network-status";
 import type { RemoteVaultUnavailableError } from "../../remote-vault/unavailable";
+import type {
+  SyncDiagnostics,
+  SyncFailurePhase,
+} from "../diagnostics/types";
 import { hashBytes } from "../core/content";
 import { SyncAutoLoop } from "../engine/auto-sync";
 import type { SyncTokenResponse } from "../remote/client";
@@ -83,8 +85,8 @@ export interface SyncEngineDeps {
   getVaultConfigSyncRules: () => VaultConfigSyncRules;
   shouldDeferSyncWork: () => boolean;
   hasActiveRemoteVaultSession: () => boolean;
-  notify: (message: string, timeout?: number) => void;
-  notifyError: (error: unknown, contextKey: SynchErrorContextKey) => void;
+  diagnostics: SyncDiagnostics;
+  onSyncError: (error: unknown, phase: SyncFailurePhase) => void | Promise<void>;
   notifySyncConflict: (event: {
     op: "upsert" | "delete";
     reason?: "local_pending_mutation" | "remote_path_collision";
@@ -151,6 +153,27 @@ export class SyncEngine {
     onFileSizeBlockedFilesChange: () => {
       this.deps.onFileSizeBlockedFilesChange?.();
     },
+    onFileSyncStarted: (event) => {
+      this.deps.diagnostics.record({
+        type: "file_sync_started",
+        direction: "upload",
+        ...event,
+      });
+    },
+    onFileSyncCompleted: (event) => {
+      this.deps.diagnostics.record({
+        type: "file_sync_completed",
+        direction: "upload",
+        ...event,
+      });
+    },
+    onFileSyncFailed: (event) => {
+      this.deps.diagnostics.record({
+        type: "file_sync_failed",
+        direction: "upload",
+        ...event,
+      });
+    },
   });
   private readonly syncLocalReconcileService = new SyncLocalReconcileService({
     getSyncStore: () => this.syncStore,
@@ -194,6 +217,10 @@ export class SyncEngine {
       }),
     shouldDeferSyncWork: () => this.deps.shouldDeferSyncWork(),
     onConnectionStateChange: (state) => {
+      this.deps.diagnostics.record({
+        type: "connection_state_changed",
+        state,
+      });
       if (state === "reconnecting") {
         this.setOnlineSyncStatus("reconnecting");
         return;
@@ -207,27 +234,39 @@ export class SyncEngine {
       this.deps.setStorageStatus(status);
     },
     onSyncScheduled: () => {
+      this.deps.diagnostics.record({
+        type: "work_scheduled",
+        mode: "immediate",
+      });
       this.setOnlineSyncStatus("syncing");
     },
     onSyncDeferred: () => {
+      this.deps.diagnostics.record({
+        type: "work_scheduled",
+        mode: "deferred",
+      });
       this.deps.setSyncStatus("pending");
     },
     onIdle: () => {
       this.deps.setSyncStatus("up_to_date");
     },
     onError: (error) => {
-      if (isOfflineLikeError(error, this.deps.isOffline)) {
-        this.deps.setSyncStatus("offline");
-        return;
-      }
-
-      this.deps.setSyncStatus("attention_needed");
-      this.deps.notifyError(error, "error.autoSync");
+      void this.deps.onSyncError(error, "auto_sync");
+    },
+    onRetryScheduled: ({ attempt, delayMs }) => {
+      this.deps.diagnostics.record({
+        type: "retry_scheduled",
+        attempt,
+        delayMs,
+      });
     },
     onRemoteVaultUnavailable: async (error) => {
       await this.deps.onRemoteVaultUnavailable?.(error);
     },
     onStorageQuotaExceeded: async () => {
+      this.deps.diagnostics.record({
+        type: "storage_quota_exceeded",
+      });
       await this.deps.onStorageQuotaExceeded?.();
     },
   });
@@ -241,8 +280,21 @@ export class SyncEngine {
     runLocalMutationWork: async (work) => await this.runLocalMutationWork(work),
     hasActiveRemoteVaultSession: () => this.deps.hasActiveRemoteVaultSession(),
     onError: (error) => {
-      this.deps.setSyncStatus("attention_needed");
-      this.deps.notifyError(error, "error.syncEventHandling");
+      void this.deps.onSyncError(error, "sync_event_handling");
+    },
+    onFileQueued: (event) => {
+      this.deps.diagnostics.record({
+        type: "local_file_queued",
+        ...event,
+      });
+    },
+    onFileError: ({ error: _error, ...event }) => {
+      this.deps.diagnostics.record({
+        type: "file_sync_failed",
+        direction: "local",
+        ...event,
+        reason: "queue_failed",
+      });
     },
   });
   private readonly syncPullService = new SyncPullService({
@@ -262,6 +314,27 @@ export class SyncEngine {
     },
     onConflict: (event) => this.deps.notifySyncConflict(event),
     onRollbackDetected: (event) => this.deps.notifyRollbackDetected(event),
+    onFileSyncStarted: (event) => {
+      this.deps.diagnostics.record({
+        type: "file_sync_started",
+        direction: "download",
+        ...event,
+      });
+    },
+    onFileSyncCompleted: (event) => {
+      this.deps.diagnostics.record({
+        type: "file_sync_completed",
+        direction: "download",
+        ...event,
+      });
+    },
+    onFileSyncFailed: (event) => {
+      this.deps.diagnostics.record({
+        type: "file_sync_failed",
+        direction: "download",
+        ...event,
+      });
+    },
   });
   private readonly syncVersionHistoryService = new SyncVersionHistoryService({
     getApiBaseUrl: () => this.deps.getApiBaseUrl(),
@@ -350,8 +423,8 @@ export class SyncEngine {
     this.syncAutoLoop.notifyLocalChange();
   }
 
-  async syncNow(): Promise<void> {
-    await this.syncAutoLoop.syncNow();
+  async syncNow(): Promise<boolean> {
+    return await this.syncAutoLoop.syncNow();
   }
 
   setStorageStatusWatching(enabled: boolean): void {
@@ -548,8 +621,7 @@ export class SyncEngine {
         this.notifyLocalChange();
       }
     } catch (error) {
-      this.deps.setSyncStatus("attention_needed");
-      this.deps.notifyError(error, "error.hiddenFolderScan");
+      void this.deps.onSyncError(error, "hidden_folder_scan");
     }
   }
 

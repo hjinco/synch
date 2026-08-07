@@ -16,6 +16,7 @@ describe("SyncVaultEventHandler", () => {
     const plugin = createPlugin(callbacks);
     const notifyLocalChange = vi.fn();
     const onError = vi.fn();
+    const onFileQueued = vi.fn();
     const runLocalMutationWork = createSerialQueue();
     const handler = new SyncVaultEventHandler({
       plugin,
@@ -41,6 +42,7 @@ describe("SyncVaultEventHandler", () => {
       runLocalMutationWork,
       hasActiveRemoteVaultSession: () => true,
       onError,
+      onFileQueued,
     });
 
     handler.register();
@@ -55,6 +57,15 @@ describe("SyncVaultEventHandler", () => {
       expect(recorded).toEqual(["upsert:note.md:modified", "delete:note.md"]);
     });
     expect(notifyLocalChange).toHaveBeenCalledTimes(2);
+    expect(onFileQueued).toHaveBeenNthCalledWith(1, {
+      operation: "modify",
+      path: "note.md",
+      oldPath: undefined,
+    });
+    expect(onFileQueued).toHaveBeenNthCalledWith(2, {
+      operation: "delete",
+      path: "note.md",
+    });
     expect(onError).not.toHaveBeenCalled();
   });
 

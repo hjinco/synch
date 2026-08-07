@@ -10,6 +10,7 @@ import { DEFAULT_VAULT_CONFIG_SYNC_RULES } from "../core/vault-config-rules";
 import { queueLocalUpsertMutation } from "../core/mutation-queue";
 import type { SyncTokenResponse } from "../remote/client";
 import { createInitializedTestSyncStore } from "../../test-support/test-plugin";
+import { InMemorySyncDiagnostics } from "../diagnostics/in-memory";
 import { SyncEngine } from "./engine";
 
 type VaultEventCallback = (...args: unknown[]) => void;
@@ -27,20 +28,20 @@ describe("SyncEngine", () => {
     const plugin = createPlugin({}, async () => encodeUtf8("body"));
     const store = await createInitializedTestSyncStore(plugin);
     const setSyncStatus = vi.fn();
-    const notifyError = vi.fn();
+    const onSyncError = vi.fn();
     const engine = createEngine(plugin, {
       getSyncToken: async () => {
         throw new Error("offline");
       },
       setSyncStatus,
-      notifyError,
+      onSyncError,
     });
     engine.setStore(store);
 
     await engine.startAutoSync();
 
-    expect(setSyncStatus).toHaveBeenCalledWith("offline");
-    expect(notifyError).not.toHaveBeenCalled();
+    expect(setSyncStatus).not.toHaveBeenCalledWith("offline");
+    expect(onSyncError).toHaveBeenCalledWith(expect.any(Error), "auto_sync");
     engine.stopAutoSync();
     await store.close();
   });
@@ -227,8 +228,6 @@ describe("SyncEngine", () => {
       getSyncFileRules: () => DEFAULT_SYNC_FILE_RULES,
       getVaultConfigSyncRules: () => DEFAULT_VAULT_CONFIG_SYNC_RULES,
       hasActiveRemoteVaultSession: () => true,
-      notify: vi.fn(),
-      notifyError: vi.fn(),
       notifySyncConflict: vi.fn(),
       setSyncProgress: vi.fn(),
       setSyncStatus: vi.fn(),
@@ -464,8 +463,8 @@ function createEngine(
     getVaultConfigSyncRules: () => DEFAULT_VAULT_CONFIG_SYNC_RULES,
     shouldDeferSyncWork: () => false,
     hasActiveRemoteVaultSession: () => true,
-    notify: vi.fn(),
-    notifyError: vi.fn(),
+    diagnostics: new InMemorySyncDiagnostics("test"),
+    onSyncError: vi.fn(),
     notifySyncConflict: vi.fn(),
     setSyncProgress: vi.fn(),
     setSyncStatus: vi.fn(),

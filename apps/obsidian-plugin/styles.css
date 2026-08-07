@@ -7,6 +7,38 @@
   font-size: var(--font-ui-small);
 }
 
+.synch-diagnostics-empty {
+  color: var(--text-muted);
+}
+
+.synch-diagnostics-log-setting {
+  align-items: stretch;
+  border: none;
+  padding: 0;
+}
+
+.synch-diagnostics-log-setting .setting-item-info {
+  display: none;
+}
+
+.synch-diagnostics-log-setting .setting-item-control {
+  flex: 1 1 auto;
+  justify-content: stretch;
+  width: 100%;
+}
+
+.synch-diagnostics-textarea {
+  width: 100%;
+  min-height: 18rem;
+  font-family: var(--font-monospace);
+  white-space: pre;
+}
+
+.synch-diagnostics-actions {
+  border: none;
+  padding-inline: 0;
+}
+
 .synch-storage-warning .setting-item-description {
   color: var(--text-warning);
 }

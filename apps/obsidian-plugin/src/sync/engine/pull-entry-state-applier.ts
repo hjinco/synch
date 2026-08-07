@@ -54,6 +54,20 @@ export interface PullEntryStateApplierDeps {
   onProgress?: (progress: SyncProgressCounts) => Promise<void>;
   onConflict?: (event: PullConflictEvent) => void;
   onRollbackDetected?: (event: PullRollbackEvent) => void;
+  onFileSyncStarted?: (event: {
+    operation: "upsert" | "delete";
+    path: string;
+  }) => void;
+  onFileSyncCompleted?: (event: {
+    operation: "upsert" | "delete";
+    path: string;
+    revision: number;
+  }) => void;
+  onFileSyncFailed?: (event: {
+    operation: "upsert" | "delete";
+    path: string;
+    reason: string;
+  }) => void;
   now?: () => number;
 }
 
@@ -179,9 +193,21 @@ export class PullEntryStateApplier {
       };
     }
 
-    const prepared = await this.prepareManifestApplication(store, token, manifest, {
-      deferExternalPathOwners: !options.finalWindow,
-    });
+    let prepared: PreparedManifestApplication;
+    try {
+      prepared = await this.prepareManifestApplication(store, token, manifest, {
+        deferExternalPathOwners: !options.finalWindow,
+      });
+    } catch (error) {
+      for (const item of manifest) {
+        this.deps.onFileSyncFailed?.({
+          operation: item.state.deleted ? "delete" : "upsert",
+          path: item.metadata.path ?? "<unavailable>",
+          reason: "prepare_failed",
+        });
+      }
+      throw error;
+    }
     const filesDeleted = await this.applyPreparedManifest(
       store,
       prepared,
@@ -389,6 +415,17 @@ export class PullEntryStateApplier {
     const originalEntries = await this.snapshotManifestEntries(store, prepared);
     const originalDirtyEntries = await this.snapshotDirtyEntries(store, prepared);
     const pendingConflictsByPlan = groupPendingConflictsByPlan(prepared.pendingConflicts);
+    const fileEvents = prepared.plans.map((plan) => ({
+      operation: plan.state.deleted ? "delete" as const : "upsert" as const,
+      path: plan.finalPath ?? plan.metadata.path ?? "<unavailable>",
+      revision: plan.state.revision,
+    }));
+    for (const event of fileEvents) {
+      this.deps.onFileSyncStarted?.({
+        operation: event.operation,
+        path: event.path,
+      });
+    }
 
     try {
       let filesDeleted = 0;
@@ -485,8 +522,18 @@ export class PullEntryStateApplier {
         },
       );
 
+      for (const event of fileEvents) {
+        this.deps.onFileSyncCompleted?.(event);
+      }
       return filesDeleted;
     } catch (error) {
+      for (const event of fileEvents) {
+        this.deps.onFileSyncFailed?.({
+          operation: event.operation,
+          path: event.path,
+          reason: "apply_failed",
+        });
+      }
       await this.restoreManifestEntries(store, originalEntries);
       await this.restoreDirtyEntries(store, originalDirtyEntries);
       throw error;

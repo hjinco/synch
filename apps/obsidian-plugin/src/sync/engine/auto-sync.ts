@@ -46,6 +46,7 @@ export interface SyncAutoLoopDeps {
   onSyncScheduled?: () => void;
   onSyncDeferred?: () => void;
   onIdle?: () => void;
+  onRetryScheduled?: (input: { attempt: number; delayMs: number }) => void;
   onError?: (error: unknown) => void;
   onRemoteVaultUnavailable?: (error: RemoteVaultUnavailableError) => void | Promise<void>;
   onStorageQuotaExceeded?: () => void | Promise<void>;
@@ -108,9 +109,9 @@ export class SyncAutoLoop {
     }, this.deps.pushDebounceMs ?? DEFAULT_PUSH_DEBOUNCE_MS);
   }
 
-  async syncNow(): Promise<void> {
+  async syncNow(): Promise<boolean> {
     if (!this.isActive()) {
-      return;
+      return false;
     }
 
     this.timers.clear("push");
@@ -118,6 +119,12 @@ export class SyncAutoLoop {
     this.requestPullWork(null);
     this.requestPush();
     await this.drain(true);
+    return (
+      this.isActive() &&
+      !this.hasPendingWork() &&
+      !this.timers.has("syncRetry") &&
+      !this.timers.has("reconnect")
+    );
   }
 
   requestPull(targetCursor: number | null = null): void {
@@ -516,6 +523,10 @@ export class SyncAutoLoop {
     const maxDelay = this.deps.syncRetryMaxDelayMs ?? DEFAULT_SYNC_RETRY_MAX_DELAY_MS;
     const delay = Math.min(baseDelay * 2 ** this.syncRetryAttempt, maxDelay);
     this.syncRetryAttempt += 1;
+    this.deps.onRetryScheduled?.({
+      attempt: this.syncRetryAttempt,
+      delayMs: delay,
+    });
     this.timers.set("syncRetry", () => {
       if (!this.isActive() || !this.hasPendingWork()) {
         return;

@@ -24,6 +24,7 @@ describe("SyncPullService paging", () => {
     const adapter = createVaultAdapter();
     const suppressionCalls: string[][] = [];
     const progressUpdates: Array<{ completedEntries: number; totalEntries: number }> = [];
+    const fileSyncEvents: string[] = [];
     const session = createRealtimeSession({
       pages: [
         {
@@ -84,6 +85,12 @@ describe("SyncPullService paging", () => {
       onProgress: async (progress) => {
         progressUpdates.push(progress);
       },
+      onFileSyncStarted: ({ operation, path }) => {
+        fileSyncEvents.push(`started:${operation}:${path}`);
+      },
+      onFileSyncCompleted: ({ operation, path, revision }) => {
+        fileSyncEvents.push(`completed:${operation}:${path}:${revision}`);
+      },
     });
 
     const result = await service.pullOnce(session);
@@ -101,6 +108,12 @@ describe("SyncPullService paging", () => {
     expect((await store.getEntryById("entry-1"))?.path).toBe("Folder/note-a.md");
     expect((await store.getEntryById("entry-2"))?.blobId).toBe("blob-2");
     expect(progressUpdates).toEqual([{ completedEntries: 2, totalEntries: 2 }]);
+    expect(fileSyncEvents).toEqual([
+      "started:upsert:Folder/note-a.md",
+      "started:upsert:Folder/note-b.md",
+      "completed:upsert:Folder/note-a.md:1",
+      "completed:upsert:Folder/note-b.md:1",
+    ]);
     expect(suppressionCalls).toEqual([["Folder/note-a.md", "Folder/note-b.md"]]);
     await store.close();
   });
