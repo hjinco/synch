@@ -111,6 +111,7 @@ export function createNodeCoordinatorRuntime(
 		socketGateway: socketService,
 		ready,
 		close: () => {
+			application.dispose();
 			maintenanceScheduler.dispose();
 			sqlite.close();
 		},

@@ -177,5 +177,6 @@ export function createCoordinatorApplication(
 		useCases,
 		socketMessageHandler,
 		socketConnectionService,
+		dispose: () => blobSyncService.dispose(),
 	};
 }

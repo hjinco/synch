@@ -11,6 +11,80 @@ import {
 } from "./helpers";
 
 describe("coordinator blob lifecycle", () => {
+	it("coalesces storage status broadcasts and sends the latest snapshot", async () => {
+		vi.useFakeTimers();
+		try {
+			let storageUsedBytes = 100;
+			const socketService = socketServiceMock();
+			const stateRepository = createTestCoordinatorState({
+				readStorageStatus: vi.fn(() => ({
+					storageUsedBytes,
+					storageLimitBytes: 1_000,
+				})),
+			});
+			const service = createCoordinatorService({
+				stateRepository,
+				socketService,
+				storageStatusBroadcastDelayMs: 300,
+			});
+
+			await service.stageBlob(
+				new Request("http://example.com"),
+				"vault-1",
+				"blob-1",
+				100,
+			);
+			storageUsedBytes = 200;
+			await service.stageBlob(
+				new Request("http://example.com"),
+				"vault-1",
+				"blob-2",
+				100,
+			);
+
+			expect(socketService.broadcastStorageStatus).not.toHaveBeenCalled();
+
+			await vi.advanceTimersByTimeAsync(299);
+			expect(socketService.broadcastStorageStatus).not.toHaveBeenCalled();
+
+			await vi.advanceTimersByTimeAsync(1);
+			expect(socketService.broadcastStorageStatus).toHaveBeenCalledOnce();
+			expect(socketService.broadcastStorageStatus).toHaveBeenCalledWith({
+				type: "storage_status_updated",
+				storageStatus: {
+					storageUsedBytes: 200,
+					storageLimitBytes: 1_000,
+				},
+			});
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it("cancels a pending storage status broadcast when disposed", async () => {
+		vi.useFakeTimers();
+		try {
+			const socketService = socketServiceMock();
+			const service = createCoordinatorService({
+				socketService,
+				storageStatusBroadcastDelayMs: 300,
+			});
+
+			await service.stageBlob(
+				new Request("http://example.com"),
+				"vault-1",
+				"blob-1",
+				100,
+			);
+			service.dispose();
+
+			await vi.advanceTimersByTimeAsync(300);
+			expect(socketService.broadcastStorageStatus).not.toHaveBeenCalled();
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
 	it("quarantines a vault when a stale staged blob is retried", async () => {
 		const syncTokenService = {
 			requireSyncToken: vi.fn(async () => ({

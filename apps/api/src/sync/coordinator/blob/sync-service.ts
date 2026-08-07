@@ -12,6 +12,7 @@ import type {
 } from "../ports";
 
 const GC_BATCH_SIZE = 64;
+const DEFAULT_STORAGE_STATUS_BROADCAST_DELAY_MS = 300;
 
 export class BlobSyncService {
 	constructor(
@@ -30,7 +31,18 @@ export class BlobSyncService {
 		private readonly blobGracePeriodMs: number,
 		private readonly maintenanceScheduler: MaintenanceScheduler,
 		private readonly healthSummaryScheduler: HealthSummaryScheduler,
+		private readonly storageStatusBroadcastDelayMs =
+			DEFAULT_STORAGE_STATUS_BROADCAST_DELAY_MS,
 	) {}
+
+	private storageStatusBroadcastTimer: ReturnType<typeof setTimeout> | null = null;
+
+	dispose(): void {
+		if (this.storageStatusBroadcastTimer !== null) {
+			clearTimeout(this.storageStatusBroadcastTimer);
+			this.storageStatusBroadcastTimer = null;
+		}
+	}
 
 	async stageBlob(
 		request: Request,
@@ -173,11 +185,37 @@ export class BlobSyncService {
 	}
 
 	private broadcastStorageStatus(): void {
-		const storageStatus = this.healthStore.readStorageStatus();
-		this.socketService.broadcastStorageStatus({
-			type: "storage_status_updated",
-			storageStatus,
-		});
+		if (this.storageStatusBroadcastDelayMs <= 0) {
+			this.flushStorageStatusBroadcast();
+			return;
+		}
+
+		if (this.storageStatusBroadcastTimer !== null) {
+			return;
+		}
+
+		this.storageStatusBroadcastTimer = setTimeout(() => {
+			this.storageStatusBroadcastTimer = null;
+			this.flushStorageStatusBroadcast();
+		}, this.storageStatusBroadcastDelayMs);
+	}
+
+	private flushStorageStatusBroadcast(): void {
+		try {
+			this.socketService.broadcastStorageStatus({
+				type: "storage_status_updated",
+				// Read at flush time so concurrent blob operations are represented by
+				// the latest storage counter, rather than the snapshot that scheduled
+				// this broadcast.
+				storageStatus: this.healthStore.readStorageStatus(),
+			});
+		} catch (error) {
+			// Storage status is advisory; a failed notification must not turn a
+			// completed blob mutation into a failed request.
+			console.error("[sync-coordinator] storage status broadcast failed", {
+				error: error instanceof Error ? error.message : String(error),
+			});
+		}
 	}
 }
 

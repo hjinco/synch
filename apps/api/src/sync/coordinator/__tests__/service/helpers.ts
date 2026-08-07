@@ -124,6 +124,7 @@ export function createCoordinatorService({
 	blobRepository = createBlobObjectRepository(),
 	initialVaultLimitReader = null,
 	maintenanceScheduler = createMaintenanceScheduler(),
+	storageStatusBroadcastDelayMs = 0,
 }: {
 	syncTokenService?: SyncTokenVerifier;
 	stateRepository?: TestCoordinatorState;
@@ -131,6 +132,7 @@ export function createCoordinatorService({
 	blobRepository?: BlobObjectRepository;
 	initialVaultLimitReader?: InitialVaultLimitReader | null;
 	maintenanceScheduler?: MaintenanceScheduler & MaintenanceRunner;
+	storageStatusBroadcastDelayMs?: number;
 } = {}): TestCoordinatorService {
 	const healthSyncService = new HealthSyncService(
 		stateRepository,
@@ -148,6 +150,7 @@ export function createCoordinatorService({
 		30 * 60 * 1000,
 		maintenanceScheduler,
 		healthSyncService,
+		storageStatusBroadcastDelayMs,
 	);
 	const mutationCommitService = new MutationCommitService(
 		stateRepository,
@@ -215,12 +218,14 @@ export function createCoordinatorService({
 		healthSyncService,
 	);
 	return Object.assign(coordinatorService, {
+		dispose: () => blobSyncService.dispose(),
 		handleSocketMessage: async (ws: WebSocket, message: string | ArrayBuffer) =>
 			await socketMessageHandler.handle(ws, message),
 	});
 }
 
 export type TestCoordinatorService = CoordinatorService & {
+	dispose(): void;
 	handleSocketMessage(ws: WebSocket, message: string | ArrayBuffer): Promise<void>;
 };
 
