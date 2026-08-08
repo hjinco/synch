@@ -6,10 +6,19 @@ import type {
 export type SyncDiagnosticLevel = "info" | "warn" | "error";
 type SyncDiagnosticValue = boolean | number | string;
 
+const MAX_SAFE_ERROR_MESSAGE_LENGTH = 300;
+const REDACTED_DIAGNOSTIC_VALUE = "<redacted>";
 const SAFE_ERROR_NAMES = new Set([
   "Error",
   "TypeError",
   "RangeError",
+  "SyntaxError",
+  "AbortError",
+  "DataError",
+  "InvalidAccessError",
+  "NotSupportedError",
+  "OperationError",
+  "QuotaExceededError",
   "ApiRequestError",
   "RemoteVaultUnavailableError",
   "SyncBlobUploadError",
@@ -134,6 +143,7 @@ export function formatDiagnosticError(
         ? { classification: input.classification }
         : {}),
       ...(details.name ? { name: details.name } : {}),
+      ...(details.message ? { message: details.message } : {}),
       ...(details.code ? { code: details.code } : {}),
       ...(details.status !== undefined ? { status: details.status } : {}),
     },
@@ -175,6 +185,7 @@ function createRecord(
 
 function getErrorDetails(error: unknown): {
   name: string;
+  message: string;
   code: string;
   status: number | undefined;
 } {
@@ -187,12 +198,55 @@ function getErrorDetails(error: unknown): {
         : "Error";
   const rawCode = typeof record?.code === "string" ? record.code : "";
   const status = typeof record?.status === "number" ? record.status : undefined;
+  const rawMessage =
+    error instanceof Error
+      ? error.message
+      : typeof record?.message === "string"
+        ? record.message
+        : typeof error === "string"
+          ? error
+          : "";
 
   return {
     name: SAFE_ERROR_NAMES.has(name) ? name : "Error",
+    message: sanitizeErrorMessage(rawMessage),
     code: getSafeErrorCode(rawCode),
     status,
   };
+}
+
+function sanitizeErrorMessage(message: string): string {
+  const redacted = message
+    .replace(
+      /\b(authorization)(\s*[:=]\s*)[^\r\n]*/gi,
+      (_match, label: string, separator: string) =>
+        `${label}${separator}${REDACTED_DIAGNOSTIC_VALUE}`,
+    )
+    .replace(/\bBearer\s+[^\s,;]+/gi, `Bearer ${REDACTED_DIAGNOSTIC_VALUE}`)
+    .replace(
+      /\b(access[_-]?token|refresh[_-]?token|session[_-]?token|client[_-]?secret|api[_-]?key|vault[_-]?key|password)(\s*[:=]\s*)(?:"[^"]*"|'[^']*'|[^\s,;&]+)/gi,
+      (_match, label: string, separator: string) =>
+        `${label}${separator}${REDACTED_DIAGNOSTIC_VALUE}`,
+    )
+    .replace(
+      /\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b/g,
+      REDACTED_DIAGNOSTIC_VALUE,
+    );
+
+  const normalized = Array.from(redacted, (character) => {
+    const codePoint = character.codePointAt(0) ?? 0;
+    return codePoint <= 31 || codePoint === 127 ? " " : character;
+  })
+    .join("")
+    .trim();
+  if (!normalized) {
+    return "";
+  }
+
+  if (normalized.length <= MAX_SAFE_ERROR_MESSAGE_LENGTH) {
+    return normalized;
+  }
+  return `${normalized.slice(0, MAX_SAFE_ERROR_MESSAGE_LENGTH - 1)}…`;
 }
 
 function getSafeErrorCode(code: string): string {

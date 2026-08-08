@@ -70,7 +70,7 @@ describe("InMemorySyncDiagnostics", () => {
     );
   });
 
-  it("omits free-form error text and properties from shareable logs", () => {
+  it("records a bounded error message while redacting credentials", () => {
     const diagnostics = new InMemorySyncDiagnostics("0.3.3", {
       now: () => new Date("2026-08-07T00:00:00.000Z"),
     });
@@ -93,15 +93,69 @@ describe("InMemorySyncDiagnostics", () => {
 
     const text = diagnostics.getSnapshot().text;
     expect(text).toContain('name="Error"');
+    expect(text).toContain(
+      'message="request failed accessToken=<redacted> refreshToken=<redacted> clientSecret=<redacted> path=Folder/note.md"',
+    );
     expect(text).not.toContain("token_expired");
     expect(text).toContain("status=401");
     expect(text).not.toContain("access-secret");
     expect(text).not.toContain("refresh-secret");
     expect(text).not.toContain("client-secret");
-    expect(text).not.toContain("Folder/note.md");
+    expect(text).toContain("Folder/note.md");
     expect(text).not.toContain("session-secret");
     expect(text).not.toContain("must not be serialized");
     expect(text).not.toContain("stack=");
+  });
+
+  it("normalizes and truncates diagnostic error messages", () => {
+    const diagnostics = new InMemorySyncDiagnostics("0.3.3", {
+      now: () => new Date("2026-08-07T00:00:00.000Z"),
+    });
+
+    diagnostics.recordError({
+      phase: "auto_sync",
+      error: new Error(`first line\nsecond line ${"x".repeat(400)}`),
+    });
+
+    const text = diagnostics.getSnapshot().text;
+    expect(text).toContain('message="first line second line ');
+    expect(text).toContain('…"');
+    expect(text).not.toContain("first line\\nsecond line");
+    expect(text.length).toBeLessThan(500);
+  });
+
+  it("redacts authorization credentials and JWTs from error messages", () => {
+    const diagnostics = new InMemorySyncDiagnostics("0.3.3", {
+      now: () => new Date("2026-08-07T00:00:00.000Z"),
+    });
+
+    diagnostics.recordError({
+      phase: "auto_sync",
+      error: new Error(
+        "request failed Bearer bearer-secret\nAuthorization: Basic dXNlcjpwYXNz\ntoken eyJheader.payload.signature",
+      ),
+    });
+
+    const text = diagnostics.getSnapshot().text;
+    expect(text).toContain("Bearer <redacted>");
+    expect(text).toContain("Authorization: <redacted>");
+    expect(text).not.toContain("bearer-secret");
+    expect(text).not.toContain("dXNlcjpwYXNz");
+    expect(text).not.toContain("eyJheader.payload.signature");
+  });
+
+  it("preserves standard Web Crypto error names", () => {
+    const diagnostics = new InMemorySyncDiagnostics("0.3.3", {
+      now: () => new Date("2026-08-07T00:00:00.000Z"),
+    });
+    const error = new Error("The operation failed for an operation-specific reason");
+    error.name = "OperationError";
+
+    diagnostics.recordError({ phase: "auto_sync", error });
+
+    expect(diagnostics.getSnapshot().text).toContain(
+      'name="OperationError" message="The operation failed for an operation-specific reason"',
+    );
   });
 
   it("keeps the newest entries within the entry and text limits", () => {

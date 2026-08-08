@@ -65,7 +65,7 @@ describe("SyncController", () => {
     expect(snapshot.text).toContain("sync_started");
     expect(snapshot.text).toContain("ERROR sync_error");
     expect(snapshot.text).toContain('name="Error"');
-    expect(snapshot.text).not.toContain("sync failed");
+    expect(snapshot.text).toContain('message="sync failed"');
     expect(notifyError).toHaveBeenCalledWith(
       expect.any(Error),
       "error.autoSync",
