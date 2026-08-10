@@ -131,6 +131,12 @@ describe("normalizeSynchPluginSettings", () => {
     ).toBe(180_000);
     expect(
       normalizeSynchPluginSettings(
+        { syncIntervalMs: 30 * 60_000 },
+        defaultApiBaseUrl,
+      ).syncIntervalMs,
+    ).toBe(30 * 60_000);
+    expect(
+      normalizeSynchPluginSettings(
         { syncIntervalMs: 42_000 },
         defaultApiBaseUrl,
       ).syncIntervalMs,
