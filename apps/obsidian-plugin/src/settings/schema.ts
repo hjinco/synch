@@ -18,6 +18,10 @@ export const SYNC_INTERVAL_OPTIONS_MS = [
   60_000,
   3 * 60_000,
   5 * 60_000,
+  10 * 60_000,
+  15 * 60_000,
+  20 * 60_000,
+  30 * 60_000,
 ] as const;
 
 export interface SynchPluginSettings {

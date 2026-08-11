@@ -305,6 +305,10 @@ export function renderSyncFrequencySettings(
         .addOption("60000", t("sync.frequency1Minute"))
         .addOption("180000", t("sync.frequency3Minutes"))
         .addOption("300000", t("sync.frequency5Minutes"))
+        .addOption("600000", t("sync.frequency10Minutes"))
+        .addOption("900000", t("sync.frequency15Minutes"))
+        .addOption("1200000", t("sync.frequency20Minutes"))
+        .addOption("1800000", t("sync.frequency30Minutes"))
         .setValue(String(controller.getSyncIntervalMs()))
         .onChange(async (value) => {
           await controller.setSyncIntervalMs(Number(value));
