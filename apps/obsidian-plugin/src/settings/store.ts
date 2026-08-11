@@ -1,4 +1,4 @@
-import type { PluginDataStoreLike } from "../plugin-data";
+import type { PluginDataStoreLike } from "../platform/plugin-data";
 import { getDefaultApiBaseUrl, parseApiBaseUrlInput } from "../config";
 import {
   DEFAULT_SYNCH_PLUGIN_SETTINGS,

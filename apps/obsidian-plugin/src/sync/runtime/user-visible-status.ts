@@ -1,5 +1,3 @@
-import { t } from "../../i18n";
-
 export type UserVisibleSyncState =
   | "not_ready"
   | "paused"
@@ -39,15 +37,4 @@ export function getUserVisibleSyncDisplayPercent(
   }
 
   return 0;
-}
-
-export function formatUserVisibleSyncState(
-  state: UserVisibleSyncState,
-  progress: UserVisibleSyncProgress | null = null,
-): string {
-  const percent = getUserVisibleSyncDisplayPercent(state, progress);
-  return t("sync.status", {
-    label: t(`sync.state.${state}`),
-    percent,
-  });
 }

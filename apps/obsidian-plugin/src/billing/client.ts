@@ -1,6 +1,8 @@
-import { requestUrl } from "obsidian";
-
-import { stripTrailingSlash } from "../http/request";
+import {
+  defaultHttpClient,
+  stripTrailingSlash,
+  type HttpClient,
+} from "../platform/http";
 
 export type BillingPlanId = "free" | "starter" | "self_hosted";
 export type BillingInterval = "monthly" | "annual";
@@ -15,14 +17,15 @@ export interface BillingStatus {
 }
 
 export class BillingClient {
+  constructor(private readonly httpClient: HttpClient = defaultHttpClient) {}
+
   async readBillingStatus(
     apiBaseUrl: string,
     sessionToken: string,
   ): Promise<BillingStatus> {
-    const response = await requestUrl({
+    const response = await this.httpClient.request({
       url: `${stripTrailingSlash(apiBaseUrl)}/v1/billing/status`,
       method: "GET",
-      throw: false,
       headers: {
         accept: "application/json",
         authorization: `Bearer ${sessionToken}`,

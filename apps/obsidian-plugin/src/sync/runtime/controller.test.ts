@@ -4,6 +4,7 @@ import type { SyncTokenResponse } from "@synch/sync-client/sync/remote/client";
 import { DEFAULT_SYNC_FILE_RULES } from "@synch/sync-client/sync/core/file-rules";
 import { DEFAULT_VAULT_CONFIG_SYNC_RULES } from "@synch/sync-client/sync/core/vault-config-rules";
 import { createTestPlugin } from "../../test-support/test-plugin";
+import { formatSyncStatusLabel } from "../../app/sync-status-label";
 import { SyncController } from "./controller";
 import { SyncEngine } from "./engine";
 import { InMemorySyncDiagnostics } from "@synch/sync-client/sync/diagnostics/in-memory";
@@ -68,7 +69,7 @@ describe("SyncController", () => {
     expect(snapshot.text).toContain('message="sync failed"');
     expect(notifyError).toHaveBeenCalledWith(
       expect.any(Error),
-      "error.autoSync",
+      "auto_sync",
     );
   });
 
@@ -175,7 +176,12 @@ describe("SyncController", () => {
     expect(setStorageStatusWatching).toHaveBeenCalledWith(false);
     expect(stopAutoSync).toHaveBeenCalledTimes(1);
     expect(controller.getSyncState()).toBe("paused");
-    expect(controller.getSyncStatusLabel()).toBe("Sync: paused 0%");
+    expect(
+      formatSyncStatusLabel(
+        controller.getSyncState(),
+        controller.getSyncProgress(),
+      ),
+    ).toBe("Sync: paused 0%");
   });
 
   it("watches storage status while auto sync starts for a connected vault", async () => {
@@ -249,7 +255,12 @@ describe("SyncController", () => {
     await controller.ensureAutoSyncState();
 
     expect(controller.getSyncState()).toBe("offline");
-    expect(controller.getSyncStatusLabel()).toBe("Sync: offline 0%");
+    expect(
+      formatSyncStatusLabel(
+        controller.getSyncState(),
+        controller.getSyncProgress(),
+      ),
+    ).toBe("Sync: offline 0%");
     expect(notifyError).not.toHaveBeenCalled();
   });
 

@@ -1,8 +1,8 @@
-import { Plugin, resetObsidianMocks, setLanguage } from "obsidian";
+import { Plugin, resetObsidianMocks } from "obsidian";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { defaultHttpClient } from "../http/request";
-import { AuthManager } from "./manager";
+import { defaultHttpClient } from "../platform/http";
+import { AuthManager, type AuthNoticeEvent } from "./manager";
 import {
   AuthClient,
   type DeviceAuthorizationStart,
@@ -41,7 +41,10 @@ describe("AuthManager", () => {
       "stored-token",
     );
     expect(manager.hasAuthenticatedSession()).toBe(true);
-    expect(manager.getAuthStatusLabel()).toBe("Signed in as user@example.com.");
+    expect(manager.getAuthStatus()).toEqual({
+      state: "signed_in",
+      displayName: "user@example.com",
+    });
   });
 
   it("keeps a stored token and asks for sign-in again when the server does not return a session", async () => {
@@ -58,7 +61,7 @@ describe("AuthManager", () => {
 
     expect(manager.hasAuthenticatedSession()).toBe(false);
     expect(manager.getAuthSessionToken()).toBe("stale-token");
-    expect(manager.getAuthStatusLabel()).toBe("Sign in again to sync.");
+    expect(manager.getAuthStatus()).toEqual({ state: "needs_relogin" });
     await expect(readAuthSessionToken(plugin)).resolves.toBe("stale-token");
   });
 
@@ -78,7 +81,7 @@ describe("AuthManager", () => {
 
     expect(manager.hasAuthenticatedSession()).toBe(false);
     expect(manager.getAuthSessionToken()).toBe("expired-token");
-    expect(manager.getAuthStatusLabel()).toBe("Sign in again to sync.");
+    expect(manager.getAuthStatus()).toEqual({ state: "needs_relogin" });
     await expect(readAuthSessionToken(plugin)).resolves.toBe("expired-token");
   });
 
@@ -102,9 +105,7 @@ describe("AuthManager", () => {
       token: "offline-token",
     });
     expect(manager.getAuthSessionToken()).toBe("offline-token");
-    expect(manager.getAuthStatusLabel()).toBe(
-      "Connect to the internet to check sign-in.",
-    );
+    expect(manager.getAuthStatus()).toEqual({ state: "pending_network" });
     await expect(readAuthSessionToken(plugin)).resolves.toBe("offline-token");
   });
 
@@ -131,9 +132,7 @@ describe("AuthManager", () => {
       state: "pending_network",
       token: "offline-token",
     });
-    expect(manager.getAuthStatusLabel()).toBe(
-      "Connect to the internet to check sign-in.",
-    );
+    expect(manager.getAuthStatus()).toEqual({ state: "pending_network" });
   });
 
   it("verifies a pending offline token when readiness refresh succeeds", async () => {
@@ -166,7 +165,10 @@ describe("AuthManager", () => {
       state: "verified",
       token: "recover-token",
     });
-    expect(manager.getAuthStatusLabel()).toBe("Signed in as user@example.com.");
+    expect(manager.getAuthStatus()).toEqual({
+      state: "signed_in",
+      displayName: "user@example.com",
+    });
   });
 
   it("reopens the active device authorization instead of starting another one", async () => {
@@ -209,12 +211,10 @@ describe("AuthManager", () => {
     expect(openExternalUrl).toHaveBeenLastCalledWith(
       "https://example.com/device?user_code=USER-CODE&lang=en",
     );
-    expect(notify).not.toHaveBeenCalledWith(
-      "Device sign-in is already in progress.",
-    );
-    expect(notify).toHaveBeenLastCalledWith(
-      `Opening browser for device sign-in...\nCode: ${authorization.userCode}`,
-    );
+    expect(notify).toHaveBeenLastCalledWith({
+      type: "opening_browser",
+      code: authorization.userCode,
+    });
 
     delay.resolve();
     await login;
@@ -247,7 +247,7 @@ describe("AuthManager", () => {
     manager.cancelDeviceLogin();
 
     expect(manager.isDeviceLoginInProgress()).toBe(false);
-    expect(notify).toHaveBeenLastCalledWith("Device sign-in canceled.");
+    expect(notify).toHaveBeenLastCalledWith({ type: "device_sign_in_canceled" });
 
     delay.resolve();
     await login;
@@ -365,12 +365,12 @@ describe("AuthManager", () => {
     expect(manager.hasAuthenticatedSession()).toBe(false);
   });
 
-  it("opens the device sign-in page with the Obsidian language", async () => {
-    setLanguage("ko-KR");
+  it("opens the device sign-in page with the provided locale", async () => {
     const authorization = createAuthorization();
     const delay = createDeferred<void>();
     const openExternalUrl = vi.fn();
     const manager = createManager({
+      getLocale: () => "ko",
       authClient: {
         startDeviceAuthorization: vi.fn(async () => authorization),
         pollDeviceAuthorization: vi.fn(async () => ({
@@ -459,7 +459,7 @@ describe("AuthManager", () => {
     expect(duplicate).toBe(false);
     expect(startDeviceAuthorization).toHaveBeenCalledTimes(1);
     expect(openExternalUrl).not.toHaveBeenCalled();
-    expect(notify).toHaveBeenCalledWith("Device sign-in is starting...");
+    expect(notify).toHaveBeenCalledWith({ type: "device_sign_in_starting" });
 
     start.resolve(authorization);
     await flushPromises();
@@ -473,7 +473,8 @@ function createManager(
     plugin: Plugin;
     authClient: AuthClient;
     delay: (ms: number) => Promise<void>;
-    notify: (message: string) => void;
+    notify: (event: AuthNoticeEvent) => void;
+    getLocale: () => string;
     openExternalUrl: (url: string) => void;
     refreshUi: () => void;
     isOffline: () => boolean;
@@ -487,6 +488,7 @@ function createManager(
       overrides.authClient ??
       new AuthClient(defaultHttpClient, "synch-obsidian-plugin"),
     notify: overrides.notify ?? vi.fn(),
+    getLocale: overrides.getLocale ?? (() => "en"),
     openExternalUrl: overrides.openExternalUrl ?? vi.fn(),
     delay: overrides.delay,
     isOffline: overrides.isOffline,

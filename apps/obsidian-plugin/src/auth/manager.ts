@@ -1,5 +1,3 @@
-import { Notice } from "obsidian";
-
 import type { Plugin } from "obsidian";
 
 import {
@@ -7,7 +5,6 @@ import {
   isOfflineLikeError,
   type OfflineDetector,
 } from "@synch/sync-client/http/network-status";
-import { getSynchLocale, t } from "../i18n";
 import {
   AuthClient,
   type AuthenticatedUserSession,
@@ -26,12 +23,33 @@ export type AuthReadiness =
   | { state: "pending_network"; token: string }
   | { state: "rejected"; token: string };
 
+// Auth state for UI display. Label formatting lives in the app layer
+// (app/auth-status-label).
+export type AuthStatus =
+  | { state: "signed_in"; displayName: string }
+  | { state: "pending_network" }
+  | { state: "needs_relogin" }
+  | { state: "not_signed_in" };
+
+// Auth events that require user notification. Message formatting lives in the
+// app layer.
+export type AuthNoticeEvent =
+  | { type: "approval_received" }
+  | { type: "signed_in" }
+  | { type: "device_sign_in_failed"; message: string }
+  | { type: "device_sign_in_expired" }
+  | { type: "device_sign_in_canceled" }
+  | { type: "device_sign_in_starting" }
+  | { type: "opening_browser"; code: string }
+  | { type: "signed_out" };
+
 export interface AuthManagerDeps {
   plugin: Plugin;
   getApiBaseUrl: () => string;
   refreshUi: () => void;
   authClient: AuthClient;
-  notify?: (message: string) => void;
+  notify: (event: AuthNoticeEvent) => void;
+  getLocale: () => string;
   openExternalUrl?: (url: string) => void;
   delay?: (ms: number) => Promise<void>;
   isOffline?: OfflineDetector;
@@ -69,24 +87,20 @@ export class AuthManager {
     return this.authSessionToken;
   }
 
-  getAuthStatusLabel(): string {
+  getAuthStatus(): AuthStatus {
     if (!this.hasAuthenticatedSession()) {
       if (this.authPendingNetworkVerification) {
-        return t("network.requiredDesc");
+        return { state: "pending_network" };
       }
 
       if (this.authNeedsRelogin) {
-        return t("auth.signInAgain");
+        return { state: "needs_relogin" };
       }
 
-      return t("auth.notSignedIn");
+      return { state: "not_signed_in" };
     }
 
-    if (this.authDisplayName) {
-      return t("auth.signedIn", { name: this.authDisplayName });
-    }
-
-    return t("auth.signedInDevice");
+    return { state: "signed_in", displayName: this.authDisplayName };
   }
 
   hasAuthenticatedSession(): boolean {
@@ -191,10 +205,10 @@ export class AuthManager {
         }
 
         if (poll.status === "approved") {
-          this.notify(t("auth.approvalReceived"));
+          this.notify({ type: "approval_received" });
           const completed = await this.completeDeviceLogin(poll, run);
           if (completed) {
-            this.notify(this.getAuthStatusLabel());
+            this.notify({ type: "signed_in" });
           }
           return true;
         }
@@ -204,7 +218,7 @@ export class AuthManager {
           continue;
         }
 
-        this.notify(t("auth.deviceSignInFailed", { message: poll.message }));
+        this.notify({ type: "device_sign_in_failed", message: poll.message });
         return true;
       }
 
@@ -212,7 +226,7 @@ export class AuthManager {
         return true;
       }
 
-      this.notify(t("auth.deviceSignInExpired"));
+      this.notify({ type: "device_sign_in_expired" });
       return true;
     } catch (error) {
       if (!this.isActiveDeviceLoginRun(run)) {
@@ -220,7 +234,7 @@ export class AuthManager {
       }
 
       const message = error instanceof Error ? error.message : String(error);
-      this.notify(t("auth.deviceSignInFailed", { message }));
+      this.notify({ type: "device_sign_in_failed", message });
       return true;
     } finally {
       if (this.deviceLoginRun === run) {
@@ -239,7 +253,7 @@ export class AuthManager {
 
     run.cancelled = true;
     this.deviceAuthorization = null;
-    this.notify(t("auth.deviceSignInCanceled"));
+    this.notify({ type: "device_sign_in_canceled" });
     this.deps.refreshUi();
   }
 
@@ -262,7 +276,7 @@ export class AuthManager {
       this.deps.refreshUi();
     }
 
-    this.notify(t("auth.signedOutDevice"));
+    this.notify({ type: "signed_out" });
   }
 
   private async completeDeviceLogin(
@@ -292,18 +306,13 @@ export class AuthManager {
     return true;
   }
 
-  private notify(message: string): void {
-    if (this.deps.notify) {
-      this.deps.notify(message);
-      return;
-    }
-
-    new Notice(message);
+  private notify(event: AuthNoticeEvent): void {
+    this.deps.notify(event);
   }
 
   private reopenDeviceLogin(): void {
     if (!this.deviceAuthorization) {
-      this.notify(t("auth.deviceSignInStarting"));
+      this.notify({ type: "device_sign_in_starting" });
       return;
     }
 
@@ -315,9 +324,12 @@ export class AuthManager {
   }
 
   private openDeviceLogin(authorization: DeviceAuthorizationStart): void {
-    this.notify(t("auth.openingBrowser", { code: authorization.userCode }));
+    this.notify({ type: "opening_browser", code: authorization.userCode });
     this.openExternalUrl(
-      withDeviceLoginLocale(authorization.verificationUriComplete),
+      withDeviceLoginLocale(
+        authorization.verificationUriComplete,
+        this.deps.getLocale(),
+      ),
     );
   }
 
@@ -395,10 +407,10 @@ export class AuthManager {
   }
 }
 
-function withDeviceLoginLocale(url: string): string {
+function withDeviceLoginLocale(url: string, locale: string): string {
   try {
     const localizedUrl = new URL(url);
-    localizedUrl.searchParams.set("lang", getSynchLocale());
+    localizedUrl.searchParams.set("lang", locale);
     return localizedUrl.toString();
   } catch {
     return url;

@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { setRequestUrlMock } from "obsidian";
 
-import { defaultHttpClient } from "../../http/request";
+import { defaultHttpClient } from "../../platform/http";
 import { SyncAccessClient } from "@synch/sync-client/sync/remote/client";
 
 describe("SyncAccessClient", () => {

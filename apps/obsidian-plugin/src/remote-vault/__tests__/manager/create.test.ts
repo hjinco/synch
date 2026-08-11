@@ -92,6 +92,9 @@ describe("RemoteVaultManager create", () => {
         password: "vault-password",
         confirmPassword: "vault-password",
       }),
-    ).rejects.toThrow("Password is too easy to guess. Use a longer passphrase.");
+    ).rejects.toMatchObject({
+      name: "RemoteVaultInputError",
+      failure: { kind: "invalid_password" },
+    });
   });
 });

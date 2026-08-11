@@ -2,9 +2,11 @@ import {
   createPasswordWrappedRemoteVaultKey,
   unwrapRemoteVaultKeyWithPassword,
 } from "@synch/sync-client/remote-vault/crypto";
-import { formatVaultPasswordValidationError, t } from "../i18n";
 import type { StoredRemoteVaultKeySecret } from "./device-storage";
-import { validateVaultPassword } from "@synch/sync-client/remote-vault/password-policy";
+import {
+  validateVaultPassword,
+  type VaultPasswordValidation,
+} from "@synch/sync-client/remote-vault/password-policy";
 import { RemoteVaultClient } from "@synch/sync-client/remote-vault/client";
 import type {
   RemoteVaultBootstrapResponse,
@@ -25,6 +27,37 @@ export interface BootstrapRemoteVaultInput {
   password: string;
 }
 
+// Vault state for UI display. Label formatting lives in the app layer
+// (app/remote-vault-status-label).
+export type RemoteVaultStatus =
+  | { state: "loaded"; label: string }
+  | { state: "stored_inactive" }
+  | { state: "not_configured" };
+
+// Vault events that require user notification. Message formatting lives in the
+// app layer.
+export type RemoteVaultNoticeEvent =
+  | { type: "disconnected"; label: string }
+  | { type: "created_connected"; label: string }
+  | { type: "connected"; label: string };
+
+export type RemoteVaultInputFailure =
+  | { kind: "name_required" }
+  | { kind: "password_mismatch" }
+  | {
+      kind: "invalid_password";
+      validation: Extract<VaultPasswordValidation, { ok: false }>;
+    };
+
+// Carries input validation failures as codes. The user-facing message is
+// formatted by the display layer (app/error-notices).
+export class RemoteVaultInputError extends Error {
+  constructor(readonly failure: RemoteVaultInputFailure) {
+    super(`Invalid remote vault input: ${failure.kind}`);
+    this.name = "RemoteVaultInputError";
+  }
+}
+
 export interface RemoteVaultManagerDeps {
   getApiBaseUrl: () => string;
   getAuthSessionToken: () => string;
@@ -35,7 +68,7 @@ export interface RemoteVaultManagerDeps {
     vault: StoredRemoteVaultKeySecret | null,
   ) => Promise<void>;
   refreshUi: () => void;
-  notify: (message: string) => void;
+  notify: (event: RemoteVaultNoticeEvent) => void;
   remoteVaultClient: RemoteVaultClient;
 }
 
@@ -47,17 +80,17 @@ export class RemoteVaultManager {
     this.remoteVaultClient = deps.remoteVaultClient;
   }
 
-  getRemoteVaultStatusLabel(): string {
+  getRemoteVaultStatus(): RemoteVaultStatus {
     if (this.session) {
-      return t("vault.loaded", { label: formatVaultLabel(this.session.summary) });
+      return { state: "loaded", label: formatVaultLabel(this.session.summary) };
     }
 
     const storedVaultId = this.deps.getStoredRemoteVaultId();
     if (storedVaultId && this.deps.getStoredRemoteVaultKeySecret()) {
-      return t("vault.notActive");
+      return { state: "stored_inactive" };
     }
 
-    return t("vault.notConfigured");
+    return { state: "not_configured" };
   }
 
   getActiveSession(): RemoteVaultSession | null {
@@ -88,7 +121,7 @@ export class RemoteVaultManager {
     this.deps.refreshUi();
 
     if (vault && options.notify !== false) {
-      this.notify(t("vault.disconnected", { label: formatStoredVaultLabel(vault) }));
+      this.notify({ type: "disconnected", label: formatStoredVaultLabel(vault) });
     }
   }
 
@@ -157,7 +190,7 @@ export class RemoteVaultManager {
     await this.loadBootstrapRemoteVaultSession(bootstrap, input.password);
 
     const summary = this.requireSession().summary;
-    this.notify(t("vault.createdConnected", { label: summary.vaultName }));
+    this.notify({ type: "created_connected", label: summary.vaultName });
     return summary;
   }
 
@@ -182,7 +215,7 @@ export class RemoteVaultManager {
     await this.loadBootstrapRemoteVaultSession(bootstrap, password);
 
     const summary = this.requireSession().summary;
-    this.notify(t("vault.connected", { label: summary.vaultName }));
+    this.notify({ type: "connected", label: summary.vaultName });
     return summary;
   }
 
@@ -215,8 +248,8 @@ export class RemoteVaultManager {
     }
   }
 
-  private notify(message: string): void {
-    this.deps.notify(message);
+  private notify(event: RemoteVaultNoticeEvent): void {
+    this.deps.notify(event);
   }
 
   private requireSession(): RemoteVaultSession {
@@ -249,16 +282,19 @@ function isCryptoOperationError(error: unknown): boolean {
 
 function validateCreateInput(input: CreateRemoteVaultInput): void {
   if (!input.name.trim()) {
-    throw new Error(t("vault.nameRequired"));
+    throw new RemoteVaultInputError({ kind: "name_required" });
   }
 
   const passwordValidation = validateVaultPassword(input.password);
   if (!passwordValidation.ok) {
-    throw new Error(formatVaultPasswordValidationError(passwordValidation));
+    throw new RemoteVaultInputError({
+      kind: "invalid_password",
+      validation: passwordValidation,
+    });
   }
 
   if (input.password !== input.confirmPassword) {
-    throw new Error(t("vault.passwordMismatch"));
+    throw new RemoteVaultInputError({ kind: "password_mismatch" });
   }
 }
 

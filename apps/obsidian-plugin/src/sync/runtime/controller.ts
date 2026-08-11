@@ -1,6 +1,5 @@
 import { Notice, type Plugin } from "obsidian";
 
-import { t, type SynchErrorContextKey } from "../../i18n";
 import {
   isOffline as detectOffline,
   isOfflineLikeError,
@@ -42,7 +41,6 @@ import {
 } from "./engine";
 import type { SyncEntryVersionPreview } from "@synch/sync-client/sync/runtime/version-history-service";
 import {
-  formatUserVisibleSyncState,
   getUserVisibleSyncDisplayPercent,
   type UserVisibleSyncProgress,
   type UserVisibleSyncState,
@@ -61,8 +59,20 @@ export interface SyncControllerDeps {
   hasConnectedRemoteVault: () => boolean;
   hasAuthenticatedSession: () => boolean;
   diagnostics: SyncDiagnostics;
-  notifyError: (error: unknown, contextKey: SynchErrorContextKey) => void;
+  notifyError: (error: unknown, phase: SyncFailurePhase) => void;
   notify?: (message: string, timeout?: number) => void;
+  formatSyncConflictNotice?: (event: {
+    op: "upsert" | "delete";
+    reason?: "local_pending_mutation" | "remote_path_collision";
+    originalPath: string;
+    conflictPath: string | null;
+  }) => string;
+  formatRollbackDetectedNotice?: (event: {
+    entryId: string;
+    path: string | null;
+    localRevision: number;
+    remoteRevision: number;
+  }) => string;
   onSyncStatusChange?: () => void;
   onStorageStatusChange?: () => void;
   onFileSizeBlockedFilesChange?: () => void;
@@ -91,11 +101,7 @@ export class SyncController {
     hasActiveRemoteVaultSession: () => this.deps.hasActiveRemoteVaultSession(),
     diagnostics: this.deps.diagnostics,
     onSyncError: (error, phase) => {
-      void this.handleSyncError(
-        error,
-        getErrorContextKeyForPhase(phase),
-        phase,
-      );
+      void this.handleSyncError(error, phase);
     },
     notifySyncConflict: (event) => this.notifySyncConflict(event),
     notifyRollbackDetected: (event) => this.notifyRollbackDetected(event),
@@ -141,11 +147,7 @@ export class SyncController {
       await this.syncEngine.refreshSyncProgress();
     } catch (error) {
       this.setSyncStatus("attention_needed");
-      await this.handleSyncError(
-        error,
-        "error.localSyncStoreInitialization",
-        "store_initialization",
-      );
+      await this.handleSyncError(error, "store_initialization");
       throw error;
     }
   }
@@ -214,10 +216,6 @@ export class SyncController {
     this.setSyncStatus("not_ready");
   }
 
-  getSyncStatusLabel(): string {
-    return formatUserVisibleSyncState(this.syncStatus, this.syncProgress);
-  }
-
   getSyncState(): UserVisibleSyncState {
     return this.syncStatus;
   }
@@ -272,11 +270,7 @@ export class SyncController {
         await this.syncEngine.startAutoSync();
         await this.runPeriodicSyncAndSchedule();
       } catch (error) {
-        await this.handleSyncError(
-          error,
-          "error.autoSyncInitialization",
-          "auto_sync_initialization",
-        );
+        await this.handleSyncError(error, "auto_sync_initialization");
       }
       return;
     }
@@ -311,11 +305,7 @@ export class SyncController {
     } catch (error) {
       this.syncEngine.setStorageStatusWatching(false);
       this.setStorageStatus(null);
-      await this.handleSyncError(
-        error,
-        "error.autoSyncInitialization",
-        "auto_sync_initialization",
-      );
+      await this.handleSyncError(error, "auto_sync_initialization");
     }
   }
 
@@ -358,7 +348,7 @@ export class SyncController {
         await this.syncEngine.syncNow();
       }
     } catch (error) {
-      await this.handleSyncError(error, "error.autoSyncResume", "auto_sync_resume");
+      await this.handleSyncError(error, "auto_sync_resume");
     }
   }
 
@@ -387,7 +377,7 @@ export class SyncController {
         this.recordSyncCompleted("manual");
       }
     } catch (error) {
-      await this.handleSyncError(error, "error.autoSync", "auto_sync");
+      await this.handleSyncError(error, "auto_sync");
     }
   }
 
@@ -412,11 +402,7 @@ export class SyncController {
         this.recordSyncCompleted("local_change");
       }
     } catch (error) {
-      await this.handleSyncError(
-        error,
-        "error.syncFileRuleUpdate",
-        "file_rule_update",
-      );
+      await this.handleSyncError(error, "file_rule_update");
     }
   }
 
@@ -568,7 +554,7 @@ export class SyncController {
       if (!this.periodicSyncEnabled) {
         return;
       }
-      await this.handleSyncError(error, "error.autoSync", "auto_sync");
+      await this.handleSyncError(error, "auto_sync");
     }
   }
 
@@ -619,7 +605,6 @@ export class SyncController {
 
   private async handleSyncError(
     error: unknown,
-    contextKey: SynchErrorContextKey,
     phase: SyncFailurePhase,
   ): Promise<void> {
     if (isRemoteVaultUnavailableError(error)) {
@@ -634,7 +619,7 @@ export class SyncController {
     }
     this.recordSyncError(error, phase);
     this.setSyncStatus("attention_needed");
-    this.deps.notifyError(error, contextKey);
+    this.deps.notifyError(error, phase);
   }
 
   private setSyncProgress(progress: UserVisibleSyncProgress | null): void {
@@ -702,23 +687,10 @@ export class SyncController {
     originalPath: string;
     conflictPath: string | null;
   }): void {
-    if (event.reason === "remote_path_collision" && event.conflictPath) {
-      this.notify(
-        t("sync.pathCollision", { path: event.conflictPath }),
-      );
-      return;
+    const message = this.deps.formatSyncConflictNotice?.(event);
+    if (message) {
+      this.notify(message);
     }
-
-    if (event.op === "upsert" && event.conflictPath) {
-      this.notify(
-        t("sync.conflictLocalSaved", { path: event.conflictPath }),
-      );
-      return;
-    }
-
-    this.notify(
-      t("sync.conflictRemoteKept", { path: event.originalPath }),
-    );
   }
 
   private notifyRollbackDetected(event: {
@@ -732,9 +704,10 @@ export class SyncController {
       localRevision: event.localRevision,
       remoteRevision: event.remoteRevision,
     });
-    this.notify(
-      t("sync.rollbackDetected", { path: event.path ?? event.entryId }),
-    );
+    const message = this.deps.formatRollbackDetectedNotice?.(event);
+    if (message) {
+      this.notify(message);
+    }
   }
 
   private shouldShowOfflineBeforeReady(): boolean {
@@ -743,28 +716,5 @@ export class SyncController {
       this.deps.hasConnectedRemoteVault() &&
       (this.syncStatus === "offline" || detectOffline(this.deps.isOffline))
     );
-  }
-}
-
-function getErrorContextKeyForPhase(
-  phase: SyncFailurePhase,
-): SynchErrorContextKey {
-  switch (phase) {
-    case "store_initialization":
-      return "error.localSyncStoreInitialization";
-    case "auto_sync_initialization":
-      return "error.autoSyncInitialization";
-    case "auto_sync_resume":
-      return "error.autoSyncResume";
-    case "sync_event_handling":
-      return "error.syncEventHandling";
-    case "file_rule_update":
-      return "error.syncFileRuleUpdate";
-    case "local_state_reset":
-      return "error.localSyncStateReset";
-    case "hidden_folder_scan":
-      return "error.hiddenFolderScan";
-    case "auto_sync":
-      return "error.autoSync";
   }
 }

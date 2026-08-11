@@ -1,7 +1,10 @@
 import { vi } from "vitest";
 
 import type { StoredRemoteVaultKeySecret } from "../../device-storage";
-import { RemoteVaultManager } from "../../manager";
+import {
+  RemoteVaultManager,
+  type RemoteVaultNoticeEvent,
+} from "../../manager";
 import type {
   CreateRemoteVaultResponse,
   RemoteVaultBootstrapResponse,
@@ -30,7 +33,7 @@ export function createManager(input: {
   storedVault?: StoredRemoteVaultKeySecret | null;
   savedVaults?: Array<StoredRemoteVaultKeySecret | null>;
   refreshUi?: () => void;
-  notify?: (message: string) => void;
+  notify?: (event: RemoteVaultNoticeEvent) => void;
   remoteVaultClient?: RemoteVaultClientOverrides;
 }) {
   return new RemoteVaultManager({

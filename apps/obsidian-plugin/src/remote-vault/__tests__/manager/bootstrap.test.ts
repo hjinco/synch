@@ -75,8 +75,10 @@ describe("RemoteVaultManager bootstrap", () => {
     expect(summary.vaultId).toBe("vault-remote");
     expect(summary.vaultName).toBe("Remote");
     expect(savedVaults[savedVaults.length - 1]?.remoteVaultKey).toBeInstanceOf(Uint8Array);
-    expect(manager.getRemoteVaultStatusLabel()).toContain("loaded on this device");
-    expect(manager.getRemoteVaultStatusLabel()).not.toContain("vault-remote");
+    expect(manager.getRemoteVaultStatus()).toEqual({
+      state: "loaded",
+      label: "Remote",
+    });
   });
 
   it("reports a friendly error when the password cannot unwrap the vault key", async () => {

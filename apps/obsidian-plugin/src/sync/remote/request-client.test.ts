@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { setRequestUrlMock } from "obsidian";
 
-import { defaultHttpClient } from "../../http/request";
+import { defaultHttpClient } from "../../platform/http";
 import type { SyncTokenResponse } from "@synch/sync-client/sync/remote/client";
 import { SyncAuthorizedRequestClient } from "@synch/sync-client/sync/remote/request-client";
 

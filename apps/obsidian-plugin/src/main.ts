@@ -1,16 +1,16 @@
 import { Platform, Plugin } from "obsidian";
 
-import { registerSynchCommands } from "./plugin/commands";
-import { SynchFileSizeBlockedDecorator } from "./plugin/file-size-blocked-decorator";
-import { SynchMobileStatusIndicator } from "./plugin/mobile-status-indicator";
-import { SynchPluginController } from "./plugin/plugin-controller";
-import { SynchStatusBar } from "./plugin/status-bar";
-import type { SynchUiEvent } from "./plugin/ui-events";
+import { registerSynchCommands } from "./ui/commands";
+import { SynchFileSizeBlockedDecorator } from "./ui/file-size/file-size-blocked-decorator";
+import { SynchMobileStatusIndicator } from "./ui/status/mobile-status-indicator";
+import { SynchPluginController } from "./app/plugin-controller";
+import { SynchStatusBar } from "./ui/status/status-bar";
+import type { SynchUiEvent } from "./ui/ui-events";
 import {
   SYNCH_VERSION_HISTORY_VIEW_TYPE,
   SynchVersionHistoryView,
-} from "./plugin/version-history-view";
-import { SynchSettingTab } from "./settings/settings-tab";
+} from "./ui/version-history/version-history-view";
+import { SynchSettingTab } from "./ui/settings/settings-tab";
 
 export default class SynchPlugin extends Plugin {
   private controller: SynchPluginController | null = null;
