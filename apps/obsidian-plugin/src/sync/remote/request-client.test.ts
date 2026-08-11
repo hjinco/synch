@@ -1,8 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { setRequestUrlMock } from "obsidian";
 
-import type { SyncTokenResponse } from "./client";
-import { SyncAuthorizedRequestClient } from "./request-client";
+import { defaultHttpClient } from "../../http/request";
+import type { SyncTokenResponse } from "@synch/sync-client/sync/remote/client";
+import { SyncAuthorizedRequestClient } from "@synch/sync-client/sync/remote/request-client";
 
 describe("SyncAuthorizedRequestClient", () => {
   afterEach(() => {
@@ -27,6 +28,7 @@ describe("SyncAuthorizedRequestClient", () => {
       getApiBaseUrl: () => "http://127.0.0.1:8787/",
       getSyncToken: async () => createToken("sync-token-1"),
       invalidateSyncToken,
+      httpClient: defaultHttpClient,
     });
 
     const result = await client.request({
@@ -73,6 +75,7 @@ describe("SyncAuthorizedRequestClient", () => {
       getApiBaseUrl: () => "http://127.0.0.1:8787",
       getSyncToken,
       invalidateSyncToken,
+      httpClient: defaultHttpClient,
     });
 
     const result = await client.request({
@@ -119,6 +122,7 @@ describe("SyncAuthorizedRequestClient", () => {
       getApiBaseUrl: () => "http://127.0.0.1:8787",
       getSyncToken,
       invalidateSyncToken,
+      httpClient: defaultHttpClient,
     });
 
     const result = await client.request({

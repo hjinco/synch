@@ -1,7 +1,7 @@
 import { TFile, type Plugin, type WorkspaceLeaf } from "obsidian";
 import { describe, expect, it, vi } from "vitest";
 
-import { DEFAULT_SYNC_FILE_RULES } from "../sync/core/file-rules";
+import { DEFAULT_SYNC_FILE_RULES } from "@synch/sync-client/sync/core/file-rules";
 import type { SyncController } from "../sync/runtime/controller";
 import { SynchVersionHistoryController } from "./version-history-controller";
 import { SYNCH_VERSION_HISTORY_VIEW_TYPE } from "./version-history-view";

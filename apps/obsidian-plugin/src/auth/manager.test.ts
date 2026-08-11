@@ -1,8 +1,12 @@
 import { Plugin, resetObsidianMocks, setLanguage } from "obsidian";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { defaultHttpClient } from "../http/request";
 import { AuthManager } from "./manager";
-import type { AuthClient, DeviceAuthorizationStart } from "./client";
+import {
+  AuthClient,
+  type DeviceAuthorizationStart,
+} from "@synch/sync-client/auth/client";
 import {
   readAuthSessionToken,
   writeAuthSessionToken,
@@ -479,7 +483,9 @@ function createManager(
     plugin: overrides.plugin ?? new Plugin(),
     getApiBaseUrl: () => "http://127.0.0.1:8787",
     refreshUi: overrides.refreshUi ?? vi.fn(),
-    authClient: overrides.authClient,
+    authClient:
+      overrides.authClient ??
+      new AuthClient(defaultHttpClient, "synch-obsidian-plugin"),
     notify: overrides.notify ?? vi.fn(),
     openExternalUrl: overrides.openExternalUrl ?? vi.fn(),
     delay: overrides.delay,

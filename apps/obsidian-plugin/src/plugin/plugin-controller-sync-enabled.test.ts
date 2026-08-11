@@ -6,8 +6,8 @@ import {
   resetObsidianMocks,
   setRequestUrlMock,
 } from "../test-stubs/obsidian";
-import { DEFAULT_SYNC_FILE_RULES } from "../sync/core/file-rules";
-import { DEFAULT_VAULT_CONFIG_SYNC_RULES } from "../sync/core/vault-config-rules";
+import { DEFAULT_SYNC_FILE_RULES } from "@synch/sync-client/sync/core/file-rules";
+import { DEFAULT_VAULT_CONFIG_SYNC_RULES } from "@synch/sync-client/sync/core/vault-config-rules";
 import { SyncController } from "../sync/runtime/controller";
 import { SYNCH_SETTINGS_KEY, type SynchPluginSettings } from "../settings/schema";
 import { SynchPluginController } from "./plugin-controller";

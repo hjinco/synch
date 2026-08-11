@@ -2,7 +2,7 @@ import { Plugin } from "obsidian";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { RemoteVaultManager } from "../remote-vault/manager";
-import { DEFAULT_SYNC_FILE_RULES } from "../sync/core/file-rules";
+import { DEFAULT_SYNC_FILE_RULES } from "@synch/sync-client/sync/core/file-rules";
 import type { SyncController } from "../sync/runtime/controller";
 import { resetObsidianMocks, setLanguage } from "../test-stubs/obsidian";
 import { SynchRemoteVaultController } from "./remote-vault-controller";

@@ -7,7 +7,7 @@ import {
   openConfirmConnectNonEmptyLocalVaultModal,
   openCreateRemoteVaultModal,
 } from "./remote-vault-modals";
-import { shouldSyncPath, type SyncFileRules } from "../sync/core/file-rules";
+import { shouldSyncPath, type SyncFileRules } from "@synch/sync-client/sync/core/file-rules";
 import { SyncController } from "../sync/runtime/controller";
 
 export interface SynchRemoteVaultControllerDeps {

@@ -1,17 +1,14 @@
 import type { Plugin, TAbstractFile, TFile } from "obsidian";
 
-import type { SyncFileRules } from "../core/file-rules";
-import { isForbiddenVaultPath } from "../core/vault-path-policy";
+import type { SyncFileRules } from "@synch/sync-client/sync/core/file-rules";
+import { isForbiddenVaultPath } from "@synch/sync-client/sync/core/vault-path-policy";
+import type {
+  SyncVaultAdapter,
+  SyncVaultFile,
+} from "@synch/sync-client/sync/vault/ports";
 import { asSyncableFile, isSyncableVaultPath, toArrayBuffer } from "./vault-files";
 
-export interface SyncVaultFile {
-  path: string;
-  mtime: number;
-  size: number;
-  readBytes(): Promise<Uint8Array>;
-}
-
-export class ObsidianSyncVaultAdapter {
+export class ObsidianSyncVaultAdapter implements SyncVaultAdapter {
   constructor(
     private readonly plugin: Plugin,
     private readonly getSyncFileRules: () => SyncFileRules,

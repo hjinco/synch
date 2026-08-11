@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { setRequestUrlMock } from "obsidian";
 
-import { SyncAccessClient } from "./client";
+import { defaultHttpClient } from "../../http/request";
+import { SyncAccessClient } from "@synch/sync-client/sync/remote/client";
 
 describe("SyncAccessClient", () => {
   afterEach(() => {
@@ -26,7 +27,7 @@ describe("SyncAccessClient", () => {
       };
     });
 
-    const client = new SyncAccessClient();
+    const client = new SyncAccessClient(defaultHttpClient);
     const response = await client.issueSyncToken(
       "http://127.0.0.1:8787/",
       "session-token",
@@ -67,7 +68,7 @@ describe("SyncAccessClient", () => {
       },
     }));
 
-    const client = new SyncAccessClient();
+    const client = new SyncAccessClient(defaultHttpClient);
 
     await expect(
       client.issueSyncToken("http://127.0.0.1:8787", "session-token", {

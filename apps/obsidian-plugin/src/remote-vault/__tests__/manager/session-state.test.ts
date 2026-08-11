@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import type { StoredRemoteVaultKeySecret } from "../../device-storage";
-import type { RemoteVaultBootstrapResponse } from "../../types";
+import type { RemoteVaultBootstrapResponse } from "@synch/sync-client/remote-vault/types";
 import { createManager } from "./helpers";
 
 describe("RemoteVaultManager session state", () => {

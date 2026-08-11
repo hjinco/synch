@@ -6,7 +6,7 @@ import type {
   CreateRemoteVaultResponse,
   RemoteVaultBootstrapResponse,
   RemoteVaultSummaryResponse,
-} from "../../types";
+} from "@synch/sync-client/remote-vault/types";
 
 type RemoteVaultClientOverrides = Partial<{
   createRemoteVault: (

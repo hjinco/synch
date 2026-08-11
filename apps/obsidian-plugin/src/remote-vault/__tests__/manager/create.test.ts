@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { createPasswordWrappedRemoteVaultKey } from "../../crypto";
+import { createPasswordWrappedRemoteVaultKey } from "@synch/sync-client/remote-vault/crypto";
 import type { StoredRemoteVaultKeySecret } from "../../device-storage";
 import type {
   CreateRemoteVaultResponse,
   RemoteVaultBootstrapResponse,
-} from "../../types";
+} from "@synch/sync-client/remote-vault/types";
 import { createManager } from "./helpers";
 
 describe("RemoteVaultManager create", () => {

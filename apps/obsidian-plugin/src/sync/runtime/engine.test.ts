@@ -3,14 +3,14 @@ import { TFile as ObsidianTFile } from "obsidian";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { setRequestUrlMock } from "obsidian";
 
-import { encodeUtf8, hashBytes } from "../core/content";
-import { encryptSyncBlob } from "../core/crypto";
-import { DEFAULT_SYNC_FILE_RULES } from "../core/file-rules";
-import { DEFAULT_VAULT_CONFIG_SYNC_RULES } from "../core/vault-config-rules";
-import { queueLocalUpsertMutation } from "../core/mutation-queue";
-import type { SyncTokenResponse } from "../remote/client";
-import { createInitializedTestSyncStore } from "../../test-support/test-plugin";
-import { InMemorySyncDiagnostics } from "../diagnostics/in-memory";
+import { encodeUtf8, hashBytes } from "@synch/sync-client/sync/core/content";
+import { encryptSyncBlob } from "@synch/sync-client/sync/core/crypto";
+import { DEFAULT_SYNC_FILE_RULES } from "@synch/sync-client/sync/core/file-rules";
+import { DEFAULT_VAULT_CONFIG_SYNC_RULES } from "@synch/sync-client/sync/core/vault-config-rules";
+import { queueLocalUpsertMutation } from "@synch/sync-client/sync/core/mutation-queue";
+import type { SyncTokenResponse } from "@synch/sync-client/sync/remote/client";
+import { createTestSyncStore } from "@synch/sync-client/test-support/in-memory-sync-store";
+import { InMemorySyncDiagnostics } from "@synch/sync-client/sync/diagnostics/in-memory";
 import { SyncEngine } from "./engine";
 
 type VaultEventCallback = (...args: unknown[]) => void;
@@ -26,7 +26,7 @@ describe("SyncEngine", () => {
 
   it("reports offline sync startup failures through status without a notice", async () => {
     const plugin = createPlugin({}, async () => encodeUtf8("body"));
-    const store = await createInitializedTestSyncStore(plugin);
+    const store = createTestSyncStore();
     const setSyncStatus = vi.fn();
     const onSyncError = vi.fn();
     const engine = createEngine(plugin, {
@@ -48,7 +48,7 @@ describe("SyncEngine", () => {
 
   it("lists file-size blocked files with decrypted paths and size metadata", async () => {
     const plugin = createPlugin({}, async () => encodeUtf8("body"));
-    const store = await createInitializedTestSyncStore(plugin);
+    const store = createTestSyncStore();
     const fileSizeBlocked = await queueLocalUpsertMutation(store, {
       remoteVaultKey: TEST_VAULT_KEY,
       path: "Folder/large.md",
@@ -85,7 +85,7 @@ describe("SyncEngine", () => {
 
   it("does not let baseline progress overwrite an active pull", async () => {
     const plugin = createPlugin({}, async () => encodeUtf8("body"));
-    const store = await createInitializedTestSyncStore(plugin);
+    const store = createTestSyncStore();
     await store.upsertEntry({
       entryId: "entry-synced",
       path: "synced.md",
@@ -139,7 +139,7 @@ describe("SyncEngine", () => {
 
   it("keeps pull progress active when overlapping local work finishes first", async () => {
     const plugin = createPlugin({}, async () => encodeUtf8("body"));
-    const store = await createInitializedTestSyncStore(plugin);
+    const store = createTestSyncStore();
     await store.upsertEntry({
       entryId: "entry-synced",
       path: "synced.md",
@@ -218,7 +218,7 @@ describe("SyncEngine", () => {
 
       return encodeUtf8("new");
     });
-    const store = await createInitializedTestSyncStore(plugin);
+    const store = createTestSyncStore();
     const engine = new SyncEngine({
       plugin,
       getApiBaseUrl: () => "http://127.0.0.1:8787",
@@ -256,7 +256,7 @@ describe("SyncEngine", () => {
 
   it("reapplies previously skipped remote vault config before reconcile queues local writes", async () => {
     const plugin = createPlugin({}, async () => encodeUtf8("body"), []);
-    const store = await createInitializedTestSyncStore(plugin);
+    const store = createTestSyncStore();
     const remoteBytes = encodeUtf8("{\"theme\":\"remote\"}");
     const remoteHash = await hashBytes(remoteBytes);
     const encryptedBytes = await encryptSyncBlob(
@@ -308,7 +308,7 @@ describe("SyncEngine", () => {
 
   it("updates stale local vault config when reapplying a newer remote revision", async () => {
     const plugin = createPlugin({}, async () => encodeUtf8("body"), []);
-    const store = await createInitializedTestSyncStore(plugin);
+    const store = createTestSyncStore();
     const localBytes = encodeUtf8("{\"theme\":\"old\"}");
     const localHash = await hashBytes(localBytes);
     const remoteBytes = encodeUtf8("{\"theme\":\"new\"}");
@@ -373,7 +373,7 @@ describe("SyncEngine", () => {
 
   it("does not overwrite pending local vault config when reapplying remote config", async () => {
     const plugin = createPlugin({}, async () => encodeUtf8("body"), []);
-    const store = await createInitializedTestSyncStore(plugin);
+    const store = createTestSyncStore();
     const baseBytes = encodeUtf8("{\"theme\":\"base\"}");
     const localBytes = encodeUtf8("{\"theme\":\"local\"}");
     const remoteBytes = encodeUtf8("{\"theme\":\"remote\"}");

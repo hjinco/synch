@@ -96,6 +96,9 @@ importers:
 
   apps/obsidian-plugin:
     dependencies:
+      '@synch/sync-client':
+        specifier: workspace:*
+        version: link:../../packages/sync-client
       dexie:
         specifier: ^4.4.2
         version: 4.4.2
@@ -164,6 +167,16 @@ importers:
       wrangler:
         specifier: ^4.114.0
         version: 4.114.0(@cloudflare/workers-types@5.20260727.1)
+
+  packages/sync-client:
+    dependencies:
+      hash-wasm:
+        specifier: ^4.12.0
+        version: 4.12.0
+    devDependencies:
+      vitest:
+        specifier: ^4.1.4
+        version: 4.1.4(@opentelemetry/api@1.9.1)(@types/node@25.6.0)(vite@8.1.5(@types/node@25.6.0)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.21.0)(yaml@2.8.3))
 
   packages/tsconfig: {}
 

@@ -1,7 +1,7 @@
 import { TAbstractFile, TFile } from "obsidian";
 
-import type { SyncFileRules } from "../core/file-rules";
-import { normalizeVaultPath, shouldSyncPath } from "../core/file-rules";
+import type { SyncFileRules } from "@synch/sync-client/sync/core/file-rules";
+import { normalizeVaultPath, shouldSyncPath } from "@synch/sync-client/sync/core/file-rules";
 
 export function asSyncableFile(
   file: TAbstractFile,

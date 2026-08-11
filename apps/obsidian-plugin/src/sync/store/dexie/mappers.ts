@@ -6,7 +6,7 @@ import type {
   SyncConnection,
   SyncEntryRow,
   SyncEntryStateRow,
-} from "../store";
+} from "@synch/sync-client/sync/store/store";
 import type { BlobRecord, EntryRecord, MetadataRecord } from "./records";
 
 export function toSyncConnection(

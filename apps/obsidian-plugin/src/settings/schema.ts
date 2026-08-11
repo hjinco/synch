@@ -3,12 +3,12 @@ import {
   DEFAULT_SYNC_FILE_RULES,
   normalizeSyncFileRules,
   type SyncFileRules,
-} from "../sync/core/file-rules";
+} from "@synch/sync-client/sync/core/file-rules";
 import {
   DEFAULT_VAULT_CONFIG_SYNC_RULES,
   normalizeVaultConfigSyncRules,
   type VaultConfigSyncRules,
-} from "../sync/core/vault-config-rules";
+} from "@synch/sync-client/sync/core/vault-config-rules";
 
 export const SYNCH_SETTINGS_KEY = "settings";
 export const REALTIME_SYNC_INTERVAL_MS = 0;

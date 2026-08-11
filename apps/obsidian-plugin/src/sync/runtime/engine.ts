@@ -1,59 +1,59 @@
 import type { Plugin } from "obsidian";
 
+import { defaultHttpClient } from "../../http/request";
 import {
   isOffline as detectOffline,
   type OfflineDetector,
-} from "../../http/network-status";
-import type { RemoteVaultUnavailableError } from "../../remote-vault/unavailable";
+} from "@synch/sync-client/http/network-status";
+import type { RemoteVaultUnavailableError } from "@synch/sync-client/remote-vault/unavailable";
 import type {
   SyncDiagnostics,
   SyncFailurePhase,
-} from "../diagnostics/types";
-import { hashBytes } from "../core/content";
-import { SyncAutoLoop } from "../engine/auto-sync";
-import type { SyncTokenResponse } from "../remote/client";
-import { SyncEventGate } from "../engine/event-gate";
-import { SyncEventRecorder } from "../engine/event-recorder";
-import type { SyncFileRules } from "../core/file-rules";
+} from "@synch/sync-client/sync/diagnostics/types";
+import { hashBytes } from "@synch/sync-client/sync/core/content";
+import { SyncAutoLoop } from "@synch/sync-client/sync/engine/auto-sync";
+import type { SyncTokenResponse } from "@synch/sync-client/sync/remote/client";
+import { SyncEventGate } from "@synch/sync-client/sync/engine/event-gate";
+import { SyncEventRecorder } from "@synch/sync-client/sync/engine/event-recorder";
+import type { SyncFileRules } from "@synch/sync-client/sync/core/file-rules";
 import {
   shouldSyncVaultConfigPath,
   type VaultConfigSyncRules,
-} from "../core/vault-config-rules";
+} from "@synch/sync-client/sync/core/vault-config-rules";
 import {
   decideVaultPathSync,
   shouldApplyRemoteVaultPath,
   shouldUseLatestRemoteVaultConfig,
   type VaultPathPolicyRules,
-} from "../core/vault-path-policy";
-import { decryptSyncBlob, decryptSyncMetadata } from "../core/crypto";
+} from "@synch/sync-client/sync/core/vault-path-policy";
+import { decryptSyncBlob, decryptSyncMetadata } from "@synch/sync-client/sync/core/crypto";
 import {
   type ReconcileOnceResult,
   SyncLocalReconcileService,
-} from "../engine/local-reconcile-service";
-import { metadataContextFromMutation } from "../engine/push-mutation-shared";
-import {
-  ObsidianSyncVaultAdapter,
-  type SyncVaultFile,
-} from "../vault/obsidian-vault-adapter";
+} from "@synch/sync-client/sync/engine/local-reconcile-service";
+import { metadataContextFromMutation } from "@synch/sync-client/sync/engine/push-mutation-shared";
+import { ObsidianSyncVaultAdapter } from "../vault/obsidian-vault-adapter";
+import type { SyncVaultFile } from "@synch/sync-client/sync/vault/ports";
 import { ObsidianVaultConfigSource } from "../vault/obsidian-vault-config-source";
-import { removeVaultPathIfExists, writeVaultBytes } from "../vault/vault-writer";
-import { SyncPullService } from "../engine/pull-service";
-import { SyncPushService } from "../engine/push-service";
-import { SyncAuthorizedRequestClient } from "../remote/request-client";
-import { SyncBlobClient } from "../remote/blob-client";
-import { SyncPullClient } from "../remote/pull-client";
+import { removeVaultPathIfExists, writeVaultBytes } from "@synch/sync-client/sync/vault/vault-writer";
+import { SyncPullService } from "@synch/sync-client/sync/engine/pull-service";
+import { SyncPushService } from "@synch/sync-client/sync/engine/push-service";
+import { SyncAuthorizedRequestClient } from "@synch/sync-client/sync/remote/request-client";
+import { SyncBlobClient } from "@synch/sync-client/sync/remote/blob-client";
+import { SyncPullClient } from "@synch/sync-client/sync/remote/pull-client";
 import {
   type EntryVersion,
   type DeletedEntryPageCursor,
   type EntryVersionPageCursor,
   type SyncRealtimeSession,
   type SyncStorageStatus,
-} from "../remote/realtime-client";
-import type { SyncStore } from "../store/store";
+  SyncRealtimeClient,
+} from "@synch/sync-client/sync/remote/realtime-client";
+import type { SyncStore } from "@synch/sync-client/sync/store/store";
 import {
   getOrCreateStoredLocalVaultId,
   readStoredSyncConnection,
-} from "../store/connection";
+} from "@synch/sync-client/sync/store/connection";
 import type { UserVisibleSyncState } from "./user-visible-status";
 import type { UserVisibleSyncProgress } from "./user-visible-status";
 import { SyncVaultEventHandler } from "./vault-event-handler";
@@ -64,7 +64,7 @@ import {
   type SyncDeletedEntriesPage,
   type SyncEntryVersionPreview,
   type SyncEntryVersionsPage,
-} from "./version-history-service";
+} from "@synch/sync-client/sync/runtime/version-history-service";
 
 type SyncActivityKind = "push" | "pull" | "local";
 
@@ -136,6 +136,7 @@ export class SyncEngine {
     getApiBaseUrl: () => this.deps.getApiBaseUrl(),
     getSyncToken: async () => await this.deps.getSyncToken(),
     invalidateSyncToken: () => this.deps.invalidateSyncToken(),
+    httpClient: defaultHttpClient,
   });
   private readonly syncPullClient = new SyncPullClient(this.syncRequestClient);
   private readonly syncPushService = new SyncPushService({
@@ -197,6 +198,9 @@ export class SyncEngine {
     getApiBaseUrl: () => this.deps.getApiBaseUrl(),
     getSyncToken: async () => await this.deps.getSyncToken(),
     getSyncStore: () => this.syncStore,
+    realtimeClient: new SyncRealtimeClient({
+      create: (url, protocols) => new WebSocket(url, protocols),
+    }),
     pushPendingMutations: async (session) =>
       await this.withSyncActivity("push", async () => {
         return await this.syncPushService.pushPendingMutations(session);

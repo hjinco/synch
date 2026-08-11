@@ -3,7 +3,11 @@ import { Notice, type Plugin, TFolder } from "obsidian";
 import { BillingClient } from "../billing/client";
 import { buildBillingWebPageUrl } from "../billing/web-url";
 import { getServerDeployment } from "../config";
-import { isOfflineLikeError } from "../http/network-status";
+import { defaultHttpClient } from "../http/request";
+import { AuthClient } from "@synch/sync-client/auth/client";
+import { isOfflineLikeError } from "@synch/sync-client/http/network-status";
+import { RemoteVaultClient } from "@synch/sync-client/remote-vault/client";
+import { SyncAccessClient } from "@synch/sync-client/sync/remote/client";
 import {
   formatErrorNotice,
   getSynchLocale,
@@ -46,12 +50,12 @@ import {
   normalizeSyncFileRules,
   normalizeVaultPath,
   type SyncFileRules,
-} from "../sync/core/file-rules";
-import { isReservedSyncPath } from "../sync/core/reserved-paths";
-import type { SyncTokenResponse } from "../sync/remote/client";
-import { InMemorySyncDiagnostics } from "../sync/diagnostics/in-memory";
+} from "@synch/sync-client/sync/core/file-rules";
+import { isReservedSyncPath } from "@synch/sync-client/sync/core/reserved-paths";
+import type { SyncTokenResponse } from "@synch/sync-client/sync/remote/client";
+import { InMemorySyncDiagnostics } from "@synch/sync-client/sync/diagnostics/in-memory";
 import { SyncController } from "../sync/runtime/controller";
-import { SyncTokenManager } from "../sync/remote/token-manager";
+import { SyncTokenManager } from "@synch/sync-client/sync/remote/token-manager";
 import type { StoredRemoteVaultKeySecret } from "../remote-vault/device-storage";
 import {
   clearStoredRemoteVaultKeySecret,
@@ -62,8 +66,8 @@ import { RemoteVaultManager } from "../remote-vault/manager";
 import {
   isRemoteVaultUnavailableError,
   type RemoteVaultUnavailableError,
-} from "../remote-vault/unavailable";
-import type { SyncConnection } from "../sync/store/store";
+} from "@synch/sync-client/remote-vault/unavailable";
+import type { SyncConnection } from "@synch/sync-client/sync/store/store";
 
 const PLUGIN_UPDATE_CHECK_INTERVAL_MS = 5 * 60 * 1000;
 const SUBSCRIPTION_STATUS_CHECK_INTERVAL_MS = 30 * 1000;
@@ -107,6 +111,7 @@ export class SynchPluginController implements SynchSettingsController {
   private readonly authManager = new AuthManager({
     plugin: this.plugin,
     getApiBaseUrl: () => this.getApiBaseUrl(),
+    authClient: new AuthClient(defaultHttpClient, "synch-obsidian-plugin"),
     refreshUi: () => {
       this.refreshUi();
     },
@@ -126,12 +131,14 @@ export class SynchPluginController implements SynchSettingsController {
     notify: (message) => {
       new Notice(message);
     },
+    remoteVaultClient: new RemoteVaultClient(defaultHttpClient),
   });
   private readonly syncTokenManager = new SyncTokenManager({
     getApiBaseUrl: () => this.getApiBaseUrl(),
     getAuthSessionToken: () => this.authManager.getAuthSessionToken(),
     getRemoteVaultId: () => this.remoteVaultManager.getRemoteVaultId(),
     getLocalVaultId: async () => await this.syncController.readLocalVaultId(),
+    syncAccessClient: new SyncAccessClient(defaultHttpClient),
   });
   private readonly syncController = new SyncController({
     plugin: this.plugin,

@@ -5,42 +5,42 @@ import {
   isOffline as detectOffline,
   isOfflineLikeError,
   type OfflineDetector,
-} from "../../http/network-status";
+} from "@synch/sync-client/http/network-status";
 import {
   isRemoteVaultUnavailableError,
   type RemoteVaultUnavailableError,
-} from "../../remote-vault/unavailable";
-import type { SyncTokenResponse } from "../remote/client";
+} from "@synch/sync-client/remote-vault/unavailable";
+import type { SyncTokenResponse } from "@synch/sync-client/sync/remote/client";
 import type {
   SyncDiagnosticErrorClassification,
   SyncDiagnosticSource,
   SyncDiagnostics,
   SyncFailurePhase,
-} from "../diagnostics/types";
+} from "@synch/sync-client/sync/diagnostics/types";
 import type {
   DeletedEntryPageCursor,
   EntryVersion,
   EntryVersionPageCursor,
   SyncStorageStatus,
-} from "../remote/realtime-client";
-import type { SyncFileRules } from "../core/file-rules";
-import type { VaultConfigSyncRules } from "../core/vault-config-rules";
+} from "@synch/sync-client/sync/remote/realtime-client";
+import type { SyncFileRules } from "@synch/sync-client/sync/core/file-rules";
+import type { VaultConfigSyncRules } from "@synch/sync-client/sync/core/vault-config-rules";
 import {
   clearDexieSyncStore,
   createDexieSyncStore,
   readDexieSyncStoreConnection,
 } from "../store/dexie";
-import type { SyncConnection } from "../store/store";
-import type { ReconcileOnceResult } from "../engine/local-reconcile-service";
-import type { SyncDeletedEntriesPage } from "./version-history-service";
-import type { SyncDeletedEntriesRestoreResult } from "./version-history-service";
-import type { SyncDeletedEntriesPurgeResult } from "./version-history-service";
+import type { SyncConnection } from "@synch/sync-client/sync/store/store";
+import type { ReconcileOnceResult } from "@synch/sync-client/sync/engine/local-reconcile-service";
+import type { SyncDeletedEntriesPage } from "@synch/sync-client/sync/runtime/version-history-service";
+import type { SyncDeletedEntriesRestoreResult } from "@synch/sync-client/sync/runtime/version-history-service";
+import type { SyncDeletedEntriesPurgeResult } from "@synch/sync-client/sync/runtime/version-history-service";
 import {
   SyncEngine,
   type SyncEngineEntryVersionsPage,
   type SyncFileSizeBlockedFile,
 } from "./engine";
-import type { SyncEntryVersionPreview } from "./version-history-service";
+import type { SyncEntryVersionPreview } from "@synch/sync-client/sync/runtime/version-history-service";
 import {
   formatUserVisibleSyncState,
   getUserVisibleSyncDisplayPercent,

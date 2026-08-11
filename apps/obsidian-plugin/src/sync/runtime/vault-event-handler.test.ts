@@ -1,7 +1,7 @@
 import type { Plugin, TAbstractFile, TFile } from "obsidian";
 import { describe, expect, it, vi } from "vitest";
 
-import type { SyncEventRecorder } from "../engine/event-recorder";
+import type { SyncEventRecorder } from "@synch/sync-client/sync/engine/event-recorder";
 import type { ObsidianSyncVaultAdapter } from "../vault/obsidian-vault-adapter";
 import { SyncVaultEventHandler } from "./vault-event-handler";
 

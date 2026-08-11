@@ -6,14 +6,14 @@ import {
   isOffline as detectOffline,
   isOfflineLikeError,
   type OfflineDetector,
-} from "../http/network-status";
+} from "@synch/sync-client/http/network-status";
 import { getSynchLocale, t } from "../i18n";
 import {
   AuthClient,
   type AuthenticatedUserSession,
   type DeviceAuthorizationPollResult,
   type DeviceAuthorizationStart,
-} from "./client";
+} from "@synch/sync-client/auth/client";
 import {
   clearAuthSessionToken,
   readAuthSessionToken,
@@ -30,7 +30,7 @@ export interface AuthManagerDeps {
   plugin: Plugin;
   getApiBaseUrl: () => string;
   refreshUi: () => void;
-  authClient?: AuthClient;
+  authClient: AuthClient;
   notify?: (message: string) => void;
   openExternalUrl?: (url: string) => void;
   delay?: (ms: number) => Promise<void>;
@@ -52,7 +52,7 @@ export class AuthManager {
   private deviceAuthorization: DeviceAuthorizationStart | null = null;
 
   constructor(private readonly deps: AuthManagerDeps) {
-    this.authClient = deps.authClient ?? new AuthClient();
+    this.authClient = deps.authClient;
   }
 
   async initialize(): Promise<void> {

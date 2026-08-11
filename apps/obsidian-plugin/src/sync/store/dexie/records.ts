@@ -2,7 +2,7 @@ import type {
   CachedSyncBlobRow,
   PendingMutationBlockedReason,
   SyncBlobRole,
-} from "../store";
+} from "@synch/sync-client/sync/store/store";
 
 export interface MetadataRecord {
   id: string;

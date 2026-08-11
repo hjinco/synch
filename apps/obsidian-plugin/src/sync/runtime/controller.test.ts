@@ -1,12 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { SyncTokenResponse } from "../remote/client";
-import { DEFAULT_SYNC_FILE_RULES } from "../core/file-rules";
-import { DEFAULT_VAULT_CONFIG_SYNC_RULES } from "../core/vault-config-rules";
+import type { SyncTokenResponse } from "@synch/sync-client/sync/remote/client";
+import { DEFAULT_SYNC_FILE_RULES } from "@synch/sync-client/sync/core/file-rules";
+import { DEFAULT_VAULT_CONFIG_SYNC_RULES } from "@synch/sync-client/sync/core/vault-config-rules";
 import { createTestPlugin } from "../../test-support/test-plugin";
 import { SyncController } from "./controller";
 import { SyncEngine } from "./engine";
-import { InMemorySyncDiagnostics } from "../diagnostics/in-memory";
+import { InMemorySyncDiagnostics } from "@synch/sync-client/sync/diagnostics/in-memory";
 
 describe("SyncController", () => {
   afterEach(() => {

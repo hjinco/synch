@@ -1,7 +1,7 @@
 import type { Plugin, TFile } from "obsidian";
 
-import type { SyncAutoLoop } from "../engine/auto-sync";
-import type { SyncEventRecorder } from "../engine/event-recorder";
+import type { SyncAutoLoop } from "@synch/sync-client/sync/engine/auto-sync";
+import type { SyncEventRecorder } from "@synch/sync-client/sync/engine/event-recorder";
 import type { ObsidianSyncVaultAdapter } from "../vault/obsidian-vault-adapter";
 
 export interface SyncVaultEventHandlerDeps {

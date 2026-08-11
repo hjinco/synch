@@ -17,10 +17,10 @@ import {
   type VersionHistoryViewController,
   type VersionHistoryViewState,
 } from "./version-history-view";
-import { shouldSyncPath, type SyncFileRules } from "../sync/core/file-rules";
-import type { EntryVersion } from "../sync/remote/realtime-client";
+import { shouldSyncPath, type SyncFileRules } from "@synch/sync-client/sync/core/file-rules";
+import type { EntryVersion } from "@synch/sync-client/sync/remote/realtime-client";
 import type { SyncController } from "../sync/runtime/controller";
-import type { SyncDeletedEntry } from "../sync/runtime/version-history-service";
+import type { SyncDeletedEntry } from "@synch/sync-client/sync/runtime/version-history-service";
 
 export interface SynchVersionHistoryControllerDeps {
   plugin: Plugin;

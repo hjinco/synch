@@ -1,5 +1,5 @@
 import { getLanguage } from "obsidian";
-import type { VaultPasswordValidation } from "./remote-vault/password-policy";
+import type { VaultPasswordValidation } from "@synch/sync-client/remote-vault/password-policy";
 
 const en = {
     account: "Account",

@@ -29,6 +29,7 @@
     "vitest": "^4.1.4"
   },
   "dependencies": {
+    "@synch/sync-client": "workspace:*",
     "dexie": "^4.4.2",
     "diff": "^9.0.0",
     "hash-wasm": "^4.12.0"

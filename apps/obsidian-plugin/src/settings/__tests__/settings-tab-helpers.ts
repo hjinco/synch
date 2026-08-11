@@ -2,8 +2,8 @@ import { App, Plugin } from "obsidian";
 import { vi } from "vitest";
 
 import type { SynchDeletedFile } from "../../plugin/view-models";
-import { DEFAULT_SYNC_FILE_RULES } from "../../sync/core/file-rules";
-import { DEFAULT_VAULT_CONFIG_SYNC_RULES } from "../../sync/core/vault-config-rules";
+import { DEFAULT_SYNC_FILE_RULES } from "@synch/sync-client/sync/core/file-rules";
+import { DEFAULT_VAULT_CONFIG_SYNC_RULES } from "@synch/sync-client/sync/core/vault-config-rules";
 import type { SynchSettingsController } from "../controller";
 import { SynchSettingTab } from "../settings-tab";
 

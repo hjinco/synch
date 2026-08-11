@@ -1,18 +1,18 @@
 import {
   createPasswordWrappedRemoteVaultKey,
   unwrapRemoteVaultKeyWithPassword,
-} from "./crypto";
+} from "@synch/sync-client/remote-vault/crypto";
 import { formatVaultPasswordValidationError, t } from "../i18n";
 import type { StoredRemoteVaultKeySecret } from "./device-storage";
-import { validateVaultPassword } from "./password-policy";
-import { RemoteVaultClient } from "./client";
+import { validateVaultPassword } from "@synch/sync-client/remote-vault/password-policy";
+import { RemoteVaultClient } from "@synch/sync-client/remote-vault/client";
 import type {
   RemoteVaultBootstrapResponse,
   RemoteVaultKeyWrapperRecord,
   RemoteVaultRecord,
   RemoteVaultSession,
   RemoteVaultSessionSummary,
-} from "./types";
+} from "@synch/sync-client/remote-vault/types";
 
 export interface CreateRemoteVaultInput {
   name: string;
@@ -36,7 +36,7 @@ export interface RemoteVaultManagerDeps {
   ) => Promise<void>;
   refreshUi: () => void;
   notify: (message: string) => void;
-  remoteVaultClient?: RemoteVaultClient;
+  remoteVaultClient: RemoteVaultClient;
 }
 
 export class RemoteVaultManager {
@@ -44,7 +44,7 @@ export class RemoteVaultManager {
   private session: RemoteVaultSession | null = null;
 
   constructor(private readonly deps: RemoteVaultManagerDeps) {
-    this.remoteVaultClient = deps.remoteVaultClient ?? new RemoteVaultClient();
+    this.remoteVaultClient = deps.remoteVaultClient;
   }
 
   getRemoteVaultStatusLabel(): string {

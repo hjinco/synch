@@ -1,6 +1,6 @@
 import type { Plugin } from "obsidian";
 
-import { decodeBase64, encodeBase64 } from "../utils/bytes";
+import { decodeBase64, encodeBase64 } from "@synch/sync-client/utils/bytes";
 
 const REMOTE_VAULT_KEY_SECRET = "synch-remote-vault-key";
 

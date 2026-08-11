@@ -3,8 +3,8 @@ import type { Plugin } from "obsidian";
 import {
   shouldSyncVaultConfigPath,
   type VaultConfigSyncRules,
-} from "../core/vault-config-rules";
-import type { SyncVaultFile } from "./obsidian-vault-adapter";
+} from "@synch/sync-client/sync/core/vault-config-rules";
+import type { SyncVaultFile } from "@synch/sync-client/sync/vault/ports";
 
 export class ObsidianVaultConfigSource {
   constructor(

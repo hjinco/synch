@@ -13,8 +13,8 @@ import type {
   SyncReconcileEntryState,
   SyncReconcileEntryUpdate,
   SyncStore,
-} from "../store";
-import { decryptSyncMetadata, encryptSyncMetadata } from "../../core/crypto";
+} from "@synch/sync-client/sync/store/store";
+import { decryptSyncMetadata, encryptSyncMetadata } from "@synch/sync-client/sync/core/crypto";
 import {
   METADATA_ID,
   MIN_PENDING_CREATED_AT,

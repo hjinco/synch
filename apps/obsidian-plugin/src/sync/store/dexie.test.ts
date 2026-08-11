@@ -7,7 +7,7 @@ import {
   createDexieSyncStore,
   readDexieSyncStoreConnection,
 } from "./dexie";
-import { replacePendingMutationForEntry } from "../core/mutation-queue";
+import { replacePendingMutationForEntry } from "@synch/sync-client/sync/core/mutation-queue";
 
 describe("DexieSyncStore", () => {
   it("creates and persists entry ids by path", async () => {
