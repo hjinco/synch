@@ -1,36 +1,29 @@
-import type { Plugin, TFile } from "obsidian";
-import { TFile as ObsidianTFile } from "obsidian";
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { setRequestUrlMock } from "obsidian";
+import { describe, expect, it, vi } from "vitest";
 
-import { encodeUtf8, hashBytes } from "@synch/sync-client/sync/core/content";
-import { encryptSyncBlob } from "@synch/sync-client/sync/core/crypto";
-import { DEFAULT_SYNC_FILE_RULES } from "@synch/sync-client/sync/core/file-rules";
-import { DEFAULT_VAULT_CONFIG_SYNC_RULES } from "@synch/sync-client/sync/core/vault-config-rules";
-import { queueLocalUpsertMutation } from "@synch/sync-client/sync/core/mutation-queue";
-import type { SyncTokenResponse } from "@synch/sync-client/sync/remote/client";
-import { createTestSyncStore } from "@synch/sync-client/test-support/in-memory-sync-store";
-import { InMemorySyncDiagnostics } from "@synch/sync-client/sync/diagnostics/in-memory";
-import { SyncEngine } from "@synch/sync-client/sync/runtime/sync-engine";
-import { createObsidianSyncEngine } from "./obsidian-sync-engine";
-
-type VaultEventCallback = (...args: unknown[]) => void;
+import type { HttpRequestInput, HttpResponseLike } from "../../http/request";
+import { createTestSyncStore } from "../../test-support/in-memory-sync-store";
+import { InMemoryVaultAdapter } from "../../test-support/in-memory-vault-adapter";
+import { encodeUtf8, hashBytes } from "../core/content";
+import { encryptSyncBlob } from "../core/crypto";
+import { DEFAULT_SYNC_FILE_RULES } from "../core/file-rules";
+import { DEFAULT_VAULT_CONFIG_SYNC_RULES } from "../core/vault-config-rules";
+import { queueLocalUpsertMutation } from "../core/mutation-queue";
+import { InMemorySyncDiagnostics } from "../diagnostics/in-memory";
+import type { SyncTokenResponse } from "../remote/client";
+import type { SyncChangeSource, SyncChangeSourceContext } from "./change-source";
+import { SyncEngine, type SyncEngineDeps } from "./sync-engine";
 
 const TEST_VAULT_KEY = new Uint8Array(Array.from({ length: 32 }, (_, index) => index + 1));
+const CONFIG_DIR = ".obsidian";
 
 describe("SyncEngine", () => {
-  afterEach(() => {
-    setRequestUrlMock(async () => {
-      throw new Error("requestUrl mock is not configured");
-    });
-  });
-
   it("reports offline sync startup failures through status without a notice", async () => {
-    const plugin = createPlugin({}, async () => encodeUtf8("body"));
+    const vault = new InMemoryVaultAdapter();
+    vault.seedText("note.md", "body");
     const store = createTestSyncStore();
     const setSyncStatus = vi.fn();
     const onSyncError = vi.fn();
-    const engine = createEngine(plugin, {
+    const { engine } = createTestEngine(vault, {
       getSyncToken: async () => {
         throw new Error("offline");
       },
@@ -48,7 +41,8 @@ describe("SyncEngine", () => {
   });
 
   it("lists file-size blocked files with decrypted paths and size metadata", async () => {
-    const plugin = createPlugin({}, async () => encodeUtf8("body"));
+    const vault = new InMemoryVaultAdapter();
+    vault.seedText("note.md", "body");
     const store = createTestSyncStore();
     const fileSizeBlocked = await queueLocalUpsertMutation(store, {
       remoteVaultKey: TEST_VAULT_KEY,
@@ -64,7 +58,7 @@ describe("SyncEngine", () => {
       blockedEncryptedSizeBytes: 12_400_000,
       blockedMaxFileSizeBytes: 10_000_000,
     });
-    const engine = createEngine(plugin);
+    const { engine } = createTestEngine(vault);
     engine.setStore(store);
 
     await expect(engine.listFileSizeBlockedFiles()).resolves.toEqual([
@@ -78,14 +72,16 @@ describe("SyncEngine", () => {
   });
 
   it("returns no file-size blocked files when the store is not initialized", async () => {
-    const plugin = createPlugin({}, async () => encodeUtf8("body"));
-    const engine = createEngine(plugin);
+    const vault = new InMemoryVaultAdapter();
+    vault.seedText("note.md", "body");
+    const { engine } = createTestEngine(vault);
 
     await expect(engine.listFileSizeBlockedFiles()).resolves.toEqual([]);
   });
 
   it("does not let baseline progress overwrite an active pull", async () => {
-    const plugin = createPlugin({}, async () => encodeUtf8("body"));
+    const vault = new InMemoryVaultAdapter();
+    vault.seedText("note.md", "body");
     const store = createTestSyncStore();
     await store.upsertEntry({
       entryId: "entry-synced",
@@ -99,7 +95,7 @@ describe("SyncEngine", () => {
       localSize: null,
     });
     const setSyncProgress = vi.fn();
-    const engine = createEngine(plugin, { setSyncProgress });
+    const { engine } = createTestEngine(vault, { setSyncProgress });
     engine.setStore(store);
     const activityEngine = engine as unknown as {
       withSyncActivity<T>(kind: "pull", work: () => Promise<T>): Promise<T>;
@@ -139,7 +135,8 @@ describe("SyncEngine", () => {
   });
 
   it("keeps pull progress active when overlapping local work finishes first", async () => {
-    const plugin = createPlugin({}, async () => encodeUtf8("body"));
+    const vault = new InMemoryVaultAdapter();
+    vault.seedText("note.md", "body");
     const store = createTestSyncStore();
     await store.upsertEntry({
       entryId: "entry-synced",
@@ -153,7 +150,7 @@ describe("SyncEngine", () => {
       localSize: null,
     });
     const setSyncProgress = vi.fn();
-    const engine = createEngine(plugin, { setSyncProgress });
+    const { engine } = createTestEngine(vault, { setSyncProgress });
     engine.setStore(store);
     const activityEngine = engine as unknown as {
       withSyncActivity<T>(
@@ -207,42 +204,36 @@ describe("SyncEngine", () => {
     await store.close();
   });
 
-  it("serializes vault event recording behind an active reconcile", async () => {
+  it("serializes change source recording behind an active reconcile", async () => {
     const firstRead = createDeferred<Uint8Array>();
-    const callbacks: Partial<Record<"modify", VaultEventCallback>> = {};
     let readCalls = 0;
-    const plugin = createPlugin(callbacks, async () => {
+    const vault = new InMemoryVaultAdapter();
+    vault.seedText("note.md", "seed");
+    vault.readBytes = async () => {
       readCalls += 1;
       if (readCalls === 1) {
         return await firstRead.promise;
       }
 
       return encodeUtf8("new");
-    });
+    };
     const store = createTestSyncStore();
-    const engine = createObsidianSyncEngine({
-      plugin,
-      getApiBaseUrl: () => "http://127.0.0.1:8787",
-      getSyncToken: async () => createToken(),
-      invalidateSyncToken: vi.fn(),
-      getRemoteVaultKey: () => TEST_VAULT_KEY,
-      getSyncFileRules: () => DEFAULT_SYNC_FILE_RULES,
-      getVaultConfigSyncRules: () => DEFAULT_VAULT_CONFIG_SYNC_RULES,
-      hasActiveRemoteVaultSession: () => true,
-      diagnostics: new InMemorySyncDiagnostics("test"),
-      onSyncError: vi.fn(),
-      notifySyncConflict: vi.fn(),
-      notifyRollbackDetected: vi.fn(),
-      setSyncProgress: vi.fn(),
-      setSyncStatus: vi.fn(),
-      setStorageStatus: vi.fn(),
-    });
+    const { engine, changeSource } = createTestEngine(vault);
     engine.setStore(store);
     engine.registerVaultEvents();
+    const context = changeSource.requireContext();
 
     const reconcilePromise = engine.reconcileOnce();
     await nextTask();
-    callbacks.modify?.(createFile("note.md"));
+    void context.runLocalMutationWork(async () => {
+      const changed = await context.eventRecorder.recordUpsert(
+        "note.md",
+        await vault.readBytes("note.md"),
+      );
+      if (changed) {
+        context.notifyLocalChange();
+      }
+    });
     await nextTask();
 
     expect(readCalls).toBe(1);
@@ -259,7 +250,7 @@ describe("SyncEngine", () => {
   });
 
   it("reapplies previously skipped remote vault config before reconcile queues local writes", async () => {
-    const plugin = createPlugin({}, async () => encodeUtf8("body"), []);
+    const vault = new InMemoryVaultAdapter();
     const store = createTestSyncStore();
     const remoteBytes = encodeUtf8("{\"theme\":\"remote\"}");
     const remoteHash = await hashBytes(remoteBytes);
@@ -269,39 +260,39 @@ describe("SyncEngine", () => {
       { blobId: "blob-config" },
       { syncFormatVersion: 1 },
     );
-    await plugin.app.vault.adapter.write(".obsidian/app.json", "{\"theme\":\"local\"}");
+    vault.seedText(`${CONFIG_DIR}/app.json`, "{\"theme\":\"local\"}");
     await store.applyRemoteState({
       entryId: "entry-config",
-      path: ".obsidian/app.json",
+      path: `${CONFIG_DIR}/app.json`,
       revision: 1,
       blobId: "blob-config",
       hash: remoteHash,
       deleted: false,
       updatedAt: 10,
     });
-    setRequestUrlMock(async () => ({
-      status: 200,
-      arrayBuffer: toArrayBuffer(encryptedBytes),
-    }));
-    const engine = createEngine(plugin, {
+    const { engine, setHttpHandler } = createTestEngine(vault, {
       getVaultConfigSyncRules: () => ({
         ...DEFAULT_VAULT_CONFIG_SYNC_RULES,
         enabled: true,
       }),
       shouldDeferSyncWork: () => false,
     });
+    setHttpHandler(async () => ({
+      status: 200,
+      arrayBuffer: toArrayBuffer(encryptedBytes),
+    }));
     engine.setStore(store);
 
     await expect(engine.reapplyAllowedRemoteVaultConfig()).resolves.toBe(1);
     await engine.reconcileOnce();
 
-    await expect(
-      plugin.app.vault.adapter.readBinary(".obsidian/app.json"),
-    ).resolves.toEqual(toArrayBuffer(remoteBytes));
+    await expect(vault.readBytes(`${CONFIG_DIR}/app.json`)).resolves.toEqual(
+      remoteBytes,
+    );
     await expect(store.listDirtyEntries()).resolves.toEqual([]);
     await expect(store.getEntryById("entry-config")).resolves.toMatchObject({
       entryId: "entry-config",
-      path: ".obsidian/app.json",
+      path: `${CONFIG_DIR}/app.json`,
       revision: 1,
       blobId: "blob-config",
       hash: remoteHash,
@@ -311,7 +302,7 @@ describe("SyncEngine", () => {
   });
 
   it("updates stale local vault config when reapplying a newer remote revision", async () => {
-    const plugin = createPlugin({}, async () => encodeUtf8("body"), []);
+    const vault = new InMemoryVaultAdapter();
     const store = createTestSyncStore();
     const localBytes = encodeUtf8("{\"theme\":\"old\"}");
     const localHash = await hashBytes(localBytes);
@@ -323,13 +314,10 @@ describe("SyncEngine", () => {
       { blobId: "blob-config-new" },
       { syncFormatVersion: 1 },
     );
-    await plugin.app.vault.adapter.writeBinary(
-      ".obsidian/app.json",
-      toArrayBuffer(localBytes),
-    );
+    vault.seedFile(`${CONFIG_DIR}/app.json`, localBytes);
     await store.upsertEntry({
       entryId: "entry-config",
-      path: ".obsidian/app.json",
+      path: `${CONFIG_DIR}/app.json`,
       revision: 1,
       blobId: "blob-config-old",
       hash: localHash,
@@ -340,33 +328,33 @@ describe("SyncEngine", () => {
     });
     await store.applyRemoteState({
       entryId: "entry-config",
-      path: ".obsidian/app.json",
+      path: `${CONFIG_DIR}/app.json`,
       revision: 2,
       blobId: "blob-config-new",
       hash: remoteHash,
       deleted: false,
       updatedAt: 20,
     });
-    setRequestUrlMock(async () => ({
-      status: 200,
-      arrayBuffer: toArrayBuffer(encryptedBytes),
-    }));
-    const engine = createEngine(plugin, {
+    const { engine, setHttpHandler } = createTestEngine(vault, {
       getVaultConfigSyncRules: () => ({
         ...DEFAULT_VAULT_CONFIG_SYNC_RULES,
         enabled: true,
       }),
     });
+    setHttpHandler(async () => ({
+      status: 200,
+      arrayBuffer: toArrayBuffer(encryptedBytes),
+    }));
     engine.setStore(store);
 
     await expect(engine.reapplyAllowedRemoteVaultConfig()).resolves.toBe(1);
 
-    await expect(
-      plugin.app.vault.adapter.readBinary(".obsidian/app.json"),
-    ).resolves.toEqual(toArrayBuffer(remoteBytes));
+    await expect(vault.readBytes(`${CONFIG_DIR}/app.json`)).resolves.toEqual(
+      remoteBytes,
+    );
     await expect(store.getEntryById("entry-config")).resolves.toMatchObject({
       entryId: "entry-config",
-      path: ".obsidian/app.json",
+      path: `${CONFIG_DIR}/app.json`,
       revision: 2,
       blobId: "blob-config-new",
       hash: remoteHash,
@@ -376,7 +364,7 @@ describe("SyncEngine", () => {
   });
 
   it("does not overwrite pending local vault config when reapplying remote config", async () => {
-    const plugin = createPlugin({}, async () => encodeUtf8("body"), []);
+    const vault = new InMemoryVaultAdapter();
     const store = createTestSyncStore();
     const baseBytes = encodeUtf8("{\"theme\":\"base\"}");
     const localBytes = encodeUtf8("{\"theme\":\"local\"}");
@@ -384,13 +372,10 @@ describe("SyncEngine", () => {
     const baseHash = await hashBytes(baseBytes);
     const localHash = await hashBytes(localBytes);
     const remoteHash = await hashBytes(remoteBytes);
-    await plugin.app.vault.adapter.writeBinary(
-      ".obsidian/app.json",
-      toArrayBuffer(localBytes),
-    );
+    vault.seedFile(`${CONFIG_DIR}/app.json`, localBytes);
     await store.upsertEntry({
       entryId: "entry-config",
-      path: ".obsidian/app.json",
+      path: `${CONFIG_DIR}/app.json`,
       revision: 1,
       blobId: "blob-config-base",
       hash: baseHash,
@@ -401,7 +386,7 @@ describe("SyncEngine", () => {
     });
     const queued = await queueLocalUpsertMutation(store, {
       remoteVaultKey: TEST_VAULT_KEY,
-      path: ".obsidian/app.json",
+      path: `${CONFIG_DIR}/app.json`,
       entryId: "entry-config",
       base: await store.getRemoteStateById("entry-config"),
       previousLocal: {
@@ -413,7 +398,7 @@ describe("SyncEngine", () => {
     });
     await store.applyLocalState({
       entryId: "entry-config",
-      path: ".obsidian/app.json",
+      path: `${CONFIG_DIR}/app.json`,
       blobId: queued.blobId,
       hash: localHash,
       deleted: false,
@@ -423,14 +408,14 @@ describe("SyncEngine", () => {
     });
     await store.applyRemoteState({
       entryId: "entry-config",
-      path: ".obsidian/app.json",
+      path: `${CONFIG_DIR}/app.json`,
       revision: 2,
       blobId: "blob-config-remote",
       hash: remoteHash,
       deleted: false,
       updatedAt: 20,
     });
-    const engine = createEngine(plugin, {
+    const { engine } = createTestEngine(vault, {
       getVaultConfigSyncRules: () => ({
         ...DEFAULT_VAULT_CONFIG_SYNC_RULES,
         enabled: true,
@@ -440,9 +425,9 @@ describe("SyncEngine", () => {
 
     await expect(engine.reapplyAllowedRemoteVaultConfig()).resolves.toBe(0);
 
-    await expect(
-      plugin.app.vault.adapter.readBinary(".obsidian/app.json"),
-    ).resolves.toEqual(toArrayBuffer(localBytes));
+    await expect(vault.readBytes(`${CONFIG_DIR}/app.json`)).resolves.toEqual(
+      localBytes,
+    );
     await expect(store.getDirtyEntryMutation("entry-config")).resolves.toMatchObject({
       entryId: "entry-config",
       op: "upsert",
@@ -450,15 +435,51 @@ describe("SyncEngine", () => {
     });
     await store.close();
   });
-
 });
 
-function createEngine(
-  plugin: Plugin,
-  overrides: Partial<ObsidianSyncEngineDepsForTest> = {},
-): SyncEngine {
-  return createObsidianSyncEngine({
-    plugin,
+class TestSyncChangeSource implements SyncChangeSource {
+  private context: SyncChangeSourceContext | null = null;
+
+  start(context: SyncChangeSourceContext): void {
+    this.context = context;
+  }
+
+  requireContext(): SyncChangeSourceContext {
+    if (!this.context) {
+      throw new Error("change source was not started");
+    }
+
+    return this.context;
+  }
+}
+
+interface TestEngineContext {
+  engine: SyncEngine;
+  changeSource: TestSyncChangeSource;
+  setHttpHandler: (
+    handler: (input: HttpRequestInput) => Promise<HttpResponseLike>,
+  ) => void;
+}
+
+function createTestEngine(
+  vault: InMemoryVaultAdapter,
+  overrides: Partial<SyncEngineDeps> = {},
+): TestEngineContext {
+  let httpHandler: (input: HttpRequestInput) => Promise<HttpResponseLike> =
+    async () => {
+      throw new Error("http mock is not configured");
+    };
+  const changeSource = new TestSyncChangeSource();
+  const engine = new SyncEngine({
+    vaultAdapter: vault,
+    vaultConfigSource: {
+      listFiles: () => vault.listFilesUnder(CONFIG_DIR),
+    },
+    httpClient: {
+      request: (input) => httpHandler(input),
+    },
+    changeSource,
+    getConfigDir: () => CONFIG_DIR,
     getApiBaseUrl: () => "http://127.0.0.1:8787",
     getSyncToken: async () => createToken(),
     invalidateSyncToken: vi.fn(),
@@ -476,137 +497,14 @@ function createEngine(
     setStorageStatus: vi.fn(),
     ...overrides,
   });
-}
-
-type ObsidianSyncEngineDepsForTest = Parameters<typeof createObsidianSyncEngine>[0];
-
-function createPlugin(
-  callbacks: Partial<Record<"modify", VaultEventCallback>>,
-  readBinary: () => Promise<Uint8Array>,
-  visibleFiles: TFile[] = [createFile("note.md")],
-): Plugin {
-  const localStorage = new Map<string, unknown>();
-  const directories = new Set([".obsidian/plugins/synch"]);
-  const files = new Map<string, string | Uint8Array>();
 
   return {
-    manifest: {
-      dir: ".obsidian/plugins/synch",
+    engine,
+    changeSource,
+    setHttpHandler: (handler) => {
+      httpHandler = handler;
     },
-    registerEvent: vi.fn(),
-    app: {
-      loadLocalStorage(key: string): unknown | null {
-        return localStorage.get(key) ?? null;
-      },
-      saveLocalStorage(key: string, value: unknown | null): void {
-        if (value === null) {
-          localStorage.delete(key);
-          return;
-        }
-
-        localStorage.set(key, value);
-      },
-      vault: {
-        configDir: ".obsidian",
-        getFiles: vi.fn(() => visibleFiles),
-        readBinary: vi.fn(async () => toArrayBuffer(await readBinary())),
-        on: vi.fn((eventName: string, callback: VaultEventCallback) => {
-          if (eventName === "modify") {
-            callbacks.modify = callback;
-          }
-          return {};
-        }),
-        adapter: {
-          async exists(path: string): Promise<boolean> {
-            return directories.has(path) || files.has(path);
-          },
-          async read(path: string): Promise<string> {
-            const file = files.get(path);
-            if (typeof file !== "string") {
-              throw new Error(`missing test file: ${path}`);
-            }
-
-            return file;
-          },
-          async readBinary(path: string): Promise<ArrayBuffer> {
-            const file = files.get(path);
-            if (!(file instanceof Uint8Array)) {
-              throw new Error(`missing test file: ${path}`);
-            }
-
-            return toArrayBuffer(file);
-          },
-          async write(path: string, value: string): Promise<void> {
-            files.set(path, value);
-          },
-          async writeBinary(path: string, value: ArrayBuffer): Promise<void> {
-            files.set(path, new Uint8Array(value));
-          },
-          async remove(path: string): Promise<void> {
-            files.delete(path);
-          },
-          async mkdir(path: string): Promise<void> {
-            directories.add(path);
-          },
-          async stat(path: string): Promise<{
-            type: "file" | "folder";
-            mtime: number;
-            size: number;
-          } | null> {
-            if (directories.has(path)) {
-              return { type: "folder", mtime: 1, size: 0 };
-            }
-            const file = files.get(path);
-            if (!file) {
-              return null;
-            }
-            return {
-              type: "file",
-              mtime: 1,
-              size: typeof file === "string" ? file.length : file.byteLength,
-            };
-          },
-          async list(path: string): Promise<{ files: string[]; folders: string[] }> {
-            const prefix = path ? `${path}/` : "";
-            const childFiles: string[] = [];
-            const childFolders = new Set<string>();
-            for (const filePath of files.keys()) {
-              if (!filePath.startsWith(prefix)) {
-                continue;
-              }
-              const rest = filePath.slice(prefix.length);
-              const separatorIndex = rest.indexOf("/");
-              if (separatorIndex < 0) {
-                childFiles.push(filePath);
-              } else {
-                childFolders.add(`${prefix}${rest.slice(0, separatorIndex)}`);
-              }
-            }
-            for (const folderPath of directories) {
-              if (!folderPath.startsWith(prefix) || folderPath === path) {
-                continue;
-              }
-              const rest = folderPath.slice(prefix.length);
-              const separatorIndex = rest.indexOf("/");
-              childFolders.add(
-                separatorIndex < 0
-                  ? folderPath
-                  : `${prefix}${rest.slice(0, separatorIndex)}`,
-              );
-            }
-            return {
-              files: childFiles.sort(),
-              folders: [...childFolders].sort(),
-            };
-          },
-        },
-      },
-    },
-    async loadData(): Promise<unknown> {
-      return null;
-    },
-    async saveData(): Promise<void> {},
-  } as unknown as Plugin;
+  };
 }
 
 function createToken(): SyncTokenResponse {
@@ -617,16 +515,6 @@ function createToken(): SyncTokenResponse {
     localVaultId: "local-vault-1",
     syncFormatVersion: 1,
   };
-}
-
-function createFile(path: string): TFile {
-  const file = new ObsidianTFile(path) as TFile;
-  file.stat = {
-    ctime: 1,
-    mtime: 1,
-    size: 3,
-  };
-  return file;
 }
 
 function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {

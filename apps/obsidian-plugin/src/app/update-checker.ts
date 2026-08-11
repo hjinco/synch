@@ -1,4 +1,4 @@
-import { defaultHttpClient, type HttpClient } from "../platform/http";
+import { defaultHttpClient, type HttpClient } from "../adapters/http";
 import type { SynchCommunityPluginUpdateStatus } from "../ui/contracts";
 
 export const SYNCH_PLUGIN_COMMUNITY_RELEASE_FEED_URL =

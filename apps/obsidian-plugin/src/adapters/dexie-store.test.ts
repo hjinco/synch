@@ -6,7 +6,7 @@ import {
   clearDexieSyncStore,
   createDexieSyncStore,
   readDexieSyncStoreConnection,
-} from "./dexie";
+} from "./dexie-store";
 import { replacePendingMutationForEntry } from "@synch/sync-client/sync/core/mutation-queue";
 
 describe("DexieSyncStore", () => {

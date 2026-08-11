@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import type { HttpClient } from "../platform/http";
+import type { HttpClient } from "../adapters/http";
 import { SynchServerPluginVersionChecker } from "./server-version-checker";
 
 describe("SynchServerPluginVersionChecker", () => {

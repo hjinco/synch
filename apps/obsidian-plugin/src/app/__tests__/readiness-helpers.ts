@@ -1,8 +1,8 @@
 import type { Plugin } from "obsidian";
 import { vi } from "vitest";
 
-import { writeAuthSessionToken } from "../../auth/storage";
-import { writeStoredRemoteVaultKeySecret } from "../../remote-vault/device-storage";
+import { writeAuthSessionToken } from "../../adapters/auth-session-storage";
+import { writeStoredRemoteVaultKeySecret } from "../../adapters/remote-vault-device-storage";
 import { DEFAULT_SYNC_FILE_RULES } from "@synch/sync-client/sync/core/file-rules";
 import { DEFAULT_VAULT_CONFIG_SYNC_RULES } from "@synch/sync-client/sync/core/vault-config-rules";
 import type { SyncConnection } from "@synch/sync-client/sync/store/store";

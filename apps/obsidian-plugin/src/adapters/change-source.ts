@@ -4,7 +4,7 @@ import type {
   SyncChangeSource,
   SyncChangeSourceContext,
 } from "@synch/sync-client/sync/runtime/change-source";
-import type { ObsidianSyncVaultAdapter } from "../vault/obsidian-vault-adapter";
+import type { ObsidianSyncVaultAdapter } from "./vault-adapter";
 import { SyncVaultEventHandler } from "./vault-event-handler";
 
 export interface ObsidianSyncChangeSourceDeps {

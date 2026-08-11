@@ -5,7 +5,7 @@ import {
   clearStoredRemoteVaultKeySecret,
   readStoredRemoteVaultKeySecret,
   writeStoredRemoteVaultKeySecret,
-} from "../remote-vault/device-storage";
+} from "../adapters/remote-vault-device-storage";
 import type { SyncConnection } from "@synch/sync-client/sync/store/store";
 
 export interface SynchPluginSessionStoreDeps {

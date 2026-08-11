@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 
-import { createTestPlugin } from "../../test-support/test-plugin";
+import { createTestPlugin } from "../test-support/test-plugin";
 import { DEFAULT_VAULT_CONFIG_SYNC_RULES } from "@synch/sync-client/sync/core/vault-config-rules";
-import { ObsidianVaultConfigSource } from "./obsidian-vault-config-source";
+import { ObsidianVaultConfigSource } from "./vault-config-source";
 
 describe("ObsidianVaultConfigSource", () => {
   it("lists allowlisted config files through the adapter", async () => {

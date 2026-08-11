@@ -1,4 +1,4 @@
-import { t } from "../i18n";
+import { t } from "../../i18n";
 import type { AuthNoticeEvent, AuthStatus } from "@synch/sync-client/auth/manager";
 
 export function formatAuthStatusLabel(status: AuthStatus): string {

@@ -1,6 +1,6 @@
 import { BillingClient } from "@synch/sync-client/billing/client";
-import { defaultHttpClient } from "../platform/http";
-import { buildBillingWebPageUrl } from "../billing/web-url";
+import { defaultHttpClient } from "../adapters/http";
+import { buildBillingWebPageUrl } from "./billing-web-url";
 import { getServerDeployment } from "../config";
 import { getSynchLocale } from "../i18n";
 import type { SynchSubscriptionStatus } from "../ui/contracts";

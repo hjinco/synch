@@ -28,7 +28,7 @@ import {
   clearDexieSyncStore,
   createDexieSyncStore,
   readDexieSyncStoreConnection,
-} from "../store/dexie";
+} from "../adapters/dexie-store";
 import type { SyncConnection } from "@synch/sync-client/sync/store/store";
 import type { ReconcileOnceResult } from "@synch/sync-client/sync/engine/local-reconcile-service";
 import type { SyncDeletedEntriesPage } from "@synch/sync-client/sync/runtime/version-history-service";
@@ -38,7 +38,7 @@ import {
   type SyncEngineEntryVersionsPage,
   type SyncFileSizeBlockedFile,
 } from "@synch/sync-client/sync/runtime/sync-engine";
-import { createObsidianSyncEngine } from "./obsidian-sync-engine";
+import { createObsidianSyncEngine } from "../adapters/sync-engine";
 import type { SyncEntryVersionPreview } from "@synch/sync-client/sync/runtime/version-history-service";
 import {
   getUserVisibleSyncDisplayPercent,

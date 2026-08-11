@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import { DEFAULT_SYNC_FILE_RULES } from "@synch/sync-client/sync/core/file-rules";
-import { createTestPlugin } from "../../test-support/test-plugin";
-import { ObsidianSyncVaultAdapter } from "./obsidian-vault-adapter";
+import { createTestPlugin } from "../test-support/test-plugin";
+import { ObsidianSyncVaultAdapter } from "./vault-adapter";
 
 describe("ObsidianSyncVaultAdapter", () => {
   it("lists files from included hidden folders through the adapter", async () => {

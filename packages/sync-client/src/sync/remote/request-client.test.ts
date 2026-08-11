@@ -1,21 +1,14 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { setRequestUrlMock } from "obsidian";
+import { describe, expect, it, vi } from "vitest";
 
-import { defaultHttpClient } from "../../platform/http";
-import type { SyncTokenResponse } from "@synch/sync-client/sync/remote/client";
-import { SyncAuthorizedRequestClient } from "@synch/sync-client/sync/remote/request-client";
+import type { HttpRequestInput, HttpResponseLike } from "../../http/request";
+import type { SyncTokenResponse } from "./client";
+import { SyncAuthorizedRequestClient } from "./request-client";
 
 describe("SyncAuthorizedRequestClient", () => {
-  afterEach(() => {
-    setRequestUrlMock(async () => {
-      throw new Error("requestUrl mock is not configured");
-    });
-  });
-
   it("adds the active sync token to sync requests", async () => {
-    let capturedRequest: Record<string, unknown> | null = null;
-    setRequestUrlMock(async (input) => {
-      capturedRequest = input as Record<string, unknown>;
+    let capturedRequest: HttpRequestInput | null = null;
+    const httpClient = createMockHttpClient(async (input) => {
+      capturedRequest = input;
       return {
         status: 200,
         json: {
@@ -25,10 +18,10 @@ describe("SyncAuthorizedRequestClient", () => {
     });
     const invalidateSyncToken = vi.fn();
     const client = new SyncAuthorizedRequestClient({
-      getApiBaseUrl: () => "http://127.0.0.1:8787/",
+      getApiBaseUrl: () => "http://127.0.0.1:8787",
       getSyncToken: async () => createToken("sync-token-1"),
       invalidateSyncToken,
-      httpClient: defaultHttpClient,
+      httpClient,
     });
 
     const result = await client.request({
@@ -40,7 +33,6 @@ describe("SyncAuthorizedRequestClient", () => {
     expect(capturedRequest).toMatchObject({
       url: "http://127.0.0.1:8787/v1/vaults/vault-1/blobs/blob-1",
       method: "GET",
-      throw: false,
       headers: {
         authorization: "Bearer sync-token-1",
       },
@@ -49,9 +41,9 @@ describe("SyncAuthorizedRequestClient", () => {
   });
 
   it("invalidates the cached token and retries once after a 401", async () => {
-    const capturedRequests: Record<string, unknown>[] = [];
-    setRequestUrlMock(async (input) => {
-      capturedRequests.push(input as Record<string, unknown>);
+    const capturedRequests: HttpRequestInput[] = [];
+    const httpClient = createMockHttpClient(async (input) => {
+      capturedRequests.push(input);
       if (capturedRequests.length === 1) {
         return {
           status: 401,
@@ -75,7 +67,7 @@ describe("SyncAuthorizedRequestClient", () => {
       getApiBaseUrl: () => "http://127.0.0.1:8787",
       getSyncToken,
       invalidateSyncToken,
-      httpClient: defaultHttpClient,
+      httpClient,
     });
 
     const result = await client.request({
@@ -107,7 +99,7 @@ describe("SyncAuthorizedRequestClient", () => {
   });
 
   it("does not retry indefinitely when the refreshed token is also rejected", async () => {
-    setRequestUrlMock(async () => ({
+    const httpClient = createMockHttpClient(async () => ({
       status: 401,
       json: {
         error: "unauthorized",
@@ -122,7 +114,7 @@ describe("SyncAuthorizedRequestClient", () => {
       getApiBaseUrl: () => "http://127.0.0.1:8787",
       getSyncToken,
       invalidateSyncToken,
-      httpClient: defaultHttpClient,
+      httpClient,
     });
 
     const result = await client.request({
@@ -135,6 +127,14 @@ describe("SyncAuthorizedRequestClient", () => {
     expect(getSyncToken).toHaveBeenCalledTimes(2);
   });
 });
+
+function createMockHttpClient(
+  handler: (input: HttpRequestInput) => Promise<HttpResponseLike>,
+): { request(input: HttpRequestInput): Promise<HttpResponseLike> } {
+  return {
+    request: handler,
+  };
+}
 
 function createToken(token: string): SyncTokenResponse {
   return {

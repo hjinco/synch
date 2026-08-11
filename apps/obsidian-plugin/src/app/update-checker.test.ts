@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import type { HttpClient } from "../platform/http";
+import type { HttpClient } from "../adapters/http";
 import {
   SYNCH_PLUGIN_COMMUNITY_RELEASE_FEED_URL,
   SynchPluginUpdateChecker,

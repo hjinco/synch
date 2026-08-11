@@ -1,13 +1,13 @@
 import type { Plugin } from "obsidian";
 
-import { defaultHttpClient } from "../../platform/http";
+import { defaultHttpClient } from "./http";
 import {
   SyncEngine,
   type SyncEngineDeps,
 } from "@synch/sync-client/sync/runtime/sync-engine";
-import { ObsidianSyncVaultAdapter } from "../vault/obsidian-vault-adapter";
-import { ObsidianVaultConfigSource } from "../vault/obsidian-vault-config-source";
-import { ObsidianSyncChangeSource } from "./obsidian-sync-change-source";
+import { ObsidianSyncVaultAdapter } from "./vault-adapter";
+import { ObsidianVaultConfigSource } from "./vault-config-source";
+import { ObsidianSyncChangeSource } from "./change-source";
 
 export type ObsidianSyncEngineDeps = Omit<
   SyncEngineDeps,

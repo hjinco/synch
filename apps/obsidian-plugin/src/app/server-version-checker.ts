@@ -2,7 +2,7 @@ import {
   defaultHttpClient,
   stripTrailingSlash,
   type HttpClient,
-} from "../platform/http";
+} from "../adapters/http";
 
 export const SUPPORTED_SYNCH_API_MAJOR = 1;
 

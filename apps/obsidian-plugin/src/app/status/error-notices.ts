@@ -3,7 +3,7 @@ import {
   formatVaultPasswordValidationError,
   t,
   type SynchErrorContextKey,
-} from "../i18n";
+} from "../../i18n";
 import { RemoteVaultInputError } from "@synch/sync-client/remote-vault/manager";
 
 // Translates coded domain errors thrown by feature layers into user-facing

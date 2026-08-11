@@ -1,7 +1,7 @@
 import { setIcon, type Plugin } from "obsidian";
 
 import { t } from "../../i18n";
-import { isStorageWarningStatus } from "../../platform/storage-warning";
+import { isStorageWarningStatus } from "../../adapters/storage-warning";
 import type { SynchStorageStatus, SynchSyncState } from "../contracts";
 
 export interface ObsidianSettingsApi {

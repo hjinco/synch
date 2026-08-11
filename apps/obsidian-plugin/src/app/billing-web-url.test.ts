@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { buildBillingWebPageUrl } from "./web-url";
+import { buildBillingWebPageUrl } from "./billing-web-url";
 
 describe("billing web URL helpers", () => {
   it("maps Synch API hosts to the Synch website", () => {

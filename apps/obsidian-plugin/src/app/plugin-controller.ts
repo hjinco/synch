@@ -1,23 +1,23 @@
 import { Notice, type Plugin, TFolder } from "obsidian";
 
-import { SynchReadinessCoordinator } from "../app/readiness-coordinator";
-import { SynchPluginSessionStore } from "../app/session-store";
-import { SynchSubscriptionService } from "../app/subscription-service";
-import { SynchPluginUpdateService } from "../app/update-service";
-import { defaultHttpClient } from "../platform/http";
+import { SynchReadinessCoordinator } from "./readiness-coordinator";
+import { SynchPluginSessionStore } from "./session-store";
+import { SynchSubscriptionService } from "./subscription-service";
+import { SynchPluginUpdateService } from "./update-service";
+import { defaultHttpClient } from "../adapters/http";
 import { AuthClient } from "@synch/sync-client/auth/client";
 import { RemoteVaultClient } from "@synch/sync-client/remote-vault/client";
 import { SyncAccessClient } from "@synch/sync-client/sync/remote/client";
 import { getSynchLocale, t, type SynchErrorContextKey } from "../i18n";
-import { formatSynchErrorNotice } from "./error-notices";
-import { formatAuthNotice, formatAuthStatusLabel } from "./auth-status-label";
+import { formatSynchErrorNotice } from "./status/error-notices";
+import { formatAuthNotice, formatAuthStatusLabel } from "./status/auth-status-label";
 import {
   formatRemoteVaultNotice,
   formatRemoteVaultStatusLabel,
-} from "./remote-vault-status-label";
+} from "./status/remote-vault-status-label";
 import { AuthManager, type AuthReadiness } from "@synch/sync-client/auth/manager";
-import { ObsidianAuthSessionTokenStore } from "../auth/storage";
-import { SynchPluginDataStore } from "../platform/plugin-data";
+import { ObsidianAuthSessionTokenStore } from "../adapters/auth-session-storage";
+import { SynchPluginDataStore } from "../adapters/plugin-data";
 import type { SynchSettingsController } from "../ui/settings/controller";
 import { SynchSettingsStore } from "../settings/store";
 import { SynchRemoteVaultController } from "../ui/remote-vault/remote-vault-controller";
@@ -52,9 +52,9 @@ import { isReservedSyncPath } from "@synch/sync-client/sync/core/reserved-paths"
 import type { SyncTokenResponse } from "@synch/sync-client/sync/remote/client";
 import { InMemorySyncDiagnostics } from "@synch/sync-client/sync/diagnostics/in-memory";
 import type { SyncFailurePhase } from "@synch/sync-client/sync/diagnostics/types";
-import { SyncController } from "../sync/runtime/controller";
+import { SyncController } from "./sync-controller";
 import { SyncTokenManager } from "@synch/sync-client/sync/remote/token-manager";
-import { formatSyncStatusLabel } from "./sync-status-label";
+import { formatSyncStatusLabel } from "./status/sync-status-label";
 import { isRemoteVaultUnavailableError } from "@synch/sync-client/remote-vault/unavailable";
 import { RemoteVaultManager } from "@synch/sync-client/remote-vault/manager";
 

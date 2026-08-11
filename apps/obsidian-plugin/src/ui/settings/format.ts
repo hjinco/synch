@@ -3,7 +3,7 @@ import type { SynchSyncProgress, SynchSyncState } from "../contracts";
 import {
   isStorageFullStatus,
   isStorageWarningStatus,
-} from "../../platform/storage-warning";
+} from "../../adapters/storage-warning";
 import type { SynchSettingsController } from "./controller";
 
 export function shouldShowSyncSpinner(state: SynchSyncState): boolean {

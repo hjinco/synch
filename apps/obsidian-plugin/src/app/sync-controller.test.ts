@@ -3,9 +3,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { SyncTokenResponse } from "@synch/sync-client/sync/remote/client";
 import { DEFAULT_SYNC_FILE_RULES } from "@synch/sync-client/sync/core/file-rules";
 import { DEFAULT_VAULT_CONFIG_SYNC_RULES } from "@synch/sync-client/sync/core/vault-config-rules";
-import { createTestPlugin } from "../../test-support/test-plugin";
-import { formatSyncStatusLabel } from "../../app/sync-status-label";
-import { SyncController } from "./controller";
+import { createTestPlugin } from "../test-support/test-plugin";
+import { formatSyncStatusLabel } from "./status/sync-status-label";
+import { SyncController } from "./sync-controller";
 import { SyncEngine } from "@synch/sync-client/sync/runtime/sync-engine";
 import { InMemorySyncDiagnostics } from "@synch/sync-client/sync/diagnostics/in-memory";
 

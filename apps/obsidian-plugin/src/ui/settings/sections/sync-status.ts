@@ -1,6 +1,6 @@
 import { setIcon, setTooltip, Setting } from "obsidian";
 import { t } from "../../../i18n";
-import { isStorageWarningStatus } from "../../../platform/storage-warning";
+import { isStorageWarningStatus } from "../../../adapters/storage-warning";
 import type { SynchSettingsController } from "../controller";
 import { formatStorageDescription, formatSyncDescription, getStoragePercent, shouldShowSyncSpinner } from "../format";
 import { FileSizeBlockedWarningControls, ProgressBarControl, RefreshSettings, SyncStatusSettingControls } from "./shared";

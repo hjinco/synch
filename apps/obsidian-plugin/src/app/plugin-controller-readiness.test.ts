@@ -5,7 +5,7 @@ import {
   resetObsidianMocks,
   setRequestUrlMock,
 } from "../test-stubs/obsidian";
-import { SyncController } from "../sync/runtime/controller";
+import { SyncController } from "./sync-controller";
 import { SynchPluginController } from "./plugin-controller";
 import {
   createConnectedPlugin,

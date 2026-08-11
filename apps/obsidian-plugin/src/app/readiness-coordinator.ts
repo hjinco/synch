@@ -8,7 +8,7 @@ import {
   isRemoteVaultUnavailableError,
   type RemoteVaultUnavailableError,
 } from "@synch/sync-client/remote-vault/unavailable";
-import type { SyncController } from "../sync/runtime/controller";
+import type { SyncController } from "./sync-controller";
 import type { SynchUiEvent } from "../ui/ui-events";
 import type { SynchPluginSessionStore } from "./session-store";
 
