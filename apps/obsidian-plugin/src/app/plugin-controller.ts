@@ -15,7 +15,8 @@ import {
   formatRemoteVaultNotice,
   formatRemoteVaultStatusLabel,
 } from "./remote-vault-status-label";
-import { AuthManager, type AuthReadiness } from "../auth/manager";
+import { AuthManager, type AuthReadiness } from "@synch/sync-client/auth/manager";
+import { ObsidianAuthSessionTokenStore } from "../auth/storage";
 import { SynchPluginDataStore } from "../platform/plugin-data";
 import type { SynchSettingsController } from "../ui/settings/controller";
 import { SynchSettingsStore } from "../settings/store";
@@ -55,7 +56,7 @@ import { SyncController } from "../sync/runtime/controller";
 import { SyncTokenManager } from "@synch/sync-client/sync/remote/token-manager";
 import { formatSyncStatusLabel } from "./sync-status-label";
 import { isRemoteVaultUnavailableError } from "@synch/sync-client/remote-vault/unavailable";
-import { RemoteVaultManager } from "../remote-vault/manager";
+import { RemoteVaultManager } from "@synch/sync-client/remote-vault/manager";
 
 export interface SynchPluginControllerDeps {
   plugin: Plugin;
@@ -99,7 +100,7 @@ export class SynchPluginController implements SynchSettingsController {
     },
   });
   private readonly authManager = new AuthManager({
-    plugin: this.plugin,
+    sessionTokenStore: new ObsidianAuthSessionTokenStore(this.plugin),
     getApiBaseUrl: () => this.getApiBaseUrl(),
     authClient: new AuthClient(defaultHttpClient, "synch-obsidian-plugin"),
     refreshUi: () => {

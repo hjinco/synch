@@ -4,7 +4,7 @@ import {
   t,
   type SynchErrorContextKey,
 } from "../i18n";
-import { RemoteVaultInputError } from "../remote-vault/manager";
+import { RemoteVaultInputError } from "@synch/sync-client/remote-vault/manager";
 
 // Translates coded domain errors thrown by feature layers into user-facing
 // messages, then applies the shared error notice format.

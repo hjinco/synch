@@ -1,18 +1,18 @@
-import { hashBytes } from "@synch/sync-client/sync/core/content";
-import { decryptSyncBlob } from "@synch/sync-client/sync/core/crypto";
+import { hashBytes } from "../core/content";
+import { decryptSyncBlob } from "../core/crypto";
 import {
   shouldSyncVaultConfigPath,
   type VaultConfigSyncRules,
-} from "@synch/sync-client/sync/core/vault-config-rules";
-import type { SyncEventGate } from "@synch/sync-client/sync/engine/event-gate";
-import type { SyncPullClient } from "@synch/sync-client/sync/remote/pull-client";
-import type { SyncTokenResponse } from "@synch/sync-client/sync/remote/client";
-import type { SyncStore } from "@synch/sync-client/sync/store/store";
-import type { SyncVaultWriter } from "@synch/sync-client/sync/vault/vault-writer";
+} from "../core/vault-config-rules";
+import type { SyncEventGate } from "./event-gate";
+import type { SyncPullClient } from "../remote/pull-client";
+import type { SyncTokenResponse } from "../remote/client";
+import type { SyncStore } from "../store/store";
+import type { SyncVaultWriter } from "../vault/vault-writer";
 import {
   removeVaultPathIfExists,
   writeVaultBytes,
-} from "@synch/sync-client/sync/vault/vault-writer";
+} from "../vault/vault-writer";
 
 export interface ReapplyRemoteVaultConfigDeps {
   store: SyncStore;

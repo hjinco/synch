@@ -3,7 +3,7 @@ import {
   getUserVisibleSyncDisplayPercent,
   type UserVisibleSyncProgress,
   type UserVisibleSyncState,
-} from "../sync/runtime/user-visible-status";
+} from "@synch/sync-client/sync/runtime/user-visible-status";
 
 export function formatSyncStatusLabel(
   state: UserVisibleSyncState,

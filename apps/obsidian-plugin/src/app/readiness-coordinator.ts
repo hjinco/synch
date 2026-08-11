@@ -1,9 +1,9 @@
 import { Notice } from "obsidian";
 
-import type { AuthReadiness } from "../auth/manager";
+import type { AuthReadiness } from "@synch/sync-client/auth/manager";
 import { t, type SynchErrorContextKey } from "../i18n";
 import { isOfflineLikeError } from "@synch/sync-client/http/network-status";
-import type { RemoteVaultManager } from "../remote-vault/manager";
+import type { RemoteVaultManager } from "@synch/sync-client/remote-vault/manager";
 import {
   isRemoteVaultUnavailableError,
   type RemoteVaultUnavailableError,

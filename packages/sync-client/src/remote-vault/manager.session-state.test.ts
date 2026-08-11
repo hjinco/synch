@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 
-import type { StoredRemoteVaultKeySecret } from "../../device-storage";
-import type { RemoteVaultBootstrapResponse } from "@synch/sync-client/remote-vault/types";
-import { createManager } from "./helpers";
+import type { StoredRemoteVaultKeySecret } from "./types";
+import type { RemoteVaultBootstrapResponse } from "./types";
+import { createManager } from "./manager-test-helpers";
 
 describe("RemoteVaultManager session state", () => {
   it("disconnects the current vault from this device", async () => {
@@ -49,6 +49,7 @@ describe("RemoteVaultManager session state", () => {
         getRemoteVaultBootstrap: async (): Promise<RemoteVaultBootstrapResponse> => ({
           vault: {
             id: "vault-restored",
+            organizationId: "org-1",
             name: "Restored",
             activeKeyVersion: 1,
             createdAt: "2026-04-22T00:00:00.000Z",

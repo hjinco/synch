@@ -3,7 +3,7 @@ import type { VaultConfigSyncRules } from "@synch/sync-client/sync/core/vault-co
 
 // The only type bridge allowed so the ui layer never imports feature modules
 // directly.
-export type { AuthReadiness } from "../auth/manager";
+export type { AuthReadiness } from "@synch/sync-client/auth/manager";
 
 export type SynchFileRules = SyncFileRules;
 

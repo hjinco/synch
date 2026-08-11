@@ -2,7 +2,7 @@ import { t } from "../i18n";
 import type {
   RemoteVaultNoticeEvent,
   RemoteVaultStatus,
-} from "../remote-vault/manager";
+} from "@synch/sync-client/remote-vault/manager";
 
 export function formatRemoteVaultStatusLabel(
   status: RemoteVaultStatus,

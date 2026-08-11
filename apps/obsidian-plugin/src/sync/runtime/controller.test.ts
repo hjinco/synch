@@ -6,7 +6,7 @@ import { DEFAULT_VAULT_CONFIG_SYNC_RULES } from "@synch/sync-client/sync/core/va
 import { createTestPlugin } from "../../test-support/test-plugin";
 import { formatSyncStatusLabel } from "../../app/sync-status-label";
 import { SyncController } from "./controller";
-import { SyncEngine } from "./engine";
+import { SyncEngine } from "@synch/sync-client/sync/runtime/sync-engine";
 import { InMemorySyncDiagnostics } from "@synch/sync-client/sync/diagnostics/in-memory";
 
 describe("SyncController", () => {

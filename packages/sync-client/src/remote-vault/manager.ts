@@ -1,20 +1,20 @@
 import {
   createPasswordWrappedRemoteVaultKey,
   unwrapRemoteVaultKeyWithPassword,
-} from "@synch/sync-client/remote-vault/crypto";
-import type { StoredRemoteVaultKeySecret } from "./device-storage";
+} from "./crypto";
 import {
   validateVaultPassword,
   type VaultPasswordValidation,
-} from "@synch/sync-client/remote-vault/password-policy";
-import { RemoteVaultClient } from "@synch/sync-client/remote-vault/client";
+} from "./password-policy";
+import { RemoteVaultClient } from "./client";
 import type {
   RemoteVaultBootstrapResponse,
   RemoteVaultKeyWrapperRecord,
   RemoteVaultRecord,
   RemoteVaultSession,
   RemoteVaultSessionSummary,
-} from "@synch/sync-client/remote-vault/types";
+  StoredRemoteVaultKeySecret,
+} from "./types";
 
 export interface CreateRemoteVaultInput {
   name: string;
@@ -27,15 +27,14 @@ export interface BootstrapRemoteVaultInput {
   password: string;
 }
 
-// Vault state for UI display. Label formatting lives in the app layer
-// (app/remote-vault-status-label).
+// Vault state for UI display. Label formatting lives in the host app layer.
 export type RemoteVaultStatus =
   | { state: "loaded"; label: string }
   | { state: "stored_inactive" }
   | { state: "not_configured" };
 
 // Vault events that require user notification. Message formatting lives in the
-// app layer.
+// host app layer.
 export type RemoteVaultNoticeEvent =
   | { type: "disconnected"; label: string }
   | { type: "created_connected"; label: string }
@@ -50,7 +49,7 @@ export type RemoteVaultInputFailure =
     };
 
 // Carries input validation failures as codes. The user-facing message is
-// formatted by the display layer (app/error-notices).
+// formatted by the host display layer.
 export class RemoteVaultInputError extends Error {
   constructor(readonly failure: RemoteVaultInputFailure) {
     super(`Invalid remote vault input: ${failure.kind}`);

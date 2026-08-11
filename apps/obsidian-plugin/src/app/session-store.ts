@@ -1,6 +1,6 @@
 import type { Plugin } from "obsidian";
 
-import type { StoredRemoteVaultKeySecret } from "../remote-vault/device-storage";
+import type { StoredRemoteVaultKeySecret } from "@synch/sync-client/remote-vault/types";
 import {
   clearStoredRemoteVaultKeySecret,
   readStoredRemoteVaultKeySecret,

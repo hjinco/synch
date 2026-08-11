@@ -1,6 +1,6 @@
-import { decryptSyncMetadata } from "@synch/sync-client/sync/core/crypto";
-import { metadataContextFromMutation } from "@synch/sync-client/sync/engine/push-mutation-shared";
-import type { SyncStore } from "@synch/sync-client/sync/store/store";
+import { decryptSyncMetadata } from "../core/crypto";
+import { metadataContextFromMutation } from "./push-mutation-shared";
+import type { SyncStore } from "../store/store";
 
 export interface SyncFileSizeBlockedFile {
   path: string;

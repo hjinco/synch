@@ -1,39 +1,35 @@
-import type { Plugin } from "obsidian";
-
-import { defaultHttpClient } from "../../../platform/http";
 import {
   isOffline as detectOffline,
   type OfflineDetector,
-} from "@synch/sync-client/http/network-status";
-import type { RemoteVaultUnavailableError } from "@synch/sync-client/remote-vault/unavailable";
+} from "../../http/network-status";
+import type { HttpClient } from "../../http/request";
+import type { RemoteVaultUnavailableError } from "../../remote-vault/unavailable";
 import type {
   SyncDiagnostics,
   SyncFailurePhase,
-} from "@synch/sync-client/sync/diagnostics/types";
-import { SyncAutoLoop } from "@synch/sync-client/sync/engine/auto-sync";
-import type { SyncTokenResponse } from "@synch/sync-client/sync/remote/client";
-import { SyncEventGate } from "@synch/sync-client/sync/engine/event-gate";
-import { SyncEventRecorder } from "@synch/sync-client/sync/engine/event-recorder";
-import type { SyncFileRules } from "@synch/sync-client/sync/core/file-rules";
-import type { VaultConfigSyncRules } from "@synch/sync-client/sync/core/vault-config-rules";
+} from "../diagnostics/types";
+import { SyncAutoLoop } from "../engine/auto-sync";
+import type { SyncTokenResponse } from "../remote/client";
+import { SyncEventGate } from "../engine/event-gate";
+import { SyncEventRecorder } from "../engine/event-recorder";
+import type { SyncFileRules } from "../core/file-rules";
+import type { VaultConfigSyncRules } from "../core/vault-config-rules";
 import {
   decideVaultPathSync,
   shouldApplyRemoteVaultPath,
   shouldUseLatestRemoteVaultConfig,
   type VaultPathPolicyRules,
-} from "@synch/sync-client/sync/core/vault-path-policy";
+} from "../core/vault-path-policy";
 import {
   type ReconcileOnceResult,
   SyncLocalReconcileService,
-} from "@synch/sync-client/sync/engine/local-reconcile-service";
-import { ObsidianSyncVaultAdapter } from "../../vault/obsidian-vault-adapter";
-import type { SyncVaultFile } from "@synch/sync-client/sync/vault/ports";
-import { ObsidianVaultConfigSource } from "../../vault/obsidian-vault-config-source";
-import { SyncPullService } from "@synch/sync-client/sync/engine/pull-service";
-import { SyncPushService } from "@synch/sync-client/sync/engine/push-service";
-import { SyncAuthorizedRequestClient } from "@synch/sync-client/sync/remote/request-client";
-import { SyncBlobClient } from "@synch/sync-client/sync/remote/blob-client";
-import { SyncPullClient } from "@synch/sync-client/sync/remote/pull-client";
+} from "../engine/local-reconcile-service";
+import type { SyncVaultAdapter, SyncVaultFile } from "../vault/ports";
+import { SyncPullService } from "../engine/pull-service";
+import { SyncPushService } from "../engine/push-service";
+import { SyncAuthorizedRequestClient } from "../remote/request-client";
+import { SyncBlobClient } from "../remote/blob-client";
+import { SyncPullClient } from "../remote/pull-client";
 import {
   type EntryVersion,
   type DeletedEntryPageCursor,
@@ -41,15 +37,17 @@ import {
   type SyncRealtimeSession,
   type SyncStorageStatus,
   SyncRealtimeClient,
-} from "@synch/sync-client/sync/remote/realtime-client";
-import type { SyncStore } from "@synch/sync-client/sync/store/store";
+} from "../remote/realtime-client";
+import type { WebSocketFactory } from "../remote/realtime-types";
+import type { SyncStore } from "../store/store";
 import {
   getOrCreateStoredLocalVaultId,
   readStoredSyncConnection,
-} from "@synch/sync-client/sync/store/connection";
-import type { UserVisibleSyncState } from "../user-visible-status";
-import type { UserVisibleSyncProgress } from "../user-visible-status";
-import { SyncVaultEventHandler } from "../vault-event-handler";
+} from "../store/connection";
+import type { UserVisibleSyncState } from "./user-visible-status";
+import type { UserVisibleSyncProgress } from "./user-visible-status";
+import type { SyncChangeSource } from "./change-source";
+import type { SyncVaultConfigSource } from "./vault-config-source";
 import {
   SyncVersionHistoryService,
   type SyncDeletedEntriesPurgeResult,
@@ -57,21 +55,26 @@ import {
   type SyncDeletedEntriesPage,
   type SyncEntryVersionPreview,
   type SyncEntryVersionsPage,
-} from "@synch/sync-client/sync/runtime/version-history-service";
+} from "./version-history-service";
 import {
   listFileSizeBlockedFiles,
   type SyncFileSizeBlockedFile,
-} from "./file-size-blocked";
+} from "../engine/file-size-blocked";
 import {
   SyncActivityTracker,
   type SyncActivityKind,
-} from "./sync-activity-tracker";
-import { reapplyAllowedRemoteVaultConfig } from "./vault-config-reapply";
+} from "../engine/sync-activity-tracker";
+import { reapplyAllowedRemoteVaultConfig } from "../engine/vault-config-reapply";
 
 const HIDDEN_FOLDER_RECONCILE_INTERVAL_MS = 60_000;
 
 export interface SyncEngineDeps {
-  plugin: Plugin;
+  vaultAdapter: SyncVaultAdapter;
+  vaultConfigSource: SyncVaultConfigSource;
+  httpClient: HttpClient;
+  changeSource: SyncChangeSource;
+  getConfigDir: () => string;
+  createWebSocket?: WebSocketFactory["create"];
   getApiBaseUrl: () => string;
   getSyncToken: () => Promise<SyncTokenResponse>;
   invalidateSyncToken: () => void;
@@ -110,245 +113,227 @@ export class SyncEngine {
   private syncStore: SyncStore | null = null;
   private localMutationQueue: Promise<void> = Promise.resolve();
   private readonly activities = new SyncActivityTracker();
-  private hiddenFolderReconcileTimer: number | null = null;
+  private hiddenFolderReconcileTimer: ReturnType<typeof setInterval> | null = null;
   private hiddenFolderReconcilePromise: Promise<void> | null = null;
   private readonly syncEventGate = new SyncEventGate();
-  private readonly vaultAdapter = new ObsidianSyncVaultAdapter(
-    this.deps.plugin,
-    () => this.deps.getSyncFileRules(),
-  );
-  private readonly vaultConfigSource = new ObsidianVaultConfigSource(
-    this.deps.plugin,
-    () => this.deps.getVaultConfigSyncRules(),
-  );
+  private readonly vaultAdapter: SyncVaultAdapter;
+  private readonly vaultConfigSource: SyncVaultConfigSource;
   private readonly syncEventRecorder = new SyncEventRecorder({
     getSyncStore: () => this.syncStore,
     getRemoteVaultKey: () => this.deps.getRemoteVaultKey(),
     eventGate: this.syncEventGate,
   });
-  private readonly syncRequestClient = new SyncAuthorizedRequestClient({
-    getApiBaseUrl: () => this.deps.getApiBaseUrl(),
-    getSyncToken: async () => await this.deps.getSyncToken(),
-    invalidateSyncToken: () => this.deps.invalidateSyncToken(),
-    httpClient: defaultHttpClient,
-  });
-  private readonly syncPullClient = new SyncPullClient(this.syncRequestClient);
-  private readonly syncPushService = new SyncPushService({
-    getApiBaseUrl: () => this.deps.getApiBaseUrl(),
-    getSyncToken: async () => await this.deps.getSyncToken(),
-    getSyncStore: () => this.syncStore,
-    getRemoteVaultKey: () => this.deps.getRemoteVaultKey(),
-    fileReader: this.vaultAdapter,
-    conflictFileWriter: this.vaultAdapter,
-    blobClient: new SyncBlobClient(this.syncRequestClient),
-    onProgress: async (progress) => {
-      this.reportActivityProgress(progress);
-    },
-    onConflict: (event) => this.deps.notifySyncConflict(event),
-    onFileSizeBlockedFilesChange: () => {
-      this.deps.onFileSizeBlockedFilesChange?.();
-    },
-    onFileSyncStarted: (event) => {
-      this.deps.diagnostics.record({
-        type: "file_sync_started",
-        direction: "upload",
-        ...event,
-      });
-    },
-    onFileSyncCompleted: (event) => {
-      this.deps.diagnostics.record({
-        type: "file_sync_completed",
-        direction: "upload",
-        ...event,
-      });
-    },
-    onFileSyncFailed: (event) => {
-      this.deps.diagnostics.record({
-        type: "file_sync_failed",
-        direction: "upload",
-        ...event,
-      });
-    },
-  });
-  private readonly syncLocalReconcileService = new SyncLocalReconcileService({
-    getSyncStore: () => this.syncStore,
-    getRemoteVaultKey: () => this.deps.getRemoteVaultKey(),
-    shouldSyncPath: (path) =>
-      this.decideVaultPathSync(path).kind === "sync",
-    scanner: {
-      listFiles: async () => {
-        const byPath = new Map<string, SyncVaultFile>();
-        for (const file of await this.vaultAdapter.listFiles()) {
-          byPath.set(file.path, file);
-        }
-        for (const file of await this.vaultConfigSource.listFiles()) {
-          byPath.set(file.path, file);
-        }
-        return [...byPath.values()];
-      },
-    },
-  });
-  private readonly syncAutoLoop = new SyncAutoLoop({
-    getApiBaseUrl: () => this.deps.getApiBaseUrl(),
-    getSyncToken: async () => await this.deps.getSyncToken(),
-    getSyncStore: () => this.syncStore,
-    realtimeClient: new SyncRealtimeClient({
-      create: (url, protocols) => new WebSocket(url, protocols),
-    }),
-    pushPendingMutations: async (session) =>
-      await this.withSyncActivity("push", async () => {
-        return await this.syncPushService.pushPendingMutations(session);
-      }),
-    unblockFileSizeBlockedMutations: async (session) =>
-      await this.withSyncActivity("local", async () => {
-        const unblocked = await this.syncPushService.unblockFileSizeBlockedMutations(
-          session.maxFileSizeBytes,
-        );
-        if (unblocked > 0) {
-          this.deps.onFileSizeBlockedFilesChange?.();
-        }
-        return unblocked;
-      }),
-    pullOnce: async (session) =>
-      await this.withSyncActivity("pull", async () => {
-        return await this.syncPullService.pullOnce(session);
-      }),
-    shouldDeferSyncWork: () => this.deps.shouldDeferSyncWork(),
-    onConnectionStateChange: (state) => {
-      this.deps.diagnostics.record({
-        type: "connection_state_changed",
-        state,
-      });
-      if (state === "reconnecting") {
-        this.setOnlineSyncStatus("reconnecting");
-        return;
-      }
+  private readonly syncRequestClient: SyncAuthorizedRequestClient;
+  private readonly syncPullClient: SyncPullClient;
+  private readonly syncPushService: SyncPushService;
+  private readonly syncLocalReconcileService: SyncLocalReconcileService;
+  private readonly syncAutoLoop: SyncAutoLoop;
+  private readonly syncPullService: SyncPullService;
+  private readonly syncVersionHistoryService: SyncVersionHistoryService;
 
-      if (state === "connecting") {
+  constructor(private readonly deps: SyncEngineDeps) {
+    this.vaultAdapter = deps.vaultAdapter;
+    this.vaultConfigSource = deps.vaultConfigSource;
+
+    this.syncRequestClient = new SyncAuthorizedRequestClient({
+      getApiBaseUrl: () => this.deps.getApiBaseUrl(),
+      getSyncToken: async () => await this.deps.getSyncToken(),
+      invalidateSyncToken: () => this.deps.invalidateSyncToken(),
+      httpClient: this.deps.httpClient,
+    });
+    this.syncPullClient = new SyncPullClient(this.syncRequestClient);
+    this.syncPushService = new SyncPushService({
+      getApiBaseUrl: () => this.deps.getApiBaseUrl(),
+      getSyncToken: async () => await this.deps.getSyncToken(),
+      getSyncStore: () => this.syncStore,
+      getRemoteVaultKey: () => this.deps.getRemoteVaultKey(),
+      fileReader: this.vaultAdapter,
+      conflictFileWriter: this.vaultAdapter,
+      blobClient: new SyncBlobClient(this.syncRequestClient),
+      onProgress: async (progress) => {
+        this.reportActivityProgress(progress);
+      },
+      onConflict: (event) => this.deps.notifySyncConflict(event),
+      onFileSizeBlockedFilesChange: () => {
+        this.deps.onFileSizeBlockedFilesChange?.();
+      },
+      onFileSyncStarted: (event) => {
+        this.deps.diagnostics.record({
+          type: "file_sync_started",
+          direction: "upload",
+          ...event,
+        });
+      },
+      onFileSyncCompleted: (event) => {
+        this.deps.diagnostics.record({
+          type: "file_sync_completed",
+          direction: "upload",
+          ...event,
+        });
+      },
+      onFileSyncFailed: (event) => {
+        this.deps.diagnostics.record({
+          type: "file_sync_failed",
+          direction: "upload",
+          ...event,
+        });
+      },
+    });
+    this.syncLocalReconcileService = new SyncLocalReconcileService({
+      getSyncStore: () => this.syncStore,
+      getRemoteVaultKey: () => this.deps.getRemoteVaultKey(),
+      shouldSyncPath: (path) =>
+        this.decideVaultPathSync(path).kind === "sync",
+      scanner: {
+        listFiles: async () => {
+          const byPath = new Map<string, SyncVaultFile>();
+          for (const file of await this.vaultAdapter.listFiles()) {
+            byPath.set(file.path, file);
+          }
+          for (const file of await this.vaultConfigSource.listFiles()) {
+            byPath.set(file.path, file);
+          }
+          return [...byPath.values()];
+        },
+      },
+    });
+    this.syncAutoLoop = new SyncAutoLoop({
+      getApiBaseUrl: () => this.deps.getApiBaseUrl(),
+      getSyncToken: async () => await this.deps.getSyncToken(),
+      getSyncStore: () => this.syncStore,
+      realtimeClient: new SyncRealtimeClient({
+        create: (url, protocols) =>
+          this.deps.createWebSocket
+            ? this.deps.createWebSocket(url, protocols)
+            : new WebSocket(url, protocols),
+      }),
+      pushPendingMutations: async (session) =>
+        await this.withSyncActivity("push", async () => {
+          return await this.syncPushService.pushPendingMutations(session);
+        }),
+      unblockFileSizeBlockedMutations: async (session) =>
+        await this.withSyncActivity("local", async () => {
+          const unblocked = await this.syncPushService.unblockFileSizeBlockedMutations(
+            session.maxFileSizeBytes,
+          );
+          if (unblocked > 0) {
+            this.deps.onFileSizeBlockedFilesChange?.();
+          }
+          return unblocked;
+        }),
+      pullOnce: async (session) =>
+        await this.withSyncActivity("pull", async () => {
+          return await this.syncPullService.pullOnce(session);
+        }),
+      shouldDeferSyncWork: () => this.deps.shouldDeferSyncWork(),
+      onConnectionStateChange: (state) => {
+        this.deps.diagnostics.record({
+          type: "connection_state_changed",
+          state,
+        });
+        if (state === "reconnecting") {
+          this.setOnlineSyncStatus("reconnecting");
+          return;
+        }
+
+        if (state === "connecting") {
+          this.setOnlineSyncStatus("syncing");
+        }
+      },
+      onStorageStatusChange: (status) => {
+        this.deps.setStorageStatus(status);
+      },
+      onSyncScheduled: () => {
+        this.deps.diagnostics.record({
+          type: "work_scheduled",
+          mode: "immediate",
+        });
         this.setOnlineSyncStatus("syncing");
-      }
-    },
-    onStorageStatusChange: (status) => {
-      this.deps.setStorageStatus(status);
-    },
-    onSyncScheduled: () => {
-      this.deps.diagnostics.record({
-        type: "work_scheduled",
-        mode: "immediate",
-      });
-      this.setOnlineSyncStatus("syncing");
-    },
-    onSyncDeferred: () => {
-      this.deps.diagnostics.record({
-        type: "work_scheduled",
-        mode: "deferred",
-      });
-      this.deps.setSyncStatus("pending");
-    },
-    onIdle: () => {
-      this.deps.setSyncStatus("up_to_date");
-    },
-    onError: (error) => {
-      void this.deps.onSyncError(error, "auto_sync");
-    },
-    onRetryScheduled: ({ attempt, delayMs }) => {
-      this.deps.diagnostics.record({
-        type: "retry_scheduled",
-        attempt,
-        delayMs,
-      });
-    },
-    onRemoteVaultUnavailable: async (error) => {
-      await this.deps.onRemoteVaultUnavailable?.(error);
-    },
-    onStorageQuotaExceeded: async () => {
-      this.deps.diagnostics.record({
-        type: "storage_quota_exceeded",
-      });
-      await this.deps.onStorageQuotaExceeded?.();
-    },
-  });
-  private readonly syncVaultEventHandler = new SyncVaultEventHandler({
-    plugin: this.deps.plugin,
-    vaultAdapter: this.vaultAdapter,
-    eventRecorder: this.syncEventRecorder,
-    autoLoop: {
-      notifyLocalChange: () => this.notifyLocalChange(),
-    },
-    runLocalMutationWork: async (work) => await this.runLocalMutationWork(work),
-    hasActiveRemoteVaultSession: () => this.deps.hasActiveRemoteVaultSession(),
-    onError: (error) => {
-      void this.deps.onSyncError(error, "sync_event_handling");
-    },
-    onFileQueued: (event) => {
-      this.deps.diagnostics.record({
-        type: "local_file_queued",
-        ...event,
-      });
-    },
-    onFileError: ({ error: _error, ...event }) => {
-      this.deps.diagnostics.record({
-        type: "file_sync_failed",
-        direction: "local",
-        ...event,
-        reason: "queue_failed",
-      });
-    },
-  });
-  private readonly syncPullService = new SyncPullService({
-    getApiBaseUrl: () => this.deps.getApiBaseUrl(),
-    getSyncToken: async () => await this.deps.getSyncToken(),
-    getSyncStore: () => this.syncStore,
-    getRemoteVaultKey: () => this.deps.getRemoteVaultKey(),
-    shouldApplyRemotePath: (path) =>
-      shouldApplyRemoteVaultPath(path, this.vaultPathPolicyRules()),
-    shouldUseLatestRemoteVersion: (path) =>
-      shouldUseLatestRemoteVaultConfig(path, this.vaultPathPolicyRules()),
-    eventGate: this.syncEventGate,
-    vaultAdapter: this.vaultAdapter,
-    pullClient: this.syncPullClient,
-    onProgress: async (progress) => {
-      this.reportActivityProgress(progress);
-    },
-    onConflict: (event) => this.deps.notifySyncConflict(event),
-    onRollbackDetected: (event) => this.deps.notifyRollbackDetected(event),
-    onFileSyncStarted: (event) => {
-      this.deps.diagnostics.record({
-        type: "file_sync_started",
-        direction: "download",
-        ...event,
-      });
-    },
-    onFileSyncCompleted: (event) => {
-      this.deps.diagnostics.record({
-        type: "file_sync_completed",
-        direction: "download",
-        ...event,
-      });
-    },
-    onFileSyncFailed: (event) => {
-      this.deps.diagnostics.record({
-        type: "file_sync_failed",
-        direction: "download",
-        ...event,
-      });
-    },
-  });
-  private readonly syncVersionHistoryService = new SyncVersionHistoryService({
-    getApiBaseUrl: () => this.deps.getApiBaseUrl(),
-    getSyncToken: async () => await this.deps.getSyncToken(),
-    getStore: () => this.requireStore(),
-    getRemoteVaultKey: () => this.deps.getRemoteVaultKey(),
-    pullClient: this.syncPullClient,
-    withRealtimeSession: async (work) => await this.withRealtimeSession(work),
-    runLocalMutationWork: async (work) => await this.runLocalMutationWork(work),
-    pullOnce: async (session) => {
-      await this.withSyncActivity("pull", async () => {
-        await this.syncPullService.pullOnce(session);
-      });
-    },
-  });
-  constructor(private readonly deps: SyncEngineDeps) {}
+      },
+      onSyncDeferred: () => {
+        this.deps.diagnostics.record({
+          type: "work_scheduled",
+          mode: "deferred",
+        });
+        this.deps.setSyncStatus("pending");
+      },
+      onIdle: () => {
+        this.deps.setSyncStatus("up_to_date");
+      },
+      onError: (error) => {
+        void this.deps.onSyncError(error, "auto_sync");
+      },
+      onRetryScheduled: ({ attempt, delayMs }) => {
+        this.deps.diagnostics.record({
+          type: "retry_scheduled",
+          attempt,
+          delayMs,
+        });
+      },
+      onRemoteVaultUnavailable: async (error) => {
+        await this.deps.onRemoteVaultUnavailable?.(error);
+      },
+      onStorageQuotaExceeded: async () => {
+        this.deps.diagnostics.record({
+          type: "storage_quota_exceeded",
+        });
+        await this.deps.onStorageQuotaExceeded?.();
+      },
+    });
+    this.syncPullService = new SyncPullService({
+      getApiBaseUrl: () => this.deps.getApiBaseUrl(),
+      getSyncToken: async () => await this.deps.getSyncToken(),
+      getSyncStore: () => this.syncStore,
+      getRemoteVaultKey: () => this.deps.getRemoteVaultKey(),
+      shouldApplyRemotePath: (path) =>
+        shouldApplyRemoteVaultPath(path, this.vaultPathPolicyRules()),
+      shouldUseLatestRemoteVersion: (path) =>
+        shouldUseLatestRemoteVaultConfig(path, this.vaultPathPolicyRules()),
+      eventGate: this.syncEventGate,
+      vaultAdapter: this.vaultAdapter,
+      pullClient: this.syncPullClient,
+      onProgress: async (progress) => {
+        this.reportActivityProgress(progress);
+      },
+      onConflict: (event) => this.deps.notifySyncConflict(event),
+      onRollbackDetected: (event) => this.deps.notifyRollbackDetected(event),
+      onFileSyncStarted: (event) => {
+        this.deps.diagnostics.record({
+          type: "file_sync_started",
+          direction: "download",
+          ...event,
+        });
+      },
+      onFileSyncCompleted: (event) => {
+        this.deps.diagnostics.record({
+          type: "file_sync_completed",
+          direction: "download",
+          ...event,
+        });
+      },
+      onFileSyncFailed: (event) => {
+        this.deps.diagnostics.record({
+          type: "file_sync_failed",
+          direction: "download",
+          ...event,
+        });
+      },
+    });
+    this.syncVersionHistoryService = new SyncVersionHistoryService({
+      getApiBaseUrl: () => this.deps.getApiBaseUrl(),
+      getSyncToken: async () => await this.deps.getSyncToken(),
+      getStore: () => this.requireStore(),
+      getRemoteVaultKey: () => this.deps.getRemoteVaultKey(),
+      pullClient: this.syncPullClient,
+      withRealtimeSession: async (work) => await this.withRealtimeSession(work),
+      runLocalMutationWork: async (work) => await this.runLocalMutationWork(work),
+      pullOnce: async (session) => {
+        await this.withSyncActivity("pull", async () => {
+          await this.syncPullService.pullOnce(session);
+        });
+      },
+    });
+  }
 
   setStore(store: SyncStore): void {
     this.syncStore = store;
@@ -413,7 +398,29 @@ export class SyncEngine {
   }
 
   registerVaultEvents(): void {
-    this.syncVaultEventHandler.register();
+    this.deps.changeSource.start({
+      eventRecorder: this.syncEventRecorder,
+      notifyLocalChange: () => this.notifyLocalChange(),
+      runLocalMutationWork: async (work) => await this.runLocalMutationWork(work),
+      hasActiveRemoteVaultSession: () => this.deps.hasActiveRemoteVaultSession(),
+      onError: (error) => {
+        void this.deps.onSyncError(error, "sync_event_handling");
+      },
+      onFileQueued: (event) => {
+        this.deps.diagnostics.record({
+          type: "local_file_queued",
+          ...event,
+        });
+      },
+      onFileError: ({ error: _error, ...event }) => {
+        this.deps.diagnostics.record({
+          type: "file_sync_failed",
+          direction: "local",
+          ...event,
+          reason: "queue_failed",
+        });
+      },
+    });
   }
 
   notifyLocalChange(): void {
@@ -477,7 +484,7 @@ export class SyncEngine {
       return;
     }
 
-    this.hiddenFolderReconcileTimer = window.setInterval(() => {
+    this.hiddenFolderReconcileTimer = setInterval(() => {
       void this.reconcileHiddenFoldersFromTimer();
     }, HIDDEN_FOLDER_RECONCILE_INTERVAL_MS);
   }
@@ -487,7 +494,7 @@ export class SyncEngine {
       return;
     }
 
-    window.clearInterval(this.hiddenFolderReconcileTimer);
+    clearInterval(this.hiddenFolderReconcileTimer);
     this.hiddenFolderReconcileTimer = null;
   }
 
@@ -540,7 +547,7 @@ export class SyncEngine {
   }
 
   private configDir(): string {
-    return this.deps.plugin.app.vault.configDir;
+    return this.deps.getConfigDir();
   }
 
   async listFileSizeBlockedFiles(): Promise<SyncFileSizeBlockedFile[]> {
@@ -673,5 +680,5 @@ export class SyncEngine {
   }
 }
 
-export type { SyncFileSizeBlockedFile } from "./file-size-blocked";
+export type { SyncFileSizeBlockedFile } from "../engine/file-size-blocked";
 export type SyncEngineEntryVersionsPage = SyncEntryVersionsPage;

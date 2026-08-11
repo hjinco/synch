@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { createPasswordWrappedRemoteVaultKey } from "@synch/sync-client/remote-vault/crypto";
-import type { StoredRemoteVaultKeySecret } from "../../device-storage";
+import { createPasswordWrappedRemoteVaultKey } from "./crypto";
+import type { StoredRemoteVaultKeySecret } from "./types";
 import type {
   RemoteVaultBootstrapResponse,
   RemoteVaultSummaryResponse,
-} from "@synch/sync-client/remote-vault/types";
-import { createManager, remoteVaultSummary } from "./helpers";
+} from "./types";
+import { createManager, remoteVaultSummary } from "./manager-test-helpers";
 
 describe("RemoteVaultManager bootstrap", () => {
   it("lists remote vaults for bootstrap selection", async () => {

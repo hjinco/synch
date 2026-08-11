@@ -1,21 +1,15 @@
-import type { Plugin } from "obsidian";
-
 import {
   isOffline as detectOffline,
   isOfflineLikeError,
   type OfflineDetector,
-} from "@synch/sync-client/http/network-status";
+} from "../http/network-status";
 import {
   AuthClient,
   type AuthenticatedUserSession,
   type DeviceAuthorizationPollResult,
   type DeviceAuthorizationStart,
-} from "@synch/sync-client/auth/client";
-import {
-  clearAuthSessionToken,
-  readAuthSessionToken,
-  writeAuthSessionToken,
-} from "./storage";
+} from "./client";
+import type { AuthSessionTokenStore } from "./session-token-store";
 
 export type AuthReadiness =
   | { state: "anonymous" }
@@ -23,8 +17,7 @@ export type AuthReadiness =
   | { state: "pending_network"; token: string }
   | { state: "rejected"; token: string };
 
-// Auth state for UI display. Label formatting lives in the app layer
-// (app/auth-status-label).
+// Auth state for UI display. Label formatting lives in the host app layer.
 export type AuthStatus =
   | { state: "signed_in"; displayName: string }
   | { state: "pending_network" }
@@ -32,7 +25,7 @@ export type AuthStatus =
   | { state: "not_signed_in" };
 
 // Auth events that require user notification. Message formatting lives in the
-// app layer.
+// host app layer.
 export type AuthNoticeEvent =
   | { type: "approval_received" }
   | { type: "signed_in" }
@@ -44,7 +37,7 @@ export type AuthNoticeEvent =
   | { type: "signed_out" };
 
 export interface AuthManagerDeps {
-  plugin: Plugin;
+  sessionTokenStore: AuthSessionTokenStore;
   getApiBaseUrl: () => string;
   refreshUi: () => void;
   authClient: AuthClient;
@@ -74,7 +67,7 @@ export class AuthManager {
   }
 
   async initialize(): Promise<void> {
-    this.authSessionToken = await readAuthSessionToken(this.deps.plugin);
+    this.authSessionToken = await this.deps.sessionTokenStore.read();
     this.authSessionVerified = false;
     if (!this.authSessionToken) {
       return;
@@ -301,7 +294,7 @@ export class AuthManager {
 
     this.authSessionToken = poll.accessToken;
     this.applyVerifiedSession(session);
-    await writeAuthSessionToken(this.deps.plugin, this.authSessionToken);
+    await this.deps.sessionTokenStore.write(this.authSessionToken);
     this.deps.refreshUi();
     return true;
   }
@@ -339,7 +332,13 @@ export class AuthManager {
       return;
     }
 
-    window.open(url, "_blank", "noopener,noreferrer");
+    const open = (globalThis as { open?: typeof globalThis.open }).open;
+    if (typeof open === "function") {
+      open(url, "_blank", "noopener,noreferrer");
+      return;
+    }
+
+    throw new Error("openExternalUrl is required in this environment");
   }
 
   private wait(ms: number): Promise<void> {
@@ -348,7 +347,7 @@ export class AuthManager {
     }
 
     return new Promise((resolve) => {
-      window.setTimeout(resolve, ms);
+      setTimeout(resolve, ms);
     });
   }
 
@@ -403,7 +402,7 @@ export class AuthManager {
     this.authNeedsRelogin = false;
     this.authPendingNetworkVerification = false;
     this.authDisplayName = "";
-    await clearAuthSessionToken(this.deps.plugin);
+    await this.deps.sessionTokenStore.clear();
   }
 }
 

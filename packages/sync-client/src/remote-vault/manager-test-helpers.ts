@@ -1,15 +1,15 @@
 import { vi } from "vitest";
 
-import type { StoredRemoteVaultKeySecret } from "../../device-storage";
+import type { StoredRemoteVaultKeySecret } from "./types";
 import {
   RemoteVaultManager,
   type RemoteVaultNoticeEvent,
-} from "../../manager";
+} from "./manager";
 import type {
   CreateRemoteVaultResponse,
   RemoteVaultBootstrapResponse,
   RemoteVaultSummaryResponse,
-} from "@synch/sync-client/remote-vault/types";
+} from "./types";
 
 type RemoteVaultClientOverrides = Partial<{
   createRemoteVault: (

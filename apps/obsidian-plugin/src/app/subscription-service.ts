@@ -1,4 +1,5 @@
-import { BillingClient } from "../billing/client";
+import { BillingClient } from "@synch/sync-client/billing/client";
+import { defaultHttpClient } from "../platform/http";
 import { buildBillingWebPageUrl } from "../billing/web-url";
 import { getServerDeployment } from "../config";
 import { getSynchLocale } from "../i18n";
@@ -14,7 +15,7 @@ export interface SynchSubscriptionServiceDeps {
 }
 
 export class SynchSubscriptionService {
-  private readonly billingClient = new BillingClient();
+  private readonly billingClient = new BillingClient(defaultHttpClient);
   private subscriptionStatusCheckPromise: Promise<void> | null = null;
   private subscriptionStatusCheckedAt = 0;
   private subscriptionStatus: SynchSubscriptionStatus = {

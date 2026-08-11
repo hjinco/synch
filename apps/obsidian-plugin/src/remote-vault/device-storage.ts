@@ -1,12 +1,11 @@
 import type { Plugin } from "obsidian";
 
 import { decodeBase64, encodeBase64 } from "@synch/sync-client/utils/bytes";
+import type { StoredRemoteVaultKeySecret } from "@synch/sync-client/remote-vault/types";
+
+export type { StoredRemoteVaultKeySecret };
 
 const REMOTE_VAULT_KEY_SECRET = "synch-remote-vault-key";
-
-export interface StoredRemoteVaultKeySecret {
-  remoteVaultKey: Uint8Array;
-}
 
 export async function readStoredRemoteVaultKeySecret(
   plugin: Plugin,

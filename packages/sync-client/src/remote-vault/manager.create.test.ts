@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { createPasswordWrappedRemoteVaultKey } from "@synch/sync-client/remote-vault/crypto";
-import type { StoredRemoteVaultKeySecret } from "../../device-storage";
+import { createPasswordWrappedRemoteVaultKey } from "./crypto";
+import type { StoredRemoteVaultKeySecret } from "./types";
 import type {
   CreateRemoteVaultResponse,
   RemoteVaultBootstrapResponse,
-} from "@synch/sync-client/remote-vault/types";
-import { createManager } from "./helpers";
+} from "./types";
+import { createManager } from "./manager-test-helpers";
 
 describe("RemoteVaultManager create", () => {
   it("creates a vault and stores a loaded session", async () => {
@@ -35,6 +35,7 @@ describe("RemoteVaultManager create", () => {
           return {
             vault: {
               id: "vault-created",
+              organizationId: "org-1",
               name: "Personal",
               activeKeyVersion: 1,
               createdAt: "2026-04-22T00:00:00.000Z",
@@ -44,6 +45,7 @@ describe("RemoteVaultManager create", () => {
         getRemoteVaultBootstrap: async (): Promise<RemoteVaultBootstrapResponse> => ({
           vault: {
             id: "vault-created",
+            organizationId: "org-1",
             name: "Personal",
             activeKeyVersion: 1,
             createdAt: "2026-04-22T00:00:00.000Z",

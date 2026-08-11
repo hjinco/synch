@@ -4,8 +4,8 @@ import type {
 } from "@synch/sync-client/remote-vault/types";
 
 // Must stay structurally identical to CreateRemoteVaultInput /
-// BootstrapRemoteVaultInput in remote-vault/manager.ts (the facade injects
-// RemoteVaultManager as-is).
+// BootstrapRemoteVaultInput in @synch/sync-client/remote-vault/manager (the
+// facade injects RemoteVaultManager as-is).
 export interface CreateRemoteVaultInput {
   name: string;
   password: string;

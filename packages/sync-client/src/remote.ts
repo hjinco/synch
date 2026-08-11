@@ -1,6 +1,7 @@
 export * from "./remote-vault/client";
 export * from "./remote-vault/crypto";
 export * from "./remote-vault/kdf";
+export * from "./remote-vault/manager";
 export * from "./remote-vault/password-policy";
 export * from "./remote-vault/types";
 export * from "./remote-vault/unavailable";

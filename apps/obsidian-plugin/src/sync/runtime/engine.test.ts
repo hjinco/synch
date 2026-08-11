@@ -11,7 +11,8 @@ import { queueLocalUpsertMutation } from "@synch/sync-client/sync/core/mutation-
 import type { SyncTokenResponse } from "@synch/sync-client/sync/remote/client";
 import { createTestSyncStore } from "@synch/sync-client/test-support/in-memory-sync-store";
 import { InMemorySyncDiagnostics } from "@synch/sync-client/sync/diagnostics/in-memory";
-import { SyncEngine } from "./engine";
+import { SyncEngine } from "@synch/sync-client/sync/runtime/sync-engine";
+import { createObsidianSyncEngine } from "./obsidian-sync-engine";
 
 type VaultEventCallback = (...args: unknown[]) => void;
 
@@ -219,7 +220,7 @@ describe("SyncEngine", () => {
       return encodeUtf8("new");
     });
     const store = createTestSyncStore();
-    const engine = new SyncEngine({
+    const engine = createObsidianSyncEngine({
       plugin,
       getApiBaseUrl: () => "http://127.0.0.1:8787",
       getSyncToken: async () => createToken(),
@@ -228,7 +229,10 @@ describe("SyncEngine", () => {
       getSyncFileRules: () => DEFAULT_SYNC_FILE_RULES,
       getVaultConfigSyncRules: () => DEFAULT_VAULT_CONFIG_SYNC_RULES,
       hasActiveRemoteVaultSession: () => true,
+      diagnostics: new InMemorySyncDiagnostics("test"),
+      onSyncError: vi.fn(),
       notifySyncConflict: vi.fn(),
+      notifyRollbackDetected: vi.fn(),
       setSyncProgress: vi.fn(),
       setSyncStatus: vi.fn(),
       setStorageStatus: vi.fn(),
@@ -451,9 +455,9 @@ describe("SyncEngine", () => {
 
 function createEngine(
   plugin: Plugin,
-  overrides: Partial<SyncEngineDepsForTest> = {},
+  overrides: Partial<ObsidianSyncEngineDepsForTest> = {},
 ): SyncEngine {
-  return new SyncEngine({
+  return createObsidianSyncEngine({
     plugin,
     getApiBaseUrl: () => "http://127.0.0.1:8787",
     getSyncToken: async () => createToken(),
@@ -466,6 +470,7 @@ function createEngine(
     diagnostics: new InMemorySyncDiagnostics("test"),
     onSyncError: vi.fn(),
     notifySyncConflict: vi.fn(),
+    notifyRollbackDetected: vi.fn(),
     setSyncProgress: vi.fn(),
     setSyncStatus: vi.fn(),
     setStorageStatus: vi.fn(),
@@ -473,7 +478,7 @@ function createEngine(
   });
 }
 
-type SyncEngineDepsForTest = ConstructorParameters<typeof SyncEngine>[0];
+type ObsidianSyncEngineDepsForTest = Parameters<typeof createObsidianSyncEngine>[0];
 
 function createPlugin(
   callbacks: Partial<Record<"modify", VaultEventCallback>>,

@@ -1,8 +1,4 @@
-import {
-  defaultHttpClient,
-  stripTrailingSlash,
-  type HttpClient,
-} from "../platform/http";
+import { stripTrailingSlash, type HttpClient } from "../http/request";
 
 export type BillingPlanId = "free" | "starter" | "self_hosted";
 export type BillingInterval = "monthly" | "annual";
@@ -17,7 +13,7 @@ export interface BillingStatus {
 }
 
 export class BillingClient {
-  constructor(private readonly httpClient: HttpClient = defaultHttpClient) {}
+  constructor(private readonly httpClient: HttpClient) {}
 
   async readBillingStatus(
     apiBaseUrl: string,

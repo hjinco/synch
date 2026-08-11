@@ -35,16 +35,16 @@ import type { SyncDeletedEntriesPage } from "@synch/sync-client/sync/runtime/ver
 import type { SyncDeletedEntriesRestoreResult } from "@synch/sync-client/sync/runtime/version-history-service";
 import type { SyncDeletedEntriesPurgeResult } from "@synch/sync-client/sync/runtime/version-history-service";
 import {
-  SyncEngine,
   type SyncEngineEntryVersionsPage,
   type SyncFileSizeBlockedFile,
-} from "./engine";
+} from "@synch/sync-client/sync/runtime/sync-engine";
+import { createObsidianSyncEngine } from "./obsidian-sync-engine";
 import type { SyncEntryVersionPreview } from "@synch/sync-client/sync/runtime/version-history-service";
 import {
   getUserVisibleSyncDisplayPercent,
   type UserVisibleSyncProgress,
   type UserVisibleSyncState,
-} from "./user-visible-status";
+} from "@synch/sync-client/sync/runtime/user-visible-status";
 
 export interface SyncControllerDeps {
   plugin: Plugin;
@@ -89,7 +89,7 @@ export class SyncController {
     completedEntries: 0,
     totalEntries: 0,
   };
-  private readonly syncEngine = new SyncEngine({
+  private readonly syncEngine = createObsidianSyncEngine({
     plugin: this.deps.plugin,
     getApiBaseUrl: () => this.deps.getApiBaseUrl(),
     getSyncToken: async () => await this.deps.getSyncToken(),

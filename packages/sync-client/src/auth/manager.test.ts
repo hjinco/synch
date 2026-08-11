@@ -1,32 +1,45 @@
-import { Plugin, resetObsidianMocks } from "obsidian";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { defaultHttpClient } from "../platform/http";
-import { AuthManager, type AuthNoticeEvent } from "./manager";
 import {
   AuthClient,
   type DeviceAuthorizationStart,
-} from "@synch/sync-client/auth/client";
-import {
-  readAuthSessionToken,
-  writeAuthSessionToken,
-} from "./storage";
+} from "./client";
+import { AuthManager, type AuthNoticeEvent } from "./manager";
+import type { AuthSessionTokenStore } from "./session-token-store";
+import type { HttpClient } from "../http/request";
+
+class MemoryAuthSessionTokenStore implements AuthSessionTokenStore {
+  private token = "";
+
+  async read(): Promise<string> {
+    return this.token;
+  }
+
+  async write(token: string): Promise<void> {
+    this.token = token.trim();
+  }
+
+  async clear(): Promise<void> {
+    this.token = "";
+  }
+}
 
 describe("AuthManager", () => {
+  let sessionTokenStore: MemoryAuthSessionTokenStore;
+
   beforeEach(() => {
-    resetObsidianMocks();
+    sessionTokenStore = new MemoryAuthSessionTokenStore();
   });
 
   it("treats a stored token as signed in only after the server confirms a session", async () => {
-    const plugin = new Plugin();
-    await writeAuthSessionToken(plugin, "stored-token");
+    await sessionTokenStore.write("stored-token");
     const getAuthenticatedUser = vi.fn(async () => ({
       userId: "user-1",
       email: "user@example.com",
       name: "User One",
     }));
     const manager = createManager({
-      plugin,
+      sessionTokenStore,
       authClient: {
         getAuthenticatedUser,
       } as unknown as AuthClient,
@@ -48,10 +61,9 @@ describe("AuthManager", () => {
   });
 
   it("keeps a stored token and asks for sign-in again when the server does not return a session", async () => {
-    const plugin = new Plugin();
-    await writeAuthSessionToken(plugin, "stale-token");
+    await sessionTokenStore.write("stale-token");
     const manager = createManager({
-      plugin,
+      sessionTokenStore,
       authClient: {
         getAuthenticatedUser: vi.fn(async () => null),
       } as unknown as AuthClient,
@@ -62,14 +74,13 @@ describe("AuthManager", () => {
     expect(manager.hasAuthenticatedSession()).toBe(false);
     expect(manager.getAuthSessionToken()).toBe("stale-token");
     expect(manager.getAuthStatus()).toEqual({ state: "needs_relogin" });
-    await expect(readAuthSessionToken(plugin)).resolves.toBe("stale-token");
+    await expect(sessionTokenStore.read()).resolves.toBe("stale-token");
   });
 
   it("keeps a stored token and asks for sign-in again when session lookup fails", async () => {
-    const plugin = new Plugin();
-    await writeAuthSessionToken(plugin, "expired-token");
+    await sessionTokenStore.write("expired-token");
     const manager = createManager({
-      plugin,
+      sessionTokenStore,
       authClient: {
         getAuthenticatedUser: vi.fn(async () => {
           throw new Error("session lookup failed with status 401");
@@ -82,14 +93,13 @@ describe("AuthManager", () => {
     expect(manager.hasAuthenticatedSession()).toBe(false);
     expect(manager.getAuthSessionToken()).toBe("expired-token");
     expect(manager.getAuthStatus()).toEqual({ state: "needs_relogin" });
-    await expect(readAuthSessionToken(plugin)).resolves.toBe("expired-token");
+    await expect(sessionTokenStore.read()).resolves.toBe("expired-token");
   });
 
   it("keeps a stored token pending when session lookup fails offline", async () => {
-    const plugin = new Plugin();
-    await writeAuthSessionToken(plugin, "offline-token");
+    await sessionTokenStore.write("offline-token");
     const manager = createManager({
-      plugin,
+      sessionTokenStore,
       authClient: {
         getAuthenticatedUser: vi.fn(async () => {
           throw new Error("Failed to fetch");
@@ -106,19 +116,18 @@ describe("AuthManager", () => {
     });
     expect(manager.getAuthSessionToken()).toBe("offline-token");
     expect(manager.getAuthStatus()).toEqual({ state: "pending_network" });
-    await expect(readAuthSessionToken(plugin)).resolves.toBe("offline-token");
+    await expect(sessionTokenStore.read()).resolves.toBe("offline-token");
   });
 
   it("does not look up the stored session while the device is offline", async () => {
-    const plugin = new Plugin();
-    await writeAuthSessionToken(plugin, "offline-token");
+    await sessionTokenStore.write("offline-token");
     const getAuthenticatedUser = vi.fn(async () => ({
       userId: "user-1",
       email: "user@example.com",
       name: "User One",
     }));
     const manager = createManager({
-      plugin,
+      sessionTokenStore,
       authClient: {
         getAuthenticatedUser,
       } as unknown as AuthClient,
@@ -136,8 +145,7 @@ describe("AuthManager", () => {
   });
 
   it("verifies a pending offline token when readiness refresh succeeds", async () => {
-    const plugin = new Plugin();
-    await writeAuthSessionToken(plugin, "recover-token");
+    await sessionTokenStore.write("recover-token");
     const getAuthenticatedUser = vi
       .fn()
       .mockRejectedValueOnce(new Error("Failed to fetch"))
@@ -147,7 +155,7 @@ describe("AuthManager", () => {
         name: "User One",
       });
     const manager = createManager({
-      plugin,
+      sessionTokenStore,
       authClient: {
         getAuthenticatedUser,
       } as unknown as AuthClient,
@@ -183,6 +191,7 @@ describe("AuthManager", () => {
     const openExternalUrl = vi.fn();
     const refreshUi = vi.fn();
     const manager = createManager({
+      sessionTokenStore,
       authClient: {
         startDeviceAuthorization,
         pollDeviceAuthorization,
@@ -231,6 +240,7 @@ describe("AuthManager", () => {
     }));
     const notify = vi.fn();
     const manager = createManager({
+      sessionTokenStore,
       authClient: {
         startDeviceAuthorization: vi.fn(async () => authorization),
         pollDeviceAuthorization,
@@ -260,6 +270,7 @@ describe("AuthManager", () => {
     const start = createDeferred<DeviceAuthorizationStart>();
     const openExternalUrl = vi.fn();
     const manager = createManager({
+      sessionTokenStore,
       authClient: {
         startDeviceAuthorization: vi.fn(async () => await start.promise),
       } as unknown as AuthClient,
@@ -292,6 +303,7 @@ describe("AuthManager", () => {
       .mockResolvedValueOnce(secondAuthorization);
     const openExternalUrl = vi.fn();
     const manager = createManager({
+      sessionTokenStore,
       authClient: {
         startDeviceAuthorization,
         pollDeviceAuthorization: vi.fn(async () => ({
@@ -341,6 +353,7 @@ describe("AuthManager", () => {
       name: "User One",
     }));
     const manager = createManager({
+      sessionTokenStore,
       authClient: {
         startDeviceAuthorization: vi.fn(async () => authorization),
         pollDeviceAuthorization: vi.fn(async () => await poll.promise),
@@ -370,6 +383,7 @@ describe("AuthManager", () => {
     const delay = createDeferred<void>();
     const openExternalUrl = vi.fn();
     const manager = createManager({
+      sessionTokenStore,
       getLocale: () => "ko",
       authClient: {
         startDeviceAuthorization: vi.fn(async () => authorization),
@@ -403,6 +417,7 @@ describe("AuthManager", () => {
     }));
     const openExternalUrl = vi.fn();
     const manager = createManager({
+      sessionTokenStore,
       authClient: {
         startDeviceAuthorization,
         pollDeviceAuthorization,
@@ -439,6 +454,7 @@ describe("AuthManager", () => {
     const notify = vi.fn();
     const openExternalUrl = vi.fn();
     const manager = createManager({
+      sessionTokenStore,
       authClient: {
         startDeviceAuthorization,
         pollDeviceAuthorization: vi.fn(async () => ({
@@ -470,7 +486,7 @@ describe("AuthManager", () => {
 
 function createManager(
   overrides: Partial<{
-    plugin: Plugin;
+    sessionTokenStore: AuthSessionTokenStore;
     authClient: AuthClient;
     delay: (ms: number) => Promise<void>;
     notify: (event: AuthNoticeEvent) => void;
@@ -481,18 +497,26 @@ function createManager(
   }> = {},
 ): AuthManager {
   return new AuthManager({
-    plugin: overrides.plugin ?? new Plugin(),
+    sessionTokenStore: overrides.sessionTokenStore ?? new MemoryAuthSessionTokenStore(),
     getApiBaseUrl: () => "http://127.0.0.1:8787",
     refreshUi: overrides.refreshUi ?? vi.fn(),
     authClient:
       overrides.authClient ??
-      new AuthClient(defaultHttpClient, "synch-obsidian-plugin"),
+      new AuthClient(createUnusedHttpClient(), "synch-test"),
     notify: overrides.notify ?? vi.fn(),
     getLocale: overrides.getLocale ?? (() => "en"),
     openExternalUrl: overrides.openExternalUrl ?? vi.fn(),
     delay: overrides.delay,
     isOffline: overrides.isOffline,
   });
+}
+
+function createUnusedHttpClient(): HttpClient {
+  return {
+    request: async () => {
+      throw new Error("http client should not be called");
+    },
+  };
 }
 
 function createAuthorization(): DeviceAuthorizationStart {
