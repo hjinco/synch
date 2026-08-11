@@ -14,14 +14,9 @@ import type {
   SyncReconcileEntryUpdate,
   SyncStore,
 } from "@synch/sync-client/sync/store/store";
-import { decryptSyncMetadata, encryptSyncMetadata } from "@synch/sync-client/sync/core/crypto";
+import type { AcceptedPushApplyPlan } from "@synch/sync-client/sync/store/entry-record";
 import {
-  METADATA_ID,
-  MIN_PENDING_CREATED_AT,
-  SyncDexieDatabase,
-  syncStoreDbName,
-} from "./database";
-import {
+  applyAcceptedPushToEntry,
   clearPendingMutation,
   copyRemoteToBase,
   createEmptyEntryRecord,
@@ -29,6 +24,7 @@ import {
   isPresent,
   normalizeEntryRecord,
   normalizePendingMutation,
+  planAcceptedPushApply,
   sortEntryRows,
   toBlobRecord,
   toCachedBlobRow,
@@ -38,8 +34,14 @@ import {
   toLocalEntryRow,
   toPendingMutationRow,
   toRemoteEntryRow,
-  toSyncConnection,
-} from "./mappers";
+} from "@synch/sync-client/sync/store/entry-record";
+import {
+  METADATA_ID,
+  MIN_PENDING_CREATED_AT,
+  SyncDexieDatabase,
+  syncStoreDbName,
+} from "./database";
+import { toSyncConnection } from "./mappers";
 import type { BlobRecord, EntryRecord, MetadataRecord } from "./records";
 
 const ACCEPTED_PUSH_BATCH_MAX_RETRIES = 3;
@@ -704,127 +706,6 @@ class AcceptedPushBatchRetryError extends Error {
     super("Accepted push batch changed while applying.");
     this.name = "AcceptedPushBatchRetryError";
   }
-}
-
-interface AcceptedPushApplyPlan {
-  rebase:
-    | {
-        pendingMutationId: string;
-        encryptedMetadata: string;
-      }
-    | null;
-}
-
-async function planAcceptedPushApply(
-  row: EntryRecord,
-  accepted: AcceptedPushMutationRow,
-  remoteVaultKey: Uint8Array,
-): Promise<AcceptedPushApplyPlan> {
-  const currentPending = toPendingMutationRow(row);
-  if (!currentPending || currentPending.mutationId === accepted.mutation.mutationId) {
-    return { rebase: null };
-  }
-
-  const pendingMetadata = await decryptSyncMetadata(
-    remoteVaultKey,
-    currentPending.encryptedMetadata,
-    metadataContextFromMutation(currentPending),
-  );
-
-  return {
-    rebase: {
-      pendingMutationId: currentPending.mutationId,
-      encryptedMetadata: await encryptSyncMetadata(
-        remoteVaultKey,
-        pendingMetadata,
-        metadataContextFromMutation({
-          ...currentPending,
-          baseRevision: accepted.acceptedRevision,
-          baseBlobId: accepted.remoteBlobId,
-          baseHash: accepted.localHash,
-        }),
-      ),
-    },
-  };
-}
-
-function applyAcceptedPushToEntry(
-  row: EntryRecord,
-  accepted: AcceptedPushMutationRow,
-  plan: AcceptedPushApplyPlan,
-): EntryRecord | "retry" {
-  const { mutation, metadata } = accepted;
-  let updated: EntryRecord = {
-    ...row,
-    remoteKnown: true,
-    remotePath: metadata.path,
-    remoteRevision: accepted.acceptedRevision,
-    remoteBlobId: mutation.op === "delete" ? null : accepted.remoteBlobId,
-    remoteHash: mutation.op === "delete" ? null : accepted.localHash,
-    remoteDeleted: mutation.op === "delete",
-    remoteUpdatedAt: accepted.acceptedAt,
-  };
-
-  if (mutation.op === "upsert" && shouldApplyAcceptedPushToLocal(updated, accepted)) {
-    updated = {
-      ...updated,
-      localKnown: true,
-      localPath: metadata.path,
-      localBlobId: accepted.remoteBlobId,
-      localHash: accepted.localHash,
-      localDeleted: false,
-      localUpdatedAt: accepted.acceptedAt,
-      localMtime: updated.localMtime,
-      localSize: updated.localSize,
-    };
-  }
-
-  const currentPending = toPendingMutationRow(updated);
-  if (!currentPending) {
-    copyRemoteToBase(updated);
-    return updated;
-  }
-
-  if (currentPending.mutationId === mutation.mutationId) {
-    updated = clearPendingMutation(updated);
-    copyRemoteToBase(updated);
-    return updated;
-  }
-
-  if (plan.rebase?.pendingMutationId !== currentPending.mutationId) {
-    return "retry";
-  }
-
-  return toDirtyEntryRecord(
-    updated,
-    normalizePendingMutation({
-      ...currentPending,
-      baseRevision: accepted.acceptedRevision,
-      baseBlobId: accepted.remoteBlobId,
-      baseHash: accepted.localHash,
-      encryptedMetadata: plan.rebase.encryptedMetadata,
-    }),
-  );
-}
-
-function shouldApplyAcceptedPushToLocal(
-  row: EntryRecord,
-  accepted: AcceptedPushMutationRow,
-): boolean {
-  return (
-    !row.localKnown ||
-    (row.localHash === accepted.mutation.hash &&
-      row.localPath === accepted.metadata.path)
-  );
-}
-
-function metadataContextFromMutation(mutation: PendingMutationRow) {
-  return {
-    entryId: mutation.entryId,
-    revision: mutation.baseRevision + 1,
-    op: mutation.op,
-    blobId: mutation.blobId,
-  };
 }
 
 function hasProgressSnapshot(
