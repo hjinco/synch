@@ -104,13 +104,13 @@ export class DeletedFilesModal extends Modal {
     const { contentEl } = this;
     contentEl.empty();
     contentEl.addClass("synch-deleted-files-modal");
-    const headerEl = contentEl.createEl("div", {
+    const headerEl = contentEl.createDiv({
       cls: "synch-deleted-files-header",
     });
-    const listEl = contentEl.createEl("div", {
+    const listEl = contentEl.createDiv({
       cls: "synch-deleted-files-list",
     });
-    const footerEl = contentEl.createEl("div", {
+    const footerEl = contentEl.createDiv({
       cls: "synch-deleted-files-footer",
     });
     new Setting(headerEl).setName(t("deleted.header")).setHeading();
@@ -121,7 +121,7 @@ export class DeletedFilesModal extends Modal {
         text: this.error,
       });
     } else {
-      const hintRowEl = headerEl.createEl("div", {
+      const hintRowEl = headerEl.createDiv({
         cls: "synch-deleted-files-hint-row",
       });
       hintRowEl.createEl("p", {

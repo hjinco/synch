@@ -20,14 +20,14 @@ export class VersionPreviewModal extends Modal {
     const { contentEl } = this;
     contentEl.empty();
     new Setting(contentEl).setName(t("version.previewHeader")).setHeading();
-    contentEl.createEl("div", {
+    contentEl.createDiv({
       cls: "synch-preview-path",
       text: this.preview.path,
     });
 
     const meta = formatPreviewMeta(this.preview);
     if (meta) {
-      contentEl.createEl("div", {
+      contentEl.createDiv({
         cls: "synch-preview-meta",
         text: meta,
       });
@@ -47,7 +47,7 @@ export class VersionPreviewModal extends Modal {
           type: this.preview.mimeType,
         }),
       );
-      const previewEl = contentEl.createEl("div", {
+      const previewEl = contentEl.createDiv({
         cls: "synch-preview-content synch-preview-image",
       });
       previewEl.createEl("img", {
@@ -66,7 +66,7 @@ export class VersionPreviewModal extends Modal {
     }
 
     if (isMarkdownPath(this.preview.path)) {
-      const previewEl = contentEl.createEl("div", {
+      const previewEl = contentEl.createDiv({
         cls: "synch-preview-content",
       });
       previewEl.addClass("synch-preview-rendered");
@@ -106,15 +106,15 @@ function renderDiffPreview(
   versionText: string,
   currentText: string,
 ): void {
-  const diffEl = contentEl.createEl("div", {
+  const diffEl = contentEl.createDiv({
     cls: "synch-preview-content synch-preview-diff",
   });
-  const legend = diffEl.createEl("div", { cls: "synch-preview-diff-legend" });
-  legend.createEl("span", {
+  const legend = diffEl.createDiv({ cls: "synch-preview-diff-legend" });
+  legend.createSpan({
     cls: "synch-preview-diff-legend-removed",
     text: t("version.diffRemoved"),
   });
-  legend.createEl("span", {
+  legend.createSpan({
     cls: "synch-preview-diff-legend-added",
     text: t("version.diffAdded"),
   });
@@ -128,7 +128,7 @@ function renderDiffPreview(
     return;
   }
 
-  const body = diffEl.createEl("div", { cls: "synch-preview-diff-body" });
+  const body = diffEl.createDiv({ cls: "synch-preview-diff-body" });
   for (const change of changes) {
     renderDiffChange(body, change);
   }
@@ -145,10 +145,10 @@ function renderDiffChange(container: HTMLElement, change: Change): void {
   const lines = change.value.split("\n");
   const lineCount = change.value.endsWith("\n") ? lines.length - 1 : lines.length;
   for (let index = 0; index < lineCount; index += 1) {
-    const row = container.createEl("div", {
+    const row = container.createDiv({
       cls: `synch-preview-diff-row ${className}`,
     });
-    row.createEl("span", {
+    row.createSpan({
       cls: "synch-preview-diff-marker",
       text: marker,
     });

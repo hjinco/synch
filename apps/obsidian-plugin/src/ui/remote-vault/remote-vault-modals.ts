@@ -355,7 +355,7 @@ class BootstrapRemoteVaultModal extends Modal {
       cls: "synch-modal-selected",
       text: t("vault.selected", { label: this.getSelectedVaultLabel() }),
     });
-    const vaultList = contentEl.createEl("div", {
+    const vaultList = contentEl.createDiv({
       cls: "synch-vault-list",
     });
     this.renderVaultButtons(vaultList, selectedLabel);

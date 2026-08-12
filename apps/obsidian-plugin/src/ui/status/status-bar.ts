@@ -97,7 +97,7 @@ export class SynchStatusBar {
     this.statusBar.empty();
     this.statusBar.setAttribute("role", "button");
     this.statusBar.setAttribute("aria-label", t("status.openSettings"));
-    this.icon = this.statusBar.createEl("span", {
+    this.icon = this.statusBar.createSpan({
       cls: "synch-status-bar-icon",
     });
     this.icon.setAttribute("aria-hidden", "true");

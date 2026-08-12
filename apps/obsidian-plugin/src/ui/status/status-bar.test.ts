@@ -59,6 +59,10 @@ class FakeStatusBarElement {
     return element;
   }
 
+  createSpan(options?: { cls?: string }): FakeStatusBarElement {
+    return this.createEl("span", options);
+  }
+
   addEventListener(type: string, callback: () => void): void {
     this.eventListeners.set(type, [...(this.eventListeners.get(type) ?? []), callback]);
   }

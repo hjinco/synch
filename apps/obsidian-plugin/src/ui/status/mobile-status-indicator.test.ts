@@ -41,6 +41,10 @@ class FakeElement {
     return element;
   }
 
+  createSpan(options?: { cls?: string }): FakeElement {
+    return this.createEl("span", options);
+  }
+
   addEventListener(type: string, callback: () => void): void {
     this.eventListeners.set(type, [...(this.eventListeners.get(type) ?? []), callback]);
   }

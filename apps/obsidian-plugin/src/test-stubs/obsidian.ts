@@ -70,6 +70,10 @@ class MockElement {
     return this.createEl("span", options);
   }
 
+  createDiv(options?: { text?: string; cls?: string }): MockElement {
+    return this.createEl("div", options);
+  }
+
   setText(value: string): void {
     this.text = value;
     if (this.record) {

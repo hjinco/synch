@@ -32,7 +32,7 @@ export class SynchMobileStatusIndicator {
     this.indicator.setAttribute("type", "button");
     this.indicator.setAttribute("role", "button");
     this.indicator.setAttribute("aria-label", t("status.openSettings"));
-    this.icon = this.indicator.createEl("span", {
+    this.icon = this.indicator.createSpan({
       cls: "synch-mobile-status-indicator-icon",
     });
     this.icon.setAttribute("aria-hidden", "true");

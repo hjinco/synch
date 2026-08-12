@@ -133,7 +133,7 @@ export class SynchVersionHistoryView extends ItemView {
 
     if (this.state.status !== "ready") {
       if (this.state.path) {
-        root.createEl("div", {
+        root.createDiv({
           text: this.state.path,
           cls: "synch-history-path",
         });
@@ -146,7 +146,7 @@ export class SynchVersionHistoryView extends ItemView {
       return;
     }
 
-    root.createEl("div", {
+    root.createDiv({
       text: this.state.path,
       cls: "synch-history-path",
     });
@@ -192,11 +192,11 @@ export class SynchVersionHistoryView extends ItemView {
   ): void {
     const row = container.createDiv({ cls: "synch-history-row" });
     const main = row.createDiv({ cls: "synch-history-row-main" });
-    main.createEl("div", {
+    main.createDiv({
       text: formatCapturedAt(version.capturedAt),
       cls: "synch-history-row-title",
     });
-    main.createEl("div", {
+    main.createDiv({
       text: formatReason(version.reason),
       cls: "synch-history-row-meta",
     });
