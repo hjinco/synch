@@ -2,7 +2,7 @@
   "id": "synch",
   "name": "Synchrun",
   "version": "0.3.4",
-  "minAppVersion": "1.11.4",
+  "minAppVersion": "1.13.0",
   "description": "Sync your vault across devices with end-to-end encryption.",
   "author": "Synch",
   "authorUrl": "https://github.com/hjinco",

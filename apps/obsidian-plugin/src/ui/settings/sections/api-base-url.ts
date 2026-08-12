@@ -3,28 +3,26 @@ import { getServerDeployment } from "../../../config";
 import { t } from "../../../i18n";
 import type { SynchSettingsController } from "../controller";
 
-export function renderApiBaseUrlSetting(
-  containerEl: HTMLElement,
+export interface ApiBaseUrlSettingOptions {
+  canChangeApiBaseUrl: boolean;
+  hasConnectedRemoteVault: boolean;
+  isDeviceLoginInProgress: boolean;
+  showSelfHostedServerUrl: boolean;
+  onShowSelfHostedServerUrlChange(value: boolean): void;
+}
+
+export function populateServerModeSetting(
+  setting: Setting,
   controller: SynchSettingsController,
-  options: {
-    canChangeApiBaseUrl: boolean;
-    hasConnectedRemoteVault: boolean;
-    isDeviceLoginInProgress: boolean;
-    showSelfHostedServerUrl: boolean;
-    onShowSelfHostedServerUrlChange(value: boolean): void;
-  },
+  options: ApiBaseUrlSettingOptions,
 ): void {
-  const apiBaseUrl = controller.getApiBaseUrl();
-  const visibleApiBaseUrl =
-    getServerDeployment(apiBaseUrl) === "official_cloud" ? "" : apiBaseUrl;
-  let apiBaseUrlInput = visibleApiBaseUrl;
   const serverDescription = options.isDeviceLoginInProgress
     ? t("server.descFinishSignIn")
     : options.hasConnectedRemoteVault
       ? t("server.descDisconnectVault")
       : t("server.descDefault");
 
-  new Setting(containerEl)
+  setting
     .setName(t("server.mode"))
     .setDesc(serverDescription)
     .addToggle((toggle) =>
@@ -47,12 +45,19 @@ export function renderApiBaseUrlSetting(
           }
         }),
     );
+}
 
-  if (!options.showSelfHostedServerUrl) {
-    return;
-  }
+export function populateServerUrlSetting(
+  setting: Setting,
+  controller: SynchSettingsController,
+  options: ApiBaseUrlSettingOptions,
+): void {
+  const apiBaseUrl = controller.getApiBaseUrl();
+  const visibleApiBaseUrl =
+    getServerDeployment(apiBaseUrl) === "official_cloud" ? "" : apiBaseUrl;
+  let apiBaseUrlInput = visibleApiBaseUrl;
 
-  new Setting(containerEl)
+  setting
     .setName(t("server.url"))
     .setDesc(t("server.urlDesc"))
     .addText((text) =>

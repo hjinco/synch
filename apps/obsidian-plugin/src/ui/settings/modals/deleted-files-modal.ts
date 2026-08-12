@@ -258,7 +258,7 @@ export class DeletedFilesModal extends Modal {
               ? t("deleted.purgeSelectedCount", { count: selectedCount })
               : t("deleted.purgeSelected"),
           )
-          .setWarning()
+          .setDestructive()
           .setDisabled(this.loading || selectedCount === 0)
           .onClick(() => {
             void this.purgeSelected();

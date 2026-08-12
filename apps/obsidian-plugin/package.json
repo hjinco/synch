@@ -22,9 +22,9 @@
     "dotenv": "^17.4.2",
     "esbuild": "^0.25.0",
     "eslint": "^9.0.0",
-    "eslint-plugin-obsidianmd": "^0.3.0",
+    "eslint-plugin-obsidianmd": "^0.4.1",
     "fake-indexeddb": "^6.2.5",
-    "obsidian": "^1.11.4",
+    "obsidian": "^1.13.1",
     "typescript-eslint": "^8.59.3",
     "vitest": "^4.1.4"
   },

@@ -1,4 +1,4 @@
-import { App, Plugin } from "obsidian";
+import { App, Plugin, Setting } from "obsidian";
 import { vi } from "vitest";
 
 import type { SynchDeletedFile } from "../../contracts";
@@ -9,9 +9,111 @@ import { SynchSettingTab } from "../settings-tab";
 
 const TestPlugin = Plugin as unknown as new () => Plugin;
 
+interface DefinitionRecord {
+  type?: string;
+  name?: string;
+  desc?: string;
+  heading?: string;
+  visible?: boolean | (() => boolean);
+  items?: unknown[];
+  render?: (setting: unknown, group: unknown) => unknown;
+  control?: {
+    type: string;
+    key: string;
+    options?: Record<string, string>;
+  };
+}
+
+/**
+ * Test stand-in for Obsidian's declarative settings renderer (>= 1.13, the
+ * plugin's minAppVersion): walks getSettingDefinitions() and materializes
+ * each user-visible row with the obsidian test stubs — group headings become
+ * heading rows, `render` callbacks populate the provided row, and `control`
+ * definitions bind to get/setControlValue. update() re-renders, mirroring
+ * the framework's refresh behavior for an open settings tab.
+ */
+export class DeclarativeTestSettingTab extends SynchSettingTab {
+  open(): void {
+    this.renderItems(this.getSettingDefinitions());
+  }
+
+  update(): void {
+    this.open();
+  }
+
+  private renderItems(items: unknown[]): void {
+    for (const item of items) {
+      if (!item || typeof item !== "object") {
+        continue;
+      }
+      const record = item as DefinitionRecord;
+      if (isHidden(record.visible)) {
+        continue;
+      }
+      if (record.type === "group" || record.type === "list") {
+        if (record.heading) {
+          createRowSetting().setName(record.heading).setHeading();
+        }
+        this.renderItems(record.items ?? []);
+        continue;
+      }
+      if (!(record.name || record.render || record.control)) {
+        continue;
+      }
+
+      const setting = createRowSetting();
+      setting.setName(record.name ?? "");
+      if (record.desc !== undefined) {
+        setting.setDesc(record.desc);
+      }
+      if (record.render) {
+        record.render(setting, {});
+        continue;
+      }
+      if (record.control) {
+        this.bindControl(setting, record.control);
+      }
+    }
+  }
+
+  private bindControl(
+    setting: Setting,
+    control: NonNullable<DefinitionRecord["control"]>,
+  ): void {
+    const value = this.getControlValue(control.key);
+    if (control.type === "toggle") {
+      setting.addToggle((toggle) =>
+        toggle.setValue(value === true).onChange(async (next) => {
+          await this.setControlValue(control.key, next);
+        }),
+      );
+      return;
+    }
+    if (control.type === "dropdown") {
+      setting.addDropdown((dropdown) => {
+        for (const [optionValue, label] of Object.entries(control.options ?? {})) {
+          dropdown.addOption(optionValue, label);
+        }
+        dropdown.setValue(String(value)).onChange(async (next) => {
+          await this.setControlValue(control.key, next);
+        });
+      });
+    }
+  }
+}
+
+function isHidden(visible: boolean | (() => boolean) | undefined): boolean {
+  return (typeof visible === "function" ? visible() : visible) === false;
+}
+
+// The obsidian test stub ignores the container element.
+function createRowSetting(): Setting {
+  return new Setting(null as unknown as HTMLElement);
+}
+
 export function createSettingsTab(
   overrides: Partial<SynchSettingsController> = {},
-): SynchSettingTab {
+): DeclarativeTestSettingTab {
   const controller: SynchSettingsController = {
     getAuthReadiness: () => ({ state: "anonymous" }),
     getAuthStatusLabel: () => "Not signed in.",
@@ -98,7 +200,7 @@ export function createSettingsTab(
     ...overrides,
   };
 
-  return new SynchSettingTab(new App(), new TestPlugin(), controller);
+  return new DeclarativeTestSettingTab(new App(), new TestPlugin(), controller);
 }
 
 export async function nextTask(): Promise<void> {

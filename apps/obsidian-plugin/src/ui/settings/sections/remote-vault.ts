@@ -4,14 +4,11 @@ import type { SynchSettingsController } from "../controller";
 import { DeletedFilesModal } from "../modals";
 import { RefreshSettings } from "./shared";
 
-export function renderRemoteVaultSettings(
-  app: App,
-  containerEl: HTMLElement,
+export function populateVaultManageSetting(
+  setting: Setting,
   controller: SynchSettingsController,
-  hasConnectedRemoteVault: boolean,
-  refresh: RefreshSettings,
 ): void {
-  new Setting(containerEl)
+  setting
     .setName(t("vault.manage"))
     .setDesc(t("vault.manageDesc"))
     .addButton((button) =>
@@ -19,23 +16,31 @@ export function renderRemoteVaultSettings(
         controller.openRemoteVaultManagementPage();
       }),
     );
+}
 
-  if (!hasConnectedRemoteVault) {
-    return;
-  }
-
-  const vaultSetting = new Setting(containerEl)
+export function populateVaultConnectionSetting(
+  setting: Setting,
+  controller: SynchSettingsController,
+  refresh: RefreshSettings,
+): void {
+  setting
     .setName(t("vault.setting"))
-    .setDesc(controller.getRemoteVaultStatusLabel());
+    .setDesc(controller.getRemoteVaultStatusLabel())
+    .addButton((button) =>
+      button.setButtonText(t("vault.disconnect")).onClick(async () => {
+        await controller.disconnectRemoteVault();
+        refresh();
+      }),
+    );
+}
 
-  vaultSetting.addButton((button) =>
-    button.setButtonText(t("vault.disconnect")).onClick(async () => {
-      await controller.disconnectRemoteVault();
-      refresh();
-    }),
-  );
-
-  new Setting(containerEl)
+export function populateDeletedFilesSetting(
+  setting: Setting,
+  app: App,
+  controller: SynchSettingsController,
+  refresh: RefreshSettings,
+): void {
+  setting
     .setName(t("deleted.header"))
     .setDesc(t("vault.deletedFilesDesc"))
     .addButton((button) =>
@@ -58,15 +63,18 @@ export function renderRemoteVaultSettings(
         }).open();
       }),
     );
+}
 
-  if (controller.getRemoteVaultSyncFormatVersion() === 1) {
-    new Setting(containerEl)
-      .setName(t("vault.formatUpgradeTitle"))
-      .setDesc(t("vault.formatUpgradeDesc"))
-      .addButton((button) =>
-        button.setButtonText(t("vault.manageRemote")).onClick(() => {
-          controller.openRemoteVaultManagementPage();
-        }),
-      );
-  }
+export function populateVaultFormatUpgradeSetting(
+  setting: Setting,
+  controller: SynchSettingsController,
+): void {
+  setting
+    .setName(t("vault.formatUpgradeTitle"))
+    .setDesc(t("vault.formatUpgradeDesc"))
+    .addButton((button) =>
+      button.setButtonText(t("vault.manageRemote")).onClick(() => {
+        controller.openRemoteVaultManagementPage();
+      }),
+    );
 }

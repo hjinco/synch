@@ -3,13 +3,13 @@ import { t } from "../../../i18n";
 import type { SynchSettingsController } from "../controller";
 import { RefreshSettings } from "./shared";
 
-export function renderAuthenticationSetting(
-  containerEl: HTMLElement,
+export function populateAuthenticationSetting(
+  authSetting: Setting,
   controller: SynchSettingsController,
   isDeviceLoginInProgress: boolean,
   refresh: RefreshSettings,
 ): void {
-  const authSetting = new Setting(containerEl)
+  authSetting
     .setName(t("authentication"))
     .setDesc(controller.getAuthStatusLabel());
 

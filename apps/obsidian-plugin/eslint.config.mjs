@@ -11,5 +11,7 @@ export default defineConfig([
       parserOptions: { project: true },
     }
   },
-  globalIgnores(["**/*.js", "**/*.mjs", "**/*.json", "**/*.test.ts", "src/test-stubs/*.ts", "src/test-support/*.ts", "test/**/*"]),
+  // *.mts: obsidianmd's recommended config applies type-checked rules to
+  // *.mts, but only *.ts files are covered by the parserOptions project above.
+  globalIgnores(["**/*.js", "**/*.mjs", "**/*.mts", "**/*.json", "**/*.test.ts", "src/test-stubs/*.ts", "src/test-support/*.ts", "test/**/*"]),
 ]);

@@ -3,54 +3,51 @@ import { t } from "../../../i18n";
 import { isStorageWarningStatus } from "../../../adapters/storage-warning";
 import type { SynchSettingsController } from "../controller";
 import { formatStorageDescription, formatSyncDescription, getStoragePercent, shouldShowSyncSpinner } from "../format";
-import { FileSizeBlockedWarningControls, ProgressBarControl, RefreshSettings, SyncStatusSettingControls } from "./shared";
+import {
+  FileSizeBlockedWarningControls,
+  ProgressBarControl,
+  RefreshSettings,
+  StorageRowSettingControls,
+  SyncRowSettingControls,
+} from "./shared";
 
-export function renderSyncStatusSetting(
-  containerEl: HTMLElement,
+export function populateSyncPausedSetting(setting: Setting, message: string): void {
+  setting.setName(t("sync.paused")).setDesc(message);
+}
+
+export function populateVaultConnectSetting(
+  setting: Setting,
   controller: SynchSettingsController,
-  hasConnectedRemoteVault: boolean,
   refresh: RefreshSettings,
-): SyncStatusSettingControls | null {
-  const serverCompatibility = controller.getServerCompatibilityStatus();
-  if (
-    serverCompatibility.state === "update_required" ||
-    serverCompatibility.state === "incompatible"
-  ) {
-    new Setting(containerEl)
-      .setName(t("sync.paused"))
-      .setDesc(serverCompatibility.message);
-    return null;
-  }
+): void {
+  setting
+    .setName(t("sync.label"))
+    .setDesc(t("sync.connectRemoteVault"))
+    .addButton((button) =>
+      button.setButtonText(t("vault.create")).onClick(async () => {
+        await controller.createRemoteVaultFromPrompt();
+        refresh();
+      }),
+    )
+    .addButton((button) =>
+      button.setButtonText(t("vault.connect")).onClick(async () => {
+        await controller.connectRemoteVaultFromPrompt();
+        refresh();
+      }),
+    );
+}
 
-  if (!hasConnectedRemoteVault) {
-    new Setting(containerEl)
-      .setName(t("sync.label"))
-      .setDesc(t("sync.connectRemoteVault"))
-      .addButton((button) =>
-        button.setButtonText(t("vault.create")).onClick(async () => {
-          await controller.createRemoteVaultFromPrompt();
-          refresh();
-        }),
-      )
-      .addButton((button) =>
-        button.setButtonText(t("vault.connect")).onClick(async () => {
-          await controller.connectRemoteVaultFromPrompt();
-          refresh();
-        }),
-      );
-    return null;
-  }
-
-  const storageStatus = controller.getStorageStatus();
+export function populateSyncStatusSetting(
+  syncSetting: Setting,
+  controller: SynchSettingsController,
+): SyncRowSettingControls {
   const getSyncDescription = (): string =>
     formatSyncDescription(
       controller.getSyncStatusLabel(),
       controller.getSyncProgress(),
     );
   const initialSyncDescription = getSyncDescription();
-  const syncSetting = new Setting(containerEl)
-    .setName(t("sync.label"))
-    .setDesc(initialSyncDescription);
+  syncSetting.setName(t("sync.label")).setDesc(initialSyncDescription);
   syncSetting.descEl.empty();
   const syncDescriptionEl = syncSetting.descEl.createSpan({
     text: initialSyncDescription,
@@ -96,8 +93,24 @@ export function renderSyncStatusSetting(
     );
   }
 
+  return {
+    refreshSyncStatus(): void {
+      refreshSyncDescription();
+      refreshSyncSpinner();
+    },
+    refreshFileSizeBlockedWarning: () => {
+      fileSizeWarning.refreshFileSizeBlockedWarning();
+    },
+  };
+}
+
+export function populateStorageStatusSetting(
+  storageSetting: Setting,
+  controller: SynchSettingsController,
+): StorageRowSettingControls {
+  const storageStatus = controller.getStorageStatus();
   let storageProgressBar: ProgressBarControl | null = null;
-  const storageSetting = new Setting(containerEl)
+  storageSetting
     .setName(t("storage.label"))
     .setDesc(storageStatus ? formatStorageDescription(storageStatus) : t("storage.checking"))
     .addProgressBar((progressBar) => {
@@ -109,10 +122,6 @@ export function renderSyncStatusSetting(
   }
 
   return {
-    refreshSyncStatus(): void {
-      refreshSyncDescription();
-      refreshSyncSpinner();
-    },
     refreshStorageStatus(): void {
       const nextStorageStatus = controller.getStorageStatus();
       storageSetting.setDesc(
@@ -127,9 +136,6 @@ export function renderSyncStatusSetting(
         "synch-storage-warning",
         isStorageWarningStatus(nextStorageStatus),
       );
-    },
-    refreshFileSizeBlockedWarning: () => {
-      fileSizeWarning.refreshFileSizeBlockedWarning();
     },
   };
 }
@@ -180,12 +186,4 @@ function createFileSizeBlockedWarningControls(
 
 function formatFileSizeBlockedTooltip(blockedFileCount: number): string {
   return t("sync.fileSizeBlocked", { count: blockedFileCount });
-}
-
-export function renderNetworkConnectionRequiredSetting(
-  containerEl: HTMLElement,
-): void {
-  new Setting(containerEl)
-    .setName(t("network.required"))
-    .setDesc(t("network.requiredDesc"));
 }

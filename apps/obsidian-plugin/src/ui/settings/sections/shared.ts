@@ -1,9 +1,12 @@
 export type RefreshSettings = () => void;
 
-export interface SyncStatusSettingControls {
+export interface SyncRowSettingControls {
   refreshSyncStatus(): void;
-  refreshStorageStatus(): void;
   refreshFileSizeBlockedWarning(): void;
+}
+
+export interface StorageRowSettingControls {
+  refreshStorageStatus(): void;
 }
 
 export interface SyncDiagnosticsSettingControls {

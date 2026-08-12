@@ -1,3 +1,7 @@
+import type {
+  Setting as ObsidianSetting,
+  SettingGroup,
+} from "obsidian";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { getDefaultApiBaseUrl } from "../../config";
@@ -14,6 +18,7 @@ import {
   getTextComponents,
   getToggleComponents,
   resetObsidianMocks,
+  Setting,
 } from "../../test-stubs/obsidian";
 import { createSettingsTab } from "./__tests__/settings-tab-helpers";
 
@@ -32,7 +37,7 @@ describe("SynchSettingTab", () => {
       cancelDeviceLogin,
     });
 
-    tab.display();
+    tab.open();
 
     expect(getButtonComponents().map((button) => button.text)).toEqual([
       t("auth.openSignInAgain"),
@@ -50,7 +55,7 @@ describe("SynchSettingTab", () => {
       isDeviceLoginInProgress: () => false,
     });
 
-    tab.display();
+    tab.open();
 
     const signInButton = getButtonComponents()[0];
     expect(signInButton?.text).toBe(t("auth.signInOnThisDevice"));
@@ -65,11 +70,10 @@ describe("SynchSettingTab", () => {
       hasAuthenticatedSession: () => false,
     });
 
-    tab.display();
+    tab.open();
 
     const buttonTexts = getButtonComponents().map((button) => button.text);
-    expect(getSettingNames().slice(0, 5)).toEqual([
-      "Synch",
+    expect(getSettingNames().slice(0, 4)).toEqual([
       t("account"),
       t("authentication"),
       t("server.heading"),
@@ -90,9 +94,9 @@ describe("SynchSettingTab", () => {
       hasAuthenticatedSession: () => false,
     });
 
-    tab.display();
+    tab.open();
 
-    expect(getSettingNames()).toEqual(["Synch", t("network.required")]);
+    expect(getSettingNames()).toEqual([t("network.required")]);
     expect(getSettingDescriptions()).toContain(t("network.requiredDesc"));
     expect(getButtonComponents()).toEqual([]);
     expect(getTextComponents()).toEqual([]);
@@ -109,7 +113,7 @@ describe("SynchSettingTab", () => {
       }),
     });
 
-    tab.display();
+    tab.open();
 
     expect(ensureCommunityPluginUpdateCheck).toHaveBeenCalledTimes(1);
     expect(getSettingNames()[0]).toBe("Synch");
@@ -138,7 +142,7 @@ describe("SynchSettingTab", () => {
       hasConnectedRemoteVault: () => true,
     });
 
-    tab.display();
+    tab.open();
 
     expect(getCreatedElementTexts()).toContain(t("plugin.updateRequired"));
     expect(getSettingNames()).toContain(t("sync.paused"));
@@ -154,7 +158,7 @@ describe("SynchSettingTab", () => {
       }),
     });
 
-    tab.display();
+    tab.open();
 
     expect(getSettingNames()).not.toContain("Plugin update");
     expect(getCreatedElementTexts()).not.toContain(t("plugin.latestAvailable"));
@@ -166,9 +170,10 @@ describe("SynchSettingTab", () => {
         currentVersion: "0.0.1",
         latestVersion: "0.0.1",
       }),
-    }).display();
+    }).open();
 
     expect(getSettingNames()).not.toContain("Plugin update");
+    expect(getSettingNames()).not.toContain("Synch");
     expect(getSettingClasses()[0]).not.toContain("synch-plugin-update-available");
 
     resetObsidianMocks();
@@ -178,10 +183,28 @@ describe("SynchSettingTab", () => {
         currentVersion: "0.0.1",
         error: "offline",
       }),
-    }).display();
+    }).open();
 
     expect(getSettingNames()).not.toContain("Plugin update");
     expect(getButtonComponents()[0]?.text).toBe(t("auth.signInOnThisDevice"));
+  });
+
+  // The heading row that hosts the badge is hidden until a check has
+  // succeeded, so the check must not depend on that row being rendered.
+  it("kicks off the plugin update check while the heading badge is hidden", () => {
+    const ensureCommunityPluginUpdateCheck = vi.fn(async () => {});
+    const tab = createSettingsTab({
+      ensureCommunityPluginUpdateCheck,
+      getCommunityPluginUpdateStatus: () => ({
+        state: "idle",
+        currentVersion: "0.0.1",
+      }),
+    });
+
+    tab.open();
+
+    expect(getSettingNames()).not.toContain("Synch");
+    expect(ensureCommunityPluginUpdateCheck).toHaveBeenCalledTimes(1);
   });
 
   it("shows an editable self-hosted server URL before sign-in when already configured", async () => {
@@ -191,7 +214,7 @@ describe("SynchSettingTab", () => {
       updateApiBaseUrl,
     });
 
-    tab.display();
+    tab.open();
 
     expect(getToggleComponents()[0]?.value).toBe(true);
     const apiBaseUrlInput = getTextComponents()[0];
@@ -219,7 +242,7 @@ describe("SynchSettingTab", () => {
       updateApiBaseUrl,
     });
 
-    tab.display();
+    tab.open();
 
     await getTextComponents()[0]?.change("not-a-url");
     await getButtonComponents()[1]?.click();
@@ -244,7 +267,7 @@ describe("SynchSettingTab", () => {
       updateApiBaseUrl,
     });
 
-    tab.display();
+    tab.open();
 
     expect(getToggleComponents()[0]?.value).toBe(false);
     expect(getTextComponents()).toEqual([]);
@@ -260,7 +283,7 @@ describe("SynchSettingTab", () => {
       updateApiBaseUrl,
     });
 
-    tab.display();
+    tab.open();
 
     expect(getSettingNames()).not.toContain(t("server.url"));
     expect(getTextComponents()).toEqual([]);
@@ -275,7 +298,7 @@ describe("SynchSettingTab", () => {
       ensureSubscriptionStatusCheck,
     });
 
-    tab.display();
+    tab.open();
 
     expect(ensureSubscriptionStatusCheck).toHaveBeenCalledTimes(1);
     expect(getSettingNames()).toContain(t("subscription.label"));
@@ -290,7 +313,7 @@ describe("SynchSettingTab", () => {
       ensureSubscriptionStatusCheck,
     });
 
-    tab.display();
+    tab.open();
 
     expect(ensureSubscriptionStatusCheck).not.toHaveBeenCalled();
     expect(getSettingNames()).not.toContain(t("subscription.label"));
@@ -313,7 +336,7 @@ describe("SynchSettingTab", () => {
       openPricingPage,
     });
 
-    tab.display();
+    tab.open();
 
     expect(getSettingDescriptions()).toContain(t("subscription.freePlan"));
     const upgradeButton = getButtonComponents().find(
@@ -340,7 +363,7 @@ describe("SynchSettingTab", () => {
       openBillingManagementPage,
     });
 
-    tab.display();
+    tab.open();
 
     expect(getSettingDescriptions()).toContain(t("subscription.starterPlan"));
     const manageButton = getButtonComponents().find(
@@ -365,7 +388,7 @@ describe("SynchSettingTab", () => {
       }),
     });
 
-    tab.display();
+    tab.open();
 
     expect(getSettingDescriptions()).toContain(
       t("subscription.canceling", {
@@ -386,7 +409,7 @@ describe("SynchSettingTab", () => {
       retrySubscriptionStatusCheck,
     });
 
-    tab.display();
+    tab.open();
 
     expect(getSettingDescriptions()).toContain(t("subscription.failed"));
     const refreshButton = getButtonComponents().find(
@@ -405,7 +428,7 @@ describe("SynchSettingTab", () => {
       updateApiBaseUrl,
     });
 
-    tab.display();
+    tab.open();
 
     expect(getToggleComponents()[0]?.disabled).toBe(true);
     const apiBaseUrlInput = getTextComponents()[0];
@@ -427,7 +450,7 @@ describe("SynchSettingTab", () => {
       updateApiBaseUrl,
     });
 
-    tab.display();
+    tab.open();
 
     expect(getToggleComponents()[0]?.disabled).toBe(true);
     const apiBaseUrlInput = getTextComponents()[0];
@@ -448,7 +471,7 @@ describe("SynchSettingTab", () => {
       isDeviceLoginInProgress: () => false,
     });
 
-    tab.display();
+    tab.open();
 
     const buttonTexts = getButtonComponents().map((button) => button.text);
     expect(buttonTexts).not.toContain(t("auth.signInOnThisDevice"));
@@ -462,7 +485,7 @@ describe("SynchSettingTab", () => {
       hasAuthenticatedSession: () => false,
     });
 
-    tab.display();
+    tab.open();
 
     const buttonTexts = getButtonComponents().map((button) => button.text);
     expect(buttonTexts).toContain(t("auth.signInOnThisDevice"));
@@ -479,8 +502,8 @@ describe("SynchSettingTab", () => {
       unwatchStorageStatus,
     });
 
-    tab.display();
-    tab.display();
+    tab.open();
+    tab.open();
     tab.hide();
 
     expect(watchStorageStatus).not.toHaveBeenCalled();
@@ -508,9 +531,118 @@ describe("SynchSettingTab", () => {
       watchStorageStatus,
     });
 
-    tab.display();
+    tab.open();
 
     expect(watchStorageStatus).toHaveBeenCalledTimes(0);
   });
 
+  // Obsidian's declarative settings renderer only keeps the DOM nodes it
+  // tracks: after each render pass the group's children are reset to the
+  // definitions' settingEls, so content rendered outside the provided row
+  // (e.g. into group.listEl) is silently discarded and a removed row is
+  // re-attached empty.
+  it("keeps declarative render output inside the tracked setting row", () => {
+    const scenarios = [
+      {},
+      { hasAuthenticatedSession: () => true, hasConnectedRemoteVault: () => true },
+      {
+        getAuthReadiness: () => ({
+          state: "pending_network" as const,
+          token: "stored-token",
+        }),
+      },
+    ];
+
+    for (const overrides of scenarios) {
+      const tab = createSettingsTab(overrides);
+      const renderDefinitions = collectRenderDefinitions(tab.getSettingDefinitions());
+      expect(renderDefinitions.length).toBeGreaterThan(0);
+
+      for (const definition of renderDefinitions) {
+        const setting = new Setting(null);
+        let usedGroupListEl = false;
+        const group = {
+          get listEl(): unknown {
+            usedGroupListEl = true;
+            return undefined;
+          },
+        };
+
+        definition.render(
+          setting as unknown as ObsidianSetting,
+          group as unknown as SettingGroup,
+        );
+
+        expect(setting.settingEl.detached).toBe(false);
+        expect(usedGroupListEl).toBe(false);
+      }
+    }
+  });
+
+  it("exposes declarative setting definitions for Obsidian settings search", () => {
+    const tab = createSettingsTab({
+      hasAuthenticatedSession: () => true,
+      hasConnectedRemoteVault: () => true,
+    });
+
+    const definitions = tab.getSettingDefinitions();
+    const names = collectSettingNames(definitions);
+
+    expect(definitions.length).toBeGreaterThan(0);
+    expect(names).toEqual(
+      expect.arrayContaining([
+        t("sync.label"),
+        t("authentication"),
+        t("images"),
+        t("sync.frequency"),
+        t("diagnostics.header"),
+      ]),
+    );
+  });
+
 });
+
+interface RenderDefinition {
+  render: (setting: ObsidianSetting, group: SettingGroup) => unknown;
+}
+
+function collectRenderDefinitions(definitions: unknown[]): RenderDefinition[] {
+  const found: RenderDefinition[] = [];
+  for (const definition of definitions) {
+    if (!definition || typeof definition !== "object") {
+      continue;
+    }
+    const record = definition as { render?: unknown; items?: unknown[] };
+    if (typeof record.render === "function") {
+      found.push(record as RenderDefinition);
+    }
+    if (Array.isArray(record.items)) {
+      found.push(...collectRenderDefinitions(record.items));
+    }
+  }
+  return found;
+}
+
+function collectSettingNames(definitions: unknown[]): string[] {
+  const names: string[] = [];
+  for (const definition of definitions) {
+    if (!definition || typeof definition !== "object") {
+      continue;
+    }
+    const record = definition as {
+      name?: unknown;
+      heading?: unknown;
+      items?: unknown[];
+    };
+    if (typeof record.name === "string") {
+      names.push(record.name);
+    }
+    if (typeof record.heading === "string") {
+      names.push(record.heading);
+    }
+    if (Array.isArray(record.items)) {
+      names.push(...collectSettingNames(record.items));
+    }
+  }
+  return names;
+}

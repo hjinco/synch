@@ -4,13 +4,13 @@ import type { SynchSubscriptionStatus } from "../../contracts";
 import type { SynchSettingsController } from "../controller";
 import { RefreshSettings } from "./shared";
 
-export function renderSubscriptionSetting(
-  containerEl: HTMLElement,
+export function populateSubscriptionSetting(
+  setting: Setting,
   controller: SynchSettingsController,
   refresh: RefreshSettings,
 ): void {
   const status = controller.getSubscriptionStatus();
-  const setting = new Setting(containerEl)
+  setting
     .setName(t("subscription.label"))
     .setDesc(formatSubscriptionDescription(status));
 

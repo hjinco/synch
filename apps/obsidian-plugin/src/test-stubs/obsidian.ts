@@ -114,7 +114,7 @@ export class MockButtonComponent {
     return this;
   }
 
-  setWarning(): this {
+  setDestructive(): this {
     return this;
   }
 
@@ -375,8 +375,23 @@ export class MarkdownRenderer {
 
 export class PluginSettingTab {
   containerEl = new MockElement();
+  settingItems: unknown[] = [];
 
   constructor(public app: unknown, public plugin: unknown) {}
+
+  getSettingDefinitions(): unknown[] {
+    return [];
+  }
+
+  getControlValue(_key: string): unknown {
+    return undefined;
+  }
+
+  setControlValue(_key: string, _value: unknown): void {}
+
+  update(): void {}
+
+  refreshDomState(): void {}
 
   hide(): void {}
 }
@@ -389,28 +404,47 @@ export class ItemView {
   constructor(public leaf: WorkspaceLeaf) {}
 }
 
-export class Setting {
-  settingEl = {
-    classes: [] as string[],
-    addClass: (value: string): void => {
-      if (!this.settingEl.classes.includes(value)) {
-        this.settingEl.classes.push(value);
-      }
-    },
-    removeClass: (value: string): void => {
-      this.settingEl.classes = this.settingEl.classes.filter(
-        (className) => className !== value,
-      );
-    },
-    toggleClass: (value: string, enabled: boolean): void => {
-      if (enabled) {
-        this.settingEl.addClass(value);
-        return;
-      }
+export class MockSettingElement extends MockElement {
+  classes: string[] = [];
+  detached = false;
 
-      this.settingEl.removeClass(value);
-    },
-  };
+  override addClass(value: string): void {
+    if (!this.classes.includes(value)) {
+      this.classes.push(value);
+    }
+  }
+
+  removeClass(value: string): void {
+    // Mutate in place: getSettingClasses tracks this array by reference.
+    this.classes.splice(0, this.classes.length, ...this.classes.filter(
+      (className) => className !== value,
+    ));
+  }
+
+  toggleClass(value: string, enabled: boolean): void {
+    if (enabled) {
+      this.addClass(value);
+      return;
+    }
+
+    this.removeClass(value);
+  }
+
+  get className(): string {
+    return this.classes.join(" ");
+  }
+
+  set className(value: string) {
+    this.classes.splice(0, this.classes.length, ...value.split(" ").filter(Boolean));
+  }
+
+  override remove(): void {
+    this.detached = true;
+  }
+}
+
+export class Setting {
+  settingEl = new MockSettingElement();
   nameEl = new MockElement();
   descEl = new MockElement();
   controlEl = new MockElement();
@@ -419,14 +453,29 @@ export class Setting {
     settingClasses.push(this.settingEl.classes);
   }
 
+  private nameIndex: number | null = null;
+  private descIndex: number | null = null;
+
+  // A row shows a single name/description, so repeated calls replace the
+  // recorded value instead of appending a phantom row.
   setName(value: string): this {
-    settingNames.push(value);
+    if (this.nameIndex === null) {
+      this.nameIndex = settingNames.length;
+      settingNames.push(value);
+    } else {
+      settingNames[this.nameIndex] = value;
+    }
     this.nameEl.setText(value);
     return this;
   }
 
   setDesc(value: string): this {
-    settingDescriptions.push(value);
+    if (this.descIndex === null) {
+      this.descIndex = settingDescriptions.length;
+      settingDescriptions.push(value);
+    } else {
+      settingDescriptions[this.descIndex] = value;
+    }
     this.descEl.setText(value);
     return this;
   }

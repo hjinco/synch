@@ -35,7 +35,7 @@ describe("SynchSettingTab sync status", () => {
       }),
     });
 
-    tab.display();
+    tab.open();
 
     expect(getProgressBarComponents().map(({ value }) => value)).toEqual([0]);
   });
@@ -57,7 +57,7 @@ describe("SynchSettingTab sync status", () => {
       }),
     });
 
-    tab.display();
+    tab.open();
 
     expect(getSettingNames()).toContain(t("sync.label"));
     expect(getSettingNames()).not.toContain(t("vault.setting"));
@@ -80,7 +80,7 @@ describe("SynchSettingTab sync status", () => {
       createRemoteVaultFromPrompt,
     });
 
-    tab.display();
+    tab.open();
 
     await getButtonComponents()
       .find((button) => button.text === t("vault.create"))
@@ -104,7 +104,7 @@ describe("SynchSettingTab sync status", () => {
       connectRemoteVaultFromPrompt,
     });
 
-    tab.display();
+    tab.open();
 
     await getButtonComponents()
       .find((button) => button.text === t("vault.connect"))
@@ -123,10 +123,9 @@ describe("SynchSettingTab sync status", () => {
       isDeviceLoginInProgress: () => false,
     });
 
-    tab.display();
+    tab.open();
 
-    expect(getSettingNames().slice(0, 5)).toEqual([
-      "Synch",
+    expect(getSettingNames().slice(0, 4)).toEqual([
       t("sync.label"),
       t("authentication"),
       t("subscription.label"),
@@ -147,7 +146,7 @@ describe("SynchSettingTab sync status", () => {
       }),
     });
 
-    tab.display();
+    tab.open();
 
     expect(getSettingDescriptions()[0]).toBe(
       `${t("sync.state.syncing")} 37% - 42 / 113`,
@@ -171,7 +170,7 @@ describe("SynchSettingTab sync status", () => {
       getSyncStatusLabel: () => "Sync: reconnecting 0%",
     });
 
-    tab.display();
+    tab.open();
 
     expect(getSyncSpinnerElements()).toHaveLength(1);
     expect(getSyncSpinnerElements()[0]?.attributes["data-icon"]).toBe("loader-circle");
@@ -191,7 +190,7 @@ describe("SynchSettingTab sync status", () => {
       }),
     });
 
-    tab.display();
+    tab.open();
 
     const settingNamesAfterDisplay = getSettingNames();
     expect(getSyncSpinnerElements()).toHaveLength(1);
@@ -220,7 +219,7 @@ describe("SynchSettingTab sync status", () => {
       getStorageStatus: () => storageStatus,
     });
 
-    tab.display();
+    tab.open();
 
     const settingNamesAfterDisplay = getSettingNames();
     expect(getProgressBarComponents()).toHaveLength(1);
@@ -235,7 +234,7 @@ describe("SynchSettingTab sync status", () => {
     expect(getSettingNames()).toEqual(settingNamesAfterDisplay);
     expect(getProgressBarComponents()).toHaveLength(1);
     expect(getProgressBarComponents()[0]?.value).toBe(95);
-    expect(getSettingClasses()[2]).toContain("synch-storage-warning");
+    expect(getSettingClasses()[1]).toContain("synch-storage-warning");
   });
 
   it("shows a stop button while sync is enabled", async () => {
@@ -248,7 +247,7 @@ describe("SynchSettingTab sync status", () => {
       setSyncEnabled,
     });
 
-    tab.display();
+    tab.open();
 
     expect(getButtonComponents()[0]?.text).toBe(t("sync.stop"));
     await getButtonComponents()[0]?.click();
@@ -265,7 +264,7 @@ describe("SynchSettingTab sync status", () => {
       setSyncIntervalMs,
     });
 
-    tab.display();
+    tab.open();
 
     expect(getSettingNames().at(-2)).toBe(t("sync.frequency"));
     expect(getSettingNames().at(-1)).toBe(t("diagnostics.header"));
@@ -304,7 +303,7 @@ describe("SynchSettingTab sync status", () => {
       },
     });
 
-    tab.display();
+    tab.open();
 
     const openButton = getButtonComponents().find(
       (button) => button.text === t("diagnostics.open"),
@@ -352,7 +351,7 @@ describe("SynchSettingTab sync status", () => {
       syncNow,
     });
 
-    tab.display();
+    tab.open();
 
     await getButtonComponents().find((button) => button.text === t("sync.now"))?.click();
     expect(syncNow).toHaveBeenCalledTimes(1);
@@ -365,7 +364,7 @@ describe("SynchSettingTab sync status", () => {
       getSyncIntervalMs: () => 0,
     });
 
-    tab.display();
+    tab.open();
 
     expect(
       getButtonComponents().some((button) => button.text === t("sync.now")),
@@ -396,7 +395,7 @@ describe("SynchSettingTab sync status", () => {
       ]),
     });
 
-    tab.display();
+    tab.open();
     await nextTask();
 
     expect(getSettingDescriptions()[0]).toBe(
@@ -425,7 +424,7 @@ describe("SynchSettingTab sync status", () => {
       listFileSizeBlockedFiles: vi.fn(async () => blockedFiles),
     });
 
-    tab.display();
+    tab.open();
     await nextTask();
 
     expect(getFileSizeWarningElements()).toEqual([]);
@@ -479,7 +478,7 @@ describe("SynchSettingTab sync status", () => {
       setSyncEnabled,
     });
 
-    tab.display();
+    tab.open();
 
     expect(getButtonComponents()[0]?.text).toBe(t("sync.start"));
     expect(getSettingDescriptions()[0]).toBe(
@@ -498,7 +497,7 @@ describe("SynchSettingTab sync status", () => {
       getSyncStatusLabel: () => "Sync: offline 0%",
     });
 
-    tab.display();
+    tab.open();
 
     expect(getSyncSpinnerElements()).toEqual([]);
     expect(getExtraButtonComponents()).toEqual([]);
@@ -520,9 +519,9 @@ describe("SynchSettingTab sync status", () => {
       }),
     });
 
-    tab.display();
+    tab.open();
 
-    expect(getSettingNames().slice(1, 3)).toEqual([t("sync.label"), t("storage.label")]);
+    expect(getSettingNames().slice(0, 2)).toEqual([t("sync.label"), t("storage.label")]);
     expect(getSettingDescriptions()[0]).toBe(
       "synced 100% - 12 / 12",
     );
@@ -548,7 +547,7 @@ describe("SynchSettingTab sync status", () => {
       }),
     });
 
-    tab.display();
+    tab.open();
 
     expect(getSettingDescriptions()[1]).toBe("94 B / 100 B (94%)");
     expect(getProgressBarComponents()[0]?.value).toBe(94);
@@ -570,7 +569,7 @@ describe("SynchSettingTab sync status", () => {
       }),
     });
 
-    tab.display();
+    tab.open();
 
     const warningDescription = getSettingDescriptions()[1];
     expect(warningDescription).toBe(
@@ -578,7 +577,7 @@ describe("SynchSettingTab sync status", () => {
     );
     expect(warningDescription).toContain("95 B / 100 B (95%)");
     expect(getProgressBarComponents()[0]?.value).toBe(95);
-    expect(getSettingClasses()[2]).toContain("synch-storage-warning");
+    expect(getSettingClasses()[1]).toContain("synch-storage-warning");
   });
 
   it("shows a full warning when remote storage reaches the limit", () => {
@@ -596,7 +595,7 @@ describe("SynchSettingTab sync status", () => {
       }),
     });
 
-    tab.display();
+    tab.open();
 
     const fullDescription = getSettingDescriptions()[1];
     expect(fullDescription).toBe(
@@ -604,7 +603,7 @@ describe("SynchSettingTab sync status", () => {
     );
     expect(fullDescription).toContain("101 B / 100 B (101%)");
     expect(getProgressBarComponents()[0]?.value).toBe(100);
-    expect(getSettingClasses()[2]).toContain("synch-storage-warning");
+    expect(getSettingClasses()[1]).toContain("synch-storage-warning");
   });
 
   it("shows unlimited remote storage usage without a zero-byte limit", () => {
@@ -622,9 +621,9 @@ describe("SynchSettingTab sync status", () => {
       }),
     });
 
-    tab.display();
+    tab.open();
 
-    expect(getSettingNames().slice(1, 3)).toEqual([t("sync.label"), t("storage.label")]);
+    expect(getSettingNames().slice(0, 2)).toEqual([t("sync.label"), t("storage.label")]);
     expect(getSettingDescriptions()[0]).toBe(
       "synced 100% - 12 / 12",
     );
@@ -645,9 +644,9 @@ describe("SynchSettingTab sync status", () => {
       getStorageStatus: () => null,
     });
 
-    tab.display();
+    tab.open();
 
-    expect(getSettingNames().slice(1, 3)).toEqual([t("sync.label"), t("storage.label")]);
+    expect(getSettingNames().slice(0, 2)).toEqual([t("sync.label"), t("storage.label")]);
     expect(getSettingDescriptions()[0]).toBe("synced 100% - 12 / 12");
     expect(getSettingDescriptions()[1]).toBe(t("storage.checking"));
     expect(getProgressBarComponents().map(({ value }) => value)).toEqual([

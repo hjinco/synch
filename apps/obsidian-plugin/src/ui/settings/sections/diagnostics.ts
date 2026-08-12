@@ -4,12 +4,12 @@ import type { SynchSettingsController } from "../controller";
 import { SyncLogsModal } from "../sync-logs-modal";
 import { SyncDiagnosticsSettingControls } from "./shared";
 
-export function renderSyncDiagnosticsSetting(
+export function populateSyncDiagnosticsSetting(
+  setting: Setting,
   app: App,
-  containerEl: HTMLElement,
   controller: SynchSettingsController,
 ): SyncDiagnosticsSettingControls {
-  const setting = new Setting(containerEl)
+  setting
     .setName(t("diagnostics.header"))
     .setDesc(formatSyncDiagnosticsDescription(controller.getSyncLogs()))
     .addButton((button) =>

@@ -28,7 +28,7 @@ describe("SynchSettingTab remote vault settings", () => {
       hasAuthenticatedSession: () => true,
     });
 
-    tab.display();
+    tab.open();
 
     const buttonTexts = getButtonComponents().map((button) => button.text);
     expect(buttonTexts).toContain(t("vault.manageRemote"));
@@ -40,7 +40,7 @@ describe("SynchSettingTab remote vault settings", () => {
       isDeviceLoginInProgress: () => false,
     });
 
-    tab.display();
+    tab.open();
 
     const buttonTexts = getButtonComponents().map((button) => button.text);
     expect(buttonTexts.slice(0, 4)).toEqual([
@@ -57,7 +57,7 @@ describe("SynchSettingTab remote vault settings", () => {
       hasConnectedRemoteVault: () => false,
     });
 
-    disconnected.display();
+    disconnected.open();
 
     expect(getSettingNames()).toContain(t("vault.manage"));
     expect(getSettingNames()).not.toContain(t("vault.setting"));
@@ -69,7 +69,7 @@ describe("SynchSettingTab remote vault settings", () => {
       hasConnectedRemoteVault: () => true,
     });
 
-    connected.display();
+    connected.open();
 
     expect(getSettingNames()).toContain(t("vault.manage"));
     expect(getSettingNames()).toContain(t("vault.setting"));
@@ -84,7 +84,7 @@ describe("SynchSettingTab remote vault settings", () => {
       hasConnectedRemoteVault: () => false,
     });
 
-    disconnected.display();
+    disconnected.open();
 
     expect(getSettingNames()).not.toContain(t("deleted.header"));
     expect(getButtonComponents().map((button) => button.text)).not.toContain(
@@ -98,7 +98,7 @@ describe("SynchSettingTab remote vault settings", () => {
       hasConnectedRemoteVault: () => true,
     });
 
-    connected.display();
+    connected.open();
 
     expect(getSettingNames()).toContain(t("deleted.header"));
     expect(getButtonComponents().map((button) => button.text)).toContain(
@@ -115,7 +115,7 @@ describe("SynchSettingTab remote vault settings", () => {
       openRemoteVaultManagementPage,
     });
 
-    tab.display();
+    tab.open();
 
     const settingNames = getSettingNames();
     const deletedFilesIndex = settingNames.indexOf(t("deleted.header"));
@@ -138,7 +138,7 @@ describe("SynchSettingTab remote vault settings", () => {
       getRemoteVaultSyncFormatVersion: () => 2,
     });
 
-    tab.display();
+    tab.open();
 
     expect(getSettingNames()).not.toContain(t("vault.formatUpgradeTitle"));
   });
@@ -154,7 +154,7 @@ describe("SynchSettingTab remote vault settings", () => {
       })),
     });
 
-    tab.display();
+    tab.open();
     await getButtonComponents()
       .find((button) => button.text === t("vault.viewDeletedFiles"))
       ?.click();
@@ -196,7 +196,7 @@ describe("SynchSettingTab remote vault settings", () => {
       restoreDeletedFiles,
     });
 
-    tab.display();
+    tab.open();
     await getButtonComponents()
       .find((button) => button.text === t("vault.viewDeletedFiles"))
       ?.click();
@@ -253,7 +253,7 @@ describe("SynchSettingTab remote vault settings", () => {
       restoreDeletedFiles,
     });
 
-    tab.display();
+    tab.open();
     await getButtonComponents()
       .find((button) => button.text === t("vault.viewDeletedFiles"))
       ?.click();
@@ -315,7 +315,7 @@ describe("SynchSettingTab remote vault settings", () => {
       restoreDeletedFiles,
     });
 
-    tab.display();
+    tab.open();
     await getButtonComponents()
       .find((button) => button.text === t("vault.viewDeletedFiles"))
       ?.click();
@@ -365,7 +365,7 @@ describe("SynchSettingTab remote vault settings", () => {
       purgeDeletedFiles,
     });
 
-    tab.display();
+    tab.open();
     await getButtonComponents()
       .find((button) => button.text === t("vault.viewDeletedFiles"))
       ?.click();
@@ -418,7 +418,7 @@ describe("SynchSettingTab remote vault settings", () => {
       purgeDeletedFiles,
     });
 
-    tab.display();
+    tab.open();
     await getButtonComponents()
       .find((button) => button.text === t("vault.viewDeletedFiles"))
       ?.click();
@@ -465,7 +465,7 @@ describe("SynchSettingTab remote vault settings", () => {
       listDeletedFiles,
     });
 
-    tab.display();
+    tab.open();
     await getButtonComponents()
       .find((button) => button.text === t("vault.viewDeletedFiles"))
       ?.click();
@@ -516,7 +516,7 @@ describe("SynchSettingTab remote vault settings", () => {
       previewDeletedFile,
     });
 
-    tab.display();
+    tab.open();
     await getButtonComponents()
       .find((button) => button.text === t("vault.viewDeletedFiles"))
       ?.click();
@@ -564,7 +564,7 @@ describe("SynchSettingTab remote vault settings", () => {
       previewDeletedFile,
     });
 
-    tab.display();
+    tab.open();
     await getButtonComponents()
       .find((button) => button.text === t("vault.viewDeletedFiles"))
       ?.click();
@@ -622,7 +622,7 @@ describe("SynchSettingTab remote vault settings", () => {
       previewDeletedFile,
     });
 
-    tab.display();
+    tab.open();
     await getButtonComponents()
       .find((button) => button.text === t("vault.viewDeletedFiles"))
       ?.click();
@@ -641,7 +641,7 @@ describe("SynchSettingTab remote vault settings", () => {
       hasAuthenticatedSession: () => true,
     });
 
-    tab.display();
+    tab.open();
 
     expect(getSettingNames()).not.toEqual(
       expect.arrayContaining([

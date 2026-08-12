@@ -14,7 +14,6 @@ import type {
   SyncReconcileEntryUpdate,
   SyncStore,
 } from "@synch/sync-client/sync/store/store";
-import type { AcceptedPushApplyPlan } from "@synch/sync-client/sync/store/entry-record";
 import {
   applyAcceptedPushToEntry,
   clearPendingMutation,
