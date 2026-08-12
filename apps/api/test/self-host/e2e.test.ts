@@ -288,6 +288,17 @@ describe("self-hosted Node runtime: end-to-end sync", () => {
 		const robots = await fetch(`${baseUrl}/robots.txt`);
 		expect(robots.status).toBe(200);
 		expect(robots.headers.get("content-type")).toMatch(/^text\/plain/);
+
+		// The auth pages fetch their shared i18n runtime and locale catalogs.
+		const i18nRuntime = await fetch(`${baseUrl}/i18n.js`);
+		expect(i18nRuntime.status).toBe(200);
+		expect(i18nRuntime.headers.get("content-type")).toMatch(/javascript/);
+
+		for (const locale of ["ko", "ja", "zh-cn", "zh-tw"]) {
+			const catalog = await fetch(`${baseUrl}/i18n/${locale}.json`);
+			expect(catalog.status, locale).toBe(200);
+			expect(catalog.headers.get("content-type"), locale).toMatch(/^application\/json/);
+		}
 	});
 
 	it("syncs a mutation between two simulated devices with no Cloudflare dependency", async () => {

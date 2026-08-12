@@ -5,6 +5,7 @@
 		<meta name="viewport" content="width=device-width" />
 		<title>Sign In - Synch</title>
 		<script src="https://cdn.tailwindcss.com"></script>
+		<script src="/i18n.js"></script>
 		<style>
 			/* Mimic the selection colors from Layout.astro */
 			::selection {
@@ -59,124 +60,32 @@
 		</div>
 
 		<script>
-			const messages = {
-				en: {
-					title: "Welcome back",
-					subtitle: "Sign in to your account to continue",
-					email: "Email",
-					password: "Password",
-					submit: "Sign In",
-					verificationRequired: "Email verification required",
-					checkInbox: "Please check your inbox for the verification link.",
-					resendVerification: "Resend verification email",
-					noAccount: "Don't have an account?",
-					signUp: "Sign up",
-					resendAvailableIn: "Resend available in {seconds}s",
-					sending: "Sending...",
-					failedToResend: "Failed to resend",
-					resent: "Verification email resent.",
-					apiUnavailable: "Unable to reach the API.",
-					apiUnavailableWithHint: "Unable to reach the API. Check the server URL and try again.",
-					loggingIn: "Logging in...",
-					authFailed: "Authentication failed.",
-					verificationRequiredButton: "Verification Required",
-					loggedInRedirecting: "Logged in. Redirecting...",
-					requestFailed: "Request failed.",
-				},
-				ko: {
-					title: "다시 오신 것을 환영합니다",
-					subtitle: "계속하려면 계정에 로그인하세요",
-					email: "이메일",
-					password: "비밀번호",
-					submit: "로그인",
-					verificationRequired: "이메일 인증이 필요합니다",
-					checkInbox: "인증 링크가 담긴 이메일을 확인하세요.",
-					resendVerification: "인증 이메일 다시 보내기",
-					noAccount: "계정이 없으신가요?",
-					signUp: "가입하기",
-					resendAvailableIn: "{seconds}초 후 다시 보낼 수 있습니다",
-					sending: "보내는 중...",
-					failedToResend: "다시 보내지 못했습니다",
-					resent: "인증 이메일을 다시 보냈습니다.",
-					apiUnavailable: "API에 연결할 수 없습니다.",
-					apiUnavailableWithHint: "API에 연결할 수 없습니다. 서버 URL을 확인한 뒤 다시 시도하세요.",
-					loggingIn: "로그인 중...",
-					authFailed: "인증에 실패했습니다.",
-					verificationRequiredButton: "인증 필요",
-					loggedInRedirecting: "로그인되었습니다. 이동 중...",
-					requestFailed: "요청에 실패했습니다.",
-				},
-				ja: {
-					title: "おかえりなさい",
-					subtitle: "続行するにはアカウントにサインインしてください",
-					email: "メール",
-					password: "パスワード",
-					submit: "サインイン",
-					verificationRequired: "メール認証が必要です",
-					checkInbox: "認証リンクが届いているか受信箱を確認してください。",
-					resendVerification: "認証メールを再送信",
-					noAccount: "アカウントをお持ちでないですか？",
-					signUp: "登録",
-					resendAvailableIn: "{seconds}秒後に再送信できます",
-					sending: "送信中...",
-					failedToResend: "再送信できませんでした",
-					resent: "認証メールを再送信しました。",
-					apiUnavailable: "APIに接続できません。",
-					apiUnavailableWithHint: "APIに接続できません。サーバーURLを確認してから再試行してください。",
-					loggingIn: "サインイン中...",
-					authFailed: "認証に失敗しました。",
-					verificationRequiredButton: "認証が必要です",
-					loggedInRedirecting: "サインインしました。移動中...",
-					requestFailed: "リクエストに失敗しました。",
-				},
-				"zh-cn": {
-					title: "欢迎回来",
-					subtitle: "登录你的账户以继续",
-					email: "邮箱",
-					password: "密码",
-					submit: "登录",
-					verificationRequired: "需要邮箱验证",
-					checkInbox: "请查看收件箱中的验证链接。",
-					resendVerification: "重新发送验证邮件",
-					noAccount: "还没有账户？",
-					signUp: "注册",
-					resendAvailableIn: "{seconds} 秒后可重新发送",
-					sending: "发送中...",
-					failedToResend: "重新发送失败",
-					resent: "验证邮件已重新发送。",
-					apiUnavailable: "无法连接 API。",
-					apiUnavailableWithHint: "无法连接 API。请检查服务器 URL 后重试。",
-					loggingIn: "登录中...",
-					authFailed: "认证失败。",
-					verificationRequiredButton: "需要验证",
-					loggedInRedirecting: "已登录。正在跳转...",
-					requestFailed: "请求失败。",
-				},
-				"zh-tw": {
-					title: "歡迎回來",
-					subtitle: "登入你的帳戶以繼續",
-					email: "電子郵件",
-					password: "密碼",
-					submit: "登入",
-					verificationRequired: "需要電子郵件驗證",
-					checkInbox: "請查看收件匣中的驗證連結。",
-					resendVerification: "重新傳送驗證電子郵件",
-					noAccount: "還沒有帳戶？",
-					signUp: "註冊",
-					resendAvailableIn: "{seconds} 秒後可重新傳送",
-					sending: "傳送中...",
-					failedToResend: "重新傳送失敗",
-					resent: "驗證電子郵件已重新傳送。",
-					apiUnavailable: "無法連接 API。",
-					apiUnavailableWithHint: "無法連接 API。請檢查伺服器 URL 後再試一次。",
-					loggingIn: "登入中...",
-					authFailed: "驗證失敗。",
-					verificationRequiredButton: "需要驗證",
-					loggedInRedirecting: "已登入。正在前往...",
-					requestFailed: "請求失敗。",
-				},
-			};
-			const locale = getLocale();
+			// Inline English doubles as the initial render and the fallback
+			// catalog; other locales are fetched from /i18n/<locale>.json.
+			const { locale, createTranslator } = window.synchI18n;
+			const { t, ready: translationsReady } = createTranslator("signin", {
+				title: "Welcome back",
+				subtitle: "Sign in to your account to continue",
+				email: "Email",
+				password: "Password",
+				submit: "Sign In",
+				verificationRequired: "Email verification required",
+				checkInbox: "Please check your inbox for the verification link.",
+				resendVerification: "Resend verification email",
+				noAccount: "Don't have an account?",
+				signUp: "Sign up",
+				resendAvailableIn: "Resend available in {seconds}s",
+				sending: "Sending...",
+				failedToResend: "Failed to resend",
+				resent: "Verification email resent.",
+				apiUnavailable: "Unable to reach the API.",
+				apiUnavailableWithHint: "Unable to reach the API. Check the server URL and try again.",
+				loggingIn: "Logging in...",
+				authFailed: "Authentication failed.",
+				verificationRequiredButton: "Verification Required",
+				loggedInRedirecting: "Logged in. Redirecting...",
+				requestFailed: "Request failed.",
+			});
 			const form = document.querySelector("#sign-in-form");
 			const status = document.querySelector("#status");
 			const signupLink = document.querySelector("#signup-link");
@@ -191,7 +100,12 @@
 			let currentEmail = "";
 
 			applyTranslations();
-			void initializePage();
+			// Wait for the locale catalog before the first dynamic render so
+			// status text set by the page flow never sticks in English.
+			void translationsReady.then(() => {
+				applyTranslations();
+				void initializePage();
+			});
 
 			function startResendCooldown() {
 				if (!resendButton) return;
@@ -265,36 +179,6 @@
 				event.preventDefault();
 				void submitAuth();
 			});
-
-			function getLocale() {
-				const params = new URLSearchParams(window.location.search);
-				const candidates = [
-					params.get("lang"),
-					navigator.language,
-				];
-				const selected = candidates.map(normalizeLocale).find(Boolean) || "en";
-				document.documentElement.lang = selected;
-				return selected;
-			}
-
-			function normalizeLocale(candidate) {
-				const locale = candidate?.toLowerCase() || "";
-				if (messages[locale]) return locale;
-				if (locale === "en" || locale.startsWith("en-")) return "en";
-				if (locale === "ko" || locale.startsWith("ko-")) return "ko";
-				if (locale === "ja" || locale.startsWith("ja-")) return "ja";
-				if (locale === "zh-tw" || locale === "zh-hk" || locale === "zh-hant" || locale.startsWith("zh-hant-")) return "zh-tw";
-				if (locale === "zh" || locale === "zh-cn" || locale === "zh-sg" || locale === "zh-hans" || locale.startsWith("zh-hans-")) return "zh-cn";
-				return "";
-			}
-
-			function t(key, params = {}) {
-				const template = messages[locale]?.[key] || messages.en[key] || key;
-				return Object.entries(params).reduce(
-					(text, [name, value]) => text.replaceAll(`{${name}}`, String(value)),
-					template,
-				);
-			}
 
 			function applyTranslations() {
 				for (const element of document.querySelectorAll("[data-i18n]")) {

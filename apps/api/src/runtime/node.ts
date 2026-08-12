@@ -2,7 +2,7 @@ import { serveStatic } from "@hono/node-server/serve-static";
 import { createClient } from "@libsql/client";
 import { drizzle as drizzleLibsql } from "drizzle-orm/libsql";
 import { migrate as migrateLibsql } from "drizzle-orm/libsql/migrator";
-import { mkdirSync } from "node:fs";
+import { mkdirSync, readdirSync } from "node:fs";
 import path from "node:path";
 
 import { createApiApplication } from "../composition/create-api-application";
@@ -29,7 +29,18 @@ const STATIC_PAGES: Record<string, string> = {
 	"/signup": "signup.html",
 	"/vaults": "vaults.html",
 	"/robots.txt": "robots.txt",
+	"/i18n.js": "i18n.js",
 };
+
+/** The pages fetch their locale catalogs from /i18n/<locale>.json at runtime. */
+function i18nCatalogRoutes(): Record<string, string> {
+	return Object.fromEntries(
+		readdirSync(path.join(PUBLIC_DIR, "i18n")).map((file) => [
+			`/i18n/${file}`,
+			path.join("i18n", file),
+		]),
+	);
+}
 
 export interface NodeRuntimeConfig {
 	dataDir: string;
@@ -100,7 +111,7 @@ export async function createNodeRuntime(config: NodeRuntimeConfig) {
 		},
 	);
 
-	for (const [route, file] of Object.entries(STATIC_PAGES)) {
+	for (const [route, file] of Object.entries({ ...STATIC_PAGES, ...i18nCatalogRoutes() })) {
 		application.app.get(route, serveStatic({ path: path.join(PUBLIC_DIR, file) }));
 	}
 

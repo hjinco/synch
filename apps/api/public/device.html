@@ -5,6 +5,7 @@
 		<meta name="viewport" content="width=device-width" />
 		<title>Authorize device | Synch</title>
 		<script src="https://cdn.tailwindcss.com"></script>
+		<script src="/i18n.js"></script>
 		<style>
 			::selection {
 				background-color: #27272a;
@@ -38,130 +39,34 @@
 		</div>
 
 		<script>
-			const messages = {
-				en: {
-					pageTitle: "Finish Obsidian sign-in",
-					title: "Finish Synch sign-in in Obsidian",
-					subtitle: "Approve the sign-in request opened by the Synch Obsidian plugin.",
-					hint: "Only continue if you just chose \"Sign in on this device\" in Obsidian.",
-					approve: "Allow Obsidian sign-in",
-					deny: "Cancel request",
-					checkingSession: "Checking session...",
-					loggedInAs: "Logged in as {account}",
-					openFromObsidian: "Start sign-in from Synch inside Obsidian, then use the page it opens.",
-					checkingDevice: "Checking the Obsidian sign-in request...",
-					approved: "Obsidian sign-in was allowed. Return to Obsidian to finish.",
-					denied: "The Obsidian sign-in request was canceled.",
-					invalidOrConsumed: "This sign-in request is invalid or has already been used.",
-					approveToFinish: "Allow this request to sign in the Synch plugin in Obsidian.",
-					unableToLoad: "Unable to load the Obsidian sign-in request.",
-					unableToCheckSession: "Unable to check your session.",
-					invalidCode: "This sign-in request is invalid.",
-					approving: "Allowing Obsidian sign-in...",
-					denying: "Canceling sign-in request...",
-					unableToUpdate: "Unable to update the Obsidian sign-in request.",
-					apiUnavailableWithHint: "Unable to reach the API. Check the server URL and try again.",
-					requestFailed: "Request failed.",
-				},
-				ko: {
-					pageTitle: "Obsidian 로그인 완료",
-					title: "Obsidian에서 Synch 로그인 완료",
-					subtitle: "Synch Obsidian 플러그인이 연 로그인 요청을 승인합니다.",
-					hint: "Obsidian에서 방금 \"이 기기에서 로그인\"을 눌렀을 때만 계속하세요.",
-					approve: "Obsidian 로그인 허용",
-					deny: "요청 취소",
-					checkingSession: "세션 확인 중...",
-					loggedInAs: "{account}(으)로 로그인됨",
-					openFromObsidian: "Obsidian 안의 Synch에서 로그인을 시작한 뒤, 열리는 페이지를 사용하세요.",
-					checkingDevice: "Obsidian 로그인 요청 확인 중...",
-					approved: "Obsidian 로그인이 허용되었습니다. 완료하려면 Obsidian으로 돌아가세요.",
-					denied: "Obsidian 로그인 요청이 취소되었습니다.",
-					invalidOrConsumed: "이 로그인 요청은 유효하지 않거나 이미 사용되었습니다.",
-					approveToFinish: "이 요청을 허용하면 Obsidian의 Synch 플러그인에 로그인됩니다.",
-					unableToLoad: "Obsidian 로그인 요청을 불러올 수 없습니다.",
-					unableToCheckSession: "세션을 확인할 수 없습니다.",
-					invalidCode: "이 로그인 요청은 유효하지 않습니다.",
-					approving: "Obsidian 로그인 허용 중...",
-					denying: "로그인 요청 취소 중...",
-					unableToUpdate: "Obsidian 로그인 요청을 업데이트할 수 없습니다.",
-					apiUnavailableWithHint: "API에 연결할 수 없습니다. 서버 URL을 확인한 뒤 다시 시도하세요.",
-					requestFailed: "요청에 실패했습니다.",
-				},
-				ja: {
-					pageTitle: "Obsidian サインインを完了",
-					title: "Obsidian で Synch サインインを完了",
-					subtitle: "Synch Obsidian プラグインが開いたサインインリクエストを承認します。",
-					hint: "Obsidian で「このデバイスでサインイン」を選んだ直後の場合のみ続行してください。",
-					approve: "Obsidian サインインを許可",
-					deny: "リクエストをキャンセル",
-					checkingSession: "セッションを確認中...",
-					loggedInAs: "{account} としてサインイン中",
-					openFromObsidian: "Obsidian 内の Synch からサインインを開始し、開かれたページを使用してください。",
-					checkingDevice: "Obsidian サインインリクエストを確認中...",
-					approved: "Obsidian サインインが許可されました。完了するには Obsidian に戻ってください。",
-					denied: "Obsidian サインインリクエストはキャンセルされました。",
-					invalidOrConsumed: "このサインインリクエストは無効、またはすでに使用されています。",
-					approveToFinish: "このリクエストを許可すると、Obsidian の Synch プラグインにサインインします。",
-					unableToLoad: "Obsidian サインインリクエストを読み込めません。",
-					unableToCheckSession: "セッションを確認できません。",
-					invalidCode: "このサインインリクエストは無効です。",
-					approving: "Obsidian サインインを許可中...",
-					denying: "サインインリクエストをキャンセル中...",
-					unableToUpdate: "Obsidian サインインリクエストを更新できません。",
-					apiUnavailableWithHint: "APIに接続できません。サーバーURLを確認してから再試行してください。",
-					requestFailed: "リクエストに失敗しました。",
-				},
-				"zh-cn": {
-					pageTitle: "完成 Obsidian 登录",
-					title: "在 Obsidian 中完成 Synch 登录",
-					subtitle: "批准 Synch Obsidian 插件打开的登录请求。",
-					hint: "仅在你刚刚在 Obsidian 中选择“在此设备上登录”时继续。",
-					approve: "允许 Obsidian 登录",
-					deny: "取消请求",
-					checkingSession: "正在检查会话...",
-					loggedInAs: "已以 {account} 登录",
-					openFromObsidian: "请先从 Obsidian 内的 Synch 开始登录，然后使用它打开的页面。",
-					checkingDevice: "正在检查 Obsidian 登录请求...",
-					approved: "已允许 Obsidian 登录。请返回 Obsidian 完成操作。",
-					denied: "Obsidian 登录请求已取消。",
-					invalidOrConsumed: "此登录请求无效或已被使用。",
-					approveToFinish: "允许此请求后，Obsidian 中的 Synch 插件将登录。",
-					unableToLoad: "无法加载 Obsidian 登录请求。",
-					unableToCheckSession: "无法检查你的会话。",
-					invalidCode: "此登录请求无效。",
-					approving: "正在允许 Obsidian 登录...",
-					denying: "正在取消登录请求...",
-					unableToUpdate: "无法更新 Obsidian 登录请求。",
-					apiUnavailableWithHint: "无法连接 API。请检查服务器 URL 后重试。",
-					requestFailed: "请求失败。",
-				},
-				"zh-tw": {
-					pageTitle: "完成 Obsidian 登入",
-					title: "在 Obsidian 中完成 Synch 登入",
-					subtitle: "核准 Synch Obsidian 外掛開啟的登入請求。",
-					hint: "僅在你剛剛於 Obsidian 中選擇「在此裝置上登入」時繼續。",
-					approve: "允許 Obsidian 登入",
-					deny: "取消請求",
-					checkingSession: "正在檢查工作階段...",
-					loggedInAs: "已以 {account} 登入",
-					openFromObsidian: "請先從 Obsidian 內的 Synch 開始登入，然後使用它開啟的頁面。",
-					checkingDevice: "正在檢查 Obsidian 登入請求...",
-					approved: "已允許 Obsidian 登入。請返回 Obsidian 完成操作。",
-					denied: "Obsidian 登入請求已取消。",
-					invalidOrConsumed: "此登入請求無效或已被使用。",
-					approveToFinish: "允許此請求後，Obsidian 中的 Synch 外掛將登入。",
-					unableToLoad: "無法載入 Obsidian 登入請求。",
-					unableToCheckSession: "無法檢查你的工作階段。",
-					invalidCode: "此登入請求無效。",
-					approving: "正在允許 Obsidian 登入...",
-					denying: "正在取消登入請求...",
-					unableToUpdate: "無法更新 Obsidian 登入請求。",
-					apiUnavailableWithHint: "無法連接 API。請檢查伺服器 URL 後再試一次。",
-					requestFailed: "請求失敗。",
-				},
-			};
+			// Inline English doubles as the initial render and the fallback
+			// catalog; other locales are fetched from /i18n/<locale>.json.
+			const { createTranslator } = window.synchI18n;
+			const { t, ready: translationsReady } = createTranslator("device", {
+				pageTitle: "Finish Obsidian sign-in",
+				title: "Finish Synch sign-in in Obsidian",
+				subtitle: "Approve the sign-in request opened by the Synch Obsidian plugin.",
+				hint: "Only continue if you just chose \"Sign in on this device\" in Obsidian.",
+				approve: "Allow Obsidian sign-in",
+				deny: "Cancel request",
+				checkingSession: "Checking session...",
+				loggedInAs: "Logged in as {account}",
+				openFromObsidian: "Start sign-in from Synch inside Obsidian, then use the page it opens.",
+				checkingDevice: "Checking the Obsidian sign-in request...",
+				approved: "Obsidian sign-in was allowed. Return to Obsidian to finish.",
+				denied: "The Obsidian sign-in request was canceled.",
+				invalidOrConsumed: "This sign-in request is invalid or has already been used.",
+				approveToFinish: "Allow this request to sign in the Synch plugin in Obsidian.",
+				unableToLoad: "Unable to load the Obsidian sign-in request.",
+				unableToCheckSession: "Unable to check your session.",
+				invalidCode: "This sign-in request is invalid.",
+				approving: "Allowing Obsidian sign-in...",
+				denying: "Canceling sign-in request...",
+				unableToUpdate: "Unable to update the Obsidian sign-in request.",
+				apiUnavailableWithHint: "Unable to reach the API. Check the server URL and try again.",
+				requestFailed: "Request failed.",
+			});
 			const params = new URLSearchParams(window.location.search);
-			const locale = getLocale();
 			let activeUserCode = normalizeUserCode(params.get("user_code") ?? "");
 
 			const approvalPanel = document.querySelector("#approval-panel");
@@ -179,7 +84,12 @@
 			});
 
 			applyTranslations();
-			void refreshDevice();
+			// Wait for the locale catalog before the first dynamic render so
+			// status text set by the page flow never sticks in English.
+			void translationsReady.then(() => {
+				applyTranslations();
+				void refreshDevice();
+			});
 
 			async function refreshDevice() {
 				setVisible(approvalPanel, false);
@@ -301,35 +211,6 @@
 					signInUrl.searchParams.set("lang", lang);
 				}
 				window.location.assign(signInUrl.toString());
-			}
-
-			function getLocale() {
-				const candidates = [
-					params.get("lang"),
-					navigator.language,
-				];
-				const selected = candidates.map(normalizeLocale).find(Boolean) || "en";
-				document.documentElement.lang = selected;
-				return selected;
-			}
-
-			function normalizeLocale(candidate) {
-				const locale = candidate?.toLowerCase() || "";
-				if (messages[locale]) return locale;
-				if (locale === "en" || locale.startsWith("en-")) return "en";
-				if (locale === "ko" || locale.startsWith("ko-")) return "ko";
-				if (locale === "ja" || locale.startsWith("ja-")) return "ja";
-				if (locale === "zh-tw" || locale === "zh-hk" || locale === "zh-hant" || locale.startsWith("zh-hant-")) return "zh-tw";
-				if (locale === "zh" || locale === "zh-cn" || locale === "zh-sg" || locale === "zh-hans" || locale.startsWith("zh-hans-")) return "zh-cn";
-				return "";
-			}
-
-			function t(key, params = {}) {
-				const template = messages[locale]?.[key] || messages.en[key] || key;
-				return Object.entries(params).reduce(
-					(text, [name, value]) => text.replaceAll(`{${name}}`, String(value)),
-					template,
-				);
 			}
 
 			function applyTranslations() {

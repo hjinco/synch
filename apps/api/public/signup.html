@@ -5,6 +5,7 @@
 		<meta name="viewport" content="width=device-width" />
 		<title>Sign Up - Synch</title>
 		<script src="https://cdn.tailwindcss.com"></script>
+		<script src="/i18n.js"></script>
 		<style>
 			/* Mimic the selection colors from Layout.astro */
 			::selection {
@@ -62,139 +63,35 @@
 		</div>
 
 		<script>
-			const messages = {
-				en: {
-					title: "Create an account",
-					subtitle: "Your vault stays end-to-end encrypted. This account only coordinates sync.",
-					name: "Name",
-					email: "Email",
-					password: "Password",
-					submit: "Create Account",
-					checkEmail: "Check your email",
-					sentPrefix: "We've sent a verification link to",
-					sentSuffix: ".",
-					resendVerification: "Resend verification email",
-					hasAccount: "Already have an account?",
-					signIn: "Sign in",
-					resendAvailableIn: "Resend available in {seconds}s",
-					sending: "Sending...",
-					failedToResend: "Failed to resend",
-					resent: "Verification email resent.",
-					apiUnavailable: "Unable to reach the API.",
-					apiUnavailableWithHint: "Unable to reach the API. Check the server URL and try again.",
-					creatingAccount: "Creating account...",
-					accountCreationFailed: "Account creation failed.",
-					emailNotAllowed: "This email address is not allowed to sign up.",
-					emailSent: "Email Sent",
-					createdRedirecting: "Account created. Redirecting...",
-					requestFailed: "Request failed.",
-				},
-				ko: {
-					title: "계정 만들기",
-					subtitle: "Vault는 종단간 암호화 상태로 유지됩니다. 이 계정은 동기화만 조율합니다.",
-					name: "이름",
-					email: "이메일",
-					password: "비밀번호",
-					submit: "계정 만들기",
-					checkEmail: "이메일을 확인하세요",
-					sentPrefix: "인증 링크를 보냈습니다:",
-					sentSuffix: "",
-					resendVerification: "인증 이메일 다시 보내기",
-					hasAccount: "이미 계정이 있으신가요?",
-					signIn: "로그인",
-					resendAvailableIn: "{seconds}초 후 다시 보낼 수 있습니다",
-					sending: "보내는 중...",
-					failedToResend: "다시 보내지 못했습니다",
-					resent: "인증 이메일을 다시 보냈습니다.",
-					apiUnavailable: "API에 연결할 수 없습니다.",
-					apiUnavailableWithHint: "API에 연결할 수 없습니다. 서버 URL을 확인한 뒤 다시 시도하세요.",
-					creatingAccount: "계정 만드는 중...",
-					accountCreationFailed: "계정을 만들지 못했습니다.",
-					emailNotAllowed: "이 이메일 주소는 가입이 허용되지 않았습니다.",
-					emailSent: "이메일 전송됨",
-					createdRedirecting: "계정이 생성되었습니다. 이동 중...",
-					requestFailed: "요청에 실패했습니다.",
-				},
-				ja: {
-					title: "アカウントを作成",
-					subtitle: "Vaultはエンドツーエンド暗号化されたままです。このアカウントは同期だけを調整します。",
-					name: "名前",
-					email: "メール",
-					password: "パスワード",
-					submit: "アカウントを作成",
-					checkEmail: "メールを確認してください",
-					sentPrefix: "認証リンクを送信しました:",
-					sentSuffix: "",
-					resendVerification: "認証メールを再送信",
-					hasAccount: "すでにアカウントをお持ちですか？",
-					signIn: "サインイン",
-					resendAvailableIn: "{seconds}秒後に再送信できます",
-					sending: "送信中...",
-					failedToResend: "再送信できませんでした",
-					resent: "認証メールを再送信しました。",
-					apiUnavailable: "APIに接続できません。",
-					apiUnavailableWithHint: "APIに接続できません。サーバーURLを確認してから再試行してください。",
-					creatingAccount: "アカウントを作成中...",
-					accountCreationFailed: "アカウントを作成できませんでした。",
-					emailNotAllowed: "このメールアドレスは登録を許可されていません。",
-					emailSent: "メールを送信しました",
-					createdRedirecting: "アカウントを作成しました。移動中...",
-					requestFailed: "リクエストに失敗しました。",
-				},
-				"zh-cn": {
-					title: "创建账户",
-					subtitle: "你的 vault 会保持端到端加密。此账户只用于协调同步。",
-					name: "姓名",
-					email: "邮箱",
-					password: "密码",
-					submit: "创建账户",
-					checkEmail: "检查你的邮箱",
-					sentPrefix: "我们已发送验证链接至",
-					sentSuffix: "。",
-					resendVerification: "重新发送验证邮件",
-					hasAccount: "已有账户？",
-					signIn: "登录",
-					resendAvailableIn: "{seconds} 秒后可重新发送",
-					sending: "发送中...",
-					failedToResend: "重新发送失败",
-					resent: "验证邮件已重新发送。",
-					apiUnavailable: "无法连接 API。",
-					apiUnavailableWithHint: "无法连接 API。请检查服务器 URL 后重试。",
-					creatingAccount: "正在创建账户...",
-					accountCreationFailed: "账户创建失败。",
-					emailNotAllowed: "此电子邮箱地址不允许注册。",
-					emailSent: "邮件已发送",
-					createdRedirecting: "账户已创建。正在跳转...",
-					requestFailed: "请求失败。",
-				},
-				"zh-tw": {
-					title: "建立帳戶",
-					subtitle: "你的 vault 會保持端對端加密。此帳戶只用於協調同步。",
-					name: "姓名",
-					email: "電子郵件",
-					password: "密碼",
-					submit: "建立帳戶",
-					checkEmail: "檢查你的電子郵件",
-					sentPrefix: "我們已傳送驗證連結至",
-					sentSuffix: "。",
-					resendVerification: "重新傳送驗證電子郵件",
-					hasAccount: "已經有帳戶？",
-					signIn: "登入",
-					resendAvailableIn: "{seconds} 秒後可重新傳送",
-					sending: "傳送中...",
-					failedToResend: "重新傳送失敗",
-					resent: "驗證電子郵件已重新傳送。",
-					apiUnavailable: "無法連接 API。",
-					apiUnavailableWithHint: "無法連接 API。請檢查伺服器 URL 後再試一次。",
-					creatingAccount: "正在建立帳戶...",
-					accountCreationFailed: "帳戶建立失敗。",
-					emailNotAllowed: "此電子郵件地址不允許註冊。",
-					emailSent: "電子郵件已傳送",
-					createdRedirecting: "帳戶已建立。正在前往...",
-					requestFailed: "請求失敗。",
-				},
-			};
-			const locale = getLocale();
+			// Inline English doubles as the initial render and the fallback
+			// catalog; other locales are fetched from /i18n/<locale>.json.
+			const { locale, createTranslator } = window.synchI18n;
+			const { t, ready: translationsReady } = createTranslator("signup", {
+				title: "Create an account",
+				subtitle: "Your vault stays end-to-end encrypted. This account only coordinates sync.",
+				name: "Name",
+				email: "Email",
+				password: "Password",
+				submit: "Create Account",
+				checkEmail: "Check your email",
+				sentPrefix: "We've sent a verification link to",
+				sentSuffix: ".",
+				resendVerification: "Resend verification email",
+				hasAccount: "Already have an account?",
+				signIn: "Sign in",
+				resendAvailableIn: "Resend available in {seconds}s",
+				sending: "Sending...",
+				failedToResend: "Failed to resend",
+				resent: "Verification email resent.",
+				apiUnavailable: "Unable to reach the API.",
+				apiUnavailableWithHint: "Unable to reach the API. Check the server URL and try again.",
+				creatingAccount: "Creating account...",
+				accountCreationFailed: "Account creation failed.",
+				emailNotAllowed: "This email address is not allowed to sign up.",
+				emailSent: "Email Sent",
+				createdRedirecting: "Account created. Redirecting...",
+				requestFailed: "Request failed.",
+			});
 			const form = document.querySelector("#sign-up-form");
 			const status = document.querySelector("#status");
 			const signinLink = document.querySelector("#signin-link");
@@ -210,7 +107,12 @@
 			let currentEmail = "";
 
 			applyTranslations();
-			void initializePage();
+			// Wait for the locale catalog before the first dynamic render so
+			// status text set by the page flow never sticks in English.
+			void translationsReady.then(() => {
+				applyTranslations();
+				void initializePage();
+			});
 
 			function startResendCooldown() {
 				if (!resendButton) return;
@@ -284,36 +186,6 @@
 				event.preventDefault();
 				void submitAuth();
 			});
-
-			function getLocale() {
-				const params = new URLSearchParams(window.location.search);
-				const candidates = [
-					params.get("lang"),
-					navigator.language,
-				];
-				const selected = candidates.map(normalizeLocale).find(Boolean) || "en";
-				document.documentElement.lang = selected;
-				return selected;
-			}
-
-			function normalizeLocale(candidate) {
-				const locale = candidate?.toLowerCase() || "";
-				if (messages[locale]) return locale;
-				if (locale === "en" || locale.startsWith("en-")) return "en";
-				if (locale === "ko" || locale.startsWith("ko-")) return "ko";
-				if (locale === "ja" || locale.startsWith("ja-")) return "ja";
-				if (locale === "zh-tw" || locale === "zh-hk" || locale === "zh-hant" || locale.startsWith("zh-hant-")) return "zh-tw";
-				if (locale === "zh" || locale === "zh-cn" || locale === "zh-sg" || locale === "zh-hans" || locale.startsWith("zh-hans-")) return "zh-cn";
-				return "";
-			}
-
-			function t(key, params = {}) {
-				const template = messages[locale]?.[key] || messages.en[key] || key;
-				return Object.entries(params).reduce(
-					(text, [name, value]) => text.replaceAll(`{${name}}`, String(value)),
-					template,
-				);
-			}
 
 			function applyTranslations() {
 				for (const element of document.querySelectorAll("[data-i18n]")) {
