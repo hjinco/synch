@@ -1,0 +1,723 @@
+/*
+ * Shared stylesheet for the static public pages (signin, signup, device,
+ * vaults). Hand-written replacement for the Tailwind CDN; color values mirror
+ * the Tailwind zinc palette so the pages keep the same dark look as
+ * apps/www.
+ */
+
+:root {
+	color-scheme: dark;
+	--bg: #0a0a0a;
+	--zinc-100: #f4f4f5;
+	--zinc-200: #e4e4e7;
+	--zinc-300: #d4d4d8;
+	--zinc-400: #a1a1aa;
+	--zinc-500: #71717a;
+	--zinc-600: #52525b;
+	--zinc-700: #3f3f46;
+	--zinc-800: #27272a;
+	--zinc-900: #18181b;
+	--zinc-950: #09090b;
+	--red-400: #f87171;
+	--red-900: #7f1d1d;
+	--green-400: #4ade80;
+}
+
+/* Base */
+
+*,
+*::before,
+*::after {
+	box-sizing: border-box;
+}
+
+html {
+	-webkit-text-size-adjust: 100%;
+}
+
+body {
+	margin: 0;
+	background-color: var(--bg);
+	color: var(--zinc-400);
+	font-family:
+		ui-sans-serif,
+		system-ui,
+		-apple-system,
+		"Segoe UI",
+		Roboto,
+		"Helvetica Neue",
+		Arial,
+		"Noto Sans",
+		sans-serif,
+		"Apple Color Emoji",
+		"Segoe UI Emoji",
+		"Segoe UI Symbol",
+		"Noto Color Emoji";
+	font-size: 0.875rem;
+	line-height: 1.25rem;
+	-webkit-font-smoothing: antialiased;
+	-moz-osx-font-smoothing: grayscale;
+	min-height: 100vh;
+	min-height: 100dvh;
+	display: flex;
+	flex-direction: column;
+}
+
+h1,
+h2,
+h3,
+p,
+ol {
+	margin: 0;
+}
+
+a {
+	color: inherit;
+	text-decoration: inherit;
+}
+
+button,
+input {
+	font: inherit;
+	color: inherit;
+}
+
+::selection {
+	background-color: var(--zinc-800);
+	color: var(--zinc-200);
+}
+
+[hidden],
+.hidden {
+	display: none !important;
+}
+
+/* Page layout */
+
+.page {
+	margin-inline: auto;
+	padding-inline: 1.5rem;
+	width: 100%;
+	flex: 1;
+	display: flex;
+	flex-direction: column;
+}
+
+.page--narrow {
+	max-width: 28rem;
+	justify-content: center;
+	padding-block: 6rem;
+}
+
+.page--medium {
+	max-width: 48rem;
+	justify-content: center;
+	padding-block: 3rem;
+}
+
+.page--wide {
+	max-width: 56rem;
+	padding-block: 3rem;
+}
+
+.page-header {
+	margin-bottom: 2rem;
+	text-align: center;
+}
+
+.page-header .brand {
+	display: inline-block;
+	margin-bottom: 2rem;
+}
+
+.brand {
+	color: var(--zinc-200);
+	font-size: 0.75rem;
+	line-height: 1rem;
+	font-weight: 400;
+	letter-spacing: 0.05em;
+	text-transform: uppercase;
+	transition: opacity 150ms;
+}
+
+.brand:hover {
+	opacity: 0.8;
+}
+
+.page-title {
+	font-size: 1.5rem;
+	line-height: 2rem;
+	font-weight: 400;
+	letter-spacing: -0.025em;
+	color: var(--zinc-200);
+	margin-bottom: 0.5rem;
+}
+
+.page-subtitle {
+	color: var(--zinc-500);
+	font-size: 0.75rem;
+	line-height: 1rem;
+	margin-bottom: 0.5rem;
+}
+
+.page-subtitle:last-child {
+	margin-bottom: 0;
+}
+
+/* Forms */
+
+.form {
+	display: flex;
+	flex-direction: column;
+	gap: 1rem;
+}
+
+.form > .btn {
+	margin-top: 1rem;
+}
+
+.field {
+	display: flex;
+	flex-direction: column;
+	gap: 0.5rem;
+}
+
+.label-row {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+}
+
+.label {
+	display: block;
+	font-size: 0.75rem;
+	line-height: 1rem;
+	color: var(--zinc-400);
+}
+
+dialog .label {
+	color: var(--zinc-500);
+}
+
+.input {
+	width: 100%;
+	background-color: rgb(24 24 27 / 0.5);
+	border: 1px solid var(--zinc-800);
+	border-radius: 0.25rem;
+	padding: 0.5rem 0.75rem;
+	font-size: 0.875rem;
+	line-height: 1.25rem;
+	color: var(--zinc-200);
+	transition: border-color 150ms;
+}
+
+.input::placeholder {
+	color: var(--zinc-600);
+}
+
+.input:focus {
+	outline: none;
+	border-color: var(--zinc-600);
+}
+
+/* Buttons */
+
+.btn {
+	display: inline-block;
+	padding: 0.5rem 1rem;
+	font-size: 0.75rem;
+	line-height: 1rem;
+	font-weight: 500;
+	text-align: center;
+	border: none;
+	border-radius: 0.25rem;
+	background: none;
+	cursor: pointer;
+	transition:
+		color 150ms,
+		background-color 150ms,
+		border-color 150ms;
+}
+
+.btn:disabled {
+	opacity: 0.5;
+	cursor: not-allowed;
+}
+
+.btn--primary {
+	background-color: var(--zinc-200);
+	color: var(--bg);
+}
+
+.btn--primary:hover:not(:disabled) {
+	background-color: #fff;
+}
+
+.btn--secondary {
+	border: 1px solid var(--zinc-700);
+	color: var(--zinc-300);
+}
+
+.btn--secondary:hover:not(:disabled) {
+	background-color: var(--zinc-800);
+}
+
+.btn--danger {
+	border: 1px solid rgb(127 29 29 / 0.5);
+	color: var(--red-400);
+}
+
+.btn--danger:hover:not(:disabled) {
+	background-color: rgb(127 29 29 / 0.2);
+}
+
+/* Inert look for the submit button once email verification is pending. */
+.btn.btn--muted {
+	background-color: var(--zinc-800);
+	color: var(--zinc-400);
+}
+
+/* Always full width, at every viewport size. */
+.btn--block {
+	width: 100%;
+}
+
+.btn--compact {
+	padding: 0.375rem 1rem;
+}
+
+/* Full width on mobile only; reverts to auto at the sm breakpoint. */
+.btn--fluid {
+	width: 100%;
+}
+
+.link-button {
+	background: none;
+	border: none;
+	padding: 0;
+	cursor: pointer;
+	font-size: 0.75rem;
+	line-height: 1rem;
+	color: var(--zinc-300);
+	text-decoration: underline;
+	transition: color 150ms;
+}
+
+.link-button:hover:not(:disabled) {
+	color: #fff;
+}
+
+.link-button:disabled {
+	opacity: 0.5;
+	text-decoration: none;
+	cursor: not-allowed;
+}
+
+/* Status text */
+
+.status {
+	color: var(--zinc-400);
+	font-size: 0.75rem;
+	line-height: 1rem;
+	text-align: center;
+	min-height: 1.5rem;
+}
+
+.status--spaced {
+	margin-bottom: 0.5rem;
+}
+
+/* Left-aligned toolbar variant used on the vaults page. */
+.status--bar {
+	font-size: 0.875rem;
+	line-height: 1.25rem;
+	text-align: left;
+	min-height: 0;
+}
+
+/* Device authorization page */
+
+.identity {
+	color: rgb(74 222 128 / 0.9);
+	font-size: 0.75rem;
+	line-height: 1rem;
+	font-weight: 500;
+	text-align: center;
+	margin-bottom: 1.5rem;
+}
+
+.approval-panel {
+	display: flex;
+	flex-direction: column;
+	justify-content: center;
+	gap: 0.75rem;
+	margin: 0 auto 2rem;
+	max-width: 20rem;
+	width: 100%;
+}
+
+/* Sign-in / sign-up pages */
+
+.success-panel {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	margin-top: 1.5rem;
+	padding: 1rem;
+	background-color: rgb(24 24 27 / 0.5);
+	border: 1px solid rgb(39 39 42 / 0.8);
+	border-radius: 0.5rem;
+	text-align: center;
+}
+
+.success-title {
+	color: var(--zinc-200);
+	font-size: 0.875rem;
+	line-height: 1.25rem;
+	margin-bottom: 0.25rem;
+}
+
+.success-body {
+	color: var(--zinc-400);
+	font-size: 0.75rem;
+	line-height: 1rem;
+	margin-bottom: 1rem;
+}
+
+.sent-email {
+	font-weight: 500;
+	color: var(--zinc-300);
+}
+
+.resend {
+	width: 100%;
+	text-align: center;
+}
+
+.resend-message {
+	color: var(--zinc-400);
+	font-size: 0.75rem;
+	line-height: 1rem;
+	margin-top: 0.5rem;
+}
+
+.auth-footer {
+	margin-top: 2rem;
+	text-align: center;
+	font-size: 0.75rem;
+	line-height: 1rem;
+	color: var(--zinc-500);
+}
+
+.auth-footer a {
+	color: var(--zinc-300);
+	transition: color 150ms;
+}
+
+.auth-footer a:hover {
+	color: var(--zinc-100);
+}
+
+/* Vaults page */
+
+.topbar {
+	display: flex;
+	align-items: center;
+	margin-bottom: 2rem;
+}
+
+.vaults-header {
+	display: flex;
+	flex-direction: column;
+	justify-content: space-between;
+	gap: 1.5rem;
+	margin-bottom: 2rem;
+}
+
+.vaults-subtitle {
+	color: var(--zinc-500);
+	font-size: 0.875rem;
+	line-height: 1.625;
+	max-width: 42rem;
+}
+
+.user-area {
+	display: flex;
+	align-items: center;
+	gap: 1rem;
+}
+
+.user-badge {
+	color: var(--zinc-500);
+	font-size: 0.75rem;
+	line-height: 1rem;
+	background-color: rgb(24 24 27 / 0.5);
+	border: 1px solid var(--zinc-800);
+	border-radius: 9999px;
+	padding: 0.375rem 0.75rem;
+	white-space: nowrap;
+}
+
+.signout-button {
+	flex-shrink: 0;
+	background: none;
+	border: none;
+	padding: 0;
+	cursor: pointer;
+	color: var(--zinc-500);
+	font-size: 0.75rem;
+	line-height: 1rem;
+	transition: color 150ms;
+}
+
+.signout-button:hover:not(:disabled) {
+	color: var(--zinc-300);
+}
+
+.vaults-toolbar {
+	display: flex;
+	flex-direction: column;
+	justify-content: space-between;
+	gap: 1rem;
+	margin-bottom: 1.5rem;
+}
+
+.vaults-actions {
+	display: flex;
+	flex-direction: column;
+	gap: 0.75rem;
+}
+
+.vault-list {
+	display: grid;
+	gap: 0.75rem;
+}
+
+.vault-card {
+	display: flex;
+	flex-direction: column;
+	justify-content: space-between;
+	gap: 1rem;
+	padding: 1.25rem;
+	border: 1px solid var(--zinc-800);
+	border-radius: 0.75rem;
+	background-color: rgb(24 24 27 / 0.3);
+	transition: border-color 150ms;
+}
+
+.vault-card:hover {
+	border-color: var(--zinc-700);
+}
+
+.vault-name {
+	color: var(--zinc-200);
+	font-size: 1rem;
+	line-height: 1.5rem;
+	font-weight: 500;
+	margin-bottom: 0.25rem;
+}
+
+.vault-meta {
+	color: var(--zinc-500);
+	font-size: 0.75rem;
+	line-height: 1.625;
+	word-break: break-all;
+}
+
+.empty-guide {
+	border: 1px solid var(--zinc-800);
+	border-radius: 0.75rem;
+	background-color: rgb(24 24 27 / 0.2);
+	overflow: hidden;
+}
+
+.empty-guide-header {
+	padding: 1.5rem;
+	border-bottom: 1px solid rgb(39 39 42 / 0.7);
+}
+
+.empty-guide-eyebrow {
+	color: var(--zinc-500);
+	font-size: 0.75rem;
+	line-height: 1rem;
+	margin-bottom: 0.5rem;
+}
+
+.empty-guide-title {
+	color: var(--zinc-200);
+	font-size: 1.125rem;
+	line-height: 1.75rem;
+	font-weight: 500;
+	margin-bottom: 0.5rem;
+}
+
+.empty-guide-intro {
+	color: var(--zinc-400);
+	font-size: 0.875rem;
+	line-height: 1.625;
+	max-width: 48rem;
+}
+
+.empty-guide-steps {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+}
+
+.empty-guide-step {
+	display: flex;
+	gap: 1rem;
+	padding: 1.25rem;
+}
+
+.empty-guide-step + .empty-guide-step {
+	border-top: 1px solid rgb(39 39 42 / 0.7);
+}
+
+.step-marker {
+	margin-top: 0.125rem;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	height: 1.75rem;
+	width: 1.75rem;
+	flex-shrink: 0;
+	border-radius: 9999px;
+	border: 1px solid var(--zinc-700);
+	background-color: var(--zinc-950);
+	color: var(--zinc-300);
+	font-size: 0.75rem;
+	line-height: 1rem;
+	font-weight: 500;
+}
+
+.step-content {
+	min-width: 0;
+}
+
+.step-title {
+	color: var(--zinc-200);
+	font-size: 0.875rem;
+	line-height: 1.25rem;
+	font-weight: 500;
+	margin-bottom: 0.25rem;
+}
+
+.step-body {
+	color: var(--zinc-500);
+	font-size: 0.875rem;
+	line-height: 1.625;
+}
+
+/* Dialogs */
+
+dialog {
+	width: calc(100% - 2rem);
+	max-width: calc(100% - 2rem);
+	background-color: var(--bg);
+	color: var(--zinc-200);
+	border: 1px solid var(--zinc-800);
+	border-radius: 0.75rem;
+	padding: 0;
+	box-shadow: 0 25px 50px -12px rgb(0 0 0 / 0.25);
+}
+
+dialog::backdrop {
+	background: rgba(0, 0, 0, 0.6);
+	backdrop-filter: blur(4px);
+}
+
+.dialog-body {
+	padding: 1.5rem;
+}
+
+.dialog-title {
+	font-size: 1.125rem;
+	line-height: 1.75rem;
+	font-weight: 500;
+	margin-bottom: 0.75rem;
+}
+
+.dialog-intro {
+	color: var(--zinc-400);
+	font-size: 0.875rem;
+	line-height: 1.625;
+	margin-bottom: 1.5rem;
+}
+
+.dialog-fields {
+	display: flex;
+	flex-direction: column;
+	gap: 1rem;
+}
+
+.dialog-footer {
+	display: flex;
+	justify-content: flex-end;
+	gap: 0.75rem;
+	padding: 1rem 1.5rem;
+	border-top: 1px solid rgb(39 39 42 / 0.5);
+	background-color: rgb(255 255 255 / 0.01);
+}
+
+.form-error {
+	color: var(--red-400);
+	font-size: 0.75rem;
+	line-height: 1.625;
+}
+
+.form-hint {
+	color: var(--zinc-500);
+	font-size: 0.75rem;
+	line-height: 1.625;
+}
+
+/* State classes toggled from inline scripts. Kept last so they win ties
+   against component base colors. */
+
+.status--error {
+	color: var(--red-400);
+}
+
+.status--success {
+	color: var(--green-400);
+}
+
+/* Responsive (Tailwind "sm" breakpoint) */
+
+@media (min-width: 640px) {
+	.page--medium {
+		padding-block: 6rem;
+	}
+
+	.btn--fluid {
+		width: auto;
+	}
+
+	.approval-panel {
+		flex-direction: row;
+	}
+
+	.vaults-header {
+		flex-direction: row;
+		align-items: flex-start;
+	}
+
+	.vaults-toolbar {
+		flex-direction: row;
+		align-items: center;
+	}
+
+	.vaults-actions {
+		flex-direction: row;
+	}
+
+	.vault-card {
+		flex-direction: row;
+		align-items: center;
+	}
+
+	dialog {
+		width: 480px;
+	}
+}

@@ -1,110 +1,100 @@
 <!doctype html>
-<html lang="en" class="dark">
+<html lang="en">
 	<head>
 		<meta charset="UTF-8" />
 		<meta name="viewport" content="width=device-width" />
 		<title>Synch vaults</title>
-		<script src="https://cdn.tailwindcss.com"></script>
+		<link rel="stylesheet" href="/styles.css" />
 		<script src="/i18n.js"></script>
-		<style>
-			::selection {
-				background-color: #27272a;
-				color: #e4e4e7;
-			}
-			dialog::backdrop {
-				background: rgba(0, 0, 0, 0.6);
-				backdrop-filter: blur(4px);
-			}
-		</style>
 	</head>
-	<body class="bg-[#0a0a0a] text-zinc-400 font-sans antialiased min-h-screen flex flex-col text-sm">
-		<div class="max-w-4xl mx-auto px-6 w-full flex-1 flex flex-col py-12">
-			<div class="flex items-center mb-8">
-				<a href="https://synch.run/" class="text-zinc-200 font-normal tracking-wider text-xs uppercase hover:opacity-80 transition-opacity">Synch</a>
+	<body>
+		<div class="page page--wide">
+			<div class="topbar">
+				<a href="https://synch.run/" class="brand">Synch</a>
 			</div>
 			
-			<header class="flex flex-col sm:flex-row sm:items-start justify-between gap-6 mb-8">
+			<header class="vaults-header">
 				<div>
-					<h1 class="text-2xl text-zinc-200 tracking-tight mb-2" data-i18n="title">Remote vaults</h1>
-					<p class="text-zinc-500 text-sm max-w-2xl leading-relaxed" data-i18n="subtitle">
+					<h1 class="page-title" data-i18n="title">Remote vaults</h1>
+					<p class="vaults-subtitle" data-i18n="subtitle">
 						Manage the encrypted vaults attached to this Synch account. Deleting a remote
 						vault does not delete local Obsidian files.
 					</p>
 				</div>
-				<div id="user-container" class="hidden items-center gap-4">
-					<div id="user" class="text-zinc-500 text-xs bg-zinc-900/50 border border-zinc-800 rounded-full px-3 py-1.5 whitespace-nowrap"></div>
-					<button id="logout" type="button" class="shrink-0 text-zinc-500 text-xs hover:text-zinc-300 transition-colors" data-i18n="signOut">Sign out</button>
+				<div id="user-container" class="user-area hidden">
+					<div id="user" class="user-badge"></div>
+					<button id="logout" type="button" class="signout-button" data-i18n="signOut">Sign out</button>
 				</div>
 			</header>
 
-			<div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
-				<div id="status" class="text-zinc-400 text-sm" aria-live="polite" data-i18n="loading">Loading vaults...</div>
-				<div class="flex flex-col sm:flex-row gap-3">
-					<button id="refresh" type="button" class="w-full sm:w-auto py-1.5 px-4 text-xs bg-transparent border border-zinc-700 text-zinc-300 hover:bg-zinc-800 rounded transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed" data-i18n="refresh">
+			<div class="vaults-toolbar">
+				<div id="status" class="status status--bar" aria-live="polite" data-i18n="loading">Loading vaults...</div>
+				<div class="vaults-actions">
+					<button id="refresh" type="button" class="btn btn--secondary btn--compact btn--fluid" data-i18n="refresh">
 						Refresh
 					</button>
-					<button id="create-vault" type="button" class="w-full sm:w-auto py-1.5 px-4 text-xs bg-zinc-200 text-[#0a0a0a] hover:bg-white rounded transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed" data-i18n="createVault">
+					<button id="create-vault" type="button" class="btn btn--primary btn--compact btn--fluid" data-i18n="createVault">
 						Create vault
 					</button>
 				</div>
 			</div>
 
-				<section id="vault-list" class="grid gap-3" aria-live="polite"></section>
-				<section id="empty-guide" class="hidden"></section>
+			<section id="vault-list" class="vault-list" aria-live="polite"></section>
+			<section id="empty-guide" class="hidden"></section>
 		</div>
 
-		<dialog id="create-dialog" class="w-[calc(100%-2rem)] sm:w-[480px] bg-[#0a0a0a] text-zinc-200 border border-zinc-800 rounded-xl p-0 shadow-2xl">
+		<dialog id="create-dialog">
 			<form method="dialog">
-				<div class="p-6">
-					<h2 class="text-lg font-medium mb-3" data-i18n="createTitle">Create remote vault</h2>
-					<p class="text-zinc-400 text-sm mb-6 leading-relaxed" data-i18n="createIntro">The vault key is generated in your browser and encrypted with your vault password. The password and the unencrypted key are never sent to the server.</p>
+				<div class="dialog-body">
+					<h2 class="dialog-title" data-i18n="createTitle">Create remote vault</h2>
+					<p class="dialog-intro" data-i18n="createIntro">The vault key is generated in your browser and encrypted with your vault password. The password and the unencrypted key are never sent to the server.</p>
 
-					<div class="space-y-4">
-						<div class="space-y-2">
-							<label for="create-name" class="block text-xs text-zinc-500" data-i18n="createNameLabel">Vault name</label>
-							<input id="create-name" autocomplete="off" class="w-full bg-zinc-900/50 border border-zinc-800 rounded px-3 py-2 text-sm text-zinc-200 focus:outline-none focus:border-zinc-600 transition-colors" />
+					<div class="dialog-fields">
+						<div class="field">
+							<label for="create-name" class="label" data-i18n="createNameLabel">Vault name</label>
+							<input id="create-name" autocomplete="off" class="input" />
 						</div>
-						<div class="space-y-2">
-							<label for="create-password" class="block text-xs text-zinc-500" data-i18n="createPasswordLabel">Vault password</label>
-							<input id="create-password" type="password" autocomplete="new-password" class="w-full bg-zinc-900/50 border border-zinc-800 rounded px-3 py-2 text-sm text-zinc-200 focus:outline-none focus:border-zinc-600 transition-colors" />
+						<div class="field">
+							<label for="create-password" class="label" data-i18n="createPasswordLabel">Vault password</label>
+							<input id="create-password" type="password" autocomplete="new-password" class="input" />
 						</div>
-						<div class="space-y-2">
-							<label for="create-password-confirm" class="block text-xs text-zinc-500" data-i18n="createConfirmPasswordLabel">Confirm vault password</label>
-							<input id="create-password-confirm" type="password" autocomplete="new-password" class="w-full bg-zinc-900/50 border border-zinc-800 rounded px-3 py-2 text-sm text-zinc-200 focus:outline-none focus:border-zinc-600 transition-colors" />
+						<div class="field">
+							<label for="create-password-confirm" class="label" data-i18n="createConfirmPasswordLabel">Confirm vault password</label>
+							<input id="create-password-confirm" type="password" autocomplete="new-password" class="input" />
 						</div>
-						<p id="create-error" class="hidden text-red-400 text-xs leading-relaxed" aria-live="polite"></p>
-						<p class="text-zinc-500 text-xs leading-relaxed" data-i18n="createPasswordHint">The password cannot be recovered, so store it somewhere safe. You will enter the same password when connecting this vault from Obsidian.</p>
+						<p id="create-error" class="form-error hidden" aria-live="polite"></p>
+						<p class="form-hint" data-i18n="createPasswordHint">The password cannot be recovered, so store it somewhere safe. You will enter the same password when connecting this vault from Obsidian.</p>
 					</div>
 				</div>
-				<div class="flex justify-end gap-3 px-6 py-4 border-t border-zinc-800/50 bg-white/[0.01]">
-					<button id="cancel-create" type="button" class="py-2 px-4 text-xs bg-transparent border border-zinc-700 text-zinc-300 hover:bg-zinc-800 rounded transition-colors font-medium">
+				<div class="dialog-footer">
+					<button id="cancel-create" type="button" class="btn btn--secondary">
 						<span data-i18n="cancel">Cancel</span>
 					</button>
 					<!-- The only submit button, so pressing Enter in an input creates
 					     the vault instead of triggering Cancel. -->
-					<button id="confirm-create" type="submit" disabled class="py-2 px-4 text-xs bg-zinc-200 text-[#0a0a0a] hover:bg-white rounded transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed">
+					<button id="confirm-create" type="submit" disabled class="btn btn--primary">
 						<span id="confirm-create-label" data-i18n="createConfirm">Create vault</span>
 					</button>
 				</div>
 			</form>
 		</dialog>
 
-		<dialog id="delete-dialog" class="w-[calc(100%-2rem)] sm:w-[480px] bg-[#0a0a0a] text-zinc-200 border border-zinc-800 rounded-xl p-0 shadow-2xl">
+		<dialog id="delete-dialog">
 			<form method="dialog">
-				<div class="p-6">
-					<h2 class="text-lg font-medium mb-3" data-i18n="deleteTitle">Delete remote vault</h2>
-					<p id="delete-copy" class="text-zinc-400 text-sm mb-6 leading-relaxed"></p>
+				<div class="dialog-body">
+					<h2 class="dialog-title" data-i18n="deleteTitle">Delete remote vault</h2>
+					<p id="delete-copy" class="dialog-intro"></p>
 					
-					<div class="space-y-2">
-						<label for="confirm-name" class="block text-xs text-zinc-500" data-i18n="confirmLabel">Type the vault name to confirm</label>
-						<input id="confirm-name" autocomplete="off" class="w-full bg-zinc-900/50 border border-zinc-800 rounded px-3 py-2 text-sm text-zinc-200 focus:outline-none focus:border-zinc-600 transition-colors" />
+					<div class="field">
+						<label for="confirm-name" class="label" data-i18n="confirmLabel">Type the vault name to confirm</label>
+						<input id="confirm-name" autocomplete="off" class="input" />
 					</div>
 				</div>
-				<div class="flex justify-end gap-3 px-6 py-4 border-t border-zinc-800/50 bg-white/[0.01]">
-					<button id="cancel-delete" value="cancel" type="submit" class="py-2 px-4 text-xs bg-transparent border border-zinc-700 text-zinc-300 hover:bg-zinc-800 rounded transition-colors font-medium">
+				<div class="dialog-footer">
+					<button id="cancel-delete" value="cancel" type="submit" class="btn btn--secondary">
 						<span data-i18n="cancel">Cancel</span>
 					</button>
-					<button id="confirm-delete" value="delete" type="button" disabled class="py-2 px-4 text-xs bg-transparent border border-red-900/50 text-red-400 hover:bg-red-900/20 rounded transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed">
+					<button id="confirm-delete" value="delete" type="button" disabled class="btn btn--danger">
 						<span data-i18n="deletePermanently">Delete permanently</span>
 					</button>
 				</div>
@@ -178,10 +168,10 @@
 			const statusEl = document.querySelector("#status");
 			const userContainerEl = document.querySelector("#user-container");
 			const userEl = document.querySelector("#user");
-				const logoutButton = document.querySelector("#logout");
-				const listEl = document.querySelector("#vault-list");
-				const emptyGuideEl = document.querySelector("#empty-guide");
-				const refreshButton = document.querySelector("#refresh");
+			const logoutButton = document.querySelector("#logout");
+			const listEl = document.querySelector("#vault-list");
+			const emptyGuideEl = document.querySelector("#empty-guide");
+			const refreshButton = document.querySelector("#refresh");
 			const deleteDialog = document.querySelector("#delete-dialog");
 			const deleteCopy = document.querySelector("#delete-copy");
 			const confirmInput = document.querySelector("#confirm-name");
@@ -255,7 +245,6 @@
 
 				userEl.textContent = session.user.email || session.user.name || t("signedIn");
 				userContainerEl.classList.remove("hidden");
-				userContainerEl.classList.add("flex");
 				await loadVaults();
 			}
 
@@ -332,38 +321,38 @@
 				}
 			}
 
-				function renderVaults(vaults) {
-					listEl.replaceChildren();
-					emptyGuideEl.replaceChildren();
-					setStatus(vaults.length === 1 ? t("countOne") : t("countMany", { count: vaults.length }));
+			function renderVaults(vaults) {
+				listEl.replaceChildren();
+				emptyGuideEl.replaceChildren();
+				setStatus(vaults.length === 1 ? t("countOne") : t("countMany", { count: vaults.length }));
 
-					if (vaults.length === 0) {
-						listEl.classList.add("hidden");
-						emptyGuideEl.classList.remove("hidden");
-						emptyGuideEl.append(renderEmptyGuide());
-						return;
-					}
+				if (vaults.length === 0) {
+					listEl.classList.add("hidden");
+					emptyGuideEl.classList.remove("hidden");
+					emptyGuideEl.append(renderEmptyGuide());
+					return;
+				}
 
-					listEl.classList.remove("hidden");
-					emptyGuideEl.classList.add("hidden");
+				listEl.classList.remove("hidden");
+				emptyGuideEl.classList.add("hidden");
 
-					for (const vault of vaults) {
+				for (const vault of vaults) {
 					const row = document.createElement("article");
-					row.className = "flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-5 border border-zinc-800 rounded-xl bg-zinc-900/30 hover:border-zinc-700 transition-colors";
+					row.className = "vault-card";
 
 					const details = document.createElement("div");
 					const name = document.createElement("h2");
-					name.className = "text-base font-medium text-zinc-200 mb-1";
+					name.className = "vault-name";
 					name.textContent = vault.name;
 					const meta = document.createElement("p");
-					meta.className = "text-zinc-500 text-xs leading-relaxed break-all";
+					meta.className = "vault-meta";
 					meta.textContent = formatVaultMeta(vault);
 					details.append(name, meta);
 
 					const isDeleting =
 						vault.deletionStatus === "queued" || vault.deletionStatus === "running";
 					const button = document.createElement("button");
-					button.className = "w-full sm:w-auto py-2 px-4 text-xs bg-transparent border border-red-900/50 text-red-400 hover:bg-red-900/20 rounded transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed";
+					button.className = "btn btn--danger btn--fluid";
 					button.type = "button";
 					button.textContent = isDeleting ? t("deleting") : t("delete");
 					button.disabled = isDeleting;
@@ -389,27 +378,27 @@
 
 			function renderEmptyGuide() {
 				const guide = document.createElement("section");
-				guide.className = "border border-zinc-800 rounded-xl bg-zinc-900/20 overflow-hidden";
+				guide.className = "empty-guide";
 
 				const header = document.createElement("div");
-				header.className = "p-6 border-b border-zinc-800/70";
+				header.className = "empty-guide-header";
 
 				const eyebrow = document.createElement("p");
-				eyebrow.className = "text-zinc-500 text-xs mb-2";
+				eyebrow.className = "empty-guide-eyebrow";
 				eyebrow.textContent = t("empty");
 
 				const title = document.createElement("h2");
-				title.className = "text-lg font-medium text-zinc-200 mb-2";
+				title.className = "empty-guide-title";
 				title.textContent = t("emptyGuideTitle");
 
 				const intro = document.createElement("p");
-				intro.className = "text-zinc-400 text-sm leading-relaxed max-w-3xl";
+				intro.className = "empty-guide-intro";
 				intro.textContent = t("emptyGuideIntro");
 
 				header.append(eyebrow, title, intro);
 
 				const steps = document.createElement("ol");
-				steps.className = "divide-y divide-zinc-800/70";
+				steps.className = "empty-guide-steps";
 
 				const stepKeys = [
 					["emptyGuideInstallTitle", "emptyGuideInstallBody"],
@@ -421,21 +410,21 @@
 
 				stepKeys.forEach(([titleKey, bodyKey], index) => {
 					const item = document.createElement("li");
-					item.className = "flex gap-4 p-5";
+					item.className = "empty-guide-step";
 
 					const marker = document.createElement("div");
-					marker.className = "mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-zinc-700 bg-zinc-950 text-xs font-medium text-zinc-300";
+					marker.className = "step-marker";
 					marker.textContent = String(index + 1);
 
 					const content = document.createElement("div");
-					content.className = "min-w-0";
+					content.className = "step-content";
 
 					const stepTitle = document.createElement("h3");
-					stepTitle.className = "text-sm font-medium text-zinc-200 mb-1";
+					stepTitle.className = "step-title";
 					stepTitle.textContent = t(titleKey);
 
 					const body = document.createElement("p");
-					body.className = "text-sm leading-relaxed text-zinc-500";
+					body.className = "step-body";
 					body.textContent = t(bodyKey);
 
 					content.append(stepTitle, body);

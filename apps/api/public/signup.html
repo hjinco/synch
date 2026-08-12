@@ -1,64 +1,57 @@
 <!doctype html>
-<html lang="en" class="dark">
+<html lang="en">
 	<head>
 		<meta charset="UTF-8" />
 		<meta name="viewport" content="width=device-width" />
 		<title>Sign Up - Synch</title>
-		<script src="https://cdn.tailwindcss.com"></script>
+		<link rel="stylesheet" href="/styles.css" />
 		<script src="/i18n.js"></script>
-		<style>
-			/* Mimic the selection colors from Layout.astro */
-			::selection {
-				background-color: #27272a;
-				color: #e4e4e7;
-			}
-		</style>
 	</head>
-	<body class="bg-[#0a0a0a] text-zinc-400 font-sans antialiased min-h-screen flex flex-col text-sm">
-		<div class="max-w-md mx-auto px-6 w-full flex-1 flex flex-col justify-center py-24">
-			<div class="mb-8 text-center">
-				<a href="https://synch.run/" class="text-zinc-200 font-normal tracking-wider text-xs uppercase hover:opacity-80 transition-opacity inline-block mb-8">Synch</a>
-				<h1 class="text-2xl text-zinc-200 tracking-tight mb-2" data-i18n="title">Create an account</h1>
-				<p class="text-zinc-500 text-xs" data-i18n="subtitle">Your vault stays end-to-end encrypted. This account only coordinates sync.</p>
+	<body>
+		<div class="page page--narrow">
+			<div class="page-header">
+				<a href="https://synch.run/" class="brand">Synch</a>
+				<h1 class="page-title" data-i18n="title">Create an account</h1>
+				<p class="page-subtitle" data-i18n="subtitle">Your vault stays end-to-end encrypted. This account only coordinates sync.</p>
 			</div>
 
-			<form id="sign-up-form" class="space-y-4">
-				<div class="space-y-2">
-					<label for="name" class="block text-xs text-zinc-400" data-i18n="name">Name</label>
-					<input type="text" id="name" name="name" required autocomplete="name" class="w-full bg-zinc-900/50 border border-zinc-800 rounded px-3 py-2 text-sm text-zinc-200 focus:outline-none focus:border-zinc-600 transition-colors" placeholder="John Doe" />
+			<form id="sign-up-form" class="form">
+				<div class="field">
+					<label for="name" class="label" data-i18n="name">Name</label>
+					<input type="text" id="name" name="name" required autocomplete="name" class="input" placeholder="John Doe" />
 				</div>
 
-				<div class="space-y-2">
-					<label for="email" class="block text-xs text-zinc-400" data-i18n="email">Email</label>
-					<input type="email" id="email" name="email" required autocomplete="email" class="w-full bg-zinc-900/50 border border-zinc-800 rounded px-3 py-2 text-sm text-zinc-200 focus:outline-none focus:border-zinc-600 transition-colors" placeholder="you@example.com" />
+				<div class="field">
+					<label for="email" class="label" data-i18n="email">Email</label>
+					<input type="email" id="email" name="email" required autocomplete="email" class="input" placeholder="you@example.com" />
 				</div>
 				
-				<div class="space-y-2">
-					<label for="password" class="block text-xs text-zinc-400" data-i18n="password">Password</label>
-					<input type="password" id="password" name="password" required autocomplete="new-password" class="w-full bg-zinc-900/50 border border-zinc-800 rounded px-3 py-2 text-sm text-zinc-200 focus:outline-none focus:border-zinc-600 transition-colors" placeholder="••••••••" />
+				<div class="field">
+					<label for="password" class="label" data-i18n="password">Password</label>
+					<input type="password" id="password" name="password" required autocomplete="new-password" class="input" placeholder="••••••••" />
 				</div>
 
-				<div id="status" class="text-zinc-400 text-xs text-center min-h-6" aria-live="polite"></div>
+				<div id="status" class="status" aria-live="polite"></div>
 
-				<button type="submit" class="w-full py-2 px-4 mt-4 text-center text-xs bg-zinc-200 text-[#0a0a0a] hover:bg-white rounded transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed" data-i18n="submit">
+				<button type="submit" class="btn btn--primary btn--block" data-i18n="submit">
 					Create Account
 				</button>
 
-				<div id="success-container" class="hidden mt-6 p-4 bg-zinc-900/50 border border-zinc-800/80 rounded-lg text-center flex-col items-center">
-					<div class="text-zinc-200 text-sm mb-1" data-i18n="checkEmail">Check your email</div>
-					<div class="text-zinc-400 text-xs mb-4"><span data-i18n="sentPrefix">We've sent a verification link to</span> <span id="sent-email-display" class="font-medium text-zinc-300"></span><span data-i18n="sentSuffix">.</span></div>
+				<div id="success-container" class="success-panel hidden">
+					<div class="success-title" data-i18n="checkEmail">Check your email</div>
+					<div class="success-body"><span data-i18n="sentPrefix">We've sent a verification link to</span> <span id="sent-email-display" class="sent-email"></span><span data-i18n="sentSuffix">.</span></div>
 					
-					<div id="resend-container" class="text-center flex-col items-center w-full">
-						<button id="resend-button" type="button" class="text-xs text-zinc-300 hover:text-white underline transition-colors disabled:opacity-50 disabled:no-underline disabled:cursor-not-allowed" data-i18n="resendVerification">
+					<div id="resend-container" class="resend">
+						<button id="resend-button" type="button" class="link-button" data-i18n="resendVerification">
 							Resend verification email
 						</button>
-						<div id="resend-message" class="text-xs mt-2 text-zinc-400 hidden"></div>
+						<div id="resend-message" class="resend-message hidden"></div>
 					</div>
 				</div>
 			</form>
 
-			<div class="mt-8 text-center text-xs text-zinc-500">
-				<span data-i18n="hasAccount">Already have an account?</span> <a id="signin-link" href="/signin" class="text-zinc-300 hover:text-zinc-100 transition-colors" data-i18n="signIn">Sign in</a>
+			<div class="auth-footer">
+				<span data-i18n="hasAccount">Already have an account?</span> <a id="signin-link" href="/signin" data-i18n="signIn">Sign in</a>
 			</div>
 		</div>
 
@@ -139,8 +132,7 @@
 				resendButton.disabled = true;
 				if (resendMessage) {
 					resendMessage.textContent = t("sending");
-					resendMessage.classList.remove("hidden", "text-red-400");
-					resendMessage.classList.add("text-zinc-400");
+					resendMessage.classList.remove("hidden", "status--error");
 				}
 
 				try {
@@ -159,8 +151,7 @@
 					if (!response.ok) {
 						if (resendMessage) {
 							resendMessage.textContent = await readErrorMessage(response, t("failedToResend"));
-							resendMessage.classList.remove("text-zinc-400");
-							resendMessage.classList.add("text-red-400");
+							resendMessage.classList.add("status--error");
 						}
 						resendButton.disabled = false;
 						return;
@@ -168,15 +159,13 @@
 
 					if (resendMessage) {
 						resendMessage.textContent = t("resent");
-						resendMessage.classList.remove("text-red-400");
-						resendMessage.classList.add("text-zinc-400");
+						resendMessage.classList.remove("status--error");
 					}
 					startResendCooldown();
 				} catch {
 					if (resendMessage) {
 						resendMessage.textContent = t("apiUnavailable");
-						resendMessage.classList.remove("text-zinc-400");
-						resendMessage.classList.add("text-red-400");
+						resendMessage.classList.add("status--error");
 					}
 					resendButton.disabled = false;
 				}
@@ -256,8 +245,7 @@
 						const submitBtn = form.querySelector('button[type="submit"]');
 						if (submitBtn) {
 							submitBtn.textContent = t("emailSent");
-							submitBtn.classList.remove("bg-zinc-200", "text-[#0a0a0a]", "hover:bg-white");
-							submitBtn.classList.add("bg-zinc-800", "text-zinc-400");
+							submitBtn.classList.add("btn--muted");
 						}
 
 						currentEmail = body.email;
@@ -265,7 +253,6 @@
 						
 						if (successContainer) {
 							successContainer.classList.remove("hidden");
-							successContainer.classList.add("flex");
 						}
 						startResendCooldown();
 						return;
@@ -281,15 +268,8 @@
 			}
 
 			function setStatus(message, isError = false) {
-				if (status.classList.contains("text-red-400")) {
-					status.classList.remove("text-red-400");
-					status.classList.add("text-zinc-400");
-				}
+				status.classList.toggle("status--error", isError);
 				status.textContent = message;
-				if (isError) {
-					status.classList.remove("text-zinc-400");
-					status.classList.add("text-red-400");
-				}
 			}
 
 			function setSubmitting(submitting) {
