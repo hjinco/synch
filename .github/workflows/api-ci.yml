@@ -10,6 +10,7 @@ on:
       - "pnpm-lock.yaml"
       - "pnpm-workspace.yaml"
       - ".github/workflows/api-ci.yml"
+      - ".github/actions/detect-affected/action.yml"
   push:
     branches:
       - main
@@ -20,9 +21,33 @@ on:
       - "pnpm-lock.yaml"
       - "pnpm-workspace.yaml"
       - ".github/workflows/api-ci.yml"
+      - ".github/actions/detect-affected/action.yml"
 
 jobs:
+  detect:
+    runs-on: ubuntu-latest
+
+    outputs:
+      api-affected: ${{ steps.affected.outputs.affected }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.0
+
+      - id: affected
+        uses: ./.github/actions/detect-affected
+        with:
+          package-dir: apps/api
+          full-run-paths: .github/workflows/api-ci.yml .github/actions/detect-affected/action.yml
+
   api:
+    needs: detect
+    if: needs.detect.outputs.api-affected == 'true'
     runs-on: ubuntu-latest
 
     steps:

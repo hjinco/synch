@@ -10,6 +10,7 @@ on:
       - "pnpm-workspace.yaml"
       - "tsconfig.base.json"
       - ".github/workflows/obsidian-plugin-ci.yml"
+      - ".github/actions/detect-affected/action.yml"
   push:
     branches:
       - main
@@ -21,16 +22,45 @@ on:
       - "pnpm-workspace.yaml"
       - "tsconfig.base.json"
       - ".github/workflows/obsidian-plugin-ci.yml"
+      - ".github/actions/detect-affected/action.yml"
 
 jobs:
+  detect:
+    runs-on: ubuntu-latest
+
+    outputs:
+      plugin-affected: ${{ steps.affected.outputs.affected }}
+      since-filter: ${{ steps.affected.outputs.since-filter }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.0
+
+      - id: affected
+        uses: ./.github/actions/detect-affected
+        with:
+          package-dir: apps/obsidian-plugin
+          full-run-paths: .github/workflows/obsidian-plugin-ci.yml .github/actions/detect-affected/action.yml
+
   obsidian-plugin:
+    needs: detect
+    if: needs.detect.outputs.plugin-affected == 'true'
     runs-on: ubuntu-latest
 
     env:
       API_BASE_URL: https://synch-api.example.com
+      # Empty when root manifests changed, so every package runs.
+      SINCE_FILTER: ${{ needs.detect.outputs.since-filter }}
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: pnpm/action-setup@v4
         with:
@@ -43,16 +73,10 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
-      - run: pnpm -C packages/vault-crypto typecheck
+      - name: Typecheck affected packages
+        run: pnpm -r --if-present $SINCE_FILTER --filter '!@synch/api' --filter '!@synch/cli' run typecheck
 
-      - run: pnpm -C packages/vault-crypto test -- --run
-
-      - run: pnpm -C packages/sync-client typecheck
-
-      - run: pnpm -C packages/sync-client test -- --run
-
-      - run: pnpm -C apps/obsidian-plugin typecheck
-
-      - run: pnpm -C apps/obsidian-plugin test -- --run
+      - name: Test affected packages
+        run: pnpm -r --if-present $SINCE_FILTER --filter '!@synch/api' --filter '!@synch/cli' run test -- --run
 
       - run: pnpm -C apps/obsidian-plugin build

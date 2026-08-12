@@ -1,0 +1,91 @@
+name: Detect affected workspace packages
+description: >
+  Determines whether a workspace package is affected by the changes in this
+  workflow run, using pnpm's changed-since filtering. Requires a checkout with
+  fetch-depth 0 and pnpm to be set up. Root-level manifests (package.json,
+  pnpm-lock.yaml, pnpm-workspace.yaml, tsconfig.base.json) and any extra paths
+  force a full run because pnpm only maps them to the root project, which has
+  no dependents. workflow_dispatch events always report affected, since a
+  manual dispatch is a request to run regardless of changes.
+
+inputs:
+  package-dir:
+    description: Workspace-relative directory of the package to check, e.g. apps/api.
+    required: true
+  full-run-paths:
+    description: >
+      Space-separated pathspecs (relative to the repository root) that force a
+      full run when changed, e.g. the calling workflow file.
+    required: false
+    default: ""
+
+outputs:
+  affected:
+    description: '"true" when the package is affected by the change range.'
+    value: ${{ steps.detect.outputs.affected }}
+  since-filter:
+    description: >
+      A pnpm --filter argument selecting changed packages and their dependents.
+      Empty when a full run is required, so it can be interpolated unquoted.
+    value: ${{ steps.detect.outputs.since-filter }}
+
+runs:
+  using: composite
+  steps:
+    - id: detect
+      shell: bash
+      env:
+        EVENT_NAME: ${{ github.event_name }}
+        BASE_REF: ${{ github.base_ref }}
+        EVENT_BEFORE: ${{ github.event.before }}
+        PACKAGE_DIR: ${{ inputs.package-dir }}
+        FULL_RUN_PATHS: ${{ inputs.full-run-paths }}
+      run: |
+        set -euo pipefail
+
+        if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+          # Manual dispatch means the caller wants a run regardless of changes.
+          {
+            echo "affected=true"
+            echo "since-filter="
+          } >> "$GITHUB_OUTPUT"
+          echo "event=workflow_dispatch run_all=true affected=true"
+          exit 0
+        fi
+
+        if [ "$EVENT_NAME" = "pull_request" ]; then
+          base="origin/${BASE_REF}"
+        else
+          base="$EVENT_BEFORE"
+        fi
+
+        run_all=false
+        if [ -z "$base" ] || ! git cat-file -e "${base}^{commit}" 2>/dev/null; then
+          # An unavailable base cannot safely describe the complete change set.
+          run_all=true
+        fi
+
+        root_paths="package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json"
+        if [ "$run_all" = "false" ] &&
+          ! git diff --quiet "$base" -- $root_paths $FULL_RUN_PATHS; then
+          run_all=true
+        fi
+
+        affected=false
+        since_filter=""
+        if [ "$run_all" = "true" ]; then
+          affected=true
+        else
+          affected_dirs="$(pnpm ls -r --depth -1 --parseable --filter "...[${base}]")"
+          if printf '%s\n' "$affected_dirs" | grep -qx "$(pwd)/${PACKAGE_DIR}"; then
+            affected=true
+          fi
+          since_filter="--filter=...[${base}]"
+        fi
+
+        {
+          echo "affected=${affected}"
+          echo "since-filter=${since_filter}"
+        } >> "$GITHUB_OUTPUT"
+
+        echo "base=${base} run_all=${run_all} affected=${affected}"
