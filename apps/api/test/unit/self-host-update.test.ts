@@ -8,8 +8,9 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-const scriptPath = fileURLToPath(
-	new URL("../../scripts/self-host-update.mjs", import.meta.url),
+const scriptPath = path.resolve(
+	path.dirname(fileURLToPath(import.meta.url)),
+	"../../scripts/self-host-update.mjs",
 );
 
 let workDir: string;
