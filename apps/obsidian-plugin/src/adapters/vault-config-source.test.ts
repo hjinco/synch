@@ -7,17 +7,18 @@ import { ObsidianVaultConfigSource } from "./vault-config-source";
 describe("ObsidianVaultConfigSource", () => {
   it("lists allowlisted config files through the adapter", async () => {
     const plugin = createTestPlugin();
-    await plugin.app.vault.adapter.mkdir(".obsidian");
-    await plugin.app.vault.adapter.mkdir(".obsidian/plugins");
-    await plugin.app.vault.adapter.mkdir(".obsidian/plugins/calendar");
-    await plugin.app.vault.adapter.write(".obsidian/app.json", "{}");
-    await plugin.app.vault.adapter.write(".obsidian/workspace.json", "{}");
+    const configDir = plugin.app.vault.configDir;
+    await plugin.app.vault.adapter.mkdir(configDir);
+    await plugin.app.vault.adapter.mkdir(`${configDir}/plugins`);
+    await plugin.app.vault.adapter.mkdir(`${configDir}/plugins/calendar`);
+    await plugin.app.vault.adapter.write(`${configDir}/app.json`, "{}");
+    await plugin.app.vault.adapter.write(`${configDir}/workspace.json`, "{}");
     await plugin.app.vault.adapter.write(
-      ".obsidian/plugins/calendar/manifest.json",
+      `${configDir}/plugins/calendar/manifest.json`,
       "{}",
     );
     await plugin.app.vault.adapter.write(
-      ".obsidian/plugins/calendar/data.json",
+      `${configDir}/plugins/calendar/data.json`,
       "{}",
     );
 
@@ -30,15 +31,15 @@ describe("ObsidianVaultConfigSource", () => {
 
     await expect(source.listFiles()).resolves.toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ path: ".obsidian/app.json" }),
+        expect.objectContaining({ path: `${configDir}/app.json` }),
         expect.objectContaining({
-          path: ".obsidian/plugins/calendar/manifest.json",
+          path: `${configDir}/plugins/calendar/manifest.json`,
         }),
       ]),
     );
     expect((await source.listFiles()).map((file) => file.path).sort()).toEqual([
-      ".obsidian/app.json",
-      ".obsidian/plugins/calendar/manifest.json",
+      `${configDir}/app.json`,
+      `${configDir}/plugins/calendar/manifest.json`,
     ]);
   });
 });

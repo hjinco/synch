@@ -1,14 +1,23 @@
 import type { Plugin } from "obsidian";
 
-export function createTestPlugin(): Plugin {
+// Deliberately not ".obsidian" (nor an ".obsidian" prefix): Obsidian's config
+// folder is user-configurable (Vault#configDir), so tests fail if production
+// code hardcodes ".obsidian".
+const TEST_CONFIG_DIR = ".test-config";
+
+export function createTestPlugin(
+  options: { configDir?: string } = {},
+): Plugin {
+  const configDir = options.configDir ?? TEST_CONFIG_DIR;
+  const pluginDir = `${configDir}/plugins/synch`;
   let data: unknown = null;
   const localStorage = new Map<string, unknown>();
-  const directories = new Set([".obsidian/plugins/synch"]);
+  const directories = new Set([pluginDir]);
   const files = new Map<string, string | Uint8Array>();
 
   return {
     manifest: {
-      dir: ".obsidian/plugins/synch",
+      dir: pluginDir,
     },
     app: {
       loadLocalStorage(key: string): unknown | null {
@@ -23,7 +32,7 @@ export function createTestPlugin(): Plugin {
         localStorage.set(key, value);
       },
       vault: {
-        configDir: ".obsidian",
+        configDir,
         getFiles(): [] {
           return [];
         },
