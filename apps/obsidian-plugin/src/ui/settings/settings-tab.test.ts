@@ -8,11 +8,8 @@ import { getDefaultApiBaseUrl } from "../../config";
 import { t } from "../../i18n";
 import {
   getButtonComponents,
-  getCreatedElements,
-  getCreatedElementTexts,
   getNotices,
   getProgressBarComponents,
-  getSettingClasses,
   getSettingDescriptions,
   getSettingNames,
   getTextComponents,
@@ -20,6 +17,7 @@ import {
   resetObsidianMocks,
   Setting,
 } from "../../test-stubs/obsidian";
+import type { AppWithSettings } from "../contracts";
 import { createSettingsTab } from "./__tests__/settings-tab-helpers";
 
 describe("SynchSettingTab", () => {
@@ -102,7 +100,7 @@ describe("SynchSettingTab", () => {
     expect(getTextComponents()).toEqual([]);
   });
 
-  it("checks and shows plugin updates on the right side of the settings heading only when needed", () => {
+  it("shows a first-row update notice that opens Community plugins when an update is available", async () => {
     const ensureCommunityPluginUpdateCheck = vi.fn(async () => {});
     const tab = createSettingsTab({
       ensureCommunityPluginUpdateCheck,
@@ -112,22 +110,26 @@ describe("SynchSettingTab", () => {
         latestVersion: "0.0.2",
       }),
     });
+    const openedSettingTabs: string[] = [];
+    (tab.app as AppWithSettings).setting = {
+      open: () => {},
+      openTabById: (id) => {
+        openedSettingTabs.push(id);
+      },
+    };
 
     tab.open();
 
     expect(ensureCommunityPluginUpdateCheck).toHaveBeenCalledTimes(1);
-    expect(getSettingNames()[0]).toBe("Synch");
-    expect(getCreatedElementTexts()).toContain(t("plugin.latestAvailable"));
-    expect(getSettingDescriptions()).not.toContain(
-      "Version 0.0.2 is available. Current version: 0.0.1.",
+    expect(getSettingNames()[0]).toBe(t("plugin.updateAvailable"));
+    expect(getSettingDescriptions()).toContain(
+      t("plugin.updateAvailableDesc", { version: "0.0.2" }),
     );
-    expect(getCreatedElements()).toContainEqual({
-      tag: "span",
-      text: t("plugin.latestAvailable"),
-      classes: ["synch-plugin-update-badge"],
-      attributes: {},
-    });
-    expect(getSettingClasses()[0]).toContain("synch-plugin-update-available");
+
+    const updateButton = getButtonComponents()[0];
+    expect(updateButton?.text).toBe(t("plugin.openCommunityPlugins"));
+    await updateButton?.click();
+    expect(openedSettingTabs).toEqual(["community-plugins"]);
   });
 
   it("shows required plugin updates as a sync blocker", () => {
@@ -144,9 +146,12 @@ describe("SynchSettingTab", () => {
 
     tab.open();
 
-    expect(getCreatedElementTexts()).toContain(t("plugin.updateRequired"));
+    expect(getSettingNames()).toContain(t("plugin.updateRequired"));
     expect(getSettingNames()).toContain(t("sync.paused"));
     expect(getSettingDescriptions()).toContain("Update Synch before syncing.");
+    expect(getButtonComponents().map((button) => button.text)).toContain(
+      t("plugin.openCommunityPlugins"),
+    );
     expect(getButtonComponents().map((button) => button.text)).not.toContain(t("sync.start"));
   });
 
@@ -160,8 +165,7 @@ describe("SynchSettingTab", () => {
 
     tab.open();
 
-    expect(getSettingNames()).not.toContain("Plugin update");
-    expect(getCreatedElementTexts()).not.toContain(t("plugin.latestAvailable"));
+    expect(getSettingNames()).not.toContain(t("plugin.updateAvailable"));
 
     resetObsidianMocks();
     createSettingsTab({
@@ -172,9 +176,7 @@ describe("SynchSettingTab", () => {
       }),
     }).open();
 
-    expect(getSettingNames()).not.toContain("Plugin update");
-    expect(getSettingNames()).not.toContain("Synch");
-    expect(getSettingClasses()[0]).not.toContain("synch-plugin-update-available");
+    expect(getSettingNames()).not.toContain(t("plugin.updateAvailable"));
 
     resetObsidianMocks();
     createSettingsTab({
@@ -185,13 +187,13 @@ describe("SynchSettingTab", () => {
       }),
     }).open();
 
-    expect(getSettingNames()).not.toContain("Plugin update");
+    expect(getSettingNames()).not.toContain(t("plugin.updateAvailable"));
     expect(getButtonComponents()[0]?.text).toBe(t("auth.signInOnThisDevice"));
   });
 
-  // The heading row that hosts the badge is hidden until a check has
-  // succeeded, so the check must not depend on that row being rendered.
-  it("kicks off the plugin update check while the heading badge is hidden", () => {
+  // The update row does not exist until a check has succeeded, so the check
+  // must not depend on that row being rendered.
+  it("kicks off the plugin update check while the update row is absent", () => {
     const ensureCommunityPluginUpdateCheck = vi.fn(async () => {});
     const tab = createSettingsTab({
       ensureCommunityPluginUpdateCheck,
@@ -203,7 +205,7 @@ describe("SynchSettingTab", () => {
 
     tab.open();
 
-    expect(getSettingNames()).not.toContain("Synch");
+    expect(getSettingNames()).not.toContain(t("plugin.updateAvailable"));
     expect(ensureCommunityPluginUpdateCheck).toHaveBeenCalledTimes(1);
   });
 
@@ -549,6 +551,13 @@ describe("SynchSettingTab", () => {
         getAuthReadiness: () => ({
           state: "pending_network" as const,
           token: "stored-token",
+        }),
+        // The network-required row has no render callback; an available
+        // update keeps this scenario exercising a rendered row.
+        getCommunityPluginUpdateStatus: () => ({
+          state: "update_available" as const,
+          currentVersion: "0.0.1",
+          latestVersion: "0.0.2",
         }),
       },
     ];

@@ -106,6 +106,10 @@ export const en = {
     "network.required": "Network connection required",
     "network.requiredDesc": "Connect to the internet to check sign-in.",
     "plugin.latestAvailable": "Update Synch from Community plugins",
+    "plugin.openCommunityPlugins": "Open Community plugins",
+    "plugin.updateAvailable": "Update available",
+    "plugin.updateAvailableDesc": ({ version }: { version: string }) =>
+      `Synch ${version} is available. Update it from Community plugins.`,
     "plugin.updateRequired": "Update required",
     "plugin.updateRequiredStatus": "Plugin update required.",
     "plugin.serverIncompatible": "This Synch server is not compatible with this plugin version. Update the server or install a compatible Synch plugin version.",

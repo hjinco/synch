@@ -43,13 +43,6 @@
   color: var(--text-warning);
 }
 
-.synch-plugin-update-badge {
-  color: var(--text-warning);
-  font-size: var(--font-ui-small);
-  font-weight: var(--font-normal);
-  white-space: nowrap;
-}
-
 .synch-status-bar {
   align-items: center;
   color: var(--text-muted);

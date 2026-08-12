@@ -1,4 +1,4 @@
-export * from "./heading";
+export * from "./plugin-update";
 export * from "./api-base-url";
 export * from "./sync-status";
 export * from "./diagnostics";

@@ -12,5 +12,8 @@
   failures easier to identify without exposing authentication credentials.
 - Destructive buttons (confirm dialogs, permanently deleting files) use
   Obsidian's destructive button style.
+- When a plugin update is available or required, the settings tab now shows
+  an update row at the top with a button that opens Community plugins,
+  replacing the previous text-only notice.
 
 ## Fixed

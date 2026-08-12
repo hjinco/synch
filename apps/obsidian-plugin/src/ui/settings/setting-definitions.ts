@@ -9,16 +9,16 @@ import { t } from "../../i18n";
 import type { SynchFileRules, SynchVaultConfigSyncRules } from "../contracts";
 import type { SynchSettingsController } from "./controller";
 import {
-  hasUpdateBadge,
+  getPluginUpdateRowContent,
   populateAuthenticationSetting,
   populateDeletedFilesSetting,
   populateExcludedFolderRow,
   populateExcludedFoldersSetting,
   populateHiddenFolderRow,
   populateHiddenFoldersSetting,
+  populatePluginUpdateSetting,
   populateServerModeSetting,
   populateServerUrlSetting,
-  populateSettingsHeading,
   populateStorageStatusSetting,
   populateSubscriptionSetting,
   populateSyncDiagnosticsSetting,
@@ -89,16 +89,16 @@ export function buildSynchSettingDefinitions(
     serverCompatibility.state === "incompatible";
   const requestRefresh = (): void => host.requestRefresh();
 
-  // Kick off the update check here, not in the heading's render callback:
-  // the heading is hidden until a check has succeeded, and the framework
-  // does not guarantee render callbacks run for hidden rows. The check is
-  // throttled and fire-and-forget, so this stays cheap; its completion
-  // triggers refreshUi -> update(), which re-evaluates the badge.
+  // Kick off the update check here, not in the update row's render callback:
+  // the row does not exist until a check has succeeded, so its render
+  // callback cannot run before then. The check is throttled and
+  // fire-and-forget, so this stays cheap; its completion triggers
+  // refreshUi -> update(), which rebuilds the definitions with the row.
   void controller.ensureCommunityPluginUpdateCheck();
 
   if (authReadiness.state === "pending_network") {
     return [
-      headingDefinition(host),
+      ...pluginUpdateDefinitions(host),
       {
         name: t("network.required"),
         desc: t("network.requiredDesc"),
@@ -107,7 +107,7 @@ export function buildSynchSettingDefinitions(
   }
 
   const definitions: SettingDefinitionItem<SynchSettingControlKey>[] = [
-    headingDefinition(host),
+    ...pluginUpdateDefinitions(host),
   ];
 
   if (!hasAuthenticatedSession) {
@@ -466,20 +466,29 @@ function buildFileSyncItems(
   return items;
 }
 
-function headingDefinition(
+/**
+ * Zero or one definitions: the row exists only while an update is available
+ * or required. Absent rows are omitted rather than hidden with a `visible`
+ * predicate, because hidden rows keep an element whose divider still shows.
+ * The update check that can make the row appear is kicked off in
+ * buildSynchSettingDefinitions.
+ */
+function pluginUpdateDefinitions(
   host: SynchSettingDefinitionsHost,
-): SettingDefinitionItem<SynchSettingControlKey> {
-  return {
-    name: "Synch",
-    searchable: false,
-    // The heading exists only to host the plugin-update badge; hide it
-    // otherwise. The update check that can make the badge appear is kicked
-    // off in buildSynchSettingDefinitions.
-    visible: () => hasUpdateBadge(host.controller),
-    render: (setting) => {
-      populateSettingsHeading(setting, host.controller);
+): SettingDefinitionItem<SynchSettingControlKey>[] {
+  const content = getPluginUpdateRowContent(host.controller);
+  if (content === null) {
+    return [];
+  }
+  return [
+    {
+      name: content.name,
+      searchable: false,
+      render: (setting) => {
+        populatePluginUpdateSetting(setting, host.app, host.controller);
+      },
     },
-  };
+  ];
 }
 
 function fileRuleToggle(

@@ -2,16 +2,7 @@ import { setIcon, type Plugin } from "obsidian";
 
 import { t } from "../../i18n";
 import { isStorageWarningStatus } from "../../adapters/storage-warning";
-import type { SynchStorageStatus, SynchSyncState } from "../contracts";
-
-export interface ObsidianSettingsApi {
-  open(): void;
-  openTabById(id: string): void;
-}
-
-export interface AppWithSettings {
-  setting?: ObsidianSettingsApi;
-}
+import type { AppWithSettings, SynchStorageStatus, SynchSyncState } from "../contracts";
 
 export interface SynchStatusBarState {
   getSyncState(): SynchSyncState;

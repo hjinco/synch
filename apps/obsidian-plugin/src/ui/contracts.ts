@@ -9,6 +9,19 @@ export type SynchFileRules = SyncFileRules;
 
 export type SynchVaultConfigSyncRules = VaultConfigSyncRules;
 
+/**
+ * Obsidian's undocumented settings-modal API, present on `App` at runtime.
+ * Kept optional so callers degrade gracefully if Obsidian changes it.
+ */
+export interface ObsidianSettingsApi {
+  open(): void;
+  openTabById(id: string): void;
+}
+
+export interface AppWithSettings {
+  setting?: ObsidianSettingsApi;
+}
+
 export type SynchSyncState =
   | "not_ready"
   | "paused"

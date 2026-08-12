@@ -100,6 +100,10 @@ export const ja = {
     "network.required": "ネットワーク接続が必要です",
     "network.requiredDesc": "サインインを確認するにはインターネットに接続してください。",
     "plugin.latestAvailable": "Community pluginsからSynchを更新してください",
+    "plugin.openCommunityPlugins": "Community pluginsを開く",
+    "plugin.updateAvailable": "アップデートあり",
+    "plugin.updateAvailableDesc": ({ version }: { version: string }) =>
+      `Synch ${version} が利用可能です。Community pluginsから更新してください。`,
     "plugin.updateRequired": "更新が必要です",
     "plugin.updateRequiredStatus": "プラグインの更新が必要です。",
     preview: "プレビュー",

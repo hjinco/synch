@@ -100,6 +100,10 @@ export const zhTw = {
     "network.required": "需要網路連線",
     "network.requiredDesc": "連接到網際網路以檢查登入狀態。",
     "plugin.latestAvailable": "請從 Community plugins 更新 Synch",
+    "plugin.openCommunityPlugins": "開啟 Community plugins",
+    "plugin.updateAvailable": "有可用更新",
+    "plugin.updateAvailableDesc": ({ version }: { version: string }) =>
+      `Synch ${version} 已發布。請從 Community plugins 更新。`,
     "plugin.updateRequired": "需要更新",
     "plugin.updateRequiredStatus": "需要更新外掛程式。",
     preview: "預覽",

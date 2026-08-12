@@ -97,6 +97,10 @@ export const ko = {
     "network.required": "네트워크 연결 필요",
     "network.requiredDesc": "로그인을 확인하려면 인터넷에 연결하세요.",
     "plugin.latestAvailable": "Community plugins에서 Synch를 업데이트하세요",
+    "plugin.openCommunityPlugins": "Community plugins 열기",
+    "plugin.updateAvailable": "업데이트 가능",
+    "plugin.updateAvailableDesc": ({ version }: { version: string }) =>
+      `Synch ${version} 버전이 나왔습니다. Community plugins에서 업데이트하세요.`,
     "plugin.updateRequired": "업데이트 필요",
     "plugin.updateRequiredStatus": "플러그인 업데이트가 필요합니다.",
     preview: "미리보기",

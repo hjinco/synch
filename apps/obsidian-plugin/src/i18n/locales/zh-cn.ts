@@ -100,6 +100,10 @@ export const zhCn = {
     "network.required": "需要网络连接",
     "network.requiredDesc": "连接到互联网以检查登录状态。",
     "plugin.latestAvailable": "请从 Community plugins 更新 Synch",
+    "plugin.openCommunityPlugins": "打开 Community plugins",
+    "plugin.updateAvailable": "有可用更新",
+    "plugin.updateAvailableDesc": ({ version }: { version: string }) =>
+      `Synch ${version} 已发布。请从 Community plugins 更新。`,
     "plugin.updateRequired": "需要更新",
     "plugin.updateRequiredStatus": "需要更新插件。",
     preview: "预览",
