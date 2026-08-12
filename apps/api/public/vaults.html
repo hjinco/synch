@@ -39,14 +39,55 @@
 
 			<div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
 				<div id="status" class="text-zinc-400 text-sm" aria-live="polite" data-i18n="loading">Loading vaults...</div>
-				<button id="refresh" type="button" class="w-full sm:w-auto py-1.5 px-4 text-xs bg-transparent border border-zinc-700 text-zinc-300 hover:bg-zinc-800 rounded transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed" data-i18n="refresh">
-					Refresh
-				</button>
+				<div class="flex flex-col sm:flex-row gap-3">
+					<button id="refresh" type="button" class="w-full sm:w-auto py-1.5 px-4 text-xs bg-transparent border border-zinc-700 text-zinc-300 hover:bg-zinc-800 rounded transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed" data-i18n="refresh">
+						Refresh
+					</button>
+					<button id="create-vault" type="button" class="w-full sm:w-auto py-1.5 px-4 text-xs bg-zinc-200 text-[#0a0a0a] hover:bg-white rounded transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed" data-i18n="createVault">
+						Create vault
+					</button>
+				</div>
 			</div>
 
 				<section id="vault-list" class="grid gap-3" aria-live="polite"></section>
 				<section id="empty-guide" class="hidden"></section>
 		</div>
+
+		<dialog id="create-dialog" class="w-[calc(100%-2rem)] sm:w-[480px] bg-[#0a0a0a] text-zinc-200 border border-zinc-800 rounded-xl p-0 shadow-2xl">
+			<form method="dialog">
+				<div class="p-6">
+					<h2 class="text-lg font-medium mb-3" data-i18n="createTitle">Create remote vault</h2>
+					<p class="text-zinc-400 text-sm mb-6 leading-relaxed" data-i18n="createIntro">The vault key is generated in your browser and encrypted with your vault password. The password and the unencrypted key are never sent to the server.</p>
+
+					<div class="space-y-4">
+						<div class="space-y-2">
+							<label for="create-name" class="block text-xs text-zinc-500" data-i18n="createNameLabel">Vault name</label>
+							<input id="create-name" autocomplete="off" class="w-full bg-zinc-900/50 border border-zinc-800 rounded px-3 py-2 text-sm text-zinc-200 focus:outline-none focus:border-zinc-600 transition-colors" />
+						</div>
+						<div class="space-y-2">
+							<label for="create-password" class="block text-xs text-zinc-500" data-i18n="createPasswordLabel">Vault password</label>
+							<input id="create-password" type="password" autocomplete="new-password" class="w-full bg-zinc-900/50 border border-zinc-800 rounded px-3 py-2 text-sm text-zinc-200 focus:outline-none focus:border-zinc-600 transition-colors" />
+						</div>
+						<div class="space-y-2">
+							<label for="create-password-confirm" class="block text-xs text-zinc-500" data-i18n="createConfirmPasswordLabel">Confirm vault password</label>
+							<input id="create-password-confirm" type="password" autocomplete="new-password" class="w-full bg-zinc-900/50 border border-zinc-800 rounded px-3 py-2 text-sm text-zinc-200 focus:outline-none focus:border-zinc-600 transition-colors" />
+						</div>
+						<p id="create-error" class="hidden text-red-400 text-xs leading-relaxed" aria-live="polite"></p>
+						<p class="text-zinc-500 text-xs leading-relaxed" data-i18n="createPasswordHint">The password cannot be recovered, so store it somewhere safe. You will enter the same password when connecting this vault from Obsidian.</p>
+					</div>
+				</div>
+				<div class="flex justify-end gap-3 px-6 py-4 border-t border-zinc-800/50 bg-white/[0.01]">
+					<button id="cancel-create" type="button" class="py-2 px-4 text-xs bg-transparent border border-zinc-700 text-zinc-300 hover:bg-zinc-800 rounded transition-colors font-medium">
+						<span data-i18n="cancel">Cancel</span>
+					</button>
+					<!-- The only submit button, so pressing Enter in an input creates
+					     the vault instead of triggering Cancel. -->
+					<button id="confirm-create" type="submit" disabled class="py-2 px-4 text-xs bg-zinc-200 text-[#0a0a0a] hover:bg-white rounded transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed">
+						<span id="confirm-create-label" data-i18n="createConfirm">Create vault</span>
+					</button>
+				</div>
+			</form>
+		</dialog>
 
 		<dialog id="delete-dialog" class="w-[calc(100%-2rem)] sm:w-[480px] bg-[#0a0a0a] text-zinc-200 border border-zinc-800 rounded-xl p-0 shadow-2xl">
 			<form method="dialog">
@@ -81,6 +122,27 @@
 				signedIn: "Signed in",
 				loading: "Loading vaults...",
 				refresh: "Refresh",
+				createVault: "Create vault",
+				createTitle: "Create remote vault",
+				createIntro: "The vault key is generated in your browser and encrypted with your vault password. The password and the unencrypted key are never sent to the server.",
+				createNameLabel: "Vault name",
+				createPasswordLabel: "Vault password",
+				createConfirmPasswordLabel: "Confirm vault password",
+				createPasswordHint: "The password cannot be recovered, so store it somewhere safe. You will enter the same password when connecting this vault from Obsidian.",
+				createConfirm: "Create vault",
+				creating: "Creating...",
+				createdVault: "{name} created. Connect it from Obsidian with the same vault password.",
+				unableToCreateVault: "Unable to create vault.",
+				cryptoLoadFailed: "Unable to load the encryption module. Refresh the page and try again.",
+				nameRequired: "Enter a vault name.",
+				passwordMismatch: "Passwords do not match.",
+				passwordRequired: "Password is required.",
+				passwordOuterSpaces: "Password cannot start or end with spaces.",
+				passwordMinLength: "Password must be at least {count} characters.",
+				passwordMaxLength: "Password must be {count} characters or fewer.",
+				passwordTooWeak: "Password is too easy to guess. Use a longer passphrase.",
+				passwordRepeatedCharacter: "Password cannot be one repeated character.",
+				passwordSimpleSequence: "Password cannot be a simple sequence.",
 				deleteTitle: "Delete remote vault",
 				confirmLabel: "Type the vault name to confirm",
 				cancel: "Cancel",
@@ -92,7 +154,7 @@
 				countMany: "{count} remote vaults",
 				empty: "No remote vaults are attached to this account.",
 				emptyGuideTitle: "How to start syncing",
-				emptyGuideIntro: "Create your first remote vault from inside Obsidian. Synch keeps your vault end-to-end encrypted; this page only manages vaults after they exist.",
+				emptyGuideIntro: "Create your first remote vault with the Create vault button above, or from inside Obsidian. Synch keeps your vault end-to-end encrypted; connect the vault in Obsidian to start syncing files.",
 				emptyGuideInstallTitle: "Install Synch from Community Plugins",
 				emptyGuideInstallBody: "Open Obsidian Settings, go to Community plugins, select Browse, search for Synchrun, then install and enable it.",
 				emptyGuideSignInTitle: "Sign in from Obsidian",
@@ -124,10 +186,43 @@
 			const deleteCopy = document.querySelector("#delete-copy");
 			const confirmInput = document.querySelector("#confirm-name");
 			const confirmDeleteButton = document.querySelector("#confirm-delete");
+			const createVaultButton = document.querySelector("#create-vault");
+			const createDialog = document.querySelector("#create-dialog");
+			const createForm = createDialog.querySelector("form");
+			const cancelCreateButton = document.querySelector("#cancel-create");
+			const createNameInput = document.querySelector("#create-name");
+			const createPasswordInput = document.querySelector("#create-password");
+			const createPasswordConfirmInput = document.querySelector("#create-password-confirm");
+			const createErrorEl = document.querySelector("#create-error");
+			const confirmCreateButton = document.querySelector("#confirm-create");
+			const confirmCreateLabel = document.querySelector("#confirm-create-label");
 			let selectedVault = null;
+			let creatingVault = false;
 
 			refreshButton.addEventListener("click", () => {
 				void loadVaults();
+			});
+
+			createVaultButton.addEventListener("click", () => {
+				openCreateDialog();
+			});
+
+			for (const input of [createNameInput, createPasswordInput, createPasswordConfirmInput]) {
+				input.addEventListener("input", () => {
+					hideCreateError();
+					updateCreateButtonState();
+				});
+			}
+
+			// method="dialog" would close the dialog on submit; creation is
+			// async, so intercept and close only after the vault exists.
+			createForm.addEventListener("submit", (event) => {
+				event.preventDefault();
+				void createVault();
+			});
+
+			cancelCreateButton.addEventListener("click", () => {
+				createDialog.close();
 			});
 
 			confirmInput.addEventListener("input", () => {
@@ -350,6 +445,151 @@
 
 				guide.append(header, steps);
 				return guide;
+			}
+
+			function openCreateDialog() {
+				createNameInput.value = "";
+				createPasswordInput.value = "";
+				createPasswordConfirmInput.value = "";
+				hideCreateError();
+				updateCreateButtonState();
+				createDialog.showModal();
+				createNameInput.focus();
+				// Warm up the crypto bundle while the user types; failures
+				// surface later from createVault if it is still unreachable.
+				loadVaultCrypto().catch(() => {});
+			}
+
+			function updateCreateButtonState() {
+				confirmCreateButton.disabled =
+					creatingVault ||
+					!createNameInput.value.trim() ||
+					!createPasswordInput.value ||
+					!createPasswordConfirmInput.value;
+			}
+
+			function showCreateError(message) {
+				createErrorEl.textContent = message;
+				createErrorEl.classList.remove("hidden");
+			}
+
+			function hideCreateError() {
+				createErrorEl.textContent = "";
+				createErrorEl.classList.add("hidden");
+			}
+
+			// /vault-crypto.js is the browser bundle of @synch/vault-crypto -
+			// the same code the Obsidian plugin uses to wrap vault keys. It is
+			// only needed for creation, so it loads lazily on first use.
+			let vaultCryptoPromise = null;
+			function loadVaultCrypto() {
+				if (!vaultCryptoPromise) {
+					vaultCryptoPromise = new Promise((resolve, reject) => {
+						if (window.synchVaultCrypto) {
+							resolve(window.synchVaultCrypto);
+							return;
+						}
+						const script = document.createElement("script");
+						script.src = "/vault-crypto.js";
+						script.onload = () => {
+							if (window.synchVaultCrypto) {
+								resolve(window.synchVaultCrypto);
+							} else {
+								reject(new Error("vault crypto bundle did not initialize"));
+							}
+						};
+						script.onerror = () => {
+							script.remove();
+							reject(new Error("vault crypto bundle failed to load"));
+						};
+						document.head.append(script);
+					});
+					vaultCryptoPromise.catch(() => {
+						vaultCryptoPromise = null;
+					});
+				}
+				return vaultCryptoPromise;
+			}
+
+			function vaultPasswordErrorMessage(validation) {
+				const keysByCode = {
+					required: "passwordRequired",
+					outer_spaces: "passwordOuterSpaces",
+					min_length: "passwordMinLength",
+					max_length: "passwordMaxLength",
+					too_weak: "passwordTooWeak",
+					repeated_character: "passwordRepeatedCharacter",
+					simple_sequence: "passwordSimpleSequence",
+				};
+				const key = keysByCode[validation.code];
+				return key ? t(key, { count: validation.count ?? "" }) : validation.message;
+			}
+
+			async function createVault() {
+				if (creatingVault) {
+					return;
+				}
+				const name = createNameInput.value.trim();
+				if (!name) {
+					showCreateError(t("nameRequired"));
+					return;
+				}
+
+				creatingVault = true;
+				hideCreateError();
+				updateCreateButtonState();
+				confirmCreateLabel.textContent = t("creating");
+				try {
+					let vaultCrypto;
+					try {
+						vaultCrypto = await loadVaultCrypto();
+					} catch {
+						showCreateError(t("cryptoLoadFailed"));
+						return;
+					}
+
+					const password = createPasswordInput.value;
+					const validation = vaultCrypto.validateVaultPassword(password);
+					if (!validation.ok) {
+						showCreateError(vaultPasswordErrorMessage(validation));
+						return;
+					}
+					if (password !== createPasswordConfirmInput.value) {
+						showCreateError(t("passwordMismatch"));
+						return;
+					}
+
+					// Argon2id at production strength; takes a moment on purpose.
+					const { envelope } = await vaultCrypto.createPasswordWrappedRemoteVaultKey(password);
+					const response = await fetch("/v1/vaults", {
+						method: "POST",
+						credentials: "include",
+						headers: {
+							"content-type": "application/json",
+						},
+						body: JSON.stringify({
+							name,
+							initialWrapper: { kind: "password", envelope },
+						}),
+					});
+					if (response.status === 401) {
+						redirectToLogin();
+						return;
+					}
+					if (!response.ok) {
+						showCreateError(await readErrorMessage(response, t("unableToCreateVault")));
+						return;
+					}
+					createDialog.close();
+					await loadVaults();
+					setStatus(t("createdVault", { name }));
+				} catch {
+					showCreateError(t("apiUnavailable"));
+				} finally {
+					creatingVault = false;
+					confirmCreateLabel.textContent = t("createConfirm");
+					updateCreateButtonState();
+				}
 			}
 
 			function openDeleteDialog(vault) {

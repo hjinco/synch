@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { createPasswordWrappedRemoteVaultKey } from "./crypto";
+import { createPasswordWrappedRemoteVaultKey } from "@synch/vault-crypto";
 import type { StoredRemoteVaultKeySecret } from "./types";
 import type {
   CreateRemoteVaultResponse,

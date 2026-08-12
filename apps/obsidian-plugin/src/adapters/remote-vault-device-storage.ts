@@ -1,6 +1,6 @@
 import type { Plugin } from "obsidian";
 
-import { decodeBase64, encodeBase64 } from "@synch/sync-client/utils/bytes";
+import { decodeBase64, encodeBase64 } from "@synch/vault-crypto";
 import type { StoredRemoteVaultKeySecret } from "@synch/sync-client/remote-vault/types";
 
 export type { StoredRemoteVaultKeySecret };

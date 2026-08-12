@@ -1,6 +1,6 @@
 import type { SyncedEntryMetadata } from "./content";
 import { parseSyncedEntryMetadata, serializeSyncedEntryMetadata } from "./content";
-import { decodeBase64, encodeBase64, randomBytes, toArrayBuffer } from "../../utils/bytes";
+import { decodeBase64, encodeBase64, randomBytes, toArrayBuffer } from "@synch/vault-crypto";
 
 const ENVELOPE_VERSION = 1;
 const SYNC_BLOB_BINARY_ENVELOPE_VERSION = 2;

@@ -13,6 +13,11 @@
 	"compatibility_flags": [
 		"nodejs_compat"
 	],
+	// Regenerates public/vault-crypto.js (gitignored browser bundle of
+	// @synch/vault-crypto) before wrangler dev/deploy uploads ./public assets.
+	"build": {
+		"command": "pnpm run build:public"
+	},
 	"migrations": [
 		{
 			"new_sqlite_classes": [

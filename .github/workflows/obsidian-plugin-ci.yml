@@ -43,6 +43,10 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
+      - run: pnpm -C packages/vault-crypto typecheck
+
+      - run: pnpm -C packages/vault-crypto test -- --run
+
       - run: pnpm -C packages/sync-client typecheck
 
       - run: pnpm -C packages/sync-client test -- --run

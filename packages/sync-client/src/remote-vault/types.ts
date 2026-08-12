@@ -1,23 +1,10 @@
-export interface RemoteVaultKeyDerivationMetadata {
-  name: string;
-  memoryKiB: number;
-  iterations: number;
-  parallelism: number;
-  salt: string;
-}
+import type { RemoteVaultKeyEnvelope } from "@synch/vault-crypto/types";
 
-export interface RemoteVaultKeyWrapMetadata {
-  algorithm: string;
-  nonce: string;
-  ciphertext: string;
-}
-
-export interface RemoteVaultKeyEnvelope {
-  version: number;
-  keyVersion: number;
-  kdf: RemoteVaultKeyDerivationMetadata;
-  wrap: RemoteVaultKeyWrapMetadata;
-}
+export type {
+  RemoteVaultKeyDerivationMetadata,
+  RemoteVaultKeyWrapMetadata,
+  RemoteVaultKeyEnvelope,
+} from "@synch/vault-crypto/types";
 
 export interface RemoteVaultKeyWrapper {
   kind: "password" | "member" | "recovery";

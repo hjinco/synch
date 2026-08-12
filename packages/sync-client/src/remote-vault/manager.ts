@@ -1,11 +1,9 @@
 import {
   createPasswordWrappedRemoteVaultKey,
   unwrapRemoteVaultKeyWithPassword,
-} from "./crypto";
-import {
   validateVaultPassword,
   type VaultPasswordValidation,
-} from "./password-policy";
+} from "@synch/vault-crypto";
 import { RemoteVaultClient } from "./client";
 import type {
   RemoteVaultBootstrapResponse,

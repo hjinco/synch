@@ -30,6 +30,7 @@ const STATIC_PAGES: Record<string, string> = {
 	"/vaults": "vaults.html",
 	"/robots.txt": "robots.txt",
 	"/i18n.js": "i18n.js",
+	"/vault-crypto.js": "vault-crypto.js",
 };
 
 /** The pages fetch their locale catalogs from /i18n/<locale>.json at runtime. */

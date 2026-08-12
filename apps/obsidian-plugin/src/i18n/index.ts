@@ -1,5 +1,5 @@
 import { getLanguage } from "obsidian";
-import type { VaultPasswordValidation } from "@synch/sync-client/remote-vault/password-policy";
+import type { VaultPasswordValidation } from "@synch/vault-crypto";
 
 import { messages } from "./messages";
 import type { SynchErrorContextKey, SynchLocale, SynchMessageKey } from "./types";

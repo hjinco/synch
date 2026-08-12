@@ -1,7 +1,7 @@
-/// <reference path="../types/hash-wasm-argon2.d.ts" />
+/// <reference path="./hash-wasm-argon2.d.ts" />
 
 import type { RemoteVaultKeyDerivationMetadata } from "./types";
-import { decodeBase64, encodeBase64, randomBytes, toArrayBuffer } from "../utils/bytes";
+import { decodeBase64, encodeBase64, randomBytes, toArrayBuffer } from "./bytes";
 
 const ARGON2_SALT_BYTES = 16;
 const WRAP_KEY_BYTES = 32;

@@ -1,6 +1,6 @@
 import type { RemoteVaultKeyEnvelope } from "./types";
 import { createArgon2idMetadata, deriveWrapKey } from "./kdf";
-import { decodeBase64, encodeBase64, randomBytes, toArrayBuffer } from "../utils/bytes";
+import { decodeBase64, encodeBase64, randomBytes, toArrayBuffer } from "./bytes";
 
 const WRAP_ALGORITHM = "aes-256-gcm";
 const ENVELOPE_VERSION = 1;

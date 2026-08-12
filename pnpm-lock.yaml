@@ -63,6 +63,9 @@ importers:
       '@cloudflare/vitest-pool-workers':
         specifier: ^0.14.6
         version: 0.14.6(@cloudflare/workers-types@5.20260727.1)(@vitest/runner@4.1.4)(@vitest/snapshot@4.1.4)(vitest@4.1.4(@opentelemetry/api@1.9.1)(@types/node@25.6.0)(vite@8.1.5(@types/node@25.6.0)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.21.0)(yaml@2.8.3)))
+      '@synch/vault-crypto':
+        specifier: workspace:*
+        version: link:../../packages/vault-crypto
       '@types/better-sqlite3':
         specifier: ^7.6.13
         version: 7.6.13
@@ -121,15 +124,15 @@ importers:
       '@synch/sync-client':
         specifier: workspace:*
         version: link:../../packages/sync-client
+      '@synch/vault-crypto':
+        specifier: workspace:*
+        version: link:../../packages/vault-crypto
       dexie:
         specifier: ^4.4.2
         version: 4.4.2
       diff:
         specifier: ^9.0.0
         version: 9.0.0
-      hash-wasm:
-        specifier: ^4.12.0
-        version: 4.12.0
     devDependencies:
       '@types/node':
         specifier: ^24.0.0
@@ -192,6 +195,18 @@ importers:
 
   packages/sync-client:
     dependencies:
+      '@synch/vault-crypto':
+        specifier: workspace:*
+        version: link:../vault-crypto
+    devDependencies:
+      vitest:
+        specifier: ^4.1.4
+        version: 4.1.4(@opentelemetry/api@1.9.1)(@types/node@25.6.0)(vite@8.1.5(@types/node@25.6.0)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.21.0)(yaml@2.8.3))
+
+  packages/tsconfig: {}
+
+  packages/vault-crypto:
+    dependencies:
       hash-wasm:
         specifier: ^4.12.0
         version: 4.12.0
@@ -199,8 +214,6 @@ importers:
       vitest:
         specifier: ^4.1.4
         version: 4.1.4(@opentelemetry/api@1.9.1)(@types/node@25.6.0)(vite@8.1.5(@types/node@25.6.0)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.21.0)(yaml@2.8.3))
-
-  packages/tsconfig: {}
 
 packages:
 

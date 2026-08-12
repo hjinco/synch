@@ -165,3 +165,7 @@ dist
 .env*
 !.env.example
 .wrangler/
+
+# generated browser bundle (scripts/build-public.mjs)
+
+public/vault-crypto.js
