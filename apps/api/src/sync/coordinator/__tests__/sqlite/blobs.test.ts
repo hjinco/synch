@@ -32,9 +32,9 @@ describe("sqlite backend: blob staging", () => {
 		).resolves.toEqual({
 			status: "sync_paused",
 		});
-		expect(cursorStore.readSyncPause()).toEqual({
+		expect(cursorStore.readSyncPause()).toMatchObject({
 			pausedAt: retriedAt,
-			reason: "staged blob blob-stale remained staged for at least one hour",
+			reason: expect.stringContaining("blob-stale"),
 		});
 		expect(blobStore.readBlob("blob-stale")).toMatchObject({
 			created_at: 100,

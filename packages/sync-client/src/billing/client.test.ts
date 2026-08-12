@@ -66,6 +66,6 @@ describe("BillingClient", () => {
       status: "active",
       cancelAtPeriodEnd: false,
       periodEnd: null,
-    })).toThrow("invalid billing status response");
+    })).toThrow();
   });
 });

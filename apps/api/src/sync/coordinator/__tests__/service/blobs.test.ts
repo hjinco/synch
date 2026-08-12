@@ -184,7 +184,7 @@ describe("coordinator blob lifecycle", () => {
 		} as unknown as SyncTokenService;
 		const stateRepository = createTestCoordinatorState({
 			stageBlob: vi.fn(async () => {
-				throw new DomainError("quota_exceeded", "storage limit reached");
+				throw new DomainError("quota_exceeded", "simulated quota failure");
 			}),
 		});
 		const service = createCoordinatorService({
@@ -207,10 +207,12 @@ describe("coordinator blob lifecycle", () => {
 			}
 			const response = error.getResponse();
 			expect(response.status).toBe(413);
+			// The message is a synthetic fixture; asserting it verifies that the
+			// service passes DomainError messages through to the response body.
 			await expect(response.json()).resolves.toEqual({
 				error: "quota_exceeded",
 				reason: "quota_exceeded",
-				message: "storage limit reached",
+				message: "simulated quota failure",
 			});
 		}
 	});
@@ -228,7 +230,7 @@ describe("coordinator blob lifecycle", () => {
 		} as unknown as SyncTokenService;
 		const stateRepository = createTestCoordinatorState({
 			stageBlob: vi.fn(async () => {
-				throw new DomainError("blob_size_changed", "blob changed size");
+				throw new DomainError("blob_size_changed", "simulated blob size conflict");
 			}),
 		});
 		const service = createCoordinatorService({
@@ -254,7 +256,7 @@ describe("coordinator blob lifecycle", () => {
 			await expect(response.json()).resolves.toEqual({
 				error: "conflict",
 				reason: "blob_size_changed",
-				message: "blob changed size",
+				message: "simulated blob size conflict",
 			});
 		}
 	});

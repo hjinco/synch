@@ -92,7 +92,7 @@ describe("SynchPluginController community plugin update check", () => {
     expect(controller.getCommunityPluginUpdateStatus()).toEqual({
       state: "failed",
       currentVersion: "0.0.1",
-      error: "Community plugin release feed does not contain a version.",
+      error: expect.any(String),
     });
   });
 

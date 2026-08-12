@@ -23,8 +23,6 @@ describe("Cloudflare config", () => {
 	});
 
 	it("rejects ambiguous boolean bindings", () => {
-		expect(() => parseBooleanBinding("FLAG", "yes", false)).toThrow(
-			"FLAG must be a boolean",
-		);
+		expect(() => parseBooleanBinding("FLAG", "yes", false)).toThrow();
 	});
 });

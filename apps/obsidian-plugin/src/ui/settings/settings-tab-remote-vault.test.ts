@@ -11,6 +11,7 @@ import {
   getToggleComponents,
   resetObsidianMocks,
 } from "../../test-stubs/obsidian";
+import { t } from "../../i18n";
 import type { SynchVersionPreview } from "../contracts";
 import { createSettingsTab, nextTask } from "./__tests__/settings-tab-helpers";
 
@@ -30,7 +31,7 @@ describe("SynchSettingTab remote vault settings", () => {
     tab.display();
 
     const buttonTexts = getButtonComponents().map((button) => button.text);
-    expect(buttonTexts).toContain("Manage remote vaults");
+    expect(buttonTexts).toContain(t("vault.manageRemote"));
   });
 
   it("places remote vault management below authentication when no vault is connected", () => {
@@ -43,10 +44,10 @@ describe("SynchSettingTab remote vault settings", () => {
 
     const buttonTexts = getButtonComponents().map((button) => button.text);
     expect(buttonTexts.slice(0, 4)).toEqual([
-      "Create vault",
-      "Connect vault",
-      "Sign out",
-      "Manage remote vaults",
+      t("vault.create"),
+      t("vault.connect"),
+      t("auth.signOut"),
+      t("vault.manageRemote"),
     ]);
   });
 
@@ -58,8 +59,8 @@ describe("SynchSettingTab remote vault settings", () => {
 
     disconnected.display();
 
-    expect(getSettingNames()).toContain("Vault management");
-    expect(getSettingNames()).not.toContain("Vault");
+    expect(getSettingNames()).toContain(t("vault.manage"));
+    expect(getSettingNames()).not.toContain(t("vault.setting"));
 
     resetObsidianMocks();
 
@@ -70,10 +71,10 @@ describe("SynchSettingTab remote vault settings", () => {
 
     connected.display();
 
-    expect(getSettingNames()).toContain("Vault management");
-    expect(getSettingNames()).toContain("Vault");
+    expect(getSettingNames()).toContain(t("vault.manage"));
+    expect(getSettingNames()).toContain(t("vault.setting"));
     expect(getButtonComponents().map((button) => button.text)).toContain(
-      "Disconnect vault",
+      t("vault.disconnect"),
     );
   });
 
@@ -85,9 +86,9 @@ describe("SynchSettingTab remote vault settings", () => {
 
     disconnected.display();
 
-    expect(getSettingNames()).not.toContain("Deleted files");
+    expect(getSettingNames()).not.toContain(t("deleted.header"));
     expect(getButtonComponents().map((button) => button.text)).not.toContain(
-      "View deleted files",
+      t("vault.viewDeletedFiles"),
     );
 
     resetObsidianMocks();
@@ -99,9 +100,9 @@ describe("SynchSettingTab remote vault settings", () => {
 
     connected.display();
 
-    expect(getSettingNames()).toContain("Deleted files");
+    expect(getSettingNames()).toContain(t("deleted.header"));
     expect(getButtonComponents().map((button) => button.text)).toContain(
-      "View deleted files",
+      t("vault.viewDeletedFiles"),
     );
   });
 
@@ -117,18 +118,14 @@ describe("SynchSettingTab remote vault settings", () => {
     tab.display();
 
     const settingNames = getSettingNames();
-    const deletedFilesIndex = settingNames.indexOf("Deleted files");
-    const hintIndex = settingNames.indexOf(
-      "New vaults can sync faster and use up to 33% less storage",
-    );
+    const deletedFilesIndex = settingNames.indexOf(t("deleted.header"));
+    const hintIndex = settingNames.indexOf(t("vault.formatUpgradeTitle"));
     expect(deletedFilesIndex).toBeGreaterThanOrEqual(0);
     expect(hintIndex).toBe(deletedFilesIndex + 1);
-    expect(getSettingDescriptions()).toContain(
-      "To use the latest remote vault version, which is faster and more storage-efficient, delete this remote vault from the vault management page, then create it again. Your local Obsidian vault files are not deleted when you remove the remote vault.",
-    );
+    expect(getSettingDescriptions()).toContain(t("vault.formatUpgradeDesc"));
 
     getButtonComponents()
-      .find((button) => button.text === "Manage remote vaults")
+      .find((button) => button.text === t("vault.manageRemote"))
       ?.click();
 
     expect(openRemoteVaultManagementPage).toHaveBeenCalled();
@@ -143,9 +140,7 @@ describe("SynchSettingTab remote vault settings", () => {
 
     tab.display();
 
-    expect(getSettingNames()).not.toContain(
-      "New vaults can sync faster and use up to 33% less storage",
-    );
+    expect(getSettingNames()).not.toContain(t("vault.formatUpgradeTitle"));
   });
 
   it("shows an empty deleted files modal", async () => {
@@ -161,15 +156,13 @@ describe("SynchSettingTab remote vault settings", () => {
 
     tab.display();
     await getButtonComponents()
-      .find((button) => button.text === "View deleted files")
+      .find((button) => button.text === t("vault.viewDeletedFiles"))
       ?.click();
     await nextTask();
 
-    expect(getCreatedElementTexts()).toContain(
-      "No synced deleted files are available to restore.",
-    );
+    expect(getCreatedElementTexts()).toContain(t("deleted.empty"));
     expect(
-      getButtonComponents().find((button) => button.text === "Restore selected")
+      getButtonComponents().find((button) => button.text === t("deleted.restoreSelected"))
         ?.disabled,
     ).toBe(true);
   });
@@ -205,7 +198,7 @@ describe("SynchSettingTab remote vault settings", () => {
 
     tab.display();
     await getButtonComponents()
-      .find((button) => button.text === "View deleted files")
+      .find((button) => button.text === t("vault.viewDeletedFiles"))
       ?.click();
     await nextTask();
 
@@ -217,7 +210,7 @@ describe("SynchSettingTab remote vault settings", () => {
 
     await modalToggles[0]?.change(true);
     await getButtonComponents()
-      .find((button) => button.text === "Restore selected (1)")
+      .find((button) => button.text === t("deleted.restoreSelectedCount", { count: 1 }))
       ?.click();
     await nextTask();
 
@@ -262,7 +255,7 @@ describe("SynchSettingTab remote vault settings", () => {
 
     tab.display();
     await getButtonComponents()
-      .find((button) => button.text === "View deleted files")
+      .find((button) => button.text === t("vault.viewDeletedFiles"))
       ?.click();
     await nextTask();
 
@@ -270,17 +263,17 @@ describe("SynchSettingTab remote vault settings", () => {
     await getToggleComponents().slice(-3)[0]?.change(true);
 
     expect(
-      getLatestButton("Restore selected (2)")?.disabled,
+      getLatestButton(t("deleted.restoreSelectedCount", { count: 2 }))?.disabled,
     ).toBe(false);
 
     await getToggleComponents().slice(-3)[0]?.change(false);
 
     expect(
-      getLatestButton("Restore selected")?.disabled,
+      getLatestButton(t("deleted.restoreSelected"))?.disabled,
     ).toBe(true);
 
     await getToggleComponents().slice(-3)[0]?.change(true);
-    await getLatestButton("Restore selected (2)")?.click();
+    await getLatestButton(t("deleted.restoreSelectedCount", { count: 2 }))?.click();
     await nextTask();
 
     expect(restoreDeletedFiles).toHaveBeenCalledTimes(1);
@@ -324,19 +317,19 @@ describe("SynchSettingTab remote vault settings", () => {
 
     tab.display();
     await getButtonComponents()
-      .find((button) => button.text === "View deleted files")
+      .find((button) => button.text === t("vault.viewDeletedFiles"))
       ?.click();
     await nextTask();
 
     await getToggleComponents().slice(-102)[0]?.change(true);
 
-    expect(getLatestButton("Restore selected (100)")?.disabled).toBe(false);
+    expect(getLatestButton(t("deleted.restoreSelectedCount", { count: 100 }))?.disabled).toBe(false);
     expect(getNotices()).toContainEqual({
-      message: "Restore up to 100 deleted files at a time.",
+      message: t("deleted.restoreLimit", { count: 100 }),
       timeout: undefined,
     });
 
-    await getLatestButton("Restore selected (100)")?.click();
+    await getLatestButton(t("deleted.restoreSelectedCount", { count: 100 }))?.click();
     await nextTask();
 
     expect(restoreDeletedFiles).toHaveBeenCalledTimes(1);
@@ -374,16 +367,16 @@ describe("SynchSettingTab remote vault settings", () => {
 
     tab.display();
     await getButtonComponents()
-      .find((button) => button.text === "View deleted files")
+      .find((button) => button.text === t("vault.viewDeletedFiles"))
       ?.click();
     await nextTask();
 
     await getToggleComponents().slice(-2)[0]?.change(true);
-    await getLatestButton("Permanently remove selected (1)")?.click();
+    await getLatestButton(t("deleted.purgeSelectedCount", { count: 1 }))?.click();
     expect(getCreatedElementTexts()).toContain(
-      "Permanently remove version history for 1 selected deleted file? These files will disappear from deleted files and cannot be previewed or restored.",
+      t("deleted.purgeConfirm", { count: 1 }),
     );
-    await getLatestButton("Permanently remove selected")?.click();
+    await getLatestButton(t("deleted.purgeSelected"))?.click();
     await nextTask();
 
     expect(purgeDeletedFiles).toHaveBeenCalledWith([
@@ -395,7 +388,9 @@ describe("SynchSettingTab remote vault settings", () => {
       },
     ]);
     expect(getNotices()).toContainEqual({
-      message: "Deleted file purge finished: 1 removed.",
+      message: t("deleted.purgeFinished", {
+        summary: t("deleted.purgedCount", { count: 1 }),
+      }),
       timeout: undefined,
     });
   });
@@ -425,13 +420,13 @@ describe("SynchSettingTab remote vault settings", () => {
 
     tab.display();
     await getButtonComponents()
-      .find((button) => button.text === "View deleted files")
+      .find((button) => button.text === t("vault.viewDeletedFiles"))
       ?.click();
     await nextTask();
 
     await getToggleComponents().slice(-1)[0]?.change(true);
-    await getLatestButton("Permanently remove selected (1)")?.click();
-    await getLatestButton("Cancel")?.click();
+    await getLatestButton(t("deleted.purgeSelectedCount", { count: 1 }))?.click();
+    await getLatestButton(t("cancel"))?.click();
     await nextTask();
 
     expect(purgeDeletedFiles).not.toHaveBeenCalled();
@@ -472,7 +467,7 @@ describe("SynchSettingTab remote vault settings", () => {
 
     tab.display();
     await getButtonComponents()
-      .find((button) => button.text === "View deleted files")
+      .find((button) => button.text === t("vault.viewDeletedFiles"))
       ?.click();
     await nextTask();
 
@@ -481,7 +476,7 @@ describe("SynchSettingTab remote vault settings", () => {
       "synch-deleted-files-load-more",
     ]);
     await getButtonComponents()
-      .filter((button) => button.text === "Load more")
+      .filter((button) => button.text === t("loadMore"))
       .at(-1)
       ?.click();
     await nextTask();
@@ -523,13 +518,13 @@ describe("SynchSettingTab remote vault settings", () => {
 
     tab.display();
     await getButtonComponents()
-      .find((button) => button.text === "View deleted files")
+      .find((button) => button.text === t("vault.viewDeletedFiles"))
       ?.click();
     await nextTask();
 
-    expect(getButtonComponents().some((button) => button.text === "Preview")).toBe(true);
+    expect(getButtonComponents().some((button) => button.text === t("preview"))).toBe(true);
     await getButtonComponents()
-      .find((button) => button.text === "Preview")
+      .find((button) => button.text === t("preview"))
       ?.click();
     await nextTask();
 
@@ -571,16 +566,16 @@ describe("SynchSettingTab remote vault settings", () => {
 
     tab.display();
     await getButtonComponents()
-      .find((button) => button.text === "View deleted files")
+      .find((button) => button.text === t("vault.viewDeletedFiles"))
       ?.click();
     await nextTask();
     await getButtonComponents()
-      .find((button) => button.text === "Preview")
+      .find((button) => button.text === t("preview"))
       ?.click();
     await nextTask();
 
     expect(
-      getButtonComponents().find((button) => button.text === "Loading preview...")
+      getButtonComponents().find((button) => button.text === t("preview.loading"))
         ?.disabled,
     ).toBe(true);
 
@@ -629,11 +624,11 @@ describe("SynchSettingTab remote vault settings", () => {
 
     tab.display();
     await getButtonComponents()
-      .find((button) => button.text === "View deleted files")
+      .find((button) => button.text === t("vault.viewDeletedFiles"))
       ?.click();
     await nextTask();
     await getButtonComponents()
-      .find((button) => button.text === "Preview")
+      .find((button) => button.text === t("preview"))
       ?.click();
     await nextTask();
 

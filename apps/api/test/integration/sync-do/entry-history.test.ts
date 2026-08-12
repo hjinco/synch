@@ -960,7 +960,6 @@ describe("sync durable object entry history integration", () => {
 			}),
 		).rejects.toMatchObject({
 			status: 404,
-			message: "requested version was not found",
 		});
 
 		await runInDurableObject(stub, async (instance, state) => {

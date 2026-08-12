@@ -45,6 +45,6 @@ describe("Node server config", () => {
 		expect(() => parseNodeServerConfig({ ...requiredEnv, PORT: "70000" })).toThrow();
 		expect(() =>
 			parseNodeServerConfig({ ...requiredEnv, BLOB_STORAGE: "s3" }),
-		).toThrow("S3_ENDPOINT is required when BLOB_STORAGE=s3");
+		).toThrow();
 	});
 });

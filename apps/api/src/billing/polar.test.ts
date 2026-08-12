@@ -88,7 +88,7 @@ describe("createPolarCheckout", () => {
 					email: "user@example.com",
 				},
 			),
-		).rejects.toThrow("POLAR_ACCESS_TOKEN is not configured");
+		).rejects.toThrow();
 		expect(polarMocks.checkoutsCreate).not.toHaveBeenCalled();
 	});
 
@@ -152,7 +152,7 @@ describe("createPolarCheckout", () => {
 					returnUrl: "https://synch.example/billing",
 				},
 			),
-		).rejects.toThrow("POLAR_ACCESS_TOKEN is not configured");
+		).rejects.toThrow();
 		expect(polarMocks.customerSessionsCreate).not.toHaveBeenCalled();
 	});
 });

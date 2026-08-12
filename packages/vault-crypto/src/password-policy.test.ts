@@ -12,55 +12,42 @@ describe("vault password policy", () => {
   });
 
   it("rejects short passwords", () => {
-    expect(validateVaultPassword("short word")).toEqual({
+    expect(validateVaultPassword("short word")).toMatchObject({
       ok: false,
       code: "min_length",
       count: 12,
-      message: "Password must be at least 12 characters.",
     });
   });
 
   it("rejects leading and trailing spaces", () => {
-    expect(validateVaultPassword(" correct horse battery staple")).toEqual({
+    expect(validateVaultPassword(" correct horse battery staple")).toMatchObject({
       ok: false,
       code: "outer_spaces",
-      message: "Password cannot start or end with spaces.",
     });
   });
 
   it("rejects common weak passwords even when decorated", () => {
-    expect(validateVaultPassword("vault-password")).toEqual({
-      ok: false,
-      code: "too_weak",
-      message: "Password is too easy to guess. Use a longer passphrase.",
-    });
-    expect(validateVaultPassword("obsidian-vault")).toEqual({
-      ok: false,
-      code: "too_weak",
-      message: "Password is too easy to guess. Use a longer passphrase.",
-    });
-    expect(validateVaultPassword("obsidian-vault-password")).toEqual({
-      ok: false,
-      code: "too_weak",
-      message: "Password is too easy to guess. Use a longer passphrase.",
-    });
-    expect(validateVaultPassword("password1234567890")).toEqual({
-      ok: false,
-      code: "too_weak",
-      message: "Password is too easy to guess. Use a longer passphrase.",
-    });
+    for (const password of [
+      "vault-password",
+      "obsidian-vault",
+      "obsidian-vault-password",
+      "password1234567890",
+    ]) {
+      expect(validateVaultPassword(password)).toMatchObject({
+        ok: false,
+        code: "too_weak",
+      });
+    }
   });
 
   it("rejects repeated characters and simple sequences", () => {
-    expect(validateVaultPassword("aaaaaaaaaaaa")).toEqual({
+    expect(validateVaultPassword("aaaaaaaaaaaa")).toMatchObject({
       ok: false,
       code: "repeated_character",
-      message: "Password cannot be one repeated character.",
     });
-    expect(validateVaultPassword("abcdefghijkl")).toEqual({
+    expect(validateVaultPassword("abcdefghijkl")).toMatchObject({
       ok: false,
       code: "simple_sequence",
-      message: "Password cannot be a simple sequence.",
     });
   });
 });

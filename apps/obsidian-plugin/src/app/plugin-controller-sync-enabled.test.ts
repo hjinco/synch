@@ -6,6 +6,7 @@ import {
   resetObsidianMocks,
   setRequestUrlMock,
 } from "../test-stubs/obsidian";
+import { t } from "../i18n";
 import { DEFAULT_SYNC_FILE_RULES } from "@synch/sync-client/sync/core/file-rules";
 import { DEFAULT_VAULT_CONFIG_SYNC_RULES } from "@synch/sync-client/sync/core/vault-config-rules";
 import { SyncController } from "./sync-controller";
@@ -108,9 +109,9 @@ describe("SynchPluginController sync enabled setting", () => {
     await controller.initialize();
 
     expect(controller.getSyncState()).toBe("update_required");
-    expect(controller.getSyncStatusLabel()).toBe("Plugin update required.");
+    expect(controller.getSyncStatusLabel()).toBe(t("plugin.updateRequiredStatus"));
     expect(getNotices()).toContainEqual({
-      message: "Update Synch from Community plugins",
+      message: t("plugin.latestAvailable"),
       timeout: 0,
     });
 
@@ -121,7 +122,7 @@ describe("SynchPluginController sync enabled setting", () => {
       state: "update_required",
       currentVersion: "0.0.1",
       minVersion: "1.2.0",
-      message: "Update Synch from Community plugins",
+      message: t("plugin.latestAvailable"),
     });
     expect(ensureAutoSyncState).not.toHaveBeenCalled();
     expect(stopAutoSyncAndMarkNotReady).toHaveBeenCalled();
@@ -129,7 +130,7 @@ describe("SynchPluginController sync enabled setting", () => {
     expect(refreshUi).toHaveBeenCalled();
     expect(
       getNotices().filter(
-        (notice) => notice.message === "Update Synch from Community plugins",
+        (notice) => notice.message === t("plugin.latestAvailable"),
       ),
     )
       .toHaveLength(2);
@@ -164,8 +165,7 @@ describe("SynchPluginController sync enabled setting", () => {
     });
     await controller.initialize();
 
-    const message =
-      "This Synch server is not compatible with this plugin version. Update the server or install a compatible Synch plugin version.";
+    const message = t("plugin.serverIncompatible");
     expect(controller.getSyncState()).toBe("update_required");
     expect(controller.getServerCompatibilityStatus()).toEqual({
       state: "incompatible",
@@ -213,8 +213,7 @@ describe("SynchPluginController sync enabled setting", () => {
     });
     await controller.initialize();
 
-    const message =
-      "This Synch server is not compatible with this plugin version. Update the server or install a compatible Synch plugin version.";
+    const message = t("plugin.serverIncompatible");
     expect(controller.getSyncState()).toBe("update_required");
     expect(controller.getServerCompatibilityStatus()).toEqual({
       state: "incompatible",

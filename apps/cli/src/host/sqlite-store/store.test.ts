@@ -92,7 +92,10 @@ describe("SqliteSyncStore basics", () => {
         remoteVaultId: "vault-1",
         lastPulledCursor: 0,
       }),
-    ).rejects.toThrow("different local vault");
+    ).rejects.toThrow();
+    expect((await store.readSyncConnection())?.localVaultId).not.toBe(
+      "other-local-vault",
+    );
   });
 
   it("round-trips remote and local entry state", async () => {
@@ -213,7 +216,8 @@ describe("SqliteSyncStore basics", () => {
     });
     await expect(
       store.markEntryDirty(mutation, { requireBaseBlob: true }),
-    ).rejects.toThrow("requires cached base blob");
+    ).rejects.toThrow();
+    expect(await store.getDirtyEntryMutation("e1")).toBeNull();
 
     await store.putBlob({
       blobId: "base-blob",

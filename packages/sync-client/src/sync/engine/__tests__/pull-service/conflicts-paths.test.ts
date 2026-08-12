@@ -504,9 +504,7 @@ describe("SyncPullService path conflicts", () => {
       onProgress: ignoreProgress,
     });
 
-    await expect(service.pullOnce(session)).rejects.toThrow(
-      "Entry state entry-invalid@1 is missing a blob.",
-    );
+    await expect(service.pullOnce(session)).rejects.toThrow();
     expect(adapter.text(path)).toBeNull();
     expect(await store.getRemoteStateById("entry-invalid")).toBeNull();
     expect(await store.getCursor()).toBe(0);

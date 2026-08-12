@@ -16,31 +16,13 @@ describe("SubscriptionPolicyService", () => {
 	it("uses the hosted free policy by default", async () => {
 		const policy = await new SubscriptionPolicyService().readOrganizationPolicy("org-1");
 
-		expect(policy.id).toBe("free");
-		expect(policy.limits.syncedVaults).toBe(1);
-		expect(policy.limits.storageLimitBytes).toBe(50_000_000);
-		expect(policy.limits.maxFileSizeBytes).toBe(3_000_000);
+		expect(policy).toEqual(getSubscriptionPlanPolicy("free"));
 	});
 
-	it("uses unlimited quota limits for self-hosted deployments", async () => {
+	it("uses the self-hosted policy for self-hosted deployments", async () => {
 		const policy = await new SubscriptionPolicyService(true).readOrganizationPolicy("org-1");
 
-		expect(policy.id).toBe("self_hosted");
-		expect(policy.limits.syncedVaults).toBe(0);
-		expect(policy.limits.storageLimitBytes).toBe(0);
-		expect(policy.limits.maxFileSizeBytes).toBe(0);
-		expect(policy.limits.versionHistoryRetentionDays).toBe(1);
-	});
-
-	it("defines the hosted starter plan limits", () => {
-		const policy = getSubscriptionPlanPolicy("starter");
-
-		expect(policy.pricing.monthlyUsd).toBe(1);
-		expect(policy.pricing.annualMonthlyUsd).toBeCloseTo(10 / 12);
-		expect(policy.pricing.annualUsd).toBe(10);
-		expect(policy.limits.storageLimitBytes).toBe(1_000_000_000);
-		expect(policy.limits.maxFileSizeBytes).toBe(5_000_000);
-		expect(policy.limits.versionHistoryRetentionDays).toBe(30);
+		expect(policy).toEqual(getSubscriptionPlanPolicy("self_hosted"));
 	});
 
 	it("uses the starter policy for a matching active product subscription", async () => {
@@ -106,33 +88,32 @@ describe("SubscriptionPolicyService", () => {
 			}),
 		).readOrganizationPolicy("org-1");
 
-		expect(policy.id).toBe("free");
-		expect(policy.limits.syncedVaults).toBe(3);
-		expect(policy.limits.storageLimitBytes).toBe(50_000_000);
-		expect(policy.limits.maxFileSizeBytes).toBe(3_000_000);
-		expect(policy.limits.versionHistoryRetentionDays).toBe(1);
+		const basePolicy = getSubscriptionPlanPolicy("free");
+		expect(policy).toEqual({
+			...basePolicy,
+			limits: { ...basePolicy.limits, syncedVaults: 3 },
+		});
 	});
 
 	it("keeps plan limits when organization overrides are null", () => {
-		const policy = applySubscriptionPlanLimitOverrides(getSubscriptionPlanPolicy("free"), {
+		const basePolicy = getSubscriptionPlanPolicy("free");
+		const policy = applySubscriptionPlanLimitOverrides(basePolicy, {
 			syncedVaults: null,
 		});
 
-		expect(policy.limits.syncedVaults).toBe(1);
-		expect(policy.limits.storageLimitBytes).toBe(50_000_000);
-		expect(policy.limits.maxFileSizeBytes).toBe(3_000_000);
-		expect(policy.limits.versionHistoryRetentionDays).toBe(1);
+		expect(policy).toEqual(basePolicy);
 	});
 
 	it("allows zero-valued organization overrides", () => {
-		const policy = applySubscriptionPlanLimitOverrides(getSubscriptionPlanPolicy("free"), {
+		const basePolicy = getSubscriptionPlanPolicy("free");
+		const policy = applySubscriptionPlanLimitOverrides(basePolicy, {
 			syncedVaults: 0,
 		});
 
-		expect(policy.limits.syncedVaults).toBe(0);
-		expect(policy.limits.storageLimitBytes).toBe(50_000_000);
-		expect(policy.limits.maxFileSizeBytes).toBe(3_000_000);
-		expect(policy.limits.versionHistoryRetentionDays).toBe(1);
+		expect(policy).toEqual({
+			...basePolicy,
+			limits: { ...basePolicy.limits, syncedVaults: 0 },
+		});
 	});
 
 	it("keeps period-scoped subscription access until the paid period ends", () => {

@@ -4,6 +4,7 @@ import type { SyncTokenResponse } from "@synch/sync-client/sync/remote/client";
 import { DEFAULT_SYNC_FILE_RULES } from "@synch/sync-client/sync/core/file-rules";
 import { DEFAULT_VAULT_CONFIG_SYNC_RULES } from "@synch/sync-client/sync/core/vault-config-rules";
 import { createTestPlugin } from "../test-support/test-plugin";
+import { t } from "../i18n";
 import { formatSyncStatusLabel } from "./status/sync-status-label";
 import { SyncController } from "./sync-controller";
 import { SyncEngine } from "@synch/sync-client/sync/runtime/sync-engine";
@@ -181,7 +182,7 @@ describe("SyncController", () => {
         controller.getSyncState(),
         controller.getSyncProgress(),
       ),
-    ).toBe("Sync: paused 0%");
+    ).toBe(t("sync.status", { label: t("sync.state.paused"), percent: 0 }));
   });
 
   it("watches storage status while auto sync starts for a connected vault", async () => {
@@ -260,7 +261,7 @@ describe("SyncController", () => {
         controller.getSyncState(),
         controller.getSyncProgress(),
       ),
-    ).toBe("Sync: offline 0%");
+    ).toBe(t("sync.status", { label: t("sync.state.offline"), percent: 0 }));
     expect(notifyError).not.toHaveBeenCalled();
   });
 

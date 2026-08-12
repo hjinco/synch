@@ -8,6 +8,7 @@ import {
   getTextComponents,
   resetObsidianMocks,
 } from "../../test-stubs/obsidian";
+import { t } from "../../i18n";
 import {
   openBootstrapRemoteVaultModal,
   openConfirmConnectNonEmptyLocalVaultModal,
@@ -56,7 +57,7 @@ describe("create vault modal", () => {
     void createButton?.click();
     await Promise.resolve();
 
-    expect(getCreatedElementTexts()).toContain("Back up your vault before continuing.");
+    expect(getCreatedElementTexts()).toContain(t("vault.backupHint"));
     await getButtonComponents()
       .find((button) => button.text === "I backed up, create vault")
       ?.click();
@@ -77,12 +78,10 @@ describe("connect non-empty local vault confirmation modal", () => {
   it("explains the conflict risk without detailed sync behavior", () => {
     void openConfirmConnectNonEmptyLocalVaultModal(new App());
 
-    expect(getCreatedElementTexts()).toContain(
-      "Connecting it may cause unexpected sync conflicts.",
-    );
+    expect(getCreatedElementTexts()).toContain(t("vault.connectExistingConflict"));
     expect(getButtonComponents().map((button) => button.text)).toEqual([
-      "Cancel",
-      "Connect anyway",
+      t("cancel"),
+      t("connectAnyway"),
     ]);
   });
 

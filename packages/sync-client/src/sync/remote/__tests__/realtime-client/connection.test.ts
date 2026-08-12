@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { SyncRealtimeError } from "../../realtime-client";
+import {
+  SyncRealtimeConnectionError,
+  SyncRealtimeError,
+} from "../../realtime-client";
 import {
   createMutation,
   openRealtimeSession,
@@ -94,8 +97,8 @@ describe("SyncRealtimeClient connection health", () => {
     });
 
     const commitPromise = session.commitMutation(createMutation());
-    const commitExpectation = expect(commitPromise).rejects.toThrow(
-      "sync websocket request timed out",
+    const commitExpectation = expect(commitPromise).rejects.toBeInstanceOf(
+      SyncRealtimeConnectionError,
     );
     await vi.advanceTimersByTimeAsync(100);
 
@@ -184,9 +187,8 @@ describe("SyncRealtimeClient connection health", () => {
 
     await vi.advanceTimersByTimeAsync(250);
 
-    expect(errors.map((error) => error.message)).toEqual([
-      "sync websocket request timed out",
-    ]);
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toBeInstanceOf(SyncRealtimeConnectionError);
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 

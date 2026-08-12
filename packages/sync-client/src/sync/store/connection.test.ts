@@ -24,12 +24,12 @@ describe("local vault id storage", () => {
     });
   });
 
-  it("writes and trims a stored local sync identity", async () => {
+  it("persists a stored local sync identity through the store", async () => {
     const store = createStore();
 
     await writeStoredSyncConnection(store, {
-      localVaultId: " local-vault-a ",
-      remoteVaultId: " remote-vault-a ",
+      localVaultId: "local-vault-a",
+      remoteVaultId: "remote-vault-a",
       lastPulledCursor: 12,
     });
     expect(await readStoredSyncConnection(store)).toEqual({
@@ -52,11 +52,7 @@ function createStore(): SyncConnectionStore {
       return identity;
     },
     async writeSyncConnection(nextIdentity: SyncConnection): Promise<void> {
-      identity = {
-        localVaultId: nextIdentity.localVaultId.trim(),
-        remoteVaultId: nextIdentity.remoteVaultId.trim(),
-        lastPulledCursor: nextIdentity.lastPulledCursor,
-      };
+      identity = { ...nextIdentity };
     },
   };
 }

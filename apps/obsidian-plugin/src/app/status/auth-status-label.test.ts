@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { resetObsidianMocks } from "obsidian";
 
+import { t } from "../../i18n";
 import { formatAuthNotice, formatAuthStatusLabel } from "./auth-status-label";
 
 describe("formatAuthStatusLabel", () => {
@@ -8,24 +9,25 @@ describe("formatAuthStatusLabel", () => {
     resetObsidianMocks();
   });
 
-  it("labels each auth status", () => {
-    expect(
-      formatAuthStatusLabel({
-        state: "signed_in",
-        displayName: "user@example.com",
-      }),
-    ).toBe("Signed in as user@example.com.");
+  it("maps each auth status to its localized label", () => {
+    const signedIn = formatAuthStatusLabel({
+      state: "signed_in",
+      displayName: "user@example.com",
+    });
+    expect(signedIn).toBe(t("auth.signedIn", { name: "user@example.com" }));
+    expect(signedIn).toContain("user@example.com");
+
     expect(
       formatAuthStatusLabel({ state: "signed_in", displayName: "" }),
-    ).toBe("Signed in on this device.");
+    ).toBe(t("auth.signedInDevice"));
     expect(formatAuthStatusLabel({ state: "pending_network" })).toBe(
-      "Connect to the internet to check sign-in.",
+      t("network.requiredDesc"),
     );
     expect(formatAuthStatusLabel({ state: "needs_relogin" })).toBe(
-      "Sign in again to sync.",
+      t("auth.signInAgain"),
     );
     expect(formatAuthStatusLabel({ state: "not_signed_in" })).toBe(
-      "Not signed in.",
+      t("auth.notSignedIn"),
     );
   });
 });
@@ -35,38 +37,45 @@ describe("formatAuthNotice", () => {
     resetObsidianMocks();
   });
 
-  it("formats each auth notice event", () => {
+  it("maps each auth notice event to its localized message", () => {
     const status = {
       state: "signed_in",
       displayName: "user@example.com",
     } as const;
 
     expect(formatAuthNotice({ type: "approval_received" }, status)).toBe(
-      "Approval received. Finishing sign-in...",
+      t("auth.approvalReceived"),
     );
     expect(formatAuthNotice({ type: "signed_in" }, status)).toBe(
-      "Signed in as user@example.com.",
+      formatAuthStatusLabel(status),
     );
-    expect(
-      formatAuthNotice(
-        { type: "device_sign_in_failed", message: "boom" },
-        status,
-      ),
-    ).toBe("Device sign-in failed: boom");
+
+    const failed = formatAuthNotice(
+      { type: "device_sign_in_failed", message: "boom" },
+      status,
+    );
+    expect(failed).toBe(t("auth.deviceSignInFailed", { message: "boom" }));
+    expect(failed).toContain("boom");
+
     expect(formatAuthNotice({ type: "device_sign_in_expired" }, status)).toBe(
-      "Device sign-in expired. Start again from Obsidian.",
+      t("auth.deviceSignInExpired"),
     );
     expect(formatAuthNotice({ type: "device_sign_in_canceled" }, status)).toBe(
-      "Device sign-in canceled.",
+      t("auth.deviceSignInCanceled"),
     );
     expect(formatAuthNotice({ type: "device_sign_in_starting" }, status)).toBe(
-      "Device sign-in is starting...",
+      t("auth.deviceSignInStarting"),
     );
-    expect(
-      formatAuthNotice({ type: "opening_browser", code: "USER-CODE" }, status),
-    ).toBe("Opening browser for device sign-in...\nCode: USER-CODE");
+
+    const openingBrowser = formatAuthNotice(
+      { type: "opening_browser", code: "USER-CODE" },
+      status,
+    );
+    expect(openingBrowser).toBe(t("auth.openingBrowser", { code: "USER-CODE" }));
+    expect(openingBrowser).toContain("USER-CODE");
+
     expect(formatAuthNotice({ type: "signed_out" }, status)).toBe(
-      "Signed out on this device.",
+      t("auth.signedOutDevice"),
     );
   });
 });

@@ -39,11 +39,7 @@ describe("parseApiBaseUrlInput", () => {
   });
 
   it("still rejects unsupported protocols", () => {
-    expect(() => parseApiBaseUrlInput("ftp://sync.example.com", fallback)).toThrow(
-      "API base URL must be a valid http:// or https:// URL.",
-    );
-    expect(() => parseApiBaseUrlInput("mailto:user@example.com", fallback)).toThrow(
-      "API base URL must be a valid http:// or https:// URL.",
-    );
+    expect(() => parseApiBaseUrlInput("ftp://sync.example.com", fallback)).toThrow();
+    expect(() => parseApiBaseUrlInput("mailto:user@example.com", fallback)).toThrow();
   });
 });

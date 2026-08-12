@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { resetObsidianMocks } from "obsidian";
 
+import { t } from "../../i18n";
 import {
   formatRemoteVaultNotice,
   formatRemoteVaultStatusLabel,
@@ -11,15 +12,19 @@ describe("formatRemoteVaultStatusLabel", () => {
     resetObsidianMocks();
   });
 
-  it("labels each remote vault status", () => {
-    expect(
-      formatRemoteVaultStatusLabel({ state: "loaded", label: "Personal" }),
-    ).toBe("Vault Personal loaded on this device.");
+  it("maps each remote vault status to its localized label", () => {
+    const loaded = formatRemoteVaultStatusLabel({
+      state: "loaded",
+      label: "Personal",
+    });
+    expect(loaded).toBe(t("vault.loaded", { label: "Personal" }));
+    expect(loaded).toContain("Personal");
+
     expect(formatRemoteVaultStatusLabel({ state: "stored_inactive" })).toBe(
-      "A vault is stored on this device but not active.",
+      t("vault.notActive"),
     );
     expect(formatRemoteVaultStatusLabel({ state: "not_configured" })).toBe(
-      "No vault is configured on this device.",
+      t("vault.notConfigured"),
     );
   });
 });
@@ -29,15 +34,19 @@ describe("formatRemoteVaultNotice", () => {
     resetObsidianMocks();
   });
 
-  it("formats each remote vault notice event", () => {
-    expect(
-      formatRemoteVaultNotice({ type: "disconnected", label: "Personal" }),
-    ).toBe("Vault Personal disconnected from this device.");
+  it("maps each remote vault notice event to its localized message", () => {
+    const disconnected = formatRemoteVaultNotice({
+      type: "disconnected",
+      label: "Personal",
+    });
+    expect(disconnected).toBe(t("vault.disconnected", { label: "Personal" }));
+    expect(disconnected).toContain("Personal");
+
     expect(
       formatRemoteVaultNotice({ type: "created_connected", label: "Personal" }),
-    ).toBe("Vault Personal created and connected.");
+    ).toBe(t("vault.createdConnected", { label: "Personal" }));
     expect(
       formatRemoteVaultNotice({ type: "connected", label: "Personal" }),
-    ).toBe("Vault Personal connected on this device.");
+    ).toBe(t("vault.connected", { label: "Personal" }));
   });
 });

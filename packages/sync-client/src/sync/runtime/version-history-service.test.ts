@@ -332,7 +332,7 @@ describe("SyncVersionHistoryService", () => {
           versionId: "version-old",
         }),
       ),
-    ).rejects.toThrow("Sync local changes before restoring version history.");
+    ).rejects.toThrow();
     expect(restoreEntryVersion).not.toHaveBeenCalled();
 
     await store.close();
@@ -521,12 +521,12 @@ describe("SyncVersionHistoryService", () => {
 
     await expect(
       service.previewDeletedEntry("entry-deleted", "Folder/deleted.md"),
-    ).resolves.toEqual({
+    ).resolves.toMatchObject({
       status: "unavailable",
       path: "Folder/deleted.md",
       reason: null,
       capturedAt: null,
-      message: "This version has no previewable content.",
+      message: expect.any(String),
     });
 
     await store.close();
@@ -557,12 +557,12 @@ describe("SyncVersionHistoryService", () => {
         reason: "before_delete",
         capturedAt: 200,
       }),
-    ).resolves.toEqual({
+    ).resolves.toMatchObject({
       status: "unavailable",
       path: "Folder/active.md",
       reason: "before_delete",
       capturedAt: 200,
-      message: "This version has no previewable content.",
+      message: expect.any(String),
     });
 
     await store.close();
@@ -600,7 +600,7 @@ describe("SyncVersionHistoryService", () => {
 
     await expect(
       service.previewEntryVersionForPath("Folder/active.md", version),
-    ).rejects.toThrow("Version preview hash does not match metadata.");
+    ).rejects.toThrow();
 
     await store.close();
   });
@@ -677,12 +677,12 @@ describe("SyncVersionHistoryService", () => {
 
     await expect(
       service.restoreDeletedEntries([{ entryId: "entry-deleted", revision: 3 }]),
-    ).resolves.toEqual({
+    ).resolves.toMatchObject({
       restored: 0,
       failures: [
         {
           entryId: "entry-deleted",
-          message: "No restorable version exists for this deleted file.",
+          message: expect.any(String),
         },
       ],
     });

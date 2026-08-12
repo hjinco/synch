@@ -11,6 +11,18 @@ const SYNC_BLOB_V2_VERSION_OFFSET = SYNC_BLOB_V2_MAGIC.byteLength;
 const SYNC_BLOB_V2_NONCE_OFFSET = SYNC_BLOB_V2_VERSION_OFFSET + 1;
 const SYNC_BLOB_V2_CIPHERTEXT_OFFSET = SYNC_BLOB_V2_NONCE_OFFSET + AES_GCM_NONCE_BYTES;
 
+export type SyncCryptoErrorCode = "disposed" | "unsupported_sync_format_version";
+
+export class SyncCryptoError extends Error {
+  constructor(
+    readonly code: SyncCryptoErrorCode,
+    message: string,
+  ) {
+    super(message);
+    this.name = "SyncCryptoError";
+  }
+}
+
 export type SyncMetadataCryptoContext = {
   entryId: string;
   revision: number;
@@ -251,7 +263,7 @@ class VaultSyncCryptoContext implements SyncCryptoContext {
 
   private assertActive(): void {
     if (this.disposed) {
-      throw new Error("Sync crypto context has been disposed.");
+      throw new SyncCryptoError("disposed", "Sync crypto context has been disposed.");
     }
   }
 }
@@ -401,7 +413,10 @@ function parseBinaryBlobEnvelope(value: Uint8Array): {
 }
 
 function throwUnsupportedSyncBlobFormatVersion(syncFormatVersion: number): never {
-  throw new Error(`Unsupported sync blob format version: ${syncFormatVersion}.`);
+  throw new SyncCryptoError(
+    "unsupported_sync_format_version",
+    `Unsupported sync blob format version: ${syncFormatVersion}.`,
+  );
 }
 
 function parseEncryptedEnvelope(value: string, envelopeVersion = ENVELOPE_VERSION): EncryptedEnvelope {

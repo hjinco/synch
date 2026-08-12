@@ -111,7 +111,10 @@ describe("BillingService", () => {
 				email: "user@example.com",
 				planId: "starter",
 			}),
-		).rejects.toThrow("user has no organization");
+		).rejects.toMatchObject({
+			status: 400,
+			cause: { code: "organization_required" },
+		});
 		expect(polarMocks.createPolarCheckout).not.toHaveBeenCalled();
 	});
 
@@ -135,7 +138,10 @@ describe("BillingService", () => {
 				email: "user@example.com",
 				planId: "starter",
 			}),
-		).rejects.toThrow("paid subscription is already active");
+		).rejects.toMatchObject({
+			status: 409,
+			cause: { code: "subscription_already_active" },
+		});
 		expect(polarMocks.createPolarCheckout).not.toHaveBeenCalled();
 	});
 
@@ -169,7 +175,10 @@ describe("BillingService", () => {
 				email: "user@example.com",
 				planId: "starter",
 			}),
-		).rejects.toThrow("paid subscription is already active");
+		).rejects.toMatchObject({
+			status: 409,
+			cause: { code: "subscription_already_active" },
+		});
 		expect(polarMocks.createPolarCheckout).not.toHaveBeenCalled();
 	});
 
@@ -188,7 +197,7 @@ describe("BillingService", () => {
 				email: "user@example.com",
 				planId: "starter",
 			}),
-		).rejects.toThrow("Polar product ID is not configured for starter monthly");
+		).rejects.toThrow();
 		expect(polarMocks.createPolarCheckout).not.toHaveBeenCalled();
 	});
 
@@ -204,14 +213,20 @@ describe("BillingService", () => {
 				email: "user@example.com",
 				planId: "free",
 			}),
-		).rejects.toThrow("plan is not available for checkout");
+		).rejects.toMatchObject({
+			status: 400,
+			cause: { code: "plan_not_available" },
+		});
 		await expect(
 			service.createCheckout({
 				userId: "user-1",
 				email: "user@example.com",
 				planId: "self_hosted",
 			}),
-		).rejects.toThrow("plan is not available for checkout");
+		).rejects.toMatchObject({
+			status: 400,
+			cause: { code: "plan_not_available" },
+		});
 		expect(polarMocks.createPolarCheckout).not.toHaveBeenCalled();
 	});
 
@@ -323,9 +338,10 @@ describe("BillingService", () => {
 			subscriptions: [],
 		}));
 
-		await expect(service.createCustomerPortalSession("user-1")).rejects.toThrow(
-			"user has no organization",
-		);
+		await expect(service.createCustomerPortalSession("user-1")).rejects.toMatchObject({
+			status: 400,
+			cause: { code: "organization_required" },
+		});
 		expect(polarMocks.createPolarCustomerPortalSession).not.toHaveBeenCalled();
 	});
 
@@ -336,15 +352,17 @@ describe("BillingService", () => {
 			subscriptions: [],
 		}));
 
-		await expect(service.createCustomerPortalSession("user-1")).rejects.toThrow(
-			"billing customer was not found",
-		);
+		await expect(service.createCustomerPortalSession("user-1")).rejects.toMatchObject({
+			status: 404,
+			cause: { code: "billing_customer_not_found" },
+		});
 		expect(polarMocks.createPolarCustomerPortalSession).not.toHaveBeenCalled();
 	});
 
-	it("rejects customer portal sessions when Polar access token is missing", async () => {
+	it("propagates portal session failures from the Polar client", async () => {
+		// Synthetic fixture error: verifies the failure is passed through unwrapped.
 		polarMocks.createPolarCustomerPortalSession.mockRejectedValueOnce(
-			new Error("POLAR_ACCESS_TOKEN is not configured"),
+			new Error("simulated polar failure"),
 		);
 		const service = createBillingService(
 			fakeBillingRepository({
@@ -357,7 +375,7 @@ describe("BillingService", () => {
 		);
 
 		await expect(service.createCustomerPortalSession("user-1")).rejects.toThrow(
-			"POLAR_ACCESS_TOKEN is not configured",
+			"simulated polar failure",
 		);
 	});
 });

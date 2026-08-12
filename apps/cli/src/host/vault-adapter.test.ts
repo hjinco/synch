@@ -106,12 +106,9 @@ describe("NodeSyncVaultAdapter file operations", () => {
   });
 
   it("rejects unsafe vault paths", async () => {
-    await expect(adapter.readBytes("../outside.md")).rejects.toThrow(
-      "Unsafe vault path",
-    );
-    await expect(adapter.writeText("a/../../evil.md", "x")).rejects.toThrow(
-      "Unsafe vault path",
-    );
+    await expect(adapter.readBytes("../outside.md")).rejects.toThrow();
+    await expect(adapter.writeText("a/../../evil.md", "x")).rejects.toThrow();
+    expect(fs.readdirSync(vaultPath)).toEqual([]);
   });
 
   it("marks reserved and config paths as protected", () => {

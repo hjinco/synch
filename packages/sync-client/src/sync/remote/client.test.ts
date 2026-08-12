@@ -51,7 +51,7 @@ describe("SyncAccessClient", () => {
     });
   });
 
-  it("surfaces API error messages on failed issuance", async () => {
+  it("maps forbidden issuance failures to an access-denied vault error", async () => {
     const httpClient = createMockHttpClient(async () => ({
       status: 403,
       json: {
@@ -67,7 +67,11 @@ describe("SyncAccessClient", () => {
         vaultId: "vault-1",
         localVaultId: "local-vault-1",
       }),
-    ).rejects.toThrow("vault access denied");
+    ).rejects.toMatchObject({
+      name: "RemoteVaultUnavailableError",
+      reason: "access_denied",
+      remoteVaultId: "vault-1",
+    });
   });
 });
 

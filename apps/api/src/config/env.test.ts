@@ -23,10 +23,14 @@ describe("env config", () => {
 
 	it("rejects missing or invalid URL values", () => {
 		delete process.env.TEST_URL;
-		expect(() => requireUrlEnv("TEST_URL")).toThrow("TEST_URL is required");
+		expect(() => requireUrlEnv("TEST_URL")).toThrow(
+			expect.objectContaining({ code: "env_required", envName: "TEST_URL" }),
+		);
 
 		process.env.TEST_URL = "not-a-url";
-		expect(() => requireUrlEnv("TEST_URL")).toThrow("TEST_URL must be a valid URL");
+		expect(() => requireUrlEnv("TEST_URL")).toThrow(
+			expect.objectContaining({ code: "env_invalid_url", envName: "TEST_URL" }),
+		);
 	});
 
 	it("falls back to the request URL for missing URL bindings", () => {

@@ -7,20 +7,39 @@ export const SYNCH_PLUGIN_COMMUNITY_RELEASE_FEED_URL =
 const COMMUNITY_RELEASE_GUID_PATTERN =
   /release:plugin:synch:(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)/;
 
+export type PluginUpdateCheckErrorCode =
+  | "invalid_current_version"
+  | "feed_request_failed"
+  | "feed_missing_version";
+
+export class PluginUpdateCheckError extends Error {
+  constructor(
+    readonly code: PluginUpdateCheckErrorCode,
+    message: string,
+  ) {
+    super(message);
+    this.name = "PluginUpdateCheckError";
+  }
+}
+
 export class SynchPluginUpdateChecker {
   constructor(private readonly httpClient: HttpClient = defaultHttpClient) {}
 
   async check(currentVersion: string): Promise<SynchCommunityPluginUpdateStatus> {
     const current = parseStrictSemver(currentVersion);
     if (!current) {
-      throw new Error(`Invalid current plugin version: ${currentVersion}`);
+      throw new PluginUpdateCheckError(
+        "invalid_current_version",
+        `Invalid current plugin version: ${currentVersion}`,
+      );
     }
 
     const response = await this.httpClient.request({
       url: SYNCH_PLUGIN_COMMUNITY_RELEASE_FEED_URL,
     });
     if (response.status < 200 || response.status >= 300) {
-      throw new Error(
+      throw new PluginUpdateCheckError(
+        "feed_request_failed",
         `Community plugin release feed request failed with status ${response.status}.`,
       );
     }
@@ -28,7 +47,10 @@ export class SynchPluginUpdateChecker {
     const feedText = typeof response.text === "string" ? response.text : "";
     const latestRelease = parseLatestCommunityRelease(feedText);
     if (!latestRelease) {
-      throw new Error("Community plugin release feed does not contain a version.");
+      throw new PluginUpdateCheckError(
+        "feed_missing_version",
+        "Community plugin release feed does not contain a version.",
+      );
     }
 
     return compareSemver(latestRelease.parts, current) > 0

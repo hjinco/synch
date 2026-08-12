@@ -15,6 +15,22 @@ export interface SyncTokenManagerDeps {
 
 export type SyncAccessClientLike = Pick<SyncAccessClient, "issueSyncToken">;
 
+export type SyncTokenErrorCode =
+  | "not_signed_in"
+  | "no_active_vault"
+  | "missing_local_vault_id"
+  | "unsupported_sync_format_version";
+
+export class SyncTokenError extends Error {
+  constructor(
+    readonly code: SyncTokenErrorCode,
+    message: string,
+  ) {
+    super(message);
+    this.name = "SyncTokenError";
+  }
+}
+
 export class SyncTokenManager {
   private cachedToken: SyncTokenResponse | null = null;
 
@@ -23,17 +39,26 @@ export class SyncTokenManager {
   async getTokenForActiveRemoteVault(): Promise<SyncTokenResponse> {
     const sessionToken = this.deps.getAuthSessionToken().trim();
     if (!sessionToken) {
-      throw new Error("Sign in before requesting a sync token.");
+      throw new SyncTokenError(
+        "not_signed_in",
+        "Sign in before requesting a sync token.",
+      );
     }
 
     const vaultId = this.deps.getRemoteVaultId()?.trim() ?? "";
     if (!vaultId) {
-      throw new Error("Connect a vault before requesting a sync token.");
+      throw new SyncTokenError(
+        "no_active_vault",
+        "Connect a vault before requesting a sync token.",
+      );
     }
 
     const localVaultId = (await this.deps.getLocalVaultId()).trim();
     if (!localVaultId) {
-      throw new Error("Local vault ID is not available.");
+      throw new SyncTokenError(
+        "missing_local_vault_id",
+        "Local vault ID is not available.",
+      );
     }
 
     if (this.cachedToken && this.canReuseToken(this.cachedToken, vaultId, localVaultId)) {
@@ -78,6 +103,9 @@ export class SyncTokenManager {
 
 function assertSupportedSyncFormatVersion(syncFormatVersion: number): void {
   if (!SUPPORTED_SYNC_FORMAT_VERSIONS.has(syncFormatVersion)) {
-    throw new Error(`Unsupported sync format version: ${syncFormatVersion}.`);
+    throw new SyncTokenError(
+      "unsupported_sync_format_version",
+      `Unsupported sync format version: ${syncFormatVersion}.`,
+    );
   }
 }

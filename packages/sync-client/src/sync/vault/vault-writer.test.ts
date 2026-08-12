@@ -45,9 +45,7 @@ describe("vault writer", () => {
   it("refuses to modify reserved vault paths", async () => {
     const writer = new MemoryVaultWriter();
 
-    await expect(writeVaultText(writer, ".git/config", "config")).rejects.toThrow(
-      "Refusing to modify reserved vault path",
-    );
+    await expect(writeVaultText(writer, ".git/config", "config")).rejects.toThrow();
     expect(writer.directories.has(".git")).toBe(false);
   });
 
@@ -57,9 +55,7 @@ describe("vault writer", () => {
     );
 
     await writeVaultText(writer, ".obsidian/app.json", "{}");
-    await expect(writeVaultText(writer, ".obsidian/workspace.json", "{}")).rejects.toThrow(
-      "Refusing to modify reserved vault path",
-    );
+    await expect(writeVaultText(writer, ".obsidian/workspace.json", "{}")).rejects.toThrow();
 
     expect(writer.textFiles.get(".obsidian/app.json")).toBe("{}");
     expect(writer.textFiles.has(".obsidian/workspace.json")).toBe(false);

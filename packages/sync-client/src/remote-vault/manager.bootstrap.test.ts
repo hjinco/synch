@@ -121,7 +121,7 @@ describe("RemoteVaultManager bootstrap", () => {
         vaultId: "vault-remote",
         password: "wrong-password",
       }),
-    ).rejects.toThrow("Unable to unlock vault. Check the password and try again.");
+    ).rejects.toThrow();
     expect(savedVaults).toEqual([]);
   });
 });

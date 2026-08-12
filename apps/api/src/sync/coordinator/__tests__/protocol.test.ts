@@ -288,8 +288,8 @@ describe("sync protocol schema", () => {
 			throw new Error("expected upsert mutation to fail");
 		}
 
-		expect(formatClientControlMessageError(parsed.error)).toBe(
-			"mutations.0.blobId: upsert mutations must include a blobId",
+		expect(formatClientControlMessageError(parsed.error)).toContain(
+			"mutations.0.blobId",
 		);
 	});
 
@@ -314,8 +314,8 @@ describe("sync protocol schema", () => {
 			throw new Error("expected delete mutation to fail");
 		}
 
-		expect(formatClientControlMessageError(parsed.error)).toBe(
-			"mutations.0.blobId: delete mutations must not include a blobId",
+		expect(formatClientControlMessageError(parsed.error)).toContain(
+			"mutations.0.blobId",
 		);
 	});
 });

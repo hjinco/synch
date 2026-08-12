@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { getDefaultApiBaseUrl } from "../../config";
+import { t } from "../../i18n";
 import {
   getButtonComponents,
   getCreatedElements,
@@ -34,14 +35,14 @@ describe("SynchSettingTab", () => {
     tab.display();
 
     expect(getButtonComponents().map((button) => button.text)).toEqual([
-      "Open sign-in page again",
-      "Cancel",
+      t("auth.openSignInAgain"),
+      t("cancel"),
     ]);
 
     await getButtonComponents()[1]?.click();
 
     expect(cancelDeviceLogin).toHaveBeenCalledTimes(1);
-    expect(getButtonComponents().at(-1)?.text).toBe("Sign in on this device");
+    expect(getButtonComponents().at(-1)?.text).toBe(t("auth.signInOnThisDevice"));
   });
 
   it("shows the normal sign-in button when device login is idle", () => {
@@ -52,10 +53,10 @@ describe("SynchSettingTab", () => {
     tab.display();
 
     const signInButton = getButtonComponents()[0];
-    expect(signInButton?.text).toBe("Sign in on this device");
+    expect(signInButton?.text).toBe(t("auth.signInOnThisDevice"));
     expect(signInButton?.disabled).toBe(false);
     expect(getButtonComponents().map((button) => button.text)).not.toContain(
-      "Cancel",
+      t("cancel"),
     );
   });
 
@@ -69,12 +70,12 @@ describe("SynchSettingTab", () => {
     const buttonTexts = getButtonComponents().map((button) => button.text);
     expect(getSettingNames().slice(0, 5)).toEqual([
       "Synch",
-      "Account",
-      "Authentication",
-      "Server",
-      "Use a self-hosted server",
+      t("account"),
+      t("authentication"),
+      t("server.heading"),
+      t("server.mode"),
     ]);
-    expect(buttonTexts).toEqual(["Sign in on this device"]);
+    expect(buttonTexts).toEqual([t("auth.signInOnThisDevice")]);
     expect(getToggleComponents()[0]?.value).toBe(false);
     expect(getProgressBarComponents()).toEqual([]);
   });
@@ -85,16 +86,14 @@ describe("SynchSettingTab", () => {
         state: "pending_network",
         token: "stored-token",
       }),
-      getAuthStatusLabel: () => "Connect to the internet to check sign-in.",
+      getAuthStatusLabel: () => t("network.requiredDesc"),
       hasAuthenticatedSession: () => false,
     });
 
     tab.display();
 
-    expect(getSettingNames()).toEqual(["Synch", "Network connection required"]);
-    expect(getSettingDescriptions()).toContain(
-      "Connect to the internet to check sign-in.",
-    );
+    expect(getSettingNames()).toEqual(["Synch", t("network.required")]);
+    expect(getSettingDescriptions()).toContain(t("network.requiredDesc"));
     expect(getButtonComponents()).toEqual([]);
     expect(getTextComponents()).toEqual([]);
   });
@@ -114,13 +113,13 @@ describe("SynchSettingTab", () => {
 
     expect(ensureCommunityPluginUpdateCheck).toHaveBeenCalledTimes(1);
     expect(getSettingNames()[0]).toBe("Synch");
-    expect(getCreatedElementTexts()).toContain("Update Synch from Community plugins");
+    expect(getCreatedElementTexts()).toContain(t("plugin.latestAvailable"));
     expect(getSettingDescriptions()).not.toContain(
       "Version 0.0.2 is available. Current version: 0.0.1.",
     );
     expect(getCreatedElements()).toContainEqual({
       tag: "span",
-      text: "Update Synch from Community plugins",
+      text: t("plugin.latestAvailable"),
       classes: ["synch-plugin-update-badge"],
       attributes: {},
     });
@@ -141,10 +140,10 @@ describe("SynchSettingTab", () => {
 
     tab.display();
 
-    expect(getCreatedElementTexts()).toContain("Update required");
-    expect(getSettingNames()).toContain("Sync paused");
+    expect(getCreatedElementTexts()).toContain(t("plugin.updateRequired"));
+    expect(getSettingNames()).toContain(t("sync.paused"));
     expect(getSettingDescriptions()).toContain("Update Synch before syncing.");
-    expect(getButtonComponents().map((button) => button.text)).not.toContain("Start sync");
+    expect(getButtonComponents().map((button) => button.text)).not.toContain(t("sync.start"));
   });
 
   it("hides plugin update status from settings when no update is available", () => {
@@ -158,7 +157,7 @@ describe("SynchSettingTab", () => {
     tab.display();
 
     expect(getSettingNames()).not.toContain("Plugin update");
-    expect(getCreatedElementTexts()).not.toContain("Update Synch from Community plugins");
+    expect(getCreatedElementTexts()).not.toContain(t("plugin.latestAvailable"));
 
     resetObsidianMocks();
     createSettingsTab({
@@ -182,7 +181,7 @@ describe("SynchSettingTab", () => {
     }).display();
 
     expect(getSettingNames()).not.toContain("Plugin update");
-    expect(getButtonComponents()[0]?.text).toBe("Sign in on this device");
+    expect(getButtonComponents()[0]?.text).toBe(t("auth.signInOnThisDevice"));
   });
 
   it("shows an editable self-hosted server URL before sign-in when already configured", async () => {
@@ -200,7 +199,7 @@ describe("SynchSettingTab", () => {
     expect(apiBaseUrlInput?.disabled).toBe(false);
 
     const saveButton = getButtonComponents()[1];
-    expect(saveButton?.text).toBe("Save");
+    expect(saveButton?.text).toBe(t("save"));
     expect(saveButton?.disabled).toBe(false);
 
     await apiBaseUrlInput?.change("https://custom.synch.test");
@@ -208,7 +207,7 @@ describe("SynchSettingTab", () => {
 
     await saveButton?.click();
     expect(updateApiBaseUrl).toHaveBeenCalledWith("https://custom.synch.test");
-    expect(getNotices()).toContainEqual({ message: "Server URL saved." });
+    expect(getNotices()).toContainEqual({ message: t("server.saved") });
   });
 
   it("does not show the self-hosted server URL saved notice when saving fails", async () => {
@@ -227,11 +226,15 @@ describe("SynchSettingTab", () => {
 
     expect(getNotices()).toEqual([
       {
-        message:
-          "Server settings could not be saved: API base URL must be a valid http:// or https:// URL.",
+        message: t("server.saveFailed", {
+          message: "API base URL must be a valid http:// or https:// URL.",
+        }),
         timeout: undefined,
       },
     ]);
+    expect(getNotices()[0]?.message).toContain(
+      "API base URL must be a valid http:// or https:// URL.",
+    );
   });
 
   it("does not show the default API base URL before sign-in", async () => {
@@ -245,7 +248,7 @@ describe("SynchSettingTab", () => {
 
     expect(getToggleComponents()[0]?.value).toBe(false);
     expect(getTextComponents()).toEqual([]);
-    expect(getButtonComponents().map((button) => button.text)).not.toContain("Save");
+    expect(getButtonComponents().map((button) => button.text)).not.toContain(t("save"));
     expect(updateApiBaseUrl).not.toHaveBeenCalled();
   });
 
@@ -259,9 +262,9 @@ describe("SynchSettingTab", () => {
 
     tab.display();
 
-    expect(getSettingNames()).not.toContain("Self-hosted server URL");
+    expect(getSettingNames()).not.toContain(t("server.url"));
     expect(getTextComponents()).toEqual([]);
-    expect(getButtonComponents().map((button) => button.text)).not.toContain("Save");
+    expect(getButtonComponents().map((button) => button.text)).not.toContain(t("save"));
     expect(updateApiBaseUrl).not.toHaveBeenCalled();
   });
 
@@ -275,8 +278,8 @@ describe("SynchSettingTab", () => {
     tab.display();
 
     expect(ensureSubscriptionStatusCheck).toHaveBeenCalledTimes(1);
-    expect(getSettingNames()).toContain("Subscription");
-    expect(getSettingDescriptions()).toContain("Checking subscription...");
+    expect(getSettingNames()).toContain(t("subscription.label"));
+    expect(getSettingDescriptions()).toContain(t("subscription.checking"));
   });
 
   it("hides subscription settings for custom API servers", () => {
@@ -290,8 +293,8 @@ describe("SynchSettingTab", () => {
     tab.display();
 
     expect(ensureSubscriptionStatusCheck).not.toHaveBeenCalled();
-    expect(getSettingNames()).not.toContain("Subscription");
-    expect(getSettingDescriptions()).not.toContain("Checking subscription...");
+    expect(getSettingNames()).not.toContain(t("subscription.label"));
+    expect(getSettingDescriptions()).not.toContain(t("subscription.checking"));
   });
 
   it("opens pricing from free subscription settings", async () => {
@@ -312,8 +315,10 @@ describe("SynchSettingTab", () => {
 
     tab.display();
 
-    expect(getSettingDescriptions()).toContain("Sync Free");
-    const upgradeButton = getButtonComponents().find((button) => button.text === "Upgrade");
+    expect(getSettingDescriptions()).toContain(t("subscription.freePlan"));
+    const upgradeButton = getButtonComponents().find(
+      (button) => button.text === t("subscription.upgrade"),
+    );
     await upgradeButton?.click();
 
     expect(openPricingPage).toHaveBeenCalledTimes(1);
@@ -337,9 +342,9 @@ describe("SynchSettingTab", () => {
 
     tab.display();
 
-    expect(getSettingDescriptions()).toContain("Sync Starter");
+    expect(getSettingDescriptions()).toContain(t("subscription.starterPlan"));
     const manageButton = getButtonComponents().find(
-      (button) => button.text === "Manage subscription",
+      (button) => button.text === t("subscription.manage"),
     );
     await manageButton?.click();
 
@@ -362,7 +367,12 @@ describe("SynchSettingTab", () => {
 
     tab.display();
 
-    expect(getSettingDescriptions()).toContain("Sync Starter. Current period ends May 9, 2026.");
+    expect(getSettingDescriptions()).toContain(
+      t("subscription.canceling", {
+        plan: t("subscription.starterPlan"),
+        periodEnd: "May 9, 2026",
+      }),
+    );
   });
 
   it("can retry failed subscription status checks", async () => {
@@ -378,10 +388,10 @@ describe("SynchSettingTab", () => {
 
     tab.display();
 
-    expect(getSettingDescriptions()).toContain(
-      "Subscription status could not be loaded.",
+    expect(getSettingDescriptions()).toContain(t("subscription.failed"));
+    const refreshButton = getButtonComponents().find(
+      (button) => button.text === t("refresh"),
     );
-    const refreshButton = getButtonComponents().find((button) => button.text === "Refresh");
     await refreshButton?.click();
 
     expect(retrySubscriptionStatusCheck).toHaveBeenCalledTimes(1);
@@ -399,7 +409,7 @@ describe("SynchSettingTab", () => {
 
     expect(getToggleComponents()[0]?.disabled).toBe(true);
     const apiBaseUrlInput = getTextComponents()[0];
-    const saveButton = getButtonComponents().find((button) => button.text === "Save");
+    const saveButton = getButtonComponents().find((button) => button.text === t("save"));
     expect(apiBaseUrlInput?.disabled).toBe(true);
     expect(saveButton?.disabled).toBe(true);
 
@@ -424,9 +434,7 @@ describe("SynchSettingTab", () => {
     const saveButton = getButtonComponents()[1];
     expect(apiBaseUrlInput?.disabled).toBe(true);
     expect(saveButton?.disabled).toBe(true);
-    expect(getSettingDescriptions()[1]).toBe(
-      "Disconnect the current vault before changing servers.",
-    );
+    expect(getSettingDescriptions()[1]).toBe(t("server.descDisconnectVault"));
 
     await apiBaseUrlInput?.change("https://custom.synch.test");
     await saveButton?.click();
@@ -443,10 +451,10 @@ describe("SynchSettingTab", () => {
     tab.display();
 
     const buttonTexts = getButtonComponents().map((button) => button.text);
-    expect(buttonTexts).not.toContain("Sign in on this device");
-    expect(buttonTexts).not.toContain("Open sign-in page again");
-    expect(buttonTexts).not.toContain("Cancel");
-    expect(buttonTexts).toContain("Sign out");
+    expect(buttonTexts).not.toContain(t("auth.signInOnThisDevice"));
+    expect(buttonTexts).not.toContain(t("auth.openSignInAgain"));
+    expect(buttonTexts).not.toContain(t("cancel"));
+    expect(buttonTexts).toContain(t("auth.signOut"));
   });
 
   it("hides sign out before sign-in", () => {
@@ -457,8 +465,8 @@ describe("SynchSettingTab", () => {
     tab.display();
 
     const buttonTexts = getButtonComponents().map((button) => button.text);
-    expect(buttonTexts).toContain("Sign in on this device");
-    expect(buttonTexts).not.toContain("Sign out");
+    expect(buttonTexts).toContain(t("auth.signInOnThisDevice"));
+    expect(buttonTexts).not.toContain(t("auth.signOut"));
   });
 
   it("does not own remote storage usage watching while visible", () => {

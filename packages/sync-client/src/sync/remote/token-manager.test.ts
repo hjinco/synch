@@ -183,9 +183,9 @@ describe("SyncTokenManager", () => {
       },
     });
 
-    await expect(manager.getTokenForActiveRemoteVault()).rejects.toThrow(
-      "Unsupported sync format version: 3.",
-    );
+    await expect(manager.getTokenForActiveRemoteVault()).rejects.toMatchObject({
+      code: "unsupported_sync_format_version",
+    });
   });
 
   it("rejects when there is no auth session", async () => {
@@ -193,9 +193,9 @@ describe("SyncTokenManager", () => {
       getAuthSessionToken: () => " ",
     });
 
-    await expect(manager.getTokenForActiveRemoteVault()).rejects.toThrow(
-      "Sign in before requesting a sync token.",
-    );
+    await expect(manager.getTokenForActiveRemoteVault()).rejects.toMatchObject({
+      code: "not_signed_in",
+    });
   });
 
   it("rejects when there is no active vault", async () => {
@@ -203,9 +203,9 @@ describe("SyncTokenManager", () => {
       getRemoteVaultId: () => null,
     });
 
-    await expect(manager.getTokenForActiveRemoteVault()).rejects.toThrow(
-      "Connect a vault before requesting a sync token.",
-    );
+    await expect(manager.getTokenForActiveRemoteVault()).rejects.toMatchObject({
+      code: "no_active_vault",
+    });
   });
 
   it("rejects when the local vault id is missing", async () => {
@@ -213,9 +213,9 @@ describe("SyncTokenManager", () => {
       getLocalVaultId: async () => " ",
     });
 
-    await expect(manager.getTokenForActiveRemoteVault()).rejects.toThrow(
-      "Local vault ID is not available.",
-    );
+    await expect(manager.getTokenForActiveRemoteVault()).rejects.toMatchObject({
+      code: "missing_local_vault_id",
+    });
   });
 });
 

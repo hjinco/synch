@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { resetObsidianMocks } from "obsidian";
 
 import { RemoteVaultInputError } from "@synch/sync-client/remote-vault/manager";
+import { t } from "../../i18n";
 import { formatSynchErrorNotice } from "./error-notices";
 
 describe("formatSynchErrorNotice", () => {
@@ -15,14 +16,24 @@ describe("formatSynchErrorNotice", () => {
         new RemoteVaultInputError({ kind: "name_required" }),
         "error.vaultCreation",
       ),
-    ).toBe("Vault creation failed: Vault name is required.");
+    ).toBe(
+      t("error.detail", {
+        context: t("error.vaultCreation"),
+        message: t("vault.nameRequired"),
+      }),
+    );
 
     expect(
       formatSynchErrorNotice(
         new RemoteVaultInputError({ kind: "password_mismatch" }),
         "error.vaultCreation",
       ),
-    ).toBe("Vault creation failed: Passwords do not match.");
+    ).toBe(
+      t("error.detail", {
+        context: t("error.vaultCreation"),
+        message: t("vault.passwordMismatch"),
+      }),
+    );
 
     expect(
       formatSynchErrorNotice(
@@ -37,14 +48,25 @@ describe("formatSynchErrorNotice", () => {
         "error.vaultCreation",
       ),
     ).toBe(
-      "Vault creation failed: Password is too easy to guess. Use a longer passphrase.",
+      t("error.detail", {
+        context: t("error.vaultCreation"),
+        message: t("vault.passwordTooWeak"),
+      }),
     );
   });
 
   it("passes other errors through to the shared formatter", () => {
-    expect(
-      formatSynchErrorNotice(new Error("boom"), "error.vaultCreation"),
-    ).toBe("Vault creation failed: boom");
+    const passedThrough = formatSynchErrorNotice(
+      new Error("boom"),
+      "error.vaultCreation",
+    );
+    expect(passedThrough).toBe(
+      t("error.detail", {
+        context: t("error.vaultCreation"),
+        message: "boom",
+      }),
+    );
+    expect(passedThrough).toContain("boom");
 
     expect(
       formatSynchErrorNotice(
@@ -53,8 +75,6 @@ describe("formatSynchErrorNotice", () => {
         }),
         "error.vaultCreation",
       ),
-    ).toBe(
-      "Sync was paused because this device's sync history no longer matches the remote vault. To resume syncing, disconnect and reconnect the remote vault in Synch settings.",
-    );
+    ).toBe(t("sync.cursorMismatch"));
   });
 });

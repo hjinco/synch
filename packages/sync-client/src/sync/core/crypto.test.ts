@@ -105,7 +105,7 @@ describe("sync crypto", () => {
 
     await expect(
       context.encryptBlob(new Uint8Array([2]), TEST_BLOB_CONTEXT, TEST_BLOB_OPTIONS),
-    ).rejects.toThrow("Sync crypto context has been disposed.");
+    ).rejects.toMatchObject({ code: "disposed" });
   });
 
   it("rejects unsupported sync blob format versions", async () => {
@@ -116,7 +116,7 @@ describe("sync crypto", () => {
         TEST_BLOB_CONTEXT,
         { syncFormatVersion: 3 },
       ),
-    ).rejects.toThrow("Unsupported sync blob format version: 3.");
+    ).rejects.toMatchObject({ code: "unsupported_sync_format_version" });
   });
 
   it("rejects the wrong vault key", async () => {

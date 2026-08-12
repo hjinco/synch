@@ -5,6 +5,7 @@ import {
   resetObsidianMocks,
   setRequestUrlMock,
 } from "../test-stubs/obsidian";
+import { t } from "../i18n";
 import { SyncController } from "./sync-controller";
 import { SynchPluginController } from "./plugin-controller";
 import {
@@ -47,9 +48,7 @@ describe("SynchPluginController readiness reconciliation", () => {
     await controller.initialize();
     await controller.ensureAutoSyncState();
 
-    expect(controller.getAuthStatusLabel()).toBe(
-      "Connect to the internet to check sign-in.",
-    );
+    expect(controller.getAuthStatusLabel()).toBe(t("network.requiredDesc"));
     expect(controller.getSyncState()).toBe("offline");
     expect(initializeStore).not.toHaveBeenCalled();
     expect(startSync).not.toHaveBeenCalled();
@@ -80,10 +79,14 @@ describe("SynchPluginController readiness reconciliation", () => {
     await controller.initialize();
     await controller.ensureAutoSyncState();
 
-    expect(controller.getAuthStatusLabel()).toBe("Signed in as user@example.com.");
-    expect(controller.getRemoteVaultStatusLabel()).toBe(
-      "Vault Recovered loaded on this device.",
+    expect(controller.getAuthStatusLabel()).toBe(
+      t("auth.signedIn", { name: "user@example.com" }),
     );
+    expect(controller.getAuthStatusLabel()).toContain("user@example.com");
+    expect(controller.getRemoteVaultStatusLabel()).toBe(
+      t("vault.loaded", { label: "Recovered" }),
+    );
+    expect(controller.getRemoteVaultStatusLabel()).toContain("Recovered");
     expect(initializeStore).toHaveBeenCalledWith("vault-1");
     expect(stopAutoSyncAndMarkPaused).toHaveBeenCalledTimes(1);
     expect(startSync).not.toHaveBeenCalled();
@@ -176,10 +179,14 @@ describe("SynchPluginController readiness reconciliation", () => {
     controller.queueAutoSyncResume();
     await flushPromises();
 
-    expect(controller.getAuthStatusLabel()).toBe("Signed in as user@example.com.");
-    expect(controller.getRemoteVaultStatusLabel()).toBe(
-      "Vault Recovered loaded on this device.",
+    expect(controller.getAuthStatusLabel()).toBe(
+      t("auth.signedIn", { name: "user@example.com" }),
     );
+    expect(controller.getAuthStatusLabel()).toContain("user@example.com");
+    expect(controller.getRemoteVaultStatusLabel()).toBe(
+      t("vault.loaded", { label: "Recovered" }),
+    );
+    expect(controller.getRemoteVaultStatusLabel()).toContain("Recovered");
     expect(initializeStore).toHaveBeenCalledWith("vault-1");
     expect(startSync).toHaveBeenCalledTimes(1);
   });
@@ -334,14 +341,12 @@ describe("SynchPluginController readiness reconciliation", () => {
     await controller.ensureAutoSyncState();
 
     expect(controller.hasConnectedRemoteVault()).toBe(false);
-    expect(controller.getRemoteVaultStatusLabel()).toBe(
-      "No vault is configured on this device.",
-    );
+    expect(controller.getRemoteVaultStatusLabel()).toBe(t("vault.notConfigured"));
     expect(controller.getSyncState()).toBe("not_ready");
     expect(resetLocalSyncState).toHaveBeenCalledTimes(1);
     expect(startSync).not.toHaveBeenCalled();
     expect(getNotices()).toContainEqual({
-      message: "Remote vault was removed. Synch disconnected this Obsidian vault.",
+      message: t("vault.remoteRemoved"),
       timeout: undefined,
     });
   });
@@ -418,8 +423,7 @@ describe("SynchPluginController readiness reconciliation", () => {
     expect(controller.getSyncState()).toBe("not_ready");
     expect(resetLocalSyncState).toHaveBeenCalledTimes(1);
     expect(getNotices()).toContainEqual({
-      message:
-        "Remote vault access is no longer available. Synch disconnected this Obsidian vault.",
+      message: t("vault.remoteAccessUnavailable"),
       timeout: undefined,
     });
   });

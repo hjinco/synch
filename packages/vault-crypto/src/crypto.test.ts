@@ -40,13 +40,13 @@ describe("vault crypto", () => {
 
   it("rejects passwords with leading or trailing spaces", async () => {
     await expect(
-      createPasswordWrappedRemoteVaultKey(" vault-password", {
+      createPasswordWrappedRemoteVaultKey(" correct horse battery staple", {
         kdfOverrides: {
           memoryKiB: 8,
           iterations: 1,
           parallelism: 1,
         },
       }),
-    ).rejects.toThrow("Password cannot start or end with spaces.");
+    ).rejects.toMatchObject({ code: "outer_spaces" });
   });
 });

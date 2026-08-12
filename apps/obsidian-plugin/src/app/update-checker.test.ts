@@ -61,7 +61,7 @@ describe("SynchPluginUpdateChecker", () => {
           text: "",
         })),
       }).check("0.0.1"),
-    ).rejects.toThrow("Community plugin release feed request failed with status 404.");
+    ).rejects.toMatchObject({ code: "feed_request_failed" });
   });
 
   it("fails on malformed feeds and versions", async () => {
@@ -72,7 +72,7 @@ describe("SynchPluginUpdateChecker", () => {
           text: "<rss></rss>",
         })),
       }).check("0.0.1"),
-    ).rejects.toThrow("Community plugin release feed does not contain a version.");
+    ).rejects.toMatchObject({ code: "feed_missing_version" });
 
     await expect(
       new SynchPluginUpdateChecker({
@@ -81,6 +81,6 @@ describe("SynchPluginUpdateChecker", () => {
           text: communityReleaseFeed(["0.0.2"]),
         })),
       }).check("0.0"),
-    ).rejects.toThrow("Invalid current plugin version: 0.0");
+    ).rejects.toMatchObject({ code: "invalid_current_version" });
   });
 });

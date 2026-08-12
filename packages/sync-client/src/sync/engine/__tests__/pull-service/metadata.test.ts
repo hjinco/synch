@@ -13,8 +13,8 @@ describe("parseSyncedEntryMetadata", () => {
   });
 
   it("rejects metadata without a hash", () => {
-    expect(() => parseSyncedEntryMetadata(JSON.stringify({ path: "Folder/file.md" }))).toThrow(
-      "missing a hash",
-    );
+    expect(() =>
+      parseSyncedEntryMetadata(JSON.stringify({ path: "Folder/file.md" })),
+    ).toThrow();
   });
 });

@@ -1,7 +1,20 @@
+export type EnvConfigErrorCode = "env_required" | "env_invalid_url";
+
+export class EnvConfigError extends Error {
+	constructor(
+		readonly code: EnvConfigErrorCode,
+		readonly envName: string,
+		message: string,
+	) {
+		super(message);
+		this.name = "EnvConfigError";
+	}
+}
+
 export function requireUrlEnv(name: string): string {
 	const value = normalizeOptionalUrlValue(name, process.env[name]);
 	if (!value) {
-		throw new Error(`${name} is required`);
+		throw new EnvConfigError("env_required", name, `${name} is required`);
 	}
 
 	return value;
@@ -41,6 +54,6 @@ function normalizeRequiredUrlValue(name: string, value: string): string {
 		new URL(value);
 		return value;
 	} catch {
-		throw new Error(`${name} must be a valid URL`);
+		throw new EnvConfigError("env_invalid_url", name, `${name} must be a valid URL`);
 	}
 }

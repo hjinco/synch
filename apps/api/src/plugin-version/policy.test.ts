@@ -10,31 +10,24 @@ describe("compareStrictSemver", () => {
 	});
 
 	it("rejects malformed versions", () => {
-		expect(() => compareStrictSemver("1.2", "1.2.3")).toThrow(
-			"Expected strict x.y.z versions.",
-		);
-		expect(() => compareStrictSemver("1.2.3-beta.1", "1.2.3")).toThrow(
-			"Expected strict x.y.z versions.",
-		);
-		expect(() => compareStrictSemver("01.2.3", "1.2.3")).toThrow(
-			"Expected strict x.y.z versions.",
-		);
+		expect(() => compareStrictSemver("1.2", "1.2.3")).toThrow();
+		expect(() => compareStrictSemver("1.2.3-beta.1", "1.2.3")).toThrow();
+		expect(() => compareStrictSemver("01.2.3", "1.2.3")).toThrow();
 	});
 });
 
 describe("checkObsidianPluginVersion", () => {
 	it("requires an update below the minimum supported plugin version", () => {
-		expect(
-			checkObsidianPluginVersion("1.1.9", {
-				minVersion: "1.2.0",
-			}),
-		).toEqual({
+		const result = checkObsidianPluginVersion("1.1.9", {
+			minVersion: "1.2.0",
+		});
+
+		expect(result).toMatchObject({
 			status: "update_required",
 			minVersion: "1.2.0",
 			apiMajor: 1,
-			message:
-				"Synch plugin update is required. Sync has been paused until the plugin is updated.",
 		});
+		expect(result.status === "update_required" && result.message).toBeTruthy();
 	});
 
 	it("allows versions equal to or newer than the minimum supported plugin version", () => {

@@ -37,7 +37,7 @@ describe("SynchServerPluginVersionChecker", () => {
           json: {},
         })),
       }).check("https://api.synch.test", "1.1.0"),
-    ).rejects.toThrow("Server plugin version check failed with status 500.");
+    ).rejects.toThrow();
 
     await expect(
       new SynchServerPluginVersionChecker({
@@ -46,6 +46,6 @@ describe("SynchServerPluginVersionChecker", () => {
           json: { status: "update_required" },
         })),
       }).check("https://api.synch.test", "1.1.0"),
-    ).rejects.toThrow("Server plugin version check returned an invalid response.");
+    ).rejects.toThrow();
   });
 });

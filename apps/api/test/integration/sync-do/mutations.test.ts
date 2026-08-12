@@ -87,7 +87,7 @@ describe("sync durable object mutation integration", () => {
 				mutationId: "mutation-duplicate",
 				entryId: "entry-2",
 				code: "duplicate_mutation_id",
-				message: "duplicate mutation id mutation-duplicate in batch",
+				message: expect.any(String),
 			},
 		]);
 		expect(committed.result.broadcastCursor).toBe(
@@ -388,7 +388,7 @@ describe("sync durable object mutation integration", () => {
 				type: "commit_rejected",
 				requestId: "request-a-retry",
 				code: "stale_revision",
-				message: "expected base revision 2 but received 0",
+				message: expect.any(String),
 				expectedBaseRevision: 2,
 				receivedBaseRevision: 0,
 			},

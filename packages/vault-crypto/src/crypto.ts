@@ -8,6 +8,16 @@ const KEY_VERSION = 1;
 const VAULT_KEY_BYTES = 32;
 const AES_GCM_NONCE_BYTES = 12;
 
+export class VaultPasswordError extends Error {
+  constructor(
+    readonly code: "required" | "outer_spaces",
+    message: string,
+  ) {
+    super(message);
+    this.name = "VaultPasswordError";
+  }
+}
+
 export interface PasswordWrapperOptions {
   kdfOverrides?: Partial<{
     memoryKiB: number;
@@ -102,11 +112,14 @@ function validateEnvelope(envelope: RemoteVaultKeyEnvelope): void {
 
 function normalizePassword(password: string): string {
   if (!password) {
-    throw new Error("Password is required.");
+    throw new VaultPasswordError("required", "Password is required.");
   }
 
   if (password !== password.trim()) {
-    throw new Error("Password cannot start or end with spaces.");
+    throw new VaultPasswordError(
+      "outer_spaces",
+      "Password cannot start or end with spaces.",
+    );
   }
 
   return password;

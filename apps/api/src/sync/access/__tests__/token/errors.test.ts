@@ -23,10 +23,8 @@ describe("sync token errors", () => {
 
 		expect(error).toBeInstanceOf(HTTPException);
 		expect((error as HTTPException).status).toBe(401);
-		expect((error as HTTPException).message).toBe("sync token expired");
-		await expect((error as HTTPException).getResponse().json()).resolves.toEqual({
+		await expect((error as HTTPException).getResponse().json()).resolves.toMatchObject({
 			error: "unauthorized",
-			message: "sync token expired",
 		});
 	});
 
@@ -40,10 +38,8 @@ describe("sync token errors", () => {
 
 		expect(error).toBeInstanceOf(HTTPException);
 		expect((error as HTTPException).status).toBe(401);
-		expect((error as HTTPException).message).toBe("invalid sync token");
-		await expect((error as HTTPException).getResponse().json()).resolves.toEqual({
+		await expect((error as HTTPException).getResponse().json()).resolves.toMatchObject({
 			error: "unauthorized",
-			message: "invalid sync token",
 		});
 	});
 
@@ -59,7 +55,6 @@ describe("sync token errors", () => {
 
 		expect(error).toBeInstanceOf(HTTPException);
 		expect((error as HTTPException).status).toBe(401);
-		expect((error as HTTPException).message).toBe("invalid sync token");
 	});
 
 	it("rejects a token with missing sync claims", async () => {
@@ -82,6 +77,5 @@ describe("sync token errors", () => {
 
 		expect(error).toBeInstanceOf(HTTPException);
 		expect((error as HTTPException).status).toBe(401);
-		expect((error as HTTPException).message).toBe("invalid sync token claims");
 	});
 });

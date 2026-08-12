@@ -122,31 +122,3 @@ export function applySubscriptionPlanLimitOverrides(
 		},
 	};
 }
-
-export function formatPolicyBytes(bytes: number): string {
-	if (bytes >= BYTES_PER_GB && bytes % BYTES_PER_GB === 0) {
-		return `${bytes / BYTES_PER_GB} GB`;
-	}
-
-	if (bytes >= BYTES_PER_MB && bytes % BYTES_PER_MB === 0) {
-		return `${bytes / BYTES_PER_MB} MB`;
-	}
-
-	return `${bytes.toLocaleString("en-US")} bytes`;
-}
-
-export function formatHistoryRetention(days: number): string {
-	if (days <= 0) {
-		return "No snapshots";
-	}
-
-	if (days === 30) {
-		return "1 month version history";
-	}
-
-	if (days === 365) {
-		return "12 month version history";
-	}
-
-	return `${days} day version history`;
-}

@@ -29,9 +29,8 @@ describe("VaultLock", () => {
 
   it("refuses a second acquisition while the holder is alive", async () => {
     const lock = await VaultLock.acquire(lockPath);
-    await expect(VaultLock.acquire(lockPath)).rejects.toThrow(
-      `Another synch process (pid ${process.pid})`,
-    );
+    await expect(VaultLock.acquire(lockPath)).rejects.toThrow();
+    expect(JSON.parse(fs.readFileSync(lockPath, "utf8")).pid).toBe(process.pid);
     await lock.release();
   });
 

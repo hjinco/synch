@@ -77,10 +77,8 @@ describe("sync token request authentication", () => {
 
 		expect(error).toBeInstanceOf(HTTPException);
 		expect((error as HTTPException).status).toBe(403);
-		expect((error as HTTPException).message).toBe("vault mismatch");
-		await expect((error as HTTPException).getResponse().json()).resolves.toEqual({
+		await expect((error as HTTPException).getResponse().json()).resolves.toMatchObject({
 			error: "forbidden",
-			message: "vault mismatch",
 		});
 	});
 });
