@@ -26,13 +26,9 @@ COPY apps/api/package.json apps/api/package.json
 COPY apps/www/package.json apps/www/package.json
 COPY apps/obsidian-plugin/package.json apps/obsidian-plugin/package.json
 COPY packages/tsconfig/package.json packages/tsconfig/package.json
-COPY packages/vault-crypto/package.json packages/vault-crypto/package.json
 RUN pnpm install --frozen-lockfile --filter @synch/api...
 
 FROM build-deps AS builder
-# @synch/vault-crypto sources are needed by apps/api's build:public step,
-# which bundles them into the public/vault-crypto.js browser asset.
-COPY packages/vault-crypto packages/vault-crypto
 COPY apps/api apps/api
 RUN pnpm -C apps/api build:node
 
@@ -42,7 +38,6 @@ COPY apps/api/package.json apps/api/package.json
 COPY apps/www/package.json apps/www/package.json
 COPY apps/obsidian-plugin/package.json apps/obsidian-plugin/package.json
 COPY packages/tsconfig/package.json packages/tsconfig/package.json
-COPY packages/vault-crypto/package.json packages/vault-crypto/package.json
 RUN pnpm install --frozen-lockfile --filter @synch/api... --prod
 
 FROM base AS runtime

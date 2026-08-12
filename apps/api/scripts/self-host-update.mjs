@@ -46,7 +46,7 @@ const STATE_FILE = ".github/self-host-sync.json";
 // secrets that are gitignored upstream but may exist in a working copy.
 const LOCAL_ONLY_DIRS = [".git", "node_modules", ".wrangler", "dist", "coverage"];
 const LOCAL_ONLY_FILE_PREFIXES = [".env", ".dev.vars"];
-const LOCAL_ONLY_FILES = ["public/vault-crypto.js", ".DS_Store"];
+const LOCAL_ONLY_FILES = [".DS_Store"];
 
 function isPreserved(relPath) {
 	return (

@@ -43,7 +43,7 @@ jobs:
         uses: ./.github/actions/detect-affected
         with:
           package-dir: apps/api
-          full-run-paths: .github/workflows/api-ci.yml .github/actions/detect-affected/action.yml
+          full-run-paths: .github/workflows/api-ci.yml .github/actions/detect-affected/action.yml packages/vault-crypto
 
   api:
     needs: detect
@@ -64,6 +64,8 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
+      - run: pnpm -C apps/api check:public
+
       - run: pnpm -C apps/api typecheck
 
       - run: pnpm -C apps/api test:unit
@@ -81,6 +83,18 @@ jobs:
 
       - name: Build Cloudflare community artifact
         run: pnpm -C apps/api build:cloudflare:community
+
+      - name: Verify standalone Cloudflare template
+        run: |
+          template_dir="$(mktemp -d)"
+          trap 'rm -rf "$template_dir"' EXIT
+          tar \
+            --exclude=node_modules \
+            --exclude=.wrangler \
+            --exclude=dist \
+            -C apps/api -cf - . | tar -C "$template_dir" -xf -
+          pnpm --dir "$template_dir" install --no-frozen-lockfile
+          pnpm --dir "$template_dir" run build:cloudflare:community
 
       - name: Build Cloudflare managed artifact
         run: pnpm -C apps/api build:cloudflare:managed

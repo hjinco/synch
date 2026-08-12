@@ -109,6 +109,15 @@ describe("self-host-update sync script", () => {
 		expect(read(repoDir, ".env")).toBe("SECRET=1");
 	});
 
+	it("mirrors the tracked browser crypto deployment artifact", () => {
+		write(upstreamDir, "public/vault-crypto.js", "current bundle");
+		write(repoDir, "public/vault-crypto.js", "stale bundle");
+
+		runSync();
+
+		expect(read(repoDir, "public/vault-crypto.js")).toBe("current bundle");
+	});
+
 	it("warns when upstream workflow files drift from the clone", () => {
 		write(upstreamDir, ".github/workflows/self-host-update.yml", "v2");
 		write(repoDir, ".github/workflows/self-host-update.yml", "v1");
