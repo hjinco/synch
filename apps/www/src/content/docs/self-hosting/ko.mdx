@@ -5,6 +5,7 @@ updatedDate: 2026-08-12
 ---
 
 import SecretGenerator from "../../../components/SecretGenerator.astro";
+import SelfHostUpdaterInitializer from "../../../components/SelfHostUpdaterInitializer.astro";
 
 이 가이드는 Cloudflare 무료 계정에 내 Synch 서버를 만들고, 그 주소를 Obsidian 플러그인에 넣는 과정을 안내합니다. 아래 버튼을 누르면 Cloudflare가 필요한 설정을 대부분 자동으로 준비합니다.
 
@@ -53,17 +54,17 @@ https://your-synch-api.your-account.workers.dev
 
 ## 서버 업데이트하기
 
-리포지토리에는 서버를 최신 Synch 코드로 업데이트하는 워크플로우가 포함되어 있습니다.
+나중에 서버를 간편하게 업데이트하고 싶은 경우에만 아래 설정을 활성화하세요. 최초 한 번만 필요합니다.
 
 <details>
-<summary>업데이트 방법 보기</summary>
+<summary>서버 업데이트 설정 (선택)</summary>
 
-1. GitHub에서 내 Synch 리포지토리를 엽니다.
-2. **Actions** 탭으로 이동합니다.
-3. **Update Synch server** 워크플로우를 실행합니다.
+<SelfHostUpdaterInitializer locale="ko" />
+
+1. 위 활성화 도구를 사용해 미리 입력된 워크플로우를 GitHub에 커밋합니다.
+2. 리포지토리의 **Actions** 탭으로 이동합니다.
+3. 업데이트할 때마다 **Update Synch server** 워크플로우를 실행합니다.
 
 그러면 Cloudflare가 서버를 자동으로 다시 빌드·배포합니다. secret과 데이터는 영향을 받지 않지만, 직접 커밋한 변경사항(`wrangler.jsonc`와 워크플로우 파일 제외)은 덮어쓰입니다. 실행 결과 요약에 **Manual attention needed** 항목이 있다면 안내에 따라 처리하세요.
-
-리포지토리에 이 워크플로우가 아직 없다면, [업스트림 워크플로우 파일](https://github.com/hjinco/synch/blob/main/apps/api/.github/workflows/self-host-update.yml)을 `.github/workflows/self-host-update.yml`로 한 번만 복사해 두세요.
 
 </details>

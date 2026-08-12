@@ -1,0 +1,100 @@
+---
+import { type Locale } from "../i18n";
+import workflow from "../../../api/.github/workflows/self-host-update.yml?raw";
+
+interface Props {
+  locale: Locale;
+}
+
+const { locale } = Astro.props;
+
+const text = {
+  en: {
+    title: "Initialize server updates",
+    body: "Paste your deployment repository URL and select the button below.",
+    label: "Deployment repository URL",
+    placeholder: "https://github.com/you/your-synch-repository",
+    button: "Initialize updater",
+    error: "Enter a valid github.com repository URL.",
+  },
+  ko: {
+    title: "서버 업데이트 활성화",
+    body: "배포 리포지토리 URL을 붙여 넣고 아래 버튼을 누르세요.",
+    label: "배포 리포지토리 URL",
+    placeholder: "https://github.com/you/your-synch-repository",
+    button: "업데이터 활성화",
+    error: "올바른 github.com 리포지토리 URL을 입력하세요.",
+  },
+  ja: {
+    title: "サーバー更新を有効化",
+    body: "デプロイリポジトリ URL を貼り付けて、下のボタンを押してください。",
+    label: "デプロイリポジトリ URL",
+    placeholder: "https://github.com/you/your-synch-repository",
+    button: "アップデーターを有効化",
+    error: "有効な github.com リポジトリ URL を入力してください。",
+  },
+  "zh-cn": {
+    title: "启用服务器更新",
+    body: "粘贴部署仓库 URL，然后点击下面的按钮。",
+    label: "部署仓库 URL",
+    placeholder: "https://github.com/you/your-synch-repository",
+    button: "启用更新程序",
+    error: "请输入有效的 github.com 仓库 URL。",
+  },
+  "zh-tw": {
+    title: "啟用伺服器更新",
+    body: "貼上部署儲存庫 URL，然後點擊下方按鈕。",
+    label: "部署儲存庫 URL",
+    placeholder: "https://github.com/you/your-synch-repository",
+    button: "啟用更新程式",
+    error: "請輸入有效的 github.com 儲存庫 URL。",
+  },
+}[locale];
+
+---
+
+<section class="synch-updater-initializer" data-updater-initializer>
+  <div class="synch-updater-copy">
+    <div class="synch-updater-title">{text.title}</div>
+    <p>{text.body}</p>
+  </div>
+  <label for={`deployment-repository-${locale}`}>{text.label}</label>
+  <input
+    id={`deployment-repository-${locale}`}
+    type="url"
+    inputmode="url"
+    autocomplete="url"
+    placeholder={text.placeholder}
+    data-updater-repository
+  />
+  <p class="synch-updater-error" data-updater-error hidden>{text.error}</p>
+  <button type="button" data-initialize-updater>{text.button}</button>
+</section>
+
+<script define:vars={{ workflow }}>
+  document.querySelectorAll("[data-updater-initializer]").forEach((root) => {
+    const input = root.querySelector("[data-updater-repository]");
+    const error = root.querySelector("[data-updater-error]");
+    const button = root.querySelector("[data-initialize-updater]");
+
+    button?.addEventListener("click", () => {
+      if (!(input instanceof HTMLInputElement) || !(error instanceof HTMLElement)) return;
+
+      try {
+        const repository = new URL(input.value.trim());
+        const segments = repository.pathname.split("/").filter(Boolean);
+        if (repository.protocol !== "https:" || repository.hostname !== "github.com" || segments.length !== 2) {
+          throw new Error("invalid repository URL");
+        }
+
+        error.hidden = true;
+        const base = `https://github.com/${segments[0]}/${segments[1].replace(/\.git$/i, "")}`;
+        const filename = encodeURIComponent(".github/workflows/self-host-update.yml");
+        const value = encodeURIComponent(workflow);
+        window.open(`${base}/new/main?filename=${filename}&value=${value}`, "_blank", "noopener");
+      } catch {
+        error.hidden = false;
+      }
+    });
+  });
+</script>

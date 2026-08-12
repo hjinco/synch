@@ -172,9 +172,8 @@ function main() {
 			if (filesDiffer(path.join(upstreamDir, relPath), path.join(repoDir, relPath))) {
 				warn(
 					`\`${relPath}\` changed upstream but cannot be updated automatically ` +
-						"(GitHub Actions cannot push workflow file changes). Copy the latest " +
-						`version from https://github.com/hjinco/synch/blob/main/apps/api/${relPath} ` +
-						"into your repository manually.",
+						"(GitHub Actions cannot push workflow file changes). Reinitialize it from " +
+						"https://synch.run/self-hosting/.",
 				);
 			}
 		}

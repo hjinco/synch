@@ -5,6 +5,7 @@ updatedDate: 2026-08-12
 ---
 
 import SecretGenerator from "../../../components/SecretGenerator.astro";
+import SelfHostUpdaterInitializer from "../../../components/SelfHostUpdaterInitializer.astro";
 
 このガイドでは、Cloudflare の無料アカウントに自分の Synch サーバーを作成し、そのアドレスを Obsidian プラグインに入力する手順を説明します。下のボタンを押すと、Cloudflare が必要な設定の多くを自動で準備します。
 
@@ -53,17 +54,17 @@ https://your-synch-api.your-account.workers.dev
 
 ## サーバーを更新する
 
-リポジトリには、サーバーを最新の Synch コードに更新するワークフローが含まれています。
+後でサーバーを簡単に更新したい場合にのみ、以下の設定を有効にしてください。設定は最初の一度だけ必要です。
 
 <details>
-<summary>更新手順を表示</summary>
+<summary>サーバー更新の設定（任意）</summary>
 
-1. GitHub で自分の Synch リポジトリを開きます。
-2. **Actions** タブに移動します。
-3. **Update Synch server** ワークフローを実行します。
+<SelfHostUpdaterInitializer locale="ja" />
+
+1. 上の有効化ツールを使い、入力済みのワークフローを GitHub にコミットします。
+2. リポジトリの **Actions** タブに移動します。
+3. 更新するときに **Update Synch server** ワークフローを実行します。
 
 Cloudflare がサーバーを自動的に再ビルド・再デプロイします。secret とデータには影響しませんが、自分でコミットした変更（`wrangler.jsonc` とワークフローファイルを除く）は上書きされます。実行結果のサマリーに **Manual attention needed** の項目がある場合は、案内に従って対応してください。
-
-リポジトリにこのワークフローがまだない場合は、[アップストリームのワークフローファイル](https://github.com/hjinco/synch/blob/main/apps/api/.github/workflows/self-host-update.yml)を `.github/workflows/self-host-update.yml` として一度だけコピーしてください。
 
 </details>

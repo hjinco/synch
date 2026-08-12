@@ -137,6 +137,15 @@ describe("self-host-update sync script", () => {
 		expect(output).not.toContain("WARNING:");
 	});
 
+	it("warns when the active workflow has not been installed", () => {
+		write(upstreamDir, ".github/workflows/self-host-update.yml", "v1");
+
+		const output = runSync();
+
+		expect(output).toContain("WARNING:");
+		expect(output).toContain(".github/workflows/self-host-update.yml");
+	});
+
 	it("warns about wrangler.jsonc only when upstream changes it after the first sync", () => {
 		write(upstreamDir, "wrangler.jsonc", '{ "v": 1 }');
 		write(repoDir, "wrangler.jsonc", '{ "v": 1, "database_id": "abc" }');

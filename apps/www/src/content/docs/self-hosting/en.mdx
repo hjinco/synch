@@ -5,6 +5,7 @@ updatedDate: 2026-08-12
 ---
 
 import SecretGenerator from "../../../components/SecretGenerator.astro";
+import SelfHostUpdaterInitializer from "../../../components/SelfHostUpdaterInitializer.astro";
 
 This guide walks you through creating your own Synch server on a free Cloudflare account, then pasting that server address into the Obsidian plugin. The button below lets Cloudflare prepare most of the setup for you.
 
@@ -55,17 +56,17 @@ https://your-synch-api.your-account.workers.dev
 
 ## Update your server
 
-Your repository includes a workflow that updates your server to the latest Synch code.
+Only enable this if you want an easy way to update your server later. You only need to set it up once.
 
 <details>
-<summary>Show update instructions</summary>
+<summary>Server update setup (optional)</summary>
 
-1. Open your Synch repository on GitHub.
-2. Go to the **Actions** tab.
-3. Run the **Update Synch server** workflow.
+<SelfHostUpdaterInitializer locale="en" />
+
+1. Use the initializer above and commit the pre-filled workflow on GitHub.
+2. Go to the repository's **Actions** tab.
+3. Run the **Update Synch server** workflow whenever you want to update.
 
 Cloudflare then rebuilds and redeploys your server automatically. Your secrets and data are not affected, but any changes you committed yourself (except `wrangler.jsonc` and workflow files) are overwritten. If the run summary lists items under **Manual attention needed**, follow the instructions there.
-
-If your repository doesn't have this workflow yet, copy [the upstream workflow file](https://github.com/hjinco/synch/blob/main/apps/api/.github/workflows/self-host-update.yml) into `.github/workflows/self-host-update.yml` once.
 
 </details>
