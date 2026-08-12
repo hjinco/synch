@@ -1,0 +1,61 @@
+# Updates a self-hosted Synch server repository created by the Deploy to
+# Cloudflare button (this repository has the upstream apps/api contents at its
+# root). Run it manually from the Actions tab; the resulting push makes
+# Cloudflare Workers Builds redeploy the server automatically.
+#
+# In the upstream monorepo this file lives at apps/api/.github/workflows/, so
+# GitHub never runs it there; it only becomes an active workflow inside cloned
+# self-host repositories.
+#
+# Keep this file minimal and stable: pushes made with GITHUB_TOKEN cannot
+# modify workflow files, so clones cannot receive updates to it automatically.
+# All sync logic lives in scripts/self-host-update.mjs, which is executed from
+# the freshly downloaded upstream tarball so old clones always run the latest
+# logic.
+name: Update Synch server
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: self-host-update
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out this repository
+        uses: actions/checkout@v4
+
+      - name: Download the latest Synch source
+        run: |
+          curl --fail --silent --show-error --location \
+            --output /tmp/upstream.tar.gz \
+            https://github.com/hjinco/synch/archive/refs/heads/main.tar.gz
+          # Decompress before extracting the commit id: a gzip-to-git pipeline
+          # would break under pipefail (gzip dies of SIGPIPE once git stops
+          # reading after the tar header).
+          gzip -dc /tmp/upstream.tar.gz > /tmp/upstream.tar
+          UPSTREAM_SHA="$(git get-tar-commit-id < /tmp/upstream.tar)" || UPSTREAM_SHA=unknown
+          echo "UPSTREAM_SHA=${UPSTREAM_SHA}" >> "$GITHUB_ENV"
+          mkdir -p /tmp/upstream
+          tar -xf /tmp/upstream.tar -C /tmp/upstream --strip-components=1
+
+      - name: Sync files from upstream
+        run: node /tmp/upstream/apps/api/scripts/self-host-update.mjs /tmp/upstream/apps/api "$GITHUB_WORKSPACE"
+
+      - name: Commit and push the update
+        run: |
+          git add -A -- . ':(exclude).github/workflows'
+          if git diff --cached --quiet; then
+            echo "Already up to date; nothing to push."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Update Synch server to hjinco/synch@${UPSTREAM_SHA}"
+          git push

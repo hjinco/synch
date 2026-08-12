@@ -1,7 +1,7 @@
 ---
 title: 在 Cloudflare 上自托管 Synch
 description: 在 Cloudflare 上创建你自己的 Synch 服务器，并连接到 Obsidian 插件。
-updatedDate: 2026-08-02
+updatedDate: 2026-08-12
 ---
 
 import SecretGenerator from "../../../components/SecretGenerator.astro";
@@ -48,3 +48,20 @@ https://your-synch-api.your-account.workers.dev
 4. 在 **Self-hosted server** 中粘贴刚才复制的 Synch 服务器地址。地址末尾不要加 `/`。
 5. 点击 **Save**。
 6. 之后像平常一样继续登录和设置 vault。
+
+## 更新你的服务器
+
+你的仓库中包含一个工作流，可以把服务器更新到最新的 Synch 代码。
+
+<details>
+<summary>查看更新步骤</summary>
+
+1. 在 GitHub 上打开你的 Synch 仓库。
+2. 进入 **Actions** 标签页。
+3. 运行 **Update Synch server** 工作流。
+
+Cloudflare 会自动重新构建并部署你的服务器。你的 secret 和数据不会受到影响，但你自己提交的修改（`wrangler.jsonc` 和工作流文件除外）会被覆盖。如果运行摘要中列出了 **Manual attention needed** 事项，请按照说明处理。
+
+如果你的仓库还没有这个工作流，请把[上游工作流文件](https://github.com/hjinco/synch/blob/main/apps/api/.github/workflows/self-host-update.yml)复制到 `.github/workflows/self-host-update.yml`，只需添加一次。
+
+</details>

@@ -1,7 +1,7 @@
 ---
 title: Cloudflare で Synch をセルフホストする
 description: Cloudflare に自分の Synch サーバーを作成し、Obsidian プラグインに接続する方法です。
-updatedDate: 2026-08-02
+updatedDate: 2026-08-12
 ---
 
 import SecretGenerator from "../../../components/SecretGenerator.astro";
@@ -48,3 +48,20 @@ https://your-synch-api.your-account.workers.dev
 4. **Self-hosted server** にコピーした Synch サーバーのアドレスを貼り付けます。アドレスの末尾に `/` は付けないでください。
 5. **Save** をクリックします。
 6. その後は通常どおり、サインインと vault の設定を進めます。
+
+## サーバーを更新する
+
+リポジトリには、サーバーを最新の Synch コードに更新するワークフローが含まれています。
+
+<details>
+<summary>更新手順を表示</summary>
+
+1. GitHub で自分の Synch リポジトリを開きます。
+2. **Actions** タブに移動します。
+3. **Update Synch server** ワークフローを実行します。
+
+Cloudflare がサーバーを自動的に再ビルド・再デプロイします。secret とデータには影響しませんが、自分でコミットした変更（`wrangler.jsonc` とワークフローファイルを除く）は上書きされます。実行結果のサマリーに **Manual attention needed** の項目がある場合は、案内に従って対応してください。
+
+リポジトリにこのワークフローがまだない場合は、[アップストリームのワークフローファイル](https://github.com/hjinco/synch/blob/main/apps/api/.github/workflows/self-host-update.yml)を `.github/workflows/self-host-update.yml` として一度だけコピーしてください。
+
+</details>
