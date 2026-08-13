@@ -1,11 +1,15 @@
 import { polar, webhooks } from "@polar-sh/better-auth";
 import { Polar } from "@polar-sh/sdk";
 import type { Subscription } from "@polar-sh/sdk/models/components/subscription";
+import { AlreadyCanceledSubscription } from "@polar-sh/sdk/models/errors/alreadycanceledsubscription";
+import { PaymentFailed } from "@polar-sh/sdk/models/errors/paymentfailed";
+import { SubscriptionLocked } from "@polar-sh/sdk/models/errors/subscriptionlocked";
 
 import type {
 	BillingRepository,
 	PolarSubscriptionUpsertInput,
 } from "./repository";
+import { apiError } from "../errors";
 import type {
 	PaidSubscriptionPlanId,
 	SubscriptionBillingInterval,
@@ -87,6 +91,57 @@ export async function createPolarCheckout(
 	};
 }
 
+/**
+ * Switches an existing Polar subscription to another product (plan or billing
+ * interval). Proration is settled immediately ("invoice") so the customer is
+ * charged or credited the difference at the time of the change instead of on
+ * the next renewal.
+ */
+export async function updatePolarSubscriptionProduct(
+	config: PolarClientConfig,
+	input: {
+		organizationId: string;
+		polarSubscriptionId: string;
+		productId: string;
+	},
+): Promise<PolarSubscriptionUpsertInput> {
+	if (!config.accessToken) {
+		throw new Error("POLAR_ACCESS_TOKEN is not configured");
+	}
+
+	let subscription: Subscription;
+	try {
+		subscription = await createPolarClient(config).subscriptions.update({
+			id: input.polarSubscriptionId,
+			subscriptionUpdate: {
+				productId: input.productId,
+				prorationBehavior: "invoice",
+			},
+		});
+	} catch (error) {
+		if (error instanceof AlreadyCanceledSubscription) {
+			throw apiError(
+				409,
+				"subscription_canceled",
+				"subscription is already canceled",
+			);
+		}
+		if (error instanceof PaymentFailed) {
+			throw apiError(402, "payment_failed", "payment for the plan change failed");
+		}
+		if (error instanceof SubscriptionLocked) {
+			throw apiError(
+				409,
+				"subscription_locked",
+				"subscription is already being updated",
+			);
+		}
+		throw error;
+	}
+
+	return toPolarSubscriptionUpsertInput(subscription, input.organizationId);
+}
+
 export async function createPolarCustomerPortalSession(
 	config: PolarClientConfig,
 	input: {
@@ -123,6 +178,13 @@ function parsePolarSubscription(
 		return null;
 	}
 
+	return toPolarSubscriptionUpsertInput(subscription, organizationId);
+}
+
+function toPolarSubscriptionUpsertInput(
+	subscription: Subscription,
+	organizationId: string,
+): PolarSubscriptionUpsertInput {
 	return {
 		id: `polar-sub-${subscription.id}`,
 		productId: subscription.productId,

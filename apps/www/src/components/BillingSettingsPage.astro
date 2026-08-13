@@ -73,6 +73,13 @@ const pricingUrl = localizedPath(locale, "/pricing");
             >
               {t.billingSettings.manage}
             </button>
+            <button
+              id="switch-interval-button"
+              type="button"
+              class="hidden rounded bg-zinc-800 px-4 py-2 text-sm font-medium text-zinc-200 transition-colors hover:bg-zinc-700 disabled:cursor-not-allowed disabled:bg-zinc-800/50 disabled:text-zinc-500"
+            >
+              {t.billingSettings.switchToAnnual}
+            </button>
             <a
               id="upgrade-link"
               href={pricingUrl}
@@ -134,8 +141,11 @@ const pricingUrl = localizedPath(locale, "/pricing");
   const period = document.getElementById("billing-period");
   const message = document.getElementById("billing-message");
   const manageButton = document.getElementById("manage-button");
+  const switchIntervalButton = document.getElementById("switch-interval-button");
   const upgradeLink = document.getElementById("upgrade-link");
   const retryButton = document.getElementById("retry-button");
+
+  let currentStatus = null;
 
   function show(panel) {
     loading?.classList.toggle("hidden", panel !== "loading");
@@ -158,6 +168,7 @@ const pricingUrl = localizedPath(locale, "/pricing");
   }
 
   function renderStatus(status) {
+    currentStatus = status;
     const isActive = Boolean(status.active);
     const isStarter = status.planId === "starter";
     const isCanceled = status.status === "canceled";
@@ -206,7 +217,19 @@ const pricingUrl = localizedPath(locale, "/pricing");
           : labels.freeMessage;
     }
 
-    manageButton?.classList.toggle("hidden", !isActive);
+    const canManageBilling = status.canManageBilling === true;
+    manageButton?.classList.toggle("hidden", !isActive || !canManageBilling);
+    const isChangeable = status.status === "active" || status.status === "trialing";
+    const canSwitchToAnnual = isActive
+      && isChangeable
+      && !isCanceling
+      && canManageBilling
+      && status.billingInterval === "monthly";
+    if (switchIntervalButton instanceof HTMLButtonElement) {
+      switchIntervalButton.textContent = labels.switchToAnnual;
+      switchIntervalButton.disabled = false;
+      switchIntervalButton.classList.toggle("hidden", !canSwitchToAnnual);
+    }
     upgradeLink?.classList.toggle("hidden", isActive);
     show("content");
   }
@@ -258,6 +281,48 @@ const pricingUrl = localizedPath(locale, "/pricing");
     }
   }
 
+  async function switchToAnnualBilling() {
+    if (!(switchIntervalButton instanceof HTMLButtonElement) || !currentStatus) {
+      return;
+    }
+    if (currentStatus.billingInterval !== "monthly") {
+      return;
+    }
+    if (!window.confirm(labels.switchConfirm)) {
+      return;
+    }
+    switchIntervalButton.disabled = true;
+    switchIntervalButton.textContent = labels.switching;
+
+    try {
+      const response = await fetch(`${apiUrl}/v1/billing/change`, {
+        method: "POST",
+        credentials: "include",
+        headers: {
+          accept: "application/json",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          planId: currentStatus.planId,
+          billingInterval: "annual",
+        }),
+      });
+      if (response.status === 401) {
+        window.location.href = signupUrl;
+        return;
+      }
+      if (!response.ok) {
+        throw new Error("billing change failed");
+      }
+
+      renderStatus(await response.json());
+    } catch {
+      switchIntervalButton.disabled = false;
+      switchIntervalButton.textContent = labels.switchToAnnual;
+      show("error");
+    }
+  }
+
   async function load() {
     show("loading");
     try {
@@ -268,6 +333,7 @@ const pricingUrl = localizedPath(locale, "/pricing");
   }
 
   manageButton?.addEventListener("click", openPortal);
+  switchIntervalButton?.addEventListener("click", switchToAnnualBilling);
   retryButton?.addEventListener("click", load);
   load();
 </script>

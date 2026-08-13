@@ -3,11 +3,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const polarMocks = vi.hoisted(() => ({
 	createPolarCheckout: vi.fn(),
 	createPolarCustomerPortalSession: vi.fn(),
+	updatePolarSubscriptionProduct: vi.fn(),
 }));
 
 vi.mock("./polar", () => ({
 	createPolarCheckout: polarMocks.createPolarCheckout,
 	createPolarCustomerPortalSession: polarMocks.createPolarCustomerPortalSession,
+	updatePolarSubscriptionProduct: polarMocks.updatePolarSubscriptionProduct,
 }));
 
 import type { BillingRepository } from "./repository";
@@ -23,6 +25,7 @@ describe("BillingService", () => {
 
 	afterEach(() => {
 		vi.useRealTimers();
+		vi.restoreAllMocks();
 	});
 
 	it("creates starter checkout for the user's default organization", async () => {
@@ -124,6 +127,7 @@ describe("BillingService", () => {
 			subscriptions: [
 				{
 					productId: "starter-monthly-product",
+					polarSubscriptionId: "sub-1",
 					status: "active",
 					periodEnd: new Date(Date.now() + 60_000),
 					cancelAtPeriodEnd: false,
@@ -152,6 +156,7 @@ describe("BillingService", () => {
 				subscriptions: [
 					{
 						productId: "pro-product",
+						polarSubscriptionId: "sub-1",
 						status: "active",
 						periodEnd: new Date(Date.now() + 60_000),
 						cancelAtPeriodEnd: false,
@@ -236,6 +241,7 @@ describe("BillingService", () => {
 			subscriptions: [
 				{
 					productId: "starter-monthly-product",
+					polarSubscriptionId: "sub-1",
 					status: "active",
 					periodEnd: new Date("2026-05-09T00:00:00.000Z"),
 					cancelAtPeriodEnd: false,
@@ -251,6 +257,7 @@ describe("BillingService", () => {
 			status: "active",
 			cancelAtPeriodEnd: false,
 			periodEnd: "2026-05-09T00:00:00.000Z",
+			canManageBilling: true,
 		});
 	});
 
@@ -260,6 +267,7 @@ describe("BillingService", () => {
 			subscriptions: [
 				{
 					productId: "starter-annual-product",
+					polarSubscriptionId: "sub-1",
 					status: "active",
 					periodEnd: new Date("2026-05-09T00:00:00.000Z"),
 					cancelAtPeriodEnd: true,
@@ -275,6 +283,29 @@ describe("BillingService", () => {
 			status: "active",
 			cancelAtPeriodEnd: true,
 			periodEnd: "2026-05-09T00:00:00.000Z",
+			canManageBilling: true,
+		});
+	});
+
+	it("reports that organization members cannot manage billing", async () => {
+		const service = createBillingService(fakeBillingRepository({
+			defaultOrganizationId: "org-1",
+			organizationRole: "member",
+			subscriptions: [
+				{
+					productId: "starter-monthly-product",
+					polarSubscriptionId: "sub-1",
+					status: "active",
+					periodEnd: new Date("2026-05-09T00:00:00.000Z"),
+					cancelAtPeriodEnd: false,
+					updatedAt: new Date(),
+				},
+			],
+		}));
+
+		await expect(service.readBillingStatus("user-1")).resolves.toMatchObject({
+			planId: "starter",
+			canManageBilling: false,
 		});
 	});
 
@@ -284,6 +315,7 @@ describe("BillingService", () => {
 			subscriptions: [
 				{
 					productId: "other-product",
+					polarSubscriptionId: "sub-1",
 					status: "active",
 					periodEnd: new Date("2026-05-09T00:00:00.000Z"),
 					cancelAtPeriodEnd: false,
@@ -299,7 +331,304 @@ describe("BillingService", () => {
 			status: "active",
 			cancelAtPeriodEnd: false,
 			periodEnd: "2026-05-09T00:00:00.000Z",
+			canManageBilling: true,
 		});
+	});
+
+	it("selects and switches an active monthly subscription to the annual product", async () => {
+		const monthlySubscription = {
+			productId: "starter-monthly-product",
+			polarSubscriptionId: "sub-1",
+			status: "active",
+			periodEnd: new Date("2026-06-01T00:00:00.000Z"),
+			cancelAtPeriodEnd: false,
+			updatedAt: new Date(),
+		};
+		const canceledSubscription = {
+			...monthlySubscription,
+			polarSubscriptionId: "sub-old",
+			status: "canceled",
+			cancelAtPeriodEnd: true,
+		};
+		const annualSubscription = {
+			...monthlySubscription,
+			productId: "starter-annual-product",
+			periodEnd: new Date("2027-05-08T00:00:00.000Z"),
+		};
+		const repository = fakeBillingRepository({
+			defaultOrganizationId: "org-1",
+			subscriptions: [monthlySubscription],
+		});
+		vi.mocked(repository.readOrganizationSubscriptionStatuses)
+			.mockResolvedValueOnce([canceledSubscription, monthlySubscription])
+			.mockResolvedValueOnce([annualSubscription]);
+		const upsertInput = {
+			id: "polar-sub-sub-1",
+			productId: "starter-annual-product",
+			organizationId: "org-1",
+			polarCustomerId: "customer-1",
+			polarSubscriptionId: "sub-1",
+			polarCheckoutId: null,
+			status: "active",
+			periodStart: new Date("2026-05-08T00:00:00.000Z"),
+			periodEnd: new Date("2027-05-08T00:00:00.000Z"),
+			cancelAtPeriodEnd: false,
+		};
+		polarMocks.updatePolarSubscriptionProduct.mockResolvedValueOnce(upsertInput);
+		const onSubscriptionUpsert = vi.fn(async () => {});
+		const service = createBillingService(repository, undefined, {
+			onSubscriptionUpsert,
+		});
+
+		await expect(
+			service.changeSubscriptionPlan({
+				userId: "user-1",
+				planId: "starter",
+				billingInterval: "annual",
+			}),
+		).resolves.toEqual({
+			planId: "starter",
+			billingInterval: "annual",
+			active: true,
+			status: "active",
+			cancelAtPeriodEnd: false,
+			periodEnd: "2027-05-08T00:00:00.000Z",
+			canManageBilling: true,
+		});
+		expect(polarMocks.updatePolarSubscriptionProduct).toHaveBeenCalledWith(
+			expect.objectContaining({ accessToken: "polar-token" }),
+			{
+				organizationId: "org-1",
+				polarSubscriptionId: "sub-1",
+				productId: "starter-annual-product",
+			},
+		);
+		expect(repository.upsertPolarSubscription).toHaveBeenCalledWith(upsertInput);
+		expect(onSubscriptionUpsert).toHaveBeenCalledWith("org-1");
+	});
+
+	it("returns the changed status when policy refresh notification fails", async () => {
+		const monthlySubscription = {
+			productId: "starter-monthly-product",
+			polarSubscriptionId: "sub-1",
+			status: "active",
+			periodEnd: new Date("2026-06-01T00:00:00.000Z"),
+			cancelAtPeriodEnd: false,
+			updatedAt: new Date(),
+		};
+		const annualSubscription = {
+			...monthlySubscription,
+			productId: "starter-annual-product",
+			periodEnd: new Date("2027-05-08T00:00:00.000Z"),
+		};
+		const repository = fakeBillingRepository({
+			defaultOrganizationId: "org-1",
+			subscriptions: [monthlySubscription],
+		});
+		vi.mocked(repository.readOrganizationSubscriptionStatuses)
+			.mockResolvedValueOnce([monthlySubscription])
+			.mockResolvedValueOnce([annualSubscription]);
+		polarMocks.updatePolarSubscriptionProduct.mockResolvedValueOnce({
+			id: "polar-sub-sub-1",
+			productId: "starter-annual-product",
+			organizationId: "org-1",
+			polarCustomerId: "customer-1",
+			polarSubscriptionId: "sub-1",
+			polarCheckoutId: null,
+			status: "active",
+			periodStart: new Date("2026-05-08T00:00:00.000Z"),
+			periodEnd: new Date("2027-05-08T00:00:00.000Z"),
+			cancelAtPeriodEnd: false,
+		});
+		vi.spyOn(console, "error").mockImplementation(() => {});
+		const service = createBillingService(repository, undefined, {
+			onSubscriptionUpsert: vi.fn(async () => {
+				throw new Error("queue unavailable");
+			}),
+		});
+
+		await expect(
+			service.changeSubscriptionPlan({
+				userId: "user-1",
+				planId: "starter",
+				billingInterval: "annual",
+			}),
+		).resolves.toMatchObject({
+			planId: "starter",
+			billingInterval: "annual",
+			active: true,
+		});
+		expect(repository.upsertPolarSubscription).toHaveBeenCalledOnce();
+	});
+
+	it("rejects plan changes when there is no active subscription", async () => {
+		const service = createBillingService(fakeBillingRepository({
+			defaultOrganizationId: "org-1",
+			subscriptions: [],
+		}));
+
+		await expect(
+			service.changeSubscriptionPlan({
+				userId: "user-1",
+				planId: "starter",
+				billingInterval: "annual",
+			}),
+		).rejects.toMatchObject({
+			status: 409,
+			cause: { code: "subscription_not_active" },
+		});
+		expect(polarMocks.updatePolarSubscriptionProduct).not.toHaveBeenCalled();
+	});
+
+	it("rejects plan changes when the subscription only has period access", async () => {
+		const service = createBillingService(fakeBillingRepository({
+			defaultOrganizationId: "org-1",
+			subscriptions: [
+				{
+					productId: "starter-monthly-product",
+					polarSubscriptionId: "sub-1",
+					status: "canceled",
+					periodEnd: new Date("2026-06-01T00:00:00.000Z"),
+					cancelAtPeriodEnd: true,
+					updatedAt: new Date(),
+				},
+			],
+		}));
+
+		await expect(
+			service.changeSubscriptionPlan({
+				userId: "user-1",
+				planId: "starter",
+				billingInterval: "annual",
+			}),
+		).rejects.toMatchObject({
+			status: 409,
+			cause: { code: "subscription_not_active" },
+		});
+		expect(polarMocks.updatePolarSubscriptionProduct).not.toHaveBeenCalled();
+	});
+
+	it("rejects plan changes to the product already in use", async () => {
+		const service = createBillingService(fakeBillingRepository({
+			defaultOrganizationId: "org-1",
+			subscriptions: [
+				{
+					productId: "starter-monthly-product",
+					polarSubscriptionId: "sub-1",
+					status: "active",
+					periodEnd: new Date("2026-06-01T00:00:00.000Z"),
+					cancelAtPeriodEnd: false,
+					updatedAt: new Date(),
+				},
+			],
+		}));
+
+		await expect(
+			service.changeSubscriptionPlan({
+				userId: "user-1",
+				planId: "starter",
+				billingInterval: "monthly",
+			}),
+		).rejects.toMatchObject({
+			status: 409,
+			cause: { code: "subscription_plan_unchanged" },
+		});
+		expect(polarMocks.updatePolarSubscriptionProduct).not.toHaveBeenCalled();
+	});
+
+	it("rejects switching from annual to monthly billing", async () => {
+		const service = createBillingService(fakeBillingRepository({
+			defaultOrganizationId: "org-1",
+			subscriptions: [
+				{
+					productId: "starter-annual-product",
+					polarSubscriptionId: "sub-1",
+					status: "active",
+					periodEnd: new Date("2027-05-08T00:00:00.000Z"),
+					cancelAtPeriodEnd: false,
+					updatedAt: new Date(),
+				},
+			],
+		}));
+
+		await expect(
+			service.changeSubscriptionPlan({
+				userId: "user-1",
+				planId: "starter",
+				billingInterval: "monthly",
+			}),
+		).rejects.toMatchObject({
+			status: 409,
+			cause: { code: "billing_interval_downgrade_not_allowed" },
+		});
+		expect(polarMocks.updatePolarSubscriptionProduct).not.toHaveBeenCalled();
+	});
+
+	it("rejects plan changes for plans that are not checkout enabled", async () => {
+		const service = createBillingService(fakeBillingRepository({
+			defaultOrganizationId: "org-1",
+			subscriptions: [],
+		}));
+
+		await expect(
+			service.changeSubscriptionPlan({
+				userId: "user-1",
+				planId: "free",
+				billingInterval: "annual",
+			}),
+		).rejects.toMatchObject({
+			status: 400,
+			cause: { code: "plan_not_available" },
+		});
+		expect(polarMocks.updatePolarSubscriptionProduct).not.toHaveBeenCalled();
+	});
+
+	it("rejects plan changes when the user has no organization", async () => {
+		const service = createBillingService(fakeBillingRepository({
+			defaultOrganizationId: null,
+			subscriptions: [],
+		}));
+
+		await expect(
+			service.changeSubscriptionPlan({
+				userId: "user-1",
+				planId: "starter",
+				billingInterval: "annual",
+			}),
+		).rejects.toMatchObject({
+			status: 400,
+			cause: { code: "organization_required" },
+		});
+		expect(polarMocks.updatePolarSubscriptionProduct).not.toHaveBeenCalled();
+	});
+
+	it("rejects plan changes from organization members without billing permission", async () => {
+		const service = createBillingService(fakeBillingRepository({
+			defaultOrganizationId: "org-1",
+			organizationRole: "member",
+			subscriptions: [
+				{
+					productId: "starter-monthly-product",
+					polarSubscriptionId: "sub-1",
+					status: "active",
+					periodEnd: new Date("2026-06-01T00:00:00.000Z"),
+					cancelAtPeriodEnd: false,
+					updatedAt: new Date(),
+				},
+			],
+		}));
+
+		await expect(
+			service.changeSubscriptionPlan({
+				userId: "user-1",
+				planId: "starter",
+				billingInterval: "annual",
+			}),
+		).rejects.toMatchObject({
+			status: 403,
+			cause: { code: "billing_permission_required" },
+		});
+		expect(polarMocks.updatePolarSubscriptionProduct).not.toHaveBeenCalled();
 	});
 
 	it("creates a customer portal session for the user's default organization", async () => {
@@ -342,6 +671,23 @@ describe("BillingService", () => {
 			status: 400,
 			cause: { code: "organization_required" },
 		});
+		expect(polarMocks.createPolarCustomerPortalSession).not.toHaveBeenCalled();
+	});
+
+	it("rejects customer portal sessions from organization members without billing permission", async () => {
+		const repository = fakeBillingRepository({
+			defaultOrganizationId: "org-1",
+			organizationRole: "member",
+			polarCustomerId: "customer-1",
+			subscriptions: [],
+		});
+		const service = createBillingService(repository);
+
+		await expect(service.createCustomerPortalSession("user-1")).rejects.toMatchObject({
+			status: 403,
+			cause: { code: "billing_permission_required" },
+		});
+		expect(repository.readOrganizationPolarCustomerId).not.toHaveBeenCalled();
 		expect(polarMocks.createPolarCustomerPortalSession).not.toHaveBeenCalled();
 	});
 
@@ -402,6 +748,7 @@ function createBillingService(
 
 function fakeBillingRepository(input: {
 	defaultOrganizationId: string | null;
+	organizationRole?: string | null;
 	polarCustomerId?: string | null;
 	subscriptions: Awaited<
 		ReturnType<BillingRepository["readOrganizationSubscriptionStatuses"]>
@@ -409,7 +756,11 @@ function fakeBillingRepository(input: {
 }): BillingRepository {
 	return {
 		readDefaultOrganizationIdForUser: vi.fn(async () => input.defaultOrganizationId),
+		readOrganizationRoleForUser: vi.fn(
+			async () => input.organizationRole ?? (input.defaultOrganizationId ? "owner" : null),
+		),
 		readOrganizationPolarCustomerId: vi.fn(async () => input.polarCustomerId ?? null),
 		readOrganizationSubscriptionStatuses: vi.fn(async () => input.subscriptions),
+		upsertPolarSubscription: vi.fn(async () => {}),
 	} as unknown as BillingRepository;
 }

@@ -17,6 +17,11 @@ const checkoutRequestSchema = z.object({
 	planId: z.enum(SUBSCRIPTION_PLAN_IDS).optional(),
 }).strict();
 
+const changeRequestSchema = z.object({
+	billingInterval: z.enum(SUBSCRIPTION_BILLING_INTERVALS),
+	planId: z.enum(SUBSCRIPTION_PLAN_IDS),
+}).strict();
+
 const portalRequestSchema = z.object({
 	returnPath: z.string().optional(),
 }).strict();
@@ -38,6 +43,18 @@ export function registerBillingRoutes(
 		});
 
 		return c.json(checkout);
+	});
+
+	app.post("/v1/billing/change", ensureAuthenticatedSession, async (c) => {
+		const user = c.var.user;
+		const { billingInterval, planId } = await readChangeRequest(c.req.raw);
+		const status = await deps.billingService.changeSubscriptionPlan({
+			userId: user.id,
+			planId,
+			billingInterval,
+		});
+
+		return c.json(status);
 	});
 
 	app.get("/v1/billing/status", ensureAuthenticatedSession, async (c) => {
@@ -82,6 +99,25 @@ async function readPortalRequestReturnPath(request: Request): Promise<string> {
 	}
 
 	return returnPath;
+}
+
+async function readChangeRequest(request: Request): Promise<{
+	billingInterval: SubscriptionBillingInterval;
+	planId: SubscriptionPlanId;
+}> {
+	let json: unknown;
+	try {
+		json = await request.json();
+	} catch {
+		throw apiError(400, "bad_request", "invalid billing change request");
+	}
+
+	const parsed = changeRequestSchema.safeParse(json);
+	if (!parsed.success) {
+		throw apiError(400, "bad_request", "invalid billing change request");
+	}
+
+	return parsed.data;
 }
 
 async function readCheckoutRequestPlanId(request: Request): Promise<{

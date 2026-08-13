@@ -1,4 +1,4 @@
-import { asc, desc, eq } from "drizzle-orm";
+import { and, asc, desc, eq } from "drizzle-orm";
 
 import type { AppDb } from "../db/client";
 import * as schema from "../db/d1";
@@ -18,6 +18,7 @@ export type PolarSubscriptionUpsertInput = {
 
 export type OrganizationSubscriptionStatus = {
 	productId: string;
+	polarSubscriptionId: string;
 	status: string;
 	periodEnd: Date | null;
 	cancelAtPeriodEnd: boolean;
@@ -40,12 +41,33 @@ export class BillingRepository {
 		return rows[0]?.organizationId ?? null;
 	}
 
+	async readOrganizationRoleForUser(
+		userId: string,
+		organizationId: string,
+	): Promise<string | null> {
+		const rows = await this.db
+			.select({
+				role: schema.member.role,
+			})
+			.from(schema.member)
+			.where(
+				and(
+					eq(schema.member.userId, userId),
+					eq(schema.member.organizationId, organizationId),
+				),
+			)
+			.limit(1);
+
+		return rows[0]?.role ?? null;
+	}
+
 	async readOrganizationSubscriptionStatuses(
 		organizationId: string,
 	): Promise<OrganizationSubscriptionStatus[]> {
 		return await this.db
 			.select({
 				productId: schema.polarSubscription.productId,
+				polarSubscriptionId: schema.polarSubscription.polarSubscriptionId,
 				status: schema.polarSubscription.status,
 				periodEnd: schema.polarSubscription.periodEnd,
 				cancelAtPeriodEnd: schema.polarSubscription.cancelAtPeriodEnd,

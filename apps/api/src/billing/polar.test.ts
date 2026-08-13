@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const polarMocks = vi.hoisted(() => ({
 	checkoutsCreate: vi.fn(),
 	customerSessionsCreate: vi.fn(),
+	subscriptionsUpdate: vi.fn(),
 	Polar: vi.fn(function Polar(this: unknown, config: unknown) {
 		Object.assign(this as object, {
 			config,
@@ -12,6 +13,9 @@ const polarMocks = vi.hoisted(() => ({
 			customerSessions: {
 				create: polarMocks.customerSessionsCreate,
 			},
+			subscriptions: {
+				update: polarMocks.subscriptionsUpdate,
+			},
 		});
 	}),
 }));
@@ -20,7 +24,15 @@ vi.mock("@polar-sh/sdk", () => ({
 	Polar: polarMocks.Polar,
 }));
 
-import { createPolarCheckout, createPolarCustomerPortalSession } from "./polar";
+import { AlreadyCanceledSubscription } from "@polar-sh/sdk/models/errors/alreadycanceledsubscription";
+import { PaymentFailed } from "@polar-sh/sdk/models/errors/paymentfailed";
+import { SubscriptionLocked } from "@polar-sh/sdk/models/errors/subscriptionlocked";
+
+import {
+	createPolarCheckout,
+	createPolarCustomerPortalSession,
+	updatePolarSubscriptionProduct,
+} from "./polar";
 
 describe("createPolarCheckout", () => {
 	beforeEach(() => {
@@ -156,3 +168,213 @@ describe("createPolarCheckout", () => {
 		expect(polarMocks.customerSessionsCreate).not.toHaveBeenCalled();
 	});
 });
+
+describe("updatePolarSubscriptionProduct", () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+	});
+
+	it("switches the subscription product with immediate proration", async () => {
+		polarMocks.subscriptionsUpdate.mockResolvedValueOnce({
+			id: "sub-1",
+			productId: "starter-annual-product",
+			customerId: "customer-1",
+			checkoutId: "checkout-1",
+			status: "active",
+			currentPeriodStart: new Date("2026-05-01T00:00:00.000Z"),
+			currentPeriodEnd: new Date("2027-05-01T00:00:00.000Z"),
+			cancelAtPeriodEnd: false,
+			metadata: {
+				referenceId: "org-1",
+				organizationId: "org-1",
+			},
+		});
+
+		await expect(
+			updatePolarSubscriptionProduct(
+				{
+					accessToken: "polar-token",
+					sandbox: true,
+				},
+				{
+					organizationId: "org-1",
+					polarSubscriptionId: "sub-1",
+					productId: "starter-annual-product",
+				},
+			),
+		).resolves.toEqual({
+			id: "polar-sub-sub-1",
+			productId: "starter-annual-product",
+			organizationId: "org-1",
+			polarCustomerId: "customer-1",
+			polarSubscriptionId: "sub-1",
+			polarCheckoutId: "checkout-1",
+			status: "active",
+			periodStart: new Date("2026-05-01T00:00:00.000Z"),
+			periodEnd: new Date("2027-05-01T00:00:00.000Z"),
+			cancelAtPeriodEnd: false,
+		});
+
+		expect(polarMocks.Polar).toHaveBeenCalledWith({
+			accessToken: "polar-token",
+			server: "sandbox",
+		});
+		expect(polarMocks.subscriptionsUpdate).toHaveBeenCalledWith({
+			id: "sub-1",
+			subscriptionUpdate: {
+				productId: "starter-annual-product",
+				prorationBehavior: "invoice",
+			},
+		});
+	});
+
+	it("uses the trusted organization when the Polar response has no metadata", async () => {
+		polarMocks.subscriptionsUpdate.mockResolvedValueOnce({
+			id: "sub-1",
+			productId: "starter-annual-product",
+			customerId: "customer-1",
+			checkoutId: "checkout-1",
+			status: "active",
+			currentPeriodStart: new Date("2026-05-01T00:00:00.000Z"),
+			currentPeriodEnd: new Date("2027-05-01T00:00:00.000Z"),
+			cancelAtPeriodEnd: false,
+			metadata: {},
+		});
+
+		await expect(
+			updatePolarSubscriptionProduct(
+				{ accessToken: "polar-token" },
+				{
+					organizationId: "org-1",
+					polarSubscriptionId: "sub-1",
+					productId: "starter-annual-product",
+				},
+			),
+		).resolves.toMatchObject({
+			organizationId: "org-1",
+			productId: "starter-annual-product",
+			polarSubscriptionId: "sub-1",
+		});
+	});
+
+	it("requires a Polar access token", async () => {
+		await expect(
+			updatePolarSubscriptionProduct(
+				{},
+				{
+					organizationId: "org-1",
+					polarSubscriptionId: "sub-1",
+					productId: "starter-annual-product",
+				},
+			),
+		).rejects.toThrow();
+		expect(polarMocks.subscriptionsUpdate).not.toHaveBeenCalled();
+	});
+
+	it("maps already canceled subscription failures", async () => {
+		polarMocks.subscriptionsUpdate.mockRejectedValueOnce(
+			new AlreadyCanceledSubscription(
+				{
+					error: "AlreadyCanceledSubscription",
+					detail: "subscription is canceled",
+				},
+				polarErrorHttpMeta(),
+			),
+		);
+
+		await expect(
+			updatePolarSubscriptionProduct(
+				{ accessToken: "polar-token" },
+				{
+					organizationId: "org-1",
+					polarSubscriptionId: "sub-1",
+					productId: "starter-annual-product",
+				},
+			),
+		).rejects.toMatchObject({
+			status: 409,
+			cause: { code: "subscription_canceled" },
+		});
+	});
+
+	it("maps payment failures", async () => {
+		polarMocks.subscriptionsUpdate.mockRejectedValueOnce(
+			new PaymentFailed(
+				{
+					error: "PaymentFailed",
+					detail: "card declined",
+				},
+				polarErrorHttpMeta(),
+			),
+		);
+
+		await expect(
+			updatePolarSubscriptionProduct(
+				{ accessToken: "polar-token" },
+				{
+					organizationId: "org-1",
+					polarSubscriptionId: "sub-1",
+					productId: "starter-annual-product",
+				},
+			),
+		).rejects.toMatchObject({
+			status: 402,
+			cause: { code: "payment_failed" },
+		});
+	});
+
+	it("maps locked subscription failures", async () => {
+		polarMocks.subscriptionsUpdate.mockRejectedValueOnce(
+			new SubscriptionLocked(
+				{
+					error: "SubscriptionLocked",
+					detail: "subscription is locked",
+				},
+				polarErrorHttpMeta(),
+			),
+		);
+
+		await expect(
+			updatePolarSubscriptionProduct(
+				{ accessToken: "polar-token" },
+				{
+					organizationId: "org-1",
+					polarSubscriptionId: "sub-1",
+					productId: "starter-annual-product",
+				},
+			),
+		).rejects.toMatchObject({
+			status: 409,
+			cause: { code: "subscription_locked" },
+		});
+	});
+
+	it("rethrows other Polar failures", async () => {
+		polarMocks.subscriptionsUpdate.mockRejectedValueOnce(
+			new Error("polar unavailable"),
+		);
+
+		await expect(
+			updatePolarSubscriptionProduct(
+				{ accessToken: "polar-token" },
+				{
+					organizationId: "org-1",
+					polarSubscriptionId: "sub-1",
+					productId: "starter-annual-product",
+				},
+			),
+		).rejects.toThrow("polar unavailable");
+	});
+});
+
+function polarErrorHttpMeta(): {
+	response: Response;
+	request: Request;
+	body: string;
+} {
+	return {
+		response: new Response(null, { status: 400 }),
+		request: new Request("https://api.polar.example/v1/subscriptions/sub-1"),
+		body: "",
+	};
+}
