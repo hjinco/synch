@@ -6,6 +6,7 @@ const localeRedirects = [
 	{ path: null, matches: ["en"] },
 	{ path: "/ko/", matches: ["ko"] },
 	{ path: "/ja/", matches: ["ja"] },
+	{ path: "/de/", matches: ["de"] },
 	{ path: "/zh-tw/", matches: ["zh-tw", "zh-hk", "zh-mo", "zh-hant"] },
 	{ path: "/zh-cn/", matches: ["zh", "zh-cn", "zh-sg", "zh-my", "zh-hans"] },
 ] as const;

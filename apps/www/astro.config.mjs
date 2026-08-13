@@ -25,13 +25,14 @@ export default defineConfig({
           ja: "ja",
           "zh-cn": "zh-CN",
           "zh-tw": "zh-TW",
+          de: "de",
         },
       },
     }),
   ],
   i18n: {
     defaultLocale: "en",
-    locales: ["en", "ko", "ja", "zh-cn", "zh-tw"],
+    locales: ["en", "ko", "ja", "zh-cn", "zh-tw", "de"],
     routing: {
       prefixDefaultLocale: false
     }

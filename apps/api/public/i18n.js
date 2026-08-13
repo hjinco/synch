@@ -10,7 +10,7 @@
  * section per page.
  */
 (() => {
-	const SUPPORTED_LOCALES = ["en", "ko", "ja", "zh-cn", "zh-tw"];
+	const SUPPORTED_LOCALES = ["en", "ko", "ja", "zh-cn", "zh-tw", "de"];
 
 	function normalizeLocale(candidate) {
 		const locale = candidate?.toLowerCase() || "";
@@ -18,6 +18,7 @@
 		if (locale.startsWith("en-")) return "en";
 		if (locale.startsWith("ko-")) return "ko";
 		if (locale.startsWith("ja-")) return "ja";
+		if (locale.startsWith("de-")) return "de";
 		if (locale === "zh-hk" || locale === "zh-hant" || locale.startsWith("zh-hant-")) return "zh-tw";
 		if (locale === "zh" || locale === "zh-sg" || locale === "zh-hans" || locale.startsWith("zh-hans-")) return "zh-cn";
 		return "";

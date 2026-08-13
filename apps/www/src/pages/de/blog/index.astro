@@ -1,0 +1,12 @@
+---
+import { getCollection } from "astro:content";
+import BlogIndexPage from "../../../components/BlogIndexPage.astro";
+import { isLocaleEntry } from "../../../i18n";
+
+const posts = (await getCollection("blog", ({ id, data }) => {
+  const visible = import.meta.env.PROD ? data.draft !== true : true;
+  return visible && isLocaleEntry(id, "de");
+})).sort((a, b) => b.data.pubDate.valueOf() - a.data.pubDate.valueOf());
+---
+
+<BlogIndexPage locale="de" posts={posts} />

@@ -1,0 +1,138 @@
+---
+title: Synch ohne Cloudflare selbst hosten
+description: Betreiben Sie den Synch-Server auf eigener Hardware mit Docker Compose oder systemd – ohne Cloudflare-Konto und ohne Drittanbieterdienste.
+updatedDate: 2026-08-02
+---
+
+Wenn Sie Cloudflare überhaupt nicht verwenden möchten, lässt sich der Synch-Server auch als gewöhnlicher Node.js-Prozess betreiben. Diese Anleitung beschreibt den Betrieb auf eigener Hardware – einem Homelab-NAS, einem kleinen VPS, einem Incus/LXC-Container oder überall dort, wo Sie einen dauerhaft laufenden Prozess ausführen und einen Port freigeben können – entweder mit [Docker Compose](#mit-docker-compose-bereitstellen) oder mit [systemd](#ohne-docker-ausführen-systemd).
+
+Die Daten werden vollständig auf der Festplatte gespeichert: eine SQLite-Datei pro Vault sowie eine kleine App-Datenbank für Konten und Vault-Metadaten. Es gibt kein D1, keine Durable Objects und kein R2 – nur Dateien in einem Verzeichnis, das Sie selbst verwalten.
+
+Falls Sie stattdessen auf einem kostenlosen Cloudflare-Konto bereitstellen möchten, siehe die [Cloudflare-Self-Hosting-Anleitung](/de/self-hosting/).
+
+## Vor dem Deployment
+
+In beiden Fällen benötigen Sie eine Möglichkeit, den Server von Ihren Obsidian-Geräten aus zu erreichen – entweder im lokalen Netzwerk oder über das Internet, wenn Sie auch unterwegs synchronisieren möchten (stellen Sie den Server in diesem Fall hinter einen Reverse-Proxy mit TLS; der Server selbst spricht nur einfaches HTTP).
+
+## Mit Docker Compose bereitstellen
+
+Sie benötigen installiertes Docker und Docker Compose.
+
+1. Klonen Sie das Repository und wechseln Sie in das API-Verzeichnis:
+
+   ```bash
+   git clone https://github.com/hjinco/synch.git
+   cd synch/apps/api
+   ```
+
+2. Kopieren Sie die Beispiel-Umgebungsdatei:
+
+   ```bash
+   cp .env.example .env
+   ```
+
+3. Bearbeiten Sie `.env` und tragen Sie Folgendes ein:
+   - `PUBLIC_URL` - die Adresse, unter der Clients diesen Server erreichen (z. B. `http://192.168.1.50:8787` im LAN oder `https://synch.your-domain.example` hinter einem Reverse-Proxy). Diese Angabe muss genau übereinstimmen, einschließlich Schema und Port – sie wird zur Validierung der Origins eingehender Anfragen verwendet.
+   - `BETTER_AUTH_SECRET` und `SYNC_TOKEN_SECRET` - zwei unabhängige zufällige Secrets. Generieren Sie jedes mit:
+
+     ```bash
+     openssl rand -hex 32
+     ```
+   - `AUTH_ALLOWED_EMAILS` (erforderlich) - eine durch Kommas getrennte Liste der genauen E-Mail-Adressen, die Konten erstellen dürfen:
+
+     ```text
+     AUTH_ALLOWED_EMAILS=you@example.com,family@example.com
+     ```
+
+     Beim Abgleich werden Groß- und Kleinschreibung sowie umgebende Leerzeichen ignoriert. Diese Einstellung steuert nur neue Konten; bestehende Benutzer können sich weiterhin anmelden, nachdem ihre Adresse aus der Liste entfernt wurde.
+
+4. Starten Sie den Server:
+
+   ```bash
+   docker compose up -d
+   ```
+
+Vault- und Blob-Daten bleiben im Docker-Volume `synch-data` über Neustarts und Upgrades hinweg erhalten. Um auf einen neuen Host umzuziehen, kopieren Sie dieses Volume zusammen mit Ihrer `.env`-Datei.
+
+### Blob-Speicher
+
+Standardmäßig werden verschlüsselte Dateiinhalte auf der Festplatte im selben Daten-Volume gespeichert. Wenn Sie lieber einen S3-kompatiblen Bucket (AWS S3, MinIO, R2 usw.) verwenden möchten, entfernen Sie vor dem Start des Containers die Kommentarzeichen im Block `BLOB_STORAGE=s3` in `.env` und tragen Sie die Werte ein.
+
+### Aktualisieren
+
+```bash
+git pull
+docker compose up -d --build
+```
+
+Datenbankmigrationen werden beim Start automatisch ausgeführt.
+
+## Ohne Docker ausführen (systemd)
+
+Der Server läuft als vorgebautes Node.js-Artefakt (`dist/server.mjs`) – Docker ist eine Erleichterung, keine Voraussetzung. Das ist eine sinnvolle Wahl, wenn Sie bereits eine VM betreiben (zum Beispiel einen Incus/LXC-Container) und Docker nicht als Abhängigkeit hinzufügen möchten.
+
+Unter Debian/Ubuntu automatisiert [`install.sh`](https://github.com/hjinco/synch/blob/main/apps/api/install.sh) alle folgenden Schritte – klonen Sie das Repository und führen Sie anschließend `cd apps/api && sudo ./install.sh` aus. Ein erneutes Ausführen (z. B. nach `git pull`) zum Aktualisieren und Neustarten ist unbedenklich. Die manuellen Schritte:
+
+1. Installieren Sie Node.js 24 und eine Build-Toolchain (erforderlich für das native Modul von `better-sqlite3`, falls kein vorgefertigtes Binary zur Architektur/libc Ihrer VM passt):
+
+   ```bash
+   # Debian/Ubuntu
+   sudo apt install -y nodejs python3 make g++
+   sudo corepack enable
+   ```
+
+2. Klonen Sie das Repository, bauen Sie das Node-Artefakt und behalten Sie nur die Produktionsabhängigkeiten:
+
+   ```bash
+   git clone https://github.com/hjinco/synch.git /opt/synch
+   cd /opt/synch/apps/api
+   pnpm install --frozen-lockfile --filter @synch/api...
+   pnpm build:node
+   pnpm install --frozen-lockfile --filter @synch/api... --prod --offline
+   ```
+
+3. Kopieren Sie `.env.example` nach `.env` und füllen Sie die Datei genau wie in den Docker-Compose-Schritten oben aus.
+
+4. Installieren und starten Sie die [Beispiel-systemd-Unit](https://github.com/hjinco/synch/blob/main/apps/api/synch-api.service.example):
+
+   ```bash
+   sudo useradd --system --home /var/lib/synch-api --create-home synch
+   sudo cp synch-api.service.example /etc/systemd/system/synch-api.service
+   # edit the unit's paths/User/Group if you didn't use /opt/synch or the synch user
+   sudo systemctl daemon-reload
+   sudo systemctl enable --now synch-api
+   ```
+
+5. Prüfen Sie, ob der Dienst läuft:
+
+   ```bash
+   curl http://localhost:8787/health
+   sudo journalctl -u synch-api -f
+   ```
+
+### Aktualisieren (systemd)
+
+```bash
+cd /opt/synch
+git pull
+cd apps/api
+pnpm install --frozen-lockfile --filter @synch/api...
+pnpm build:node
+pnpm install --frozen-lockfile --filter @synch/api... --prod --offline
+sudo systemctl restart synch-api
+```
+
+### Nur an localhost binden
+
+Standardmäßig lauscht der Server auf `0.0.0.0` (alle Schnittstellen) – Docker Compose benötigt dies, damit die Portveröffentlichung funktioniert. Wenn Sie das systemd-Deployment hinter einem lokalen Reverse-Proxy betreiben (z. B. [`tailscale serve`](https://tailscale.com/kb/1242/tailscale-serve), nginx, Caddy) und den Server nicht direkt über LAN oder die öffentliche Schnittstelle erreichbar machen möchten, setzen Sie `HOST=127.0.0.1` in `.env`. Die Beispiel-systemd-Unit (und `install.sh`) setzen dies bereits für Sie.
+
+Nach der Änderung aktualisieren Sie `PUBLIC_URL` auf die Adresse, über die Clients tatsächlich eine Verbindung herstellen (die Adresse Ihres Reverse-Proxys, nicht `127.0.0.1`), und starten Sie den Dienst neu – `PUBLIC_URL` ist der Wert, gegen den better-auth die Origins eingehender Anfragen prüft.
+
+## Obsidian verbinden
+
+1. Öffnen Sie Obsidian.
+2. Gehen Sie zu **Settings**.
+3. Öffnen Sie **Synch**.
+4. Fügen Sie unter **Self-hosted server** die `PUBLIC_URL` Ihres Servers ein. Fügen Sie kein abschließendes `/` hinzu.
+5. Klicken Sie auf **Save**.
+6. Fahren Sie anschließend wie gewohnt mit der Anmeldung und der Vault-Einrichtung fort.

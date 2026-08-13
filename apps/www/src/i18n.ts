@@ -1,5 +1,5 @@
 export const defaultLocale = "en";
-export const locales = ["en", "ko", "ja", "zh-cn", "zh-tw"] as const;
+export const locales = ["en", "ko", "ja", "zh-cn", "zh-tw", "de"] as const;
 
 export type Locale = (typeof locales)[number];
 
@@ -9,6 +9,7 @@ export const localeLanguageTags: Record<Locale, string> = {
 	ja: "ja",
 	"zh-cn": "zh-CN",
 	"zh-tw": "zh-TW",
+	de: "de",
 };
 
 export const openGraphLocales: Record<Locale, string> = {
@@ -17,6 +18,7 @@ export const openGraphLocales: Record<Locale, string> = {
 	ja: "ja_JP",
 	"zh-cn": "zh_CN",
 	"zh-tw": "zh_TW",
+	de: "de_DE",
 };
 
 export function getLocale(locale?: string): Locale {
@@ -897,6 +899,172 @@ export const ui = {
 			signIn: "登入",
 			error: "無法載入帳單資訊。請稍後重試。",
 			retry: "重試",
+		},
+	},
+	de: {
+		meta: {
+			defaultTitle: "Synch - Open-Source-E2EE-Sync für Obsidian",
+			defaultDescription:
+				"Eine Open-Source-Alternative zu Obsidian Sync. Ihre Notizen werden lokal verschlüsselt, bevor sie das Gerät verlassen – für vollständige Privatsphäre und Kontrolle über Ihre Daten.",
+			pricingTitle: "Preise - Synch",
+			pricingDescription: "Vergleichen Sie Synch-Pläne und Speicherkontingente für Ende-zu-Ende-verschlüsselte Obsidian-Vault-Synchronisierung.",
+			blogTitle: "Blog - Synch",
+			blogDescription: "Artikel über Ende-zu-Ende-verschlüsselte Obsidian-Synchronisierung, Privatsphäre und die Entwicklung von Synch.",
+			billingTitle: "Abrechnung - Synch",
+			billingDescription: "Verwalten Sie Ihr Synch-Abonnement und Ihre Abrechnungseinstellungen.",
+			billingSuccessTitle: "Abonnement wird bestätigt - Synch",
+			billingSuccessDescription: "Ihr Synch-Abonnement wird bestätigt und auf Ihr Konto angewendet.",
+			notFoundTitle: "Seite nicht gefunden - Synch",
+			notFoundDescription: "Die angeforderte Seite konnte nicht gefunden werden.",
+		},
+		nav: {
+			pricing: "Preise",
+			github: "GitHub",
+			signIn: "Anmelden",
+			signUp: "Registrieren",
+			vaults: "Vaults",
+			blog: "Blog",
+			terms: "Nutzungsbedingungen",
+			privacy: "Datenschutz",
+		},
+		home: {
+			heroTitle: ["Ende-zu-Ende-verschlüsselte", "Synchronisierung für Obsidian."],
+			featuredTitle: "Mehr erfahren",
+			featuredPosts: [
+				{
+					title: "Wie funktioniert die Ende-zu-Ende-Verschlüsselung von Synch?",
+					body: "Eine verständliche Erklärung, wie Synch Vault-Daten verschlüsselt, den Vault-Schlüssel schützt und verschlüsselte Daten auf einem anderen Gerät entsperrt.",
+					href: "/blog/encryption-and-decryption"
+				}
+			],
+			heroBody:
+				"Eine Open-Source-Alternative zu Obsidian Sync. Ihre Notizen werden lokal verschlüsselt, bevor sie das Gerät verlassen – für vollständige Privatsphäre und Kontrolle über Ihre Daten.",
+			getStarted: "Loslegen",
+			viewSource: "Quellcode ansehen",
+			features: [
+				{
+					title: "In 3 Sekunden synchron",
+					body: "Synch prüft häufig auf Änderungen, damit Bearbeitungen innerhalb weniger Sekunden auf andere Geräte gelangen können.",
+				},
+				{
+					title: "Versionsverlauf",
+					body: "Stellen Sie versehentliche Bearbeitungen über den verschlüsselten Verlauf synchronisierter Dateien wieder her – innerhalb des Aufbewahrungszeitraums Ihres Plans.",
+				},
+				{
+					title: "Wiederherstellung gelöschter Dateien",
+					body: "Holen Sie gelöschte Notizen und Anhänge zurück, solange sie noch im Versionsverlauf gespeichert sind.",
+				},
+				{
+					title: "Automatische Konfliktzusammenführung",
+					body: "Wenn dieselbe Notiz auf mehreren Geräten geändert wird, führt Synch kompatible Bearbeitungen per 3-Wege-Merge automatisch zusammen.",
+				},
+			],
+			installTitle: "Installation",
+			installIntro: "Installieren Sie Synchrun aus dem Community-Plugins-Verzeichnis von Obsidian.",
+			installSteps: [
+				["Öffnen Sie die Obsidian-Einstellungen und gehen Sie zu", "Community plugins", "."],
+				["Schalten Sie den eingeschränkten Modus aus und wählen Sie", "Browse", "."],
+				["Suchen Sie nach", "Synchrun", ", wählen Sie es aus und installieren Sie es."],
+				["Aktivieren Sie", "Synchrun", " nach Abschluss der Installation."],
+			],
+			selfHosting: {
+				title: "Eigenen Synch-Server nutzen",
+				options: [
+					{
+						title: "Cloudflare",
+						body: "Stellen Sie Synch auf einem kostenlosen Cloudflare-Konto bereit und verbinden Sie das Plugin mit Ihrer Server-URL.",
+						link: "Cloudflare-Anleitung lesen",
+						href: "/self-hosting",
+					},
+					{
+						title: "Docker / systemd",
+						body: "Betreiben Sie Synch auf eigener Hardware mit Docker Compose oder systemd – ohne Cloudflare-Konto.",
+						link: "Docker-/systemd-Anleitung lesen",
+						href: "/self-hosting-docker",
+					},
+				],
+			},
+		},
+		pricing: {
+			heading: "Einfache, transparente Preise.",
+			subheading: "Starten Sie die Vault-Synchronisierung kostenlos.",
+			freePlan: "Sync Free",
+			starterPlan: "Sync Starter",
+			plusPlan: "Sync Plus",
+			forever: "/ dauerhaft",
+			month: "/ Monat",
+			year: "/ Jahr",
+			monthly: "Monatlich",
+			annual: "Jährlich",
+			comingSoon: "Demnächst",
+			features: {
+				oneVault: "1 synchronisiertes Vault",
+				freeStorage: "50 MB Speicher",
+				starterStorage: "1 GB Speicher",
+				freeFileSize: "max. Dateigröße 3 MB",
+				starterFileSize: "max. Dateigröße 5 MB",
+				freeHistory: "1 Tag Versionsverlauf",
+				starterHistory: "1 Monat Versionsverlauf",
+				plusOrganizationMembers: "Bis zu 3 Mitglieder",
+				plusVaults: "5 synchronisierte Vaults",
+				plusStorage: "50 GB Speicher",
+				plusStorageTooltip: "10 GB pro Vault",
+				plusFileSize: "max. Dateigröße 200 MB",
+				plusHistory: "1 Jahr Versionsverlauf",
+			},
+		},
+		blog: {
+			heading: "Blog",
+			empty: "Es sind noch keine Blogbeiträge vorhanden.",
+			dateLocale: "de-DE",
+			ctaTitle: "Bereit, Ihr Obsidian-Vault zu synchronisieren?",
+			ctaBody:
+				"Starten Sie kostenlos mit Ende-zu-Ende-verschlüsselter Synchronisierung oder vergleichen Sie die Pläne, wenn Sie mehr Speicher und einen längeren Versionsverlauf benötigen.",
+			ctaPrimary: "Loslegen",
+			ctaSecondary: "Preise ansehen",
+		},
+		billing: {
+			heading: "Abonnement wird bestätigt",
+			message: "Ihr Abonnement wird angewendet. Das dauert in der Regel wenige Sekunden.",
+			continue: "Weiter zu Vaults",
+			fallback: "Die Zahlungsbestätigung steht noch aus. Sie können fortfahren und später aktualisieren.",
+		},
+		notFound: {
+			eyebrow: "404",
+			heading: "Seite nicht gefunden",
+			message: "Diese Seite wurde möglicherweise verschoben, oder der Link ist nicht mehr gültig.",
+			home: "Zur Startseite",
+			pricing: "Preise ansehen",
+		},
+		billingSettings: {
+			eyebrow: "Abrechnung",
+			heading: "Abonnement verwalten",
+			subheading: "Sehen Sie Ihren aktuellen Plan ein und öffnen Sie das Abrechnungsportal, um das Abonnement zu ändern oder zu kündigen.",
+			loading: "Abrechnungsstatus wird geladen...",
+			currentPlan: "Aktueller Plan",
+			renewal: "Verlängerung",
+			endsOn: "Endet am",
+			freePlan: "Sync Free",
+			starterPlan: "Sync Starter",
+			monthly: "Monatlich",
+			annual: "Jährlich",
+			freeInterval: "Kostenlos",
+			canceling: "Wird gekündigt",
+			canceled: "Gekündigt",
+			noRenewalDate: "Keine Verlängerung geplant",
+			activeMessage: "Ihr Abonnement ist aktiv. Öffnen Sie das Abrechnungsportal, um den Plan zu ändern, zu kündigen oder Zahlungsdaten zu aktualisieren.",
+			cancelingMessage: "Ihr Abonnement wird am Ende des aktuellen Abrechnungszeitraums gekündigt.",
+			canceledMessage: "Ihr Abonnement wurde gekündigt. Ihr aktueller Plan ist kostenlos.",
+			freeMessage: "Sie nutzen derzeit den kostenlosen Plan. Upgraden Sie, wenn Sie mehr Speicher benötigen.",
+			manage: "Abonnement verwalten",
+			switchToAnnual: "Auf jährliche Abrechnung wechseln",
+			switchConfirm: "Jetzt auf jährliche Abrechnung wechseln? Der ungenutzte Teil Ihres aktuellen Monatszeitraums wird vom Jahrespreis abgezogen, die Differenz wird sofort berechnet.",
+			switching: "Wird gewechselt...",
+			upgrade: "Pläne ansehen",
+			authRequired: "Melden Sie sich an, um Ihr Abonnement anzuzeigen und zu verwalten.",
+			signIn: "Anmelden",
+			error: "Abrechnungsinformationen konnten nicht geladen werden. Versuchen Sie es in einem Moment erneut.",
+			retry: "Erneut versuchen",
 		},
 	},
 } as const;

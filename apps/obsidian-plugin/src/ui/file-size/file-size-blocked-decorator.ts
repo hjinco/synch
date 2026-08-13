@@ -142,6 +142,12 @@ export function formatFileSizeBlockedTooltip(file: SynchFileSizeBlockedFile): st
         `加密後: ${formatBytes(file.encryptedSizeBytes)}。`,
         `限制: ${formatBytes(file.maxFileSizeBytes)}。`,
       ].join(" ");
+    case "de":
+      return [
+        "Synch kann diese Datei nicht synchronisieren, weil die Größe nach der Verschlüsselung das Dateigrößenlimit überschreitet.",
+        `Verschlüsselt: ${formatBytes(file.encryptedSizeBytes)}.`,
+        `Limit: ${formatBytes(file.maxFileSizeBytes)}.`,
+      ].join(" ");
     default:
       return [
         "Synch cannot sync this file because its encrypted size exceeds the file size limit.",

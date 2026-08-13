@@ -300,7 +300,7 @@ describe("self-hosted Node runtime: end-to-end sync", () => {
 		expect(vaultCrypto.status).toBe(200);
 		expect(vaultCrypto.headers.get("content-type")).toMatch(/javascript/);
 
-		for (const locale of ["ko", "ja", "zh-cn", "zh-tw"]) {
+		for (const locale of ["ko", "ja", "zh-cn", "zh-tw", "de"]) {
 			const catalog = await fetch(`${baseUrl}/i18n/${locale}.json`);
 			expect(catalog.status, locale).toBe(200);
 			expect(catalog.headers.get("content-type"), locale).toMatch(/^application\/json/);

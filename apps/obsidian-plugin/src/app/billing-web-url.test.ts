@@ -30,7 +30,7 @@ describe("billing web URL helpers", () => {
     );
   });
 
-  it("uses localized paths for Japanese and Chinese", () => {
+  it("uses localized paths for Japanese, Chinese, and German", () => {
     expect(buildBillingWebPageUrl("https://api.synch.run", "billing", "ja")).toBe(
       "https://synch.run/ja/billing",
     );
@@ -39,6 +39,9 @@ describe("billing web URL helpers", () => {
     );
     expect(buildBillingWebPageUrl("https://api.synch.run", "billing", "zh-tw")).toBe(
       "https://synch.run/zh-tw/billing",
+    );
+    expect(buildBillingWebPageUrl("https://api.synch.run", "pricing", "de")).toBe(
+      "https://synch.run/de/pricing",
     );
   });
 });

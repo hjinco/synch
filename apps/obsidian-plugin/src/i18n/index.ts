@@ -10,6 +10,7 @@ export function getSynchLocale(): SynchLocale {
   const language = getLanguage().toLowerCase();
   if (language === "ko" || language.startsWith("ko-")) return "ko";
   if (language === "ja" || language.startsWith("ja-")) return "ja";
+  if (language === "de" || language.startsWith("de-")) return "de";
   if (language === "zh-tw" || language === "zh-hk" || language === "zh-hant" || language.startsWith("zh-hant-")) return "zh-tw";
   if (language === "zh" || language === "zh-cn" || language === "zh-sg" || language === "zh-hans" || language.startsWith("zh-hans-")) return "zh-cn";
   return "en";

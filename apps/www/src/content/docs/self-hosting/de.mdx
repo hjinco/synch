@@ -1,0 +1,72 @@
+---
+title: Synch auf Cloudflare selbst hosten
+description: Erstellen Sie Ihren eigenen Synch-Server auf Cloudflare und verbinden Sie das Obsidian-Plugin damit.
+updatedDate: 2026-08-12
+---
+
+import SecretGenerator from "../../../components/SecretGenerator.astro";
+import SelfHostUpdaterInitializer from "../../../components/SelfHostUpdaterInitializer.astro";
+
+Diese Anleitung führt Sie durch die Erstellung eines eigenen Synch-Servers auf einem kostenlosen Cloudflare-Konto und das Einfügen dieser Serveradresse in das Obsidian-Plugin. Über die Schaltfläche unten lässt Cloudflare den Großteil der Einrichtung für Sie vorbereiten.
+
+Möchten Sie Cloudflare vollständig vermeiden und stattdessen auf eigener Hardware betreiben? Siehe die [Self-Hosting-Anleitung für Docker oder systemd](/de/self-hosting-docker/).
+
+<a href="https://deploy.workers.cloudflare.com/?url=https://github.com/hjinco/synch/tree/main/apps/api" target="_blank" rel="noopener noreferrer">
+  <img src="https://deploy.workers.cloudflare.com/button" alt="Deploy to Cloudflare" />
+</a>
+
+## Vor dem Deployment
+
+Sie können mit einem kostenlosen Cloudflare-Konto beginnen. Wenn Ihr Cloudflare-Konto neu ist, aktivieren Sie zuerst R2. Öffnen Sie im Cloudflare-Dashboard **R2 Object Storage**, hinterlegen Sie eine Zahlungskarte und schalten Sie R2 ein. Wenn Sie diesen Schritt überspringen, kann das Deployment fehlschlagen.
+
+![Cloudflare-Dashboard mit ausgewähltem R2 Object Storage](./cloudflare-r2-navigation.png)
+
+## Die API bereitstellen
+
+1. Klicken Sie auf **Deploy to Cloudflare**.
+2. Melden Sie sich bei Cloudflare an und wählen Sie das Konto aus, das Sie verwenden möchten.
+3. Folgen Sie den Anweisungen, um Ihr GitHub-Konto mit Cloudflare zu verbinden.
+4. Wenn Sie den Secrets-Bildschirm erreichen, geben Sie diese drei Werte ein:
+   - `AUTH_ALLOWED_EMAILS` - durch Kommas getrennte E-Mail-Adressen, die Konten erstellen dürfen, zum Beispiel `you@example.com,family@example.com`
+   - `BETTER_AUTH_SECRET`
+   - `SYNC_TOKEN_SECRET`
+
+<SecretGenerator locale="de" />
+
+5. Klicken Sie auf **Deploy**, um zu starten, und warten Sie, bis das Deployment abgeschlossen ist.
+
+![Deploy-to-Cloudflare-Formular mit den erforderlichen Secret-Feldern](./cloudflare-deploy-secrets.png)
+
+## Obsidian verbinden
+
+Nach dem Deployment kopieren Sie Ihre Synch-Serveradresse aus dem Tab **Settings** des Cloudflare Workers. Sie sieht in der Regel so aus:
+
+```text
+https://your-synch-api.your-account.workers.dev
+```
+
+![Bereich Domains and Routes des Cloudflare Workers mit sichtbarer workers.dev-URL](./cloudflare-worker-url.png)
+
+1. Öffnen Sie Obsidian.
+2. Gehen Sie zu **Settings**.
+3. Öffnen Sie **Synch**.
+4. Fügen Sie unter **Self-hosted server** die kopierte Synch-Serveradresse ein. Fügen Sie kein abschließendes `/` hinzu.
+5. Klicken Sie auf **Save**.
+6. Fahren Sie anschließend wie gewohnt mit der Anmeldung und der Vault-Einrichtung fort.
+
+## Ihren Server aktualisieren
+
+Aktivieren Sie dies nur, wenn Sie Ihren Server später einfach aktualisieren möchten. Die Einrichtung ist nur einmal erforderlich.
+
+<details>
+<summary>Serveraktualisierung einrichten (optional)</summary>
+
+<SelfHostUpdaterInitializer locale="de" />
+
+1. Verwenden Sie den Initialisierer oben und committen Sie den vorausgefüllten Workflow auf GitHub.
+2. Gehen Sie zum Tab **Actions** des Repositorys.
+3. Führen Sie den Workflow **Update Synch server** aus, wann immer Sie aktualisieren möchten.
+
+Cloudflare erstellt Ihren Server anschließend automatisch neu und stellt ihn erneut bereit. Ihre Secrets und Daten bleiben unberührt, von Ihnen selbst committete Änderungen (außer `wrangler.jsonc` und Workflow-Dateien) werden jedoch überschrieben. Wenn die Zusammenfassung des Laufs Einträge unter **Manual attention needed** auflistet, folgen Sie den dortigen Anweisungen.
+
+</details>

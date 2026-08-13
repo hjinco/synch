@@ -76,4 +76,11 @@ describe("Synch i18n", () => {
     expect(getSynchLocale()).toBe("zh-tw");
     expect(t("sync.label")).toBe("同步");
   });
+
+  it("uses German for de language codes", () => {
+    setLanguage("de-DE");
+
+    expect(getSynchLocale()).toBe("de");
+    expect(t("sync.label")).toBe("Synchronisierung");
+  });
 });

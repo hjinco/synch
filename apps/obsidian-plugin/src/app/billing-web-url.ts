@@ -1,5 +1,5 @@
 export type BillingWebPage = "pricing" | "billing";
-export type BillingWebLocale = "en" | "ko" | "ja" | "zh-cn" | "zh-tw";
+export type BillingWebLocale = "en" | "ko" | "ja" | "zh-cn" | "zh-tw" | "de";
 
 export function buildBillingWebPageUrl(
   apiBaseUrl: string,
