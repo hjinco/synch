@@ -1,10 +1,10 @@
 ---
 title: Terms of Service
 description: Terms that apply to the hosted Synch service.
-updatedDate: 2026-07-29
+updatedDate: 2026-08-14
 ---
 
-Last updated: July 29, 2026
+Last updated: August 14, 2026
 
 These Terms of Service ("Terms") govern your access to and use of the hosted Synch service, including the Synch website, API, and hosted sync infrastructure (the "Service"). The Service is operated by Synch ("Synch", "we", "us", or "our").
 
@@ -79,6 +79,8 @@ We work to provide a reliable service, but sync conflicts, client bugs, network 
 You may stop using the Service at any time. You may request deletion of your account or vaults using the controls we provide or by contacting us at contact@synch.run.
 
 When an account or vault is deleted, Synch will delete or schedule deletion of associated service records and encrypted blobs, subject to operational queues, backups, logs, legal obligations, security needs, and abuse-prevention needs.
+
+For remote vaults on a free plan, Synch may delete a remote vault if no successful synchronization has occurred for three consecutive months. Synch will provide notice at least 30 days before the scheduled deletion by email or through the Service. A successful synchronization during the notice period, or upgrading the remote vault to a paid plan before deletion, will cancel the scheduled deletion. After deletion, the remote vault's encrypted data, encrypted metadata, sync state, version history, and related service records may not be recoverable. This policy does not delete files from your local Obsidian vault. Backup copies may be retained and deleted according to the retention practices described above.
 
 We may suspend or terminate access to the Service if we reasonably believe you violated these Terms, created risk for the Service or other users, failed to pay amounts owed, or used the Service unlawfully.
 
