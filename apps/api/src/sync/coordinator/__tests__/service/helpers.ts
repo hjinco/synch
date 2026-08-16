@@ -90,8 +90,6 @@ export function createTestCoordinatorState(
 		markBlobPendingDeleteIfUnpinned: vi.fn(),
 		nextBlobGcAt: vi.fn(() => null),
 		recordGcCompleted: vi.fn(),
-		recordHealthSummaryFlushed: vi.fn(),
-		recordHealthSummaryFlushFailed: vi.fn(() => 1),
 		readHealthSummary: vi.fn(() => null),
 		readStorageStatus: vi.fn(() => ({
 			storageUsedBytes: 0,

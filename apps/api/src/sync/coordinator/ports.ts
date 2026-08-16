@@ -141,8 +141,6 @@ export type StageBlobResult =
 
 export interface HealthStateStore {
 	recordGcCompleted(now?: number): void;
-	recordHealthSummaryFlushed(now?: number): void;
-	recordHealthSummaryFlushFailed(error: unknown, now?: number): number;
 	readHealthSummary(
 		now: number,
 		activeCursorTtlMs: number,

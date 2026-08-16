@@ -30,7 +30,7 @@ export class HealthSyncService {
 	}
 
 	async flushSummary(
-		options: { force?: boolean; now?: number; throwOnError?: boolean } = {},
+		options: { now?: number; throwOnError?: boolean } = {},
 	): Promise<number | null> {
 		if (!this.syncStatusRepository) {
 			return null;
@@ -44,7 +44,6 @@ export class HealthSyncService {
 
 		try {
 			await this.syncStatusRepository.upsert(summary, now);
-			this.healthStore.recordHealthSummaryFlushed(now);
 			const nextDueAt = nextHealthSummaryFlushAt(summary, now);
 			this.scheduledFlushAt = nextDueAt;
 			if (nextDueAt !== null) {
@@ -56,7 +55,6 @@ export class HealthSyncService {
 			}
 			return nextDueAt;
 		} catch (error) {
-			this.healthStore.recordHealthSummaryFlushFailed(error, now);
 			this.scheduledFlushAt = null;
 			if (options.throwOnError) {
 				throw error;

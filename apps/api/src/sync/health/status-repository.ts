@@ -26,8 +26,6 @@ export class VaultSyncStatusRepository {
 				last_commit_at,
 				last_gc_at,
 				last_flushed_at,
-				last_flush_error,
-				last_flush_error_at,
 				created_at,
 				updated_at
 			)
@@ -49,8 +47,6 @@ export class VaultSyncStatusRepository {
 				${summary.lastCommitAt},
 				${summary.lastGcAt},
 				${flushedAt},
-				NULL,
-				NULL,
 				${flushedAt},
 				${flushedAt}
 			)
@@ -71,8 +67,6 @@ export class VaultSyncStatusRepository {
 				last_commit_at = excluded.last_commit_at,
 				last_gc_at = excluded.last_gc_at,
 				last_flushed_at = excluded.last_flushed_at,
-				last_flush_error = NULL,
-				last_flush_error_at = NULL,
 				updated_at = excluded.updated_at
 		`);
 	}

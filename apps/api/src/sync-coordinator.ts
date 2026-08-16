@@ -120,7 +120,7 @@ export class SyncCoordinator extends DurableObject {
 
 	async flushHealthSummary(): Promise<void> {
 		await this.ready;
-		await this.useCases.flushHealthSummary({ force: true });
+		await this.useCases.flushHealthSummary();
 	}
 
 	async alarm(alarmInfo?: AlarmInvocationInfo): Promise<void> {

@@ -47,7 +47,6 @@ describe("HealthSyncService", () => {
 	it("allows the next activity to schedule after a successful flush", async () => {
 		const stateRepository = createStateRepository({
 			readHealthSummary: vi.fn(() => createSummary({ lastCommitAt: 1_000 })),
-			recordHealthSummaryFlushed: vi.fn(),
 		});
 		const syncStatusRepository = {
 			upsert: vi.fn(async () => {}),
@@ -78,7 +77,6 @@ describe("HealthSyncService", () => {
 		const now = 61_000;
 		const stateRepository = createStateRepository({
 			readHealthSummary: vi.fn(() => createSummary({ lastCommitAt })),
-			recordHealthSummaryFlushed: vi.fn(),
 		});
 		const syncStatusRepository = {
 			upsert: vi.fn(async () => {}),
@@ -112,7 +110,6 @@ describe("HealthSyncService", () => {
 					healthReasons: ["active_without_recent_commit"],
 				}),
 			),
-			recordHealthSummaryFlushed: vi.fn(),
 		});
 		const syncStatusRepository = {
 			upsert: vi.fn(async () => {}),
@@ -160,8 +157,6 @@ function createStateRepository(
 	return {
 		recordGcCompleted: vi.fn(),
 		readHealthSummary: vi.fn(() => null),
-		recordHealthSummaryFlushed: vi.fn(),
-		recordHealthSummaryFlushFailed: vi.fn(() => 1),
 		readStorageStatus: vi.fn(() => ({
 			storageUsedBytes: 0,
 			storageLimitBytes: 100,

@@ -40,16 +40,4 @@ describe("sqlite backend: health summary", () => {
 		});
 	});
 
-	it("tracks health flush retry count across failures and resets on success", async () => {
-		const { healthStore } = await createSqliteCoordinator();
-
-		const first = healthStore.recordHealthSummaryFlushFailed(new Error("boom"), 1_000);
-		const second = healthStore.recordHealthSummaryFlushFailed(new Error("boom again"), 2_000);
-		expect(first).toBe(1);
-		expect(second).toBe(2);
-
-		healthStore.recordHealthSummaryFlushed(3_000);
-		const third = healthStore.recordHealthSummaryFlushFailed(new Error("boom"), 4_000);
-		expect(third).toBe(1);
-	});
 });

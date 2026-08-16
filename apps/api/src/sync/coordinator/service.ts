@@ -27,7 +27,6 @@ type GcOptions = {
 	scheduleNextGc?: boolean;
 };
 type HealthFlushOptions = {
-	force?: boolean;
 	now?: number;
 	throwOnError?: boolean;
 };

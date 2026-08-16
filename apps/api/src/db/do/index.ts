@@ -93,14 +93,8 @@ export const coordinatorState = sqliteTable("coordinator_state", {
 	versionHistoryRetentionDays: integer("version_history_retention_days")
 		.notNull()
 		.default(1),
-	healthSummaryDirty: integer("health_summary_dirty").notNull().default(0),
 	lastCommitAt: integer("last_commit_at"),
-	lastActivityAt: integer("last_activity_at"),
 	lastGcAt: integer("last_gc_at"),
-	lastHealthFlushedAt: integer("last_health_flushed_at"),
-	healthFlushRetryCount: integer("health_flush_retry_count").notNull().default(0),
-	lastHealthFlushError: text("last_health_flush_error"),
-	lastHealthFlushErrorAt: integer("last_health_flush_error_at"),
 	syncPausedAt: integer("sync_paused_at"),
 	syncPauseReason: text("sync_pause_reason"),
 });

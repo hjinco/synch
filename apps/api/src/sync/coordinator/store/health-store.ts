@@ -33,40 +33,6 @@ export class CoordinatorHealthStore {
 		);
 	}
 
-	recordHealthSummaryFlushed(now = Date.now()): void {
-		this.handle.exec(
-			`
-			UPDATE coordinator_state
-			SET last_health_flushed_at = ?,
-				health_flush_retry_count = 0,
-				last_health_flush_error = NULL,
-				last_health_flush_error_at = NULL
-			WHERE id = 1
-			`,
-			now,
-		);
-	}
-
-	recordHealthSummaryFlushFailed(error: unknown, now = Date.now()): number {
-		this.handle.exec(
-			`
-			UPDATE coordinator_state
-			SET health_flush_retry_count = health_flush_retry_count + 1,
-				last_health_flush_error = ?,
-				last_health_flush_error_at = ?
-			WHERE id = 1
-			`,
-			formatCompactError(error),
-			now,
-		);
-		const row = this.handle
-			.exec<{ health_flush_retry_count: number }>(
-				"SELECT health_flush_retry_count FROM coordinator_state WHERE id = 1",
-			)
-			.toArray()[0];
-		return Number(row?.health_flush_retry_count ?? 1);
-	}
-
 	readHealthSummary(
 		now: number,
 		activeCursorTtlMs: number,
@@ -300,9 +266,4 @@ function ageMs(now: number, timestamp: number | null): number | null {
 		return null;
 	}
 	return Math.max(0, now - Number(timestamp));
-}
-
-function formatCompactError(error: unknown): string {
-	const message = error instanceof Error ? error.message : String(error);
-	return message.slice(0, 500);
 }

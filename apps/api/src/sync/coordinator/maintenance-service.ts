@@ -13,7 +13,6 @@ export interface BlobMaintenanceUseCases {
 
 export interface HealthMaintenanceUseCases {
 	flushSummary(options?: {
-		force?: boolean;
 		now?: number;
 		throwOnError?: boolean;
 	}): Promise<number | null>;

@@ -39,7 +39,6 @@ describe("CoordinatorMaintenanceService health flush drain", () => {
 		const healthSyncService = new HealthSyncService(
 			createStateRepository({
 				readHealthSummary: vi.fn(() => createSummary({ lastCommitAt })),
-				recordHealthSummaryFlushed: vi.fn(),
 			}),
 			{ upsert: vi.fn(async () => {}) },
 			30 * 24 * 60 * 60 * 1000,
@@ -92,7 +91,6 @@ describe("CoordinatorMaintenanceService health flush drain", () => {
 						healthReasons: ["active_without_recent_commit"],
 					}),
 				),
-				recordHealthSummaryFlushed: vi.fn(),
 			}),
 			{ upsert: vi.fn(async () => {}) },
 			30 * 24 * 60 * 60 * 1000,
@@ -143,8 +141,6 @@ function createStateRepository(
 	return {
 		recordGcCompleted: vi.fn(),
 		readHealthSummary: vi.fn(() => null),
-		recordHealthSummaryFlushed: vi.fn(),
-		recordHealthSummaryFlushFailed: vi.fn(() => 1),
 		readStorageStatus: vi.fn(() => ({
 			storageUsedBytes: 0,
 			storageLimitBytes: 100,

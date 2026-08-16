@@ -104,10 +104,7 @@ export const vaultSyncStatus = sqliteTable(
 		oldestPendingDeleteAgeMs: integer("oldest_pending_delete_age_ms"),
 		lastCommitAt: integer("last_commit_at"),
 		lastGcAt: integer("last_gc_at"),
-		lastActivityAt: integer("last_activity_at"),
 		lastFlushedAt: integer("last_flushed_at").notNull(),
-		lastFlushError: text("last_flush_error"),
-		lastFlushErrorAt: integer("last_flush_error_at"),
 		createdAt: integer("created_at").notNull(),
 		updatedAt: integer("updated_at").notNull(),
 	},
@@ -117,7 +114,6 @@ export const vaultSyncStatus = sqliteTable(
 			table.storageUsedBytes,
 			table.storageLimitBytes,
 		),
-		index("vault_sync_status_activity_idx").on(table.lastActivityAt),
 	],
 );
 
