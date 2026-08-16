@@ -1,8 +1,9 @@
-import { and, asc, eq, isNotNull, isNull, or } from "drizzle-orm";
+import { and, asc, eq, gt, isNotNull, isNull, lte, or, sql } from "drizzle-orm";
 
 import type { AppDb } from "../db/client";
 import * as schema from "../db/d1";
 import type {
+	InactiveVaultCandidate,
 	VaultBootstrapRecord,
 	VaultKeyEnvelope,
 	VaultKeyWrapperInput,
@@ -274,15 +275,68 @@ export class VaultRepository {
 		return rows[0]?.organizationId ?? null;
 	}
 
-	async markVaultDeletionQueued(vaultId: string): Promise<void> {
-		await this.db
+	/**
+	 * Returns whether this call was the one that queued the deletion. The
+	 * `deletedAt IS NULL` guard makes the transition a claim, so a scheduled
+	 * purge cannot race a manual delete into queueing the same vault twice.
+	 */
+	async markVaultDeletionQueued(vaultId: string): Promise<boolean> {
+		const claimed = await this.db
 			.update(schema.vault)
 			.set({
 				deletedAt: new Date(),
 				purgeStatus: "queued",
 				purgeError: null,
 			})
-			.where(and(eq(schema.vault.id, vaultId), isNull(schema.vault.deletedAt)));
+			.where(and(eq(schema.vault.id, vaultId), isNull(schema.vault.deletedAt)))
+			.returning({ id: schema.vault.id });
+
+		return claimed.length > 0;
+	}
+
+	/**
+	 * Owner-held vaults whose newest content commit (or creation, when nothing
+	 * was ever committed) is at or before `inactiveSince`.
+	 */
+	async listInactiveVaultCandidates(
+		inactiveSince: number,
+		afterVaultId: string | null,
+		limit: number,
+	): Promise<InactiveVaultCandidate[]> {
+		const rows = await this.db
+			.select({
+				vaultId: schema.vault.id,
+				organizationId: schema.vault.organizationId,
+				vaultName: schema.vault.name,
+				ownerEmail: schema.user.email,
+				lastCommitAt: schema.vaultSyncStatus.lastCommitAt,
+			})
+			.from(schema.vault)
+			.innerJoin(
+				schema.vaultMembership,
+				eq(schema.vaultMembership.vaultId, schema.vault.id),
+			)
+			.innerJoin(schema.user, eq(schema.user.id, schema.vaultMembership.userId))
+			.leftJoin(
+				schema.vaultSyncStatus,
+				eq(schema.vaultSyncStatus.vaultId, schema.vault.id),
+			)
+			.where(
+				and(
+					isNull(schema.vault.deletedAt),
+					eq(schema.vaultMembership.role, "owner"),
+					eq(schema.vaultMembership.status, "active"),
+					lte(
+						sql`coalesce(${schema.vaultSyncStatus.lastCommitAt}, ${schema.vault.createdAt})`,
+						inactiveSince,
+					),
+					afterVaultId ? gt(schema.vault.id, afterVaultId) : undefined,
+				),
+			)
+			.orderBy(asc(schema.vault.id))
+			.limit(limit);
+
+		return rows;
 	}
 
 	async markVaultPurgeRunning(vaultId: string): Promise<void> {

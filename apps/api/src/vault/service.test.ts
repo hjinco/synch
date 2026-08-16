@@ -117,6 +117,7 @@ describe("VaultService", () => {
 			enqueueVaultPurge: vi.fn(async () => {
 				throw enqueueError;
 			}),
+			enqueueInactiveVaultPurge: vi.fn(async () => {}),
 		};
 		const service = new VaultService(vaultRepository, undefined, vaultPurgeQueue);
 

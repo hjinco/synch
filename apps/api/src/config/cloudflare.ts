@@ -1,5 +1,6 @@
 import type { SubscriptionPolicyRefreshMessage } from "../subscription/policy-refresh-queue";
 import type { VaultPurgeMessage } from "../vault/purge-queue";
+import type { VaultRetentionEmailMessage } from "../vault/retention-queue";
 import {
 	capabilitiesFor,
 	createCloudflareProfile,
@@ -16,6 +17,7 @@ export type CloudflareRuntimeEnv = Omit<
 	| "EMAIL"
 	| "POLICY_REFRESH_QUEUE"
 	| "VAULT_PURGE_QUEUE"
+	| "RETENTION_NOTIFICATION_QUEUE"
 > & {
 	AUTH_ALLOWED_EMAILS?: string;
 	EMAIL?: SendEmail;
@@ -29,6 +31,7 @@ export type CloudflareRuntimeEnv = Omit<
 	POLAR_SANDBOX?: string;
 	POLICY_REFRESH_QUEUE?: Queue<SubscriptionPolicyRefreshMessage>;
 	VAULT_PURGE_QUEUE?: Queue<VaultPurgeMessage>;
+	RETENTION_NOTIFICATION_QUEUE?: Queue<VaultRetentionEmailMessage>;
 };
 
 export type CloudflareHttpConfig = {

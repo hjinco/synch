@@ -72,6 +72,11 @@
 	},
 	"env": {
 		"managed": {
+			"triggers": {
+				"crons": [
+					"0 */6 * * *"
+				]
+			},
 			"durable_objects": {
 				"bindings": [
 					{
@@ -103,6 +108,10 @@
 					{
 						"binding": "POLICY_REFRESH_QUEUE",
 						"queue": "synch-policy-refresh"
+					},
+					{
+						"binding": "RETENTION_NOTIFICATION_QUEUE",
+						"queue": "synch-retention-notification"
 					}
 				],
 				"consumers": [
@@ -117,6 +126,12 @@
 						"max_batch_size": 1,
 						"max_batch_timeout": 0,
 						"max_retries": 5
+					},
+					{
+						"queue": "synch-retention-notification",
+						"max_batch_size": 1,
+						"max_batch_timeout": 0,
+						"max_retries": 3
 					}
 				]
 			},

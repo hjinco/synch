@@ -9,10 +9,18 @@ import { SubscriptionPolicyService } from "../subscription/policy-service";
 import { CoordinatorProxyRepository } from "../sync/coordinator/proxy-repository";
 import { VaultPurgeConsumer } from "../vault/purge-consumer";
 import type { VaultPurgeMessage } from "../vault/purge-queue";
+import { VaultRetentionEmailConsumer } from "../vault/retention-email-consumer";
+import {
+	CloudflareVaultRetentionEmailQueue,
+	type VaultRetentionEmailMessage,
+} from "../vault/retention-queue";
 import { VaultRepository } from "../vault/repository";
 import { VaultService } from "../vault/service";
 
-export type QueueMessage = VaultPurgeMessage | SubscriptionPolicyRefreshMessage;
+export type QueueMessage =
+	| VaultPurgeMessage
+	| SubscriptionPolicyRefreshMessage
+	| VaultRetentionEmailMessage;
 
 export function createQueueConsumer(env: Env): QueueConsumer {
 	const profile = readCloudflareProfile(env);
@@ -33,8 +41,17 @@ export function createQueueConsumer(env: Env): QueueConsumer {
 		coordinatorProxyRepository,
 	);
 	return new QueueConsumer(
-		new VaultPurgeConsumer(vaultService, coordinatorProxyRepository),
+		new VaultPurgeConsumer(
+			vaultService,
+			coordinatorProxyRepository,
+			env.RETENTION_NOTIFICATION_QUEUE
+				? new CloudflareVaultRetentionEmailQueue(
+						env.RETENTION_NOTIFICATION_QUEUE as Queue<VaultRetentionEmailMessage>,
+					)
+				: undefined,
+		),
 		new SubscriptionPolicyRefreshConsumer(policyRefreshService),
+		new VaultRetentionEmailConsumer(env.EMAIL, env.AUTH_EMAIL_FROM),
 	);
 }
 
@@ -42,6 +59,7 @@ export class QueueConsumer {
 	constructor(
 		private readonly vaultPurgeConsumer: VaultPurgeConsumer,
 		private readonly policyRefreshConsumer: SubscriptionPolicyRefreshConsumer,
+		private readonly retentionEmailConsumer: VaultRetentionEmailConsumer,
 	) {}
 
 	async handleBatch(batch: MessageBatch<QueueMessage>): Promise<void> {
@@ -59,10 +77,20 @@ export class QueueConsumer {
 				);
 				continue;
 			}
+			if (type === "vault_retention_email") {
+				await this.retentionEmailConsumer.handleMessage(
+					message as Message<VaultRetentionEmailMessage>,
+				);
+				continue;
+			}
 
 			message.ack();
 		}
 	}
 }
 
-export type { SubscriptionPolicyRefreshMessage, VaultPurgeMessage };
+export type {
+	SubscriptionPolicyRefreshMessage,
+	VaultPurgeMessage,
+	VaultRetentionEmailMessage,
+};

@@ -7,4 +7,8 @@ export class InlineVaultPurgeQueue implements VaultPurgeQueue {
 	async enqueueVaultPurge(vaultId: string): Promise<void> {
 		await this.consumer.purgeVault(vaultId);
 	}
+
+	async enqueueInactiveVaultPurge(): Promise<void> {
+		throw new Error("automatic inactivity purge is unavailable in community edition");
+	}
 }

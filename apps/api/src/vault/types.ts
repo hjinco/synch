@@ -53,3 +53,12 @@ export type VaultBootstrapRecord = {
 	vault: VaultRecord;
 	wrappers: VaultKeyWrapperRecord[];
 };
+
+/** A vault whose content has not changed since the inactivity cutoff. */
+export type InactiveVaultCandidate = {
+	vaultId: string;
+	organizationId: string;
+	vaultName: string;
+	ownerEmail: string;
+	lastCommitAt: number | null;
+};
