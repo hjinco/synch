@@ -24,7 +24,9 @@ const source = await fs.readFile(sourcePath, "utf8");
 const repositoryUrl = await getRepositoryUrl(repoRoot);
 const blameByLine = await getBlameByLine(repoRoot, sourcePath);
 const annotatedSource = await annotateReleaseNoteBullets(source, blameByLine, repositoryUrl);
-const body = annotatedSource.replace(/^# Next Obsidian plugin release\s*/u, "").trim();
+const body = omitEmptySections(
+  annotatedSource.replace(/^# Next Obsidian plugin release\s*/u, "").trim(),
+);
 
 if (!/^[-*]\s+\S/m.test(body)) {
   throw new Error(`${sourcePath} must contain at least one release note bullet.`);
@@ -40,7 +42,7 @@ console.log(releaseNotesPath);
 
 async function annotateReleaseNoteBullets(noteSource, blameByLine, repositoryUrl) {
   const lines = noteSource.split("\n");
-  const commitAuthors = new Map();
+  const commitInfoBySha = new Map();
   const annotatedLines = await Promise.all(
     lines.map(async (line, index) => {
       const match = /^(\s*[-*]\s+)(.+?)\s*$/u.exec(line);
@@ -50,25 +52,69 @@ async function annotateReleaseNoteBullets(noteSource, blameByLine, repositoryUrl
         return line;
       }
 
-      let githubLogin = commitAuthors.get(blame.sha);
-      if (githubLogin === undefined) {
-        githubLogin = await resolveGitHubAuthor(blame.sha);
-        commitAuthors.set(blame.sha, githubLogin ?? "");
+      let info = commitInfoBySha.get(blame.sha);
+      if (info === undefined) {
+        info = await resolveCommitInfo(blame.sha);
+        commitInfoBySha.set(blame.sha, info);
       }
 
-      const author = githubLogin || blame.author || "unknown contributor";
-      const contributor = author.toLowerCase() === MAINTAINER_LOGIN.toLowerCase()
-        ? ""
-        : githubLogin
-          ? `[@${githubLogin}](https://github.com/${githubLogin}) `
-          : `${author} `;
-      const commitLink = `[${blame.sha.slice(0, 7)}](${repositoryUrl}/commit/${blame.sha})`;
+      const attribution = formatChangesetAttribution({
+        sha: blame.sha,
+        repositoryUrl,
+        githubLogin: info.githubLogin,
+        gitAuthor: blame.author,
+        pullRequest: info.pullRequest,
+      });
 
-      return `${match[1]}${match[2]} — ${contributor}(${commitLink})`;
+      return `${match[1]}${attribution} ${match[2]}`;
     }),
   );
 
   return annotatedLines.join("\n");
+}
+
+function formatChangesetAttribution({
+  sha,
+  repositoryUrl,
+  githubLogin,
+  gitAuthor,
+  pullRequest,
+}) {
+  const parts = [];
+
+  if (pullRequest) {
+    parts.push(`[#${pullRequest.number}](${pullRequest.url})`);
+  }
+
+  parts.push(`[\`${sha.slice(0, 7)}\`](${repositoryUrl}/commit/${sha})`);
+
+  const maintainer = MAINTAINER_LOGIN.toLowerCase();
+  const isMaintainer =
+    githubLogin?.toLowerCase() === maintainer || gitAuthor?.toLowerCase() === maintainer;
+  if (!isMaintainer) {
+    if (githubLogin) {
+      parts.push(`Thanks [@${githubLogin}](https://github.com/${githubLogin})!`);
+    } else if (gitAuthor) {
+      parts.push(`Thanks ${gitAuthor}!`);
+    }
+  }
+
+  return `${parts.join(" ")} -`;
+}
+
+function omitEmptySections(markdown) {
+  return markdown
+    .split(/^(?=## )/mu)
+    .filter((section) => {
+      if (!section.startsWith("## ")) {
+        return section.trim().length > 0;
+      }
+
+      return /^[-*]\s+\S/mu.test(section.replace(/^## .+\n*/u, ""));
+    })
+    .join("")
+    .replace(/\n{3,}/gu, "\n\n")
+    .trim();
 }
 
 async function getBlameByLine(repoRoot, sourcePath) {
@@ -102,32 +148,46 @@ async function getBlameByLine(repoRoot, sourcePath) {
   return blameByLine;
 }
 
-async function resolveGitHubAuthor(sha) {
+async function resolveCommitInfo(sha) {
   const token = process.env.GITHUB_TOKEN;
   const repository = process.env.GITHUB_REPOSITORY;
   const apiUrl = process.env.GITHUB_API_URL;
 
   if (!token || !repository || !apiUrl) {
-    return null;
+    return { githubLogin: null, pullRequest: null };
   }
 
-  try {
-    const response = await fetch(`${apiUrl}/repos/${repository}/commits/${sha}`, {
-      headers: {
-        Accept: "application/vnd.github+json",
-        Authorization: `Bearer ${token}`,
-        "X-GitHub-Api-Version": "2022-11-28",
-      },
-    });
+  const headers = {
+    Accept: "application/vnd.github+json",
+    Authorization: `Bearer ${token}`,
+    "X-GitHub-Api-Version": "2022-11-28",
+  };
 
-    if (!response.ok) {
-      return null;
+  try {
+    const [commitResponse, pullsResponse] = await Promise.all([
+      fetch(`${apiUrl}/repos/${repository}/commits/${sha}`, { headers }),
+      fetch(`${apiUrl}/repos/${repository}/commits/${sha}/pulls`, { headers }),
+    ]);
+
+    const githubLogin = commitResponse.ok
+      ? ((await commitResponse.json()).author?.login ?? null)
+      : null;
+
+    let pullRequest = null;
+    if (pullsResponse.ok) {
+      const pulls = await pullsResponse.json();
+      if (Array.isArray(pulls) && pulls.length > 0) {
+        const preferred = pulls.find((pull) => pull.merged_at) ?? pulls[0];
+        pullRequest = {
+          number: preferred.number,
+          url: preferred.html_url,
+        };
+      }
     }
 
-    const commit = await response.json();
-    return commit.author?.login ?? null;
+    return { githubLogin, pullRequest };
   } catch {
-    return null;
+    return { githubLogin: null, pullRequest: null };
   }
 }
 
