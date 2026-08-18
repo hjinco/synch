@@ -18,7 +18,7 @@ import type {
 	SocketSession,
 	VaultStateLimits,
 } from "./types";
-import type { SyncPauseState } from "./ports";
+import type { SyncPauseState, SyncRepairResult } from "./ports";
 
 type MutationOptions = { forcedHistoryBefore?: "before_restore" | null };
 type GcOptions = {
@@ -110,6 +110,10 @@ export interface VaultLifecycleUseCases {
 	purgeVault(vaultId: string): Promise<void>;
 }
 
+export interface SyncRepairUseCases {
+	repairSyncState(vaultId: string): Promise<SyncRepairResult>;
+}
+
 export type CoordinatorServiceDependencies = {
 	blobSyncService: BlobUseCases;
 	entryHistoryService: EntryHistoryUseCases;
@@ -118,6 +122,7 @@ export type CoordinatorServiceDependencies = {
 	maintenanceService: MaintenanceUseCases;
 	mutationCommitService: MutationUseCases;
 	socketConnectionService: SocketConnectionUseCases;
+	syncRepairService: SyncRepairUseCases;
 	vaultLifecycleService: VaultLifecycleUseCases;
 };
 
@@ -131,6 +136,10 @@ export class CoordinatorService {
 
 	readSyncPause(vaultId: string): SyncPauseState | null {
 		return this.services.vaultLifecycleService.readSyncPause(vaultId);
+	}
+
+	async repairSyncState(vaultId: string): Promise<SyncRepairResult> {
+		return await this.services.syncRepairService.repairSyncState(vaultId);
 	}
 
 	listEntryStates(
@@ -266,6 +275,7 @@ export type CoordinatorDurableObjectUseCases = Pick<
 	| "restoreEntryVersions"
 	| "purgeDeletedEntries"
 	| "runGc"
+	| "repairSyncState"
 	| "flushHealthSummary"
 	| "handleAlarm"
 	| "handleSocketClose"

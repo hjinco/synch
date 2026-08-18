@@ -124,6 +124,49 @@ describe("sqlite backend: blob staging", () => {
 		expect(blobStore.readBlob("blob-1")).toBeNull();
 	});
 
+	it("deletes an unreferenced staged blob and reports a missing row", async () => {
+		const { blobStore, healthStore } = await createSqliteCoordinator();
+		await blobStore.stageBlob("blob-1", 100, 1_000, 2_000);
+
+		expect(blobStore.deleteUnreferencedStagedBlob("blob-1", 1_500)).toBe("deleted");
+		expect(blobStore.readBlob("blob-1")).toBeNull();
+		expect(healthStore.readStorageStatus().storageUsedBytes).toBe(0);
+		expect(blobStore.deleteUnreferencedStagedBlob("blob-1", 1_500)).toBe("missing");
+	});
+
+	it("does not delete a staged blob that is still referenced", async () => {
+		const { blobStore, handle, healthStore } = await createSqliteCoordinator();
+		await blobStore.stageBlob("blob-1", 100, 1_000, 2_000);
+		handle.exec(
+			`
+			INSERT INTO entries (
+				entry_id, revision, blob_id, encrypted_metadata, deleted,
+				updated_seq, updated_at, updated_by_user_id,
+				updated_by_local_vault_id, last_mutation_id
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			`,
+			"entry-1",
+			1,
+			"blob-1",
+			"metadata",
+			0,
+			1,
+			1_000,
+			"user-1",
+			"local-1",
+			"mutation-1",
+		);
+
+		expect(blobStore.deleteUnreferencedStagedBlob("blob-1", 1_500)).toBe(
+			"referenced",
+		);
+		expect(blobStore.readBlob("blob-1")).toMatchObject({
+			blob_id: "blob-1",
+			state: "staged",
+		});
+		expect(healthStore.readStorageStatus().storageUsedBytes).toBe(100);
+	});
+
 	it("marks a live blob pending-delete once its entry stops referencing it", async () => {
 		const { blobStore, mutationStore } = await createSqliteCoordinator();
 		await blobStore.stageBlob("blob-1", 100, 1_000, 2_000);

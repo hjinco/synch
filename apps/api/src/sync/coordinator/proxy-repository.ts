@@ -1,5 +1,5 @@
 import type { SubscriptionPlanPolicy } from "../../subscription/policy";
-import type { SyncPauseState } from "./ports";
+import type { SyncPauseState, SyncRepairResult } from "./ports";
 
 export type CoordinatorStub = {
 	fetch(request: Request): Promise<Response>;
@@ -37,6 +37,21 @@ export class CoordinatorProxyRepository {
 			syncPause: SyncPauseState | null;
 		};
 		return body.syncPause;
+	}
+
+	async repairSyncState(vaultId: string): Promise<SyncRepairResult> {
+		const stub = this.namespace.getByName(vaultId);
+		const response = await stub.fetch(
+			new Request(
+				`https://internal/internal/v1/vaults/${encodeURIComponent(vaultId)}/sync-repair`,
+				{ method: "POST" },
+			),
+		);
+		if (!response.ok) {
+			throw new Error(`failed to repair sync state for vault ${vaultId}: ${response.status}`);
+		}
+
+		return (await response.json()) as SyncRepairResult;
 	}
 
 	async stageBlob(

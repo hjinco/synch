@@ -36,6 +36,7 @@ import {
 import { CoordinatorHistoryStore } from "../sync/coordinator/store/history-store";
 import { CoordinatorMutationStore } from "../sync/coordinator/store/mutation-store";
 import type { CoordinatorStorageHandle } from "../sync/coordinator/store/storage-handle";
+import { CoordinatorSyncRepairService } from "../sync/coordinator/repair-service";
 import { VaultLifecycleService } from "../sync/coordinator/vault/lifecycle-service";
 import { VaultSyncStatusRepository } from "../sync/health/status-repository";
 import { VaultRepository } from "../vault/repository";
@@ -154,6 +155,12 @@ export function createCoordinatorApplication(
 		healthSyncService,
 		vaultLifecycleService,
 	);
+	const syncRepairService = new CoordinatorSyncRepairService(
+		blobStore,
+		cursorStore,
+		deps.blobStorage,
+		deps.maintenanceScheduler,
+	);
 	const useCases = new CoordinatorService({
 		blobSyncService,
 		entryHistoryService,
@@ -162,6 +169,7 @@ export function createCoordinatorApplication(
 		maintenanceService,
 		mutationCommitService,
 		socketConnectionService,
+		syncRepairService,
 		vaultLifecycleService,
 	});
 	const socketMessageHandler = new CoordinatorControlMessageHandler(

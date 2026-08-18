@@ -4,9 +4,11 @@ import { z } from "zod";
 
 import { onError } from "../../errors";
 import { BLOB_SIZE_HEADER, parseBlobSizeHeader } from "../blob/size";
+import type { SyncRepairResult } from "./ports";
 import type { VaultStateLimits } from "./types";
 
 export interface CoordinatorHttpUseCases {
+	repairSyncState(vaultId: string): Promise<SyncRepairResult>;
 	readSyncPause(vaultId: string): {
 		pausedAt: number;
 		reason: string;
@@ -36,6 +38,20 @@ export function createCoordinatorApp(
 	deps: { useCases: CoordinatorHttpUseCases },
 ) {
 	const app = new Hono();
+
+	app.post(
+		"/internal/v1/vaults/:vaultId/sync-repair",
+		zValidator(
+			"param",
+			z.object({
+				vaultId: z.string().trim().min(1),
+			}),
+		),
+		async (c) => {
+			const { vaultId } = c.req.valid("param");
+			return c.json(await deps.useCases.repairSyncState(vaultId));
+		},
+	);
 
 	app.get(
 		"/internal/v1/vaults/:vaultId/sync-state",

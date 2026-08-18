@@ -2,7 +2,7 @@ import { and, eq, sql } from "drizzle-orm";
 
 import * as doSchema from "../../../db/do";
 import { DomainError } from "../../../errors";
-import type { StageBlobResult } from "../ports";
+import type { StageBlobResult, UnreferencedStagedBlobDeleteResult } from "../ports";
 import type { BlobRow, BlobState } from "../types";
 import { STAGED_BLOB_STALE_MS } from "./health-store";
 import type { CoordinatorDb, CoordinatorStorageHandle } from "./storage-handle";
@@ -149,6 +149,37 @@ export class CoordinatorBlobStore {
 		return row ? toBlobRow(row) : null;
 	}
 
+	listStaleStagedBlobs(now: number, limit: number): BlobRow[] {
+		return this.handle
+			.exec<{
+				blob_id: string;
+				state: string;
+				size_bytes: number;
+				created_at: number;
+				last_uploaded_at: number;
+				delete_after: number | null;
+			}>(
+				`
+				SELECT
+					blob_id,
+					state,
+					size_bytes,
+					created_at,
+					last_uploaded_at,
+					delete_after
+				FROM blobs
+				WHERE state = 'staged'
+					AND created_at <= ?
+				ORDER BY created_at ASC, blob_id ASC
+				LIMIT ?
+				`,
+				now - STAGED_BLOB_STALE_MS,
+				limit,
+			)
+			.toArray()
+			.map(toBlobRow);
+	}
+
 	deleteBlobRecord(blobId: string): void {
 		this.handle.db.transaction((tx) => {
 			const existing = tx
@@ -197,6 +228,35 @@ export class CoordinatorBlobStore {
 				.where(eq(doSchema.blobs.blobId, blobId))
 				.run();
 			decrementStorageUsedBytes(tx, Number(existing.sizeBytes));
+		});
+	}
+
+	deleteUnreferencedStagedBlob(
+		blobId: string,
+		now = Date.now(),
+	): UnreferencedStagedBlobDeleteResult {
+		return this.handle.db.transaction((tx) => {
+			const existing = tx
+				.select({
+					state: doSchema.blobs.state,
+					sizeBytes: doSchema.blobs.sizeBytes,
+				})
+				.from(doSchema.blobs)
+				.where(eq(doSchema.blobs.blobId, blobId))
+				.limit(1)
+				.get();
+			if (!existing) {
+				return "missing";
+			}
+			if (existing.state !== "staged" || this.isBlobPinned(blobId, false, now)) {
+				return "referenced";
+			}
+
+			tx.delete(doSchema.blobs)
+				.where(eq(doSchema.blobs.blobId, blobId))
+				.run();
+			decrementStorageUsedBytes(tx, Number(existing.sizeBytes));
+			return "deleted";
 		});
 	}
 

@@ -45,6 +45,8 @@ export function createRuntimeApp(env: CloudflareRuntimeEnv, request: Request) {
 						: undefined,
 			},
 			syncTokenSecret: env.SYNC_TOKEN_SECRET,
+			adminToken:
+				config.profile.edition === "managed" ? env.ADMIN_TOKEN : undefined,
 			syncTokenTtlSeconds: env.SYNC_TOKEN_TTL_SECONDS,
 			productIdsByPlanId,
 			billing: {

@@ -51,6 +51,7 @@ export interface VaultStateStore {
 	ensureVaultState(vaultId: string, initialLimits: VaultStateLimits): void;
 	readVaultId(): string | null;
 	readSyncPause(): SyncPauseState | null;
+	clearSyncPause(): void;
 	vaultStateExistsFor(vaultId: string): boolean;
 	recordLocalVaultConnection(userId: string, localVaultId: string): void;
 	deleteLocalVaultConnection(userId: string, localVaultId: string): void;
@@ -66,6 +67,21 @@ export interface VaultStateStore {
 export type SyncPauseState = {
 	pausedAt: number;
 	reason: string;
+};
+
+export type SyncRepairIssue =
+	| "unsupported_pause_reason"
+	| "referenced_staged_blob"
+	| "blob_storage_delete_failed"
+	| "repair_limit_exceeded";
+
+export type SyncRepairResult = {
+	status: "repaired" | "not_paused" | "manual_repair_required";
+	deletedStagedBlobCount: number;
+	remainingStaleStagedBlobCount: number;
+	nextGcAt: number | null;
+	pause: SyncPauseState | null;
+	issue?: SyncRepairIssue;
 };
 
 export interface EntryStateStore {
@@ -118,6 +134,11 @@ export interface MutationStore {
 	): Promise<CommitMutationsResult>;
 }
 
+export type UnreferencedStagedBlobDeleteResult =
+	| "deleted"
+	| "missing"
+	| "referenced";
+
 export interface BlobStateStore {
 	stageBlob(
 		blobId: string,
@@ -126,8 +147,13 @@ export interface BlobStateStore {
 		deleteAfter: number,
 	): Promise<StageBlobResult>;
 	readBlob(blobId: string): BlobRow | null;
+	listStaleStagedBlobs(now: number, limit: number): BlobRow[];
 	deleteBlobRecord(blobId: string): void;
 	abortStagedBlob(blobId: string, now?: number): void;
+	deleteUnreferencedStagedBlob(
+		blobId: string,
+		now?: number,
+	): UnreferencedStagedBlobDeleteResult;
 	isBlobPinned(blobId: string, includeStaging?: boolean, now?: number): boolean;
 	listBlobsReadyForDeletion(now: number, limit: number): BlobRow[];
 	deleteBlobIfCollectible(blobId: string, now?: number): void;

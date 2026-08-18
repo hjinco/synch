@@ -23,6 +23,7 @@ import type {
 	VaultStateStore,
 } from "../../ports";
 import { CoordinatorService } from "../../service";
+import { CoordinatorSyncRepairService } from "../../repair-service";
 import { CoordinatorControlMessageHandler } from "../../socket/control-message-handler";
 import { CoordinatorSocketConnectionService } from "../../socket/connection-service";
 import { VaultLifecycleService } from "../../vault/lifecycle-service";
@@ -54,6 +55,7 @@ export function createTestCoordinatorState(
 		ensureVaultState: vi.fn(),
 		readVaultId: vi.fn(() => "vault-1"),
 		readSyncPause: vi.fn(() => null),
+		clearSyncPause: vi.fn(),
 		vaultStateExistsFor: vi.fn(() => true),
 		recordLocalVaultConnection: vi.fn(),
 		deleteLocalVaultConnection: vi.fn(),
@@ -82,8 +84,10 @@ export function createTestCoordinatorState(
 		})),
 		stageBlob: vi.fn(async () => ({ status: "staged" as const })),
 		readBlob: vi.fn(() => null),
+		listStaleStagedBlobs: vi.fn(() => []),
 		deleteBlobRecord: vi.fn(),
 		abortStagedBlob: vi.fn(),
+		deleteUnreferencedStagedBlob: vi.fn(() => "referenced" as const),
 		isBlobPinned: vi.fn(() => false),
 		listBlobsReadyForDeletion: vi.fn(() => []),
 		deleteBlobIfCollectible: vi.fn(),
@@ -198,6 +202,12 @@ export function createCoordinatorService({
 		healthSyncService,
 		vaultLifecycleService,
 	);
+	const syncRepairService = new CoordinatorSyncRepairService(
+		stateRepository,
+		stateRepository,
+		blobRepository,
+		maintenanceScheduler,
+	);
 	coordinatorService = new CoordinatorService({
 		blobSyncService,
 		entryHistoryService,
@@ -206,6 +216,7 @@ export function createCoordinatorService({
 		maintenanceService,
 		mutationCommitService,
 		socketConnectionService,
+		syncRepairService,
 		vaultLifecycleService,
 	});
 	const socketMessageHandler = new CoordinatorControlMessageHandler(

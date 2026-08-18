@@ -53,6 +53,17 @@ export class CoordinatorCursorStore {
 		};
 	}
 
+	clearSyncPause(): void {
+		this.handle.exec(
+			`
+			UPDATE coordinator_state
+			SET sync_paused_at = NULL,
+				sync_pause_reason = NULL
+			WHERE id = 1
+			`,
+		);
+	}
+
 	vaultStateExistsFor(vaultId: string): boolean {
 		const existingVaultId = this.readVaultId();
 		if (!existingVaultId) {

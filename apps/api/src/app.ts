@@ -15,6 +15,7 @@ import { registerBlobRoutes } from "./sync/blob/routes";
 import type { BlobStorage } from "./sync/blob/storage";
 import { registerCoordinatorProxyRoutes } from "./sync/coordinator/proxy-routes";
 import type { CoordinatorProxyRepository } from "./sync/coordinator/proxy-repository";
+import { registerSyncRepairRoutes } from "./sync/repair/routes";
 import { registerVaultRoutes } from "./vault/routes";
 import type { VaultService } from "./vault/service";
 
@@ -31,6 +32,7 @@ export type AppDependencies = {
 
 export type AppConfig = {
 	corsOrigin: string;
+	adminToken?: string;
 };
 
 export type { VaultRecord } from "./vault/types";
@@ -59,6 +61,10 @@ export function createApp(deps: AppDependencies, config: AppConfig): Hono {
 	}
 	registerBlobRoutes(app, deps);
 	registerCoordinatorProxyRoutes(app, deps);
+	registerSyncRepairRoutes(app, {
+		coordinatorProxyRepository: deps.coordinatorProxyRepository,
+		adminToken: config.adminToken,
+	});
 
 	app.notFound((c) =>
 		c.json(

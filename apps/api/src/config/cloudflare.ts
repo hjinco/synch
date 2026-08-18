@@ -18,6 +18,7 @@ export type CloudflareRuntimeEnv = Omit<
 	| "POLICY_REFRESH_QUEUE"
 	| "VAULT_PURGE_QUEUE"
 	| "RETENTION_NOTIFICATION_QUEUE"
+	| "ADMIN_TOKEN"
 > & {
 	AUTH_ALLOWED_EMAILS?: string;
 	EMAIL?: SendEmail;
@@ -32,6 +33,7 @@ export type CloudflareRuntimeEnv = Omit<
 	POLICY_REFRESH_QUEUE?: Queue<SubscriptionPolicyRefreshMessage>;
 	VAULT_PURGE_QUEUE?: Queue<VaultPurgeMessage>;
 	RETENTION_NOTIFICATION_QUEUE?: Queue<VaultRetentionEmailMessage>;
+	ADMIN_TOKEN?: string;
 };
 
 export type CloudflareHttpConfig = {

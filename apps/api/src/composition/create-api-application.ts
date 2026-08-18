@@ -35,6 +35,7 @@ export type ApiApplicationConfig = {
 	corsOrigin: string;
 	auth: Omit<AuthConfig, "emailVerification" | "plugins">;
 	syncTokenSecret: string;
+	adminToken?: string;
 	syncTokenTtlSeconds?: number;
 	productIdsByPlanId: SubscriptionProductIdsByPlanId;
 	billing?: PolarClientConfig & {
@@ -105,6 +106,7 @@ export function createApiApplication(
 			},
 			{
 				corsOrigin: config.corsOrigin,
+				adminToken: config.adminToken,
 			},
 		),
 		syncTokenService,

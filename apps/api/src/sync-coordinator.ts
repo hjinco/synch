@@ -118,6 +118,13 @@ export class SyncCoordinator extends DurableObject {
 		await this.useCases.runGc();
 	}
 
+	async repairSyncState(
+		vaultId: string,
+	): Promise<Awaited<ReturnType<CoordinatorDurableObjectUseCases["repairSyncState"]>>> {
+		await this.ready;
+		return await this.useCases.repairSyncState(vaultId);
+	}
+
 	async flushHealthSummary(): Promise<void> {
 		await this.ready;
 		await this.useCases.flushHealthSummary();
