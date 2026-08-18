@@ -96,35 +96,38 @@ export class PushMutationPreparer {
       };
     }
 
-    try {
-      await this.blobClient.uploadBlob(
-        this.deps.getApiBaseUrl(),
-        token.token,
-        token.vaultId,
-        blobId,
-        encryptedBytes,
-      );
-    } catch (error) {
-      if (isQuotaExceededUploadError(error)) {
-        return {
-          skipped: true,
-          reason: "storage_quota_exceeded",
-        };
-      }
-      if (isFileTooLargeUploadError(error)) {
-        await this.blockOversizedUpsert(
-          store,
-          mutation,
-          encryptedBytes.byteLength,
-          maxFileSizeBytes > 0 ? maxFileSizeBytes : null,
+    if (!this.deps.remotelyStagedBlobIds.has(blobId)) {
+      try {
+        await this.blobClient.uploadBlob(
+          this.deps.getApiBaseUrl(),
+          token.token,
+          token.vaultId,
+          blobId,
+          encryptedBytes,
         );
-        return {
-          skipped: true,
-          reason: "file_too_large",
-        };
-      }
+      } catch (error) {
+        if (isQuotaExceededUploadError(error)) {
+          return {
+            skipped: true,
+            reason: "storage_quota_exceeded",
+          };
+        }
+        if (isFileTooLargeUploadError(error)) {
+          await this.blockOversizedUpsert(
+            store,
+            mutation,
+            encryptedBytes.byteLength,
+            maxFileSizeBytes > 0 ? maxFileSizeBytes : null,
+          );
+          return {
+            skipped: true,
+            reason: "file_too_large",
+          };
+        }
 
-      throw error;
+        throw error;
+      }
+      this.deps.remotelyStagedBlobIds.add(blobId);
     }
 
     return {

@@ -23,6 +23,7 @@ export interface PushMutationCommitterDeps {
   fileReader: LocalFileReader;
   conflictFileWriter?: ConflictFileWriter;
   blobClient: Pick<SyncBlobClient, "uploadBlob">;
+  remotelyStagedBlobIds: Set<string>;
   onConflict?: (event: PushConflictEvent) => void;
   now?: () => number;
 }

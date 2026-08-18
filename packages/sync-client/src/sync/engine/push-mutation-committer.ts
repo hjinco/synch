@@ -101,6 +101,7 @@ export class PushMutationCommitter {
     try {
       accepted = await session.commitMutation(prepared.commitPayload);
     } catch (error) {
+      this.forgetRemotelyStagedBlobIfMissing(error, mutation.blobId);
       if (isPullResolvableStaleRevision(error)) {
         return {
           status: "stale",
@@ -189,7 +190,16 @@ export class PushMutationCommitter {
       };
     }
 
+    this.forgetRemotelyStagedBlobIfMissing(rejected, mutation.blobId);
     throw new SyncRealtimeError(rejected.code, rejected.message);
+  }
+
+  forgetRemotelyStagedBlobsIfMissing(
+    rejections: ReadonlyArray<{ blobId: string | null; error: unknown }>,
+  ): void {
+    for (const { blobId, error } of rejections) {
+      this.forgetRemotelyStagedBlobIfMissing(error, blobId);
+    }
   }
 
   async buildAcceptedPushMutation(
@@ -258,6 +268,16 @@ export class PushMutationCommitter {
     return event;
   }
 
+  private forgetRemotelyStagedBlobIfMissing(
+    error: unknown,
+    blobId: string | null,
+  ): void {
+    if (!blobId || !isMissingRemoteBlobError(error)) {
+      return;
+    }
+    this.deps.remotelyStagedBlobIds.delete(blobId);
+  }
+
   private getSyncCryptoContext(): SyncCryptoContext {
     if (this.deps.getSyncCryptoContext) {
       return this.deps.getSyncCryptoContext();
@@ -275,4 +295,12 @@ export class PushMutationCommitter {
 
     return await writeConflictCopy(writer, path, bytes, this.deps.now);
   }
+}
+
+function isMissingRemoteBlobError(error: unknown): boolean {
+  if (typeof error !== "object" || error === null || !("code" in error)) {
+    return false;
+  }
+  const code = (error as { code?: unknown }).code;
+  return code === "blob_not_staged" || code === "blob_not_found";
 }

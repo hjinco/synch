@@ -85,6 +85,8 @@ export interface PushPendingMutationsResult {
 }
 
 export class SyncPushService {
+  private readonly remotelyStagedBlobIds = new Set<string>();
+
   constructor(private readonly deps: SyncPushServiceDeps) {}
 
   async pushPendingMutations(
@@ -261,6 +263,13 @@ export class SyncPushService {
           this.deps.onFileSyncCompleted?.(accepted);
         }
 
+        mutationCommitter.forgetRemotelyStagedBlobsIfMissing(
+          rejectedPushMutations.map(({ mutation, result }) => ({
+            blobId: mutation.blobId,
+            error: result,
+          })),
+        );
+
         for (const { mutation, result: batchResult } of rejectedPushMutations) {
           const path = committable.find(
             (item) => item.mutation.mutationId === mutation.mutationId,
@@ -401,6 +410,7 @@ export class SyncPushService {
       fileReader: this.deps.fileReader,
       conflictFileWriter: this.deps.conflictFileWriter,
       blobClient: this.deps.blobClient,
+      remotelyStagedBlobIds: this.remotelyStagedBlobIds,
       onConflict: this.deps.onConflict,
       now: this.deps.now,
     });
