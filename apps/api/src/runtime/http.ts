@@ -1,14 +1,12 @@
-import { readPolarProductIdsByPlanId } from "../billing/product-ids";
+import { readPolarProductIdsByPlanId } from "../billing/adapters/outbound/product-ids";
 import { createApiApplication } from "../composition/create-api-application";
 import {
 	parseCloudflareHttpConfig,
 	type CloudflareRuntimeEnv,
 } from "../config/cloudflare";
+import { createSubscriptionPolicyRefreshQueue } from "../composition/features/create-subscription-feature";
 import { createDb } from "../db/client";
-import { CloudflareSubscriptionPolicyRefreshQueue } from "../subscription/policy-refresh-queue";
-import { BlobRepository } from "../sync/blob/repository";
-import { InlineVaultPurgeQueue } from "../vault/inline-purge-queue";
-import { CloudflareVaultPurgeQueue } from "../vault/purge-queue";
+import { R2BlobObjectStorage } from "../sync-blob-transfer/adapters/outbound/r2-object-storage";
 
 export function createRuntimeApp(env: CloudflareRuntimeEnv, request: Request) {
 	const config = parseCloudflareHttpConfig(env, request);
@@ -16,14 +14,12 @@ export function createRuntimeApp(env: CloudflareRuntimeEnv, request: Request) {
 	const application = createApiApplication(
 		{
 			db: createDb(env.DB),
-			blobStorage: new BlobRepository(env.SYNC_BLOBS),
+			blobStorage: new R2BlobObjectStorage(env.SYNC_BLOBS),
 			coordinatorNamespace: env.SYNC_COORDINATOR,
-			createVaultPurgeQueue: (consumer) =>
+			vaultPurgeQueue:
 				config.capabilities.backgroundJobs === "cloudflare-queue"
-					? new CloudflareVaultPurgeQueue(
-							requireBinding(env.VAULT_PURGE_QUEUE, "VAULT_PURGE_QUEUE"),
-						)
-					: new InlineVaultPurgeQueue(consumer),
+					? requireBinding(env.VAULT_PURGE_QUEUE, "VAULT_PURGE_QUEUE")
+					: undefined,
 		},
 		{
 			profile: config.profile,
@@ -56,7 +52,7 @@ export function createRuntimeApp(env: CloudflareRuntimeEnv, request: Request) {
 				publicBaseUrl: config.authBaseUrl,
 				wwwBaseUrl: config.corsOrigin,
 				onSubscriptionUpsert: async (organizationId) => {
-					const queue = new CloudflareSubscriptionPolicyRefreshQueue(
+					const queue = createSubscriptionPolicyRefreshQueue(
 						requireBinding(env.POLICY_REFRESH_QUEUE, "POLICY_REFRESH_QUEUE"),
 					);
 					await queue.enqueueOrganizationPolicyRefresh(organizationId);

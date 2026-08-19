@@ -4,14 +4,14 @@ import type { Server as NodeHttpServer } from "node:http";
 import { parseNodeServerConfig, type NodeBlobConfig } from "./config/node";
 import { createNodeWebSocketUpgradeHandler } from "./runtime/node-websocket";
 import { shutdownNodeServer } from "./runtime/node-shutdown";
-import { LocalDiskBlobStorage } from "./sync/blob/local-disk-storage";
-import { S3BlobStorage } from "./sync/blob/s3-storage";
-import type { BlobStorage } from "./sync/blob/storage";
+import { LocalDiskBlobObjectStorage } from "./sync-blob-transfer/adapters/outbound/local-disk-object-storage";
+import { S3BlobObjectStorage } from "./sync-blob-transfer/adapters/outbound/s3-object-storage";
+import type { BlobObjectStorage } from "./sync-blob-transfer/application/ports/outbound/blob-object-storage";
 import { createNodeRuntime } from "./runtime/node";
 
-function createBlobStorage(config: NodeBlobConfig): BlobStorage {
+function createBlobStorage(config: NodeBlobConfig): BlobObjectStorage {
 	if (config.kind === "s3") {
-		return new S3BlobStorage({
+		return new S3BlobObjectStorage({
 			endpoint: config.endpoint,
 			bucket: config.bucket,
 			region: config.region,
@@ -19,7 +19,7 @@ function createBlobStorage(config: NodeBlobConfig): BlobStorage {
 			secretAccessKey: config.secretAccessKey,
 		});
 	}
-	return new LocalDiskBlobStorage(config.directory);
+	return new LocalDiskBlobObjectStorage(config.directory);
 }
 
 async function main(): Promise<void> {

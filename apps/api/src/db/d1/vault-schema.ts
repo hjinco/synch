@@ -9,7 +9,7 @@ import {
 } from "drizzle-orm/sqlite-core";
 
 import { organization, user } from "./auth-schema";
-import type { VaultKeyEnvelope } from "../../vault/types";
+import type { VaultKeyEnvelope } from "../../vault/domain/types";
 
 export const vault = sqliteTable("vault", {
 	id: text("id").primaryKey(),

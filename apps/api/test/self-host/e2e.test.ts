@@ -10,8 +10,11 @@ import WebSocket from "ws";
 
 import { createNodeRuntime, type NodeRuntime } from "../../src/runtime/node";
 import { createNodeWebSocketUpgradeHandler } from "../../src/runtime/node-websocket";
-import { LocalDiskBlobStorage } from "../../src/sync/blob/local-disk-storage";
-import { SYNC_WEBSOCKET_AUTH_PROTOCOL_PREFIX, SYNC_WEBSOCKET_PROTOCOL } from "../../src/sync/access/token";
+import { LocalDiskBlobObjectStorage } from "../../src/sync-blob-transfer/adapters/outbound/local-disk-object-storage";
+import {
+	SYNC_WEBSOCKET_AUTH_PROTOCOL_PREFIX,
+	SYNC_WEBSOCKET_PROTOCOL,
+} from "../../src/sync-access/application";
 
 const API_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const TSX_BIN = path.join(API_ROOT, "node_modules/.bin/tsx");
@@ -73,7 +76,7 @@ async function bootServer(existingDataDir?: string) {
 		betterAuthSecret: "test-secret-test-secret-test-secret",
 		authAllowedEmails: SELF_HOST_ALLOWED_EMAIL,
 		syncTokenSecret: "test-sync-token-secret-test-sync",
-		blobStorage: new LocalDiskBlobStorage(path.join(dataDir, "blobs")),
+		blobStorage: new LocalDiskBlobObjectStorage(path.join(dataDir, "blobs")),
 	});
 	const { wss, handleUpgrade } = createNodeWebSocketUpgradeHandler(runtime, baseUrl);
 	const server = serve({ fetch: (request) => runtime.fetch(request), port });

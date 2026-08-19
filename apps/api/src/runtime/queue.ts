@@ -1,21 +1,22 @@
-import { readPolarProductIdsByPlanId } from "../billing/product-ids";
+import { readPolarProductIdsByPlanId } from "../billing/adapters/outbound/product-ids";
 import { readCloudflareProfile } from "../config/cloudflare";
 import { isCommunityEdition } from "../config/deployment-profile";
-import { createDb } from "../db/client";
-import { SubscriptionPolicyRefreshConsumer } from "../subscription/policy-refresh-consumer";
-import type { SubscriptionPolicyRefreshMessage } from "../subscription/policy-refresh-queue";
-import { SubscriptionPolicyRefreshService } from "../subscription/policy-refresh-service";
-import { SubscriptionPolicyService } from "../subscription/policy-service";
-import { CoordinatorProxyRepository } from "../sync/coordinator/proxy-repository";
-import { VaultPurgeConsumer } from "../vault/purge-consumer";
-import type { VaultPurgeMessage } from "../vault/purge-queue";
-import { VaultRetentionEmailConsumer } from "../vault/retention-email-consumer";
 import {
-	CloudflareVaultRetentionEmailQueue,
-	type VaultRetentionEmailMessage,
-} from "../vault/retention-queue";
-import { VaultRepository } from "../vault/repository";
-import { VaultService } from "../vault/service";
+	createSubscriptionFeature,
+	createSubscriptionRefreshFeature,
+	type SubscriptionRefreshFeature,
+} from "../composition/features/create-subscription-feature";
+import {
+	createVaultFeature,
+	type VaultFeature,
+} from "../composition/features/create-vault-feature";
+import { createDb } from "../db/client";
+import type { SubscriptionPolicyRefreshMessage } from "../subscription/application";
+import { CoordinatorProxyRepository } from "../sync-coordinator/adapters/outbound/durable-object-rpc/coordinator-proxy-repository";
+import type {
+	VaultPurgeMessage,
+	VaultRetentionEmailMessage,
+} from "../vault/application";
 
 export type QueueMessage =
 	| VaultPurgeMessage
@@ -25,41 +26,40 @@ export type QueueMessage =
 export function createQueueConsumer(env: Env): QueueConsumer {
 	const profile = readCloudflareProfile(env);
 	const db = createDb(env.DB);
-	const vaultRepository = new VaultRepository(db);
-	const subscriptionPolicyService = new SubscriptionPolicyService(
-		isCommunityEdition(profile),
-		db,
-		{
-			productIdsByPlanId: readPolarProductIdsByPlanId(env),
-		},
-	);
-	const vaultService = new VaultService(vaultRepository, subscriptionPolicyService);
 	const coordinatorProxyRepository = new CoordinatorProxyRepository(env.SYNC_COORDINATOR);
-	const policyRefreshService = new SubscriptionPolicyRefreshService(
-		subscriptionPolicyService,
-		vaultRepository,
-		coordinatorProxyRepository,
-	);
+	const subscriptionFeature = createSubscriptionFeature(db, {
+		selfHosted: isCommunityEdition(profile),
+		productIdsByPlanId: readPolarProductIdsByPlanId(env),
+	});
+	const vaultFeature = createVaultFeature({
+		db,
+		policyReader: subscriptionFeature.policyReader,
+		coordinatorPurgeTransport: coordinatorProxyRepository,
+		retentionEmailQueue: env.RETENTION_NOTIFICATION_QUEUE as
+			| Queue<VaultRetentionEmailMessage>
+			| undefined,
+		email: env.EMAIL,
+		emailFrom: env.AUTH_EMAIL_FROM,
+	});
+	const subscriptionRefreshFeature = createSubscriptionRefreshFeature({
+		db,
+		selfHosted: isCommunityEdition(profile),
+		productIdsByPlanId: readPolarProductIdsByPlanId(env),
+		vaultReader: vaultFeature.organizationReader,
+		vaultPolicyTransport: coordinatorProxyRepository,
+	});
 	return new QueueConsumer(
-		new VaultPurgeConsumer(
-			vaultService,
-			coordinatorProxyRepository,
-			env.RETENTION_NOTIFICATION_QUEUE
-				? new CloudflareVaultRetentionEmailQueue(
-						env.RETENTION_NOTIFICATION_QUEUE as Queue<VaultRetentionEmailMessage>,
-					)
-				: undefined,
-		),
-		new SubscriptionPolicyRefreshConsumer(policyRefreshService),
-		new VaultRetentionEmailConsumer(env.EMAIL, env.AUTH_EMAIL_FROM),
+		vaultFeature.purgeConsumer,
+		subscriptionRefreshFeature.consumer,
+		vaultFeature.retentionEmailConsumer,
 	);
 }
 
 export class QueueConsumer {
 	constructor(
-		private readonly vaultPurgeConsumer: VaultPurgeConsumer,
-		private readonly policyRefreshConsumer: SubscriptionPolicyRefreshConsumer,
-		private readonly retentionEmailConsumer: VaultRetentionEmailConsumer,
+		private readonly vaultPurgeConsumer: VaultFeature["purgeConsumer"],
+		private readonly policyRefreshConsumer: SubscriptionRefreshFeature["consumer"],
+		private readonly retentionEmailConsumer: VaultFeature["retentionEmailConsumer"],
 	) {}
 
 	async handleBatch(batch: MessageBatch<QueueMessage>): Promise<void> {

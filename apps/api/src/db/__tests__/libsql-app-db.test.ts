@@ -8,8 +8,8 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import * as schema from "../d1";
 import { createLibsqlDb, pingDatabase } from "../client";
-import { VaultSyncStatusRepository } from "../../sync/health/status-repository";
-import type { VaultSyncStatusSummary } from "../../sync/health/types";
+import { VaultSyncStatusRepository } from "../../sync-coordinator/adapters/outbound/health-persistence/status-repository";
+import type { VaultSyncStatusSummary } from "../../sync-coordinator/application/dto/health";
 
 /**
  * The app-level DB (users/orgs/vaults/auth) swaps D1 for a local libSQL file

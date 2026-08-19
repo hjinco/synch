@@ -5,7 +5,7 @@ import {
 	runVaultRetentionSchedule,
 } from "./runtime";
 import type { QueueMessage } from "./runtime";
-export { SyncCoordinator } from "./sync-coordinator";
+export { SyncCoordinator } from "./sync-coordinator/adapters/inbound/durable-object-rpc/sync-coordinator";
 
 export default {
 	async fetch(request, env): Promise<Response> {

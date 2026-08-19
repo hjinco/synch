@@ -2,22 +2,23 @@ import { env } from "cloudflare:workers";
 import { describe, expect, it, vi } from "vitest";
 
 import { createDb } from "../../src/db/client";
-import { getSubscriptionPlanPolicy } from "../../src/subscription/policy";
-import { VaultPurgeConsumer } from "../../src/vault/purge-consumer";
+import { getSubscriptionPlanPolicy } from "../../src/subscription/domain/policy";
+import { VaultPurgeConsumer } from "../../src/vault/adapters/inbound/queue/purge-consumer";
+import { VaultRetentionEmailConsumer } from "../../src/vault/adapters/inbound/queue/retention-email-consumer";
 import {
 	CloudflareVaultPurgeQueue,
-	type VaultPurgeMessage,
-} from "../../src/vault/purge-queue";
-import { VaultRepository } from "../../src/vault/repository";
-import { VaultRetentionEmailConsumer } from "../../src/vault/retention-email-consumer";
+} from "../../src/vault/adapters/outbound/purge-queue";
+import type { VaultPurgeMessage, VaultRetentionEmailMessage } from "../../src/vault/application";
+import { PurgeVaultUseCase } from "../../src/vault/application/use-cases/purge-vault";
 import {
 	CloudflareVaultRetentionEmailQueue,
-	type VaultRetentionEmailMessage,
-} from "../../src/vault/retention-queue";
+} from "../../src/vault/adapters/outbound/retention-queue";
+import { DrizzleVaultStore } from "../../src/vault/adapters/outbound/drizzle-vault-store";
+import { EmailRetentionNotificationSender } from "../../src/vault/adapters/outbound/email-retention-notification-sender";
 import {
 	FREE_VAULT_INACTIVITY_DELETE_AFTER_MS,
-	VaultRetentionService,
-} from "../../src/vault/retention-service";
+} from "../../src/vault/application/use-cases/run-vault-retention";
+import { RunVaultRetentionUseCase } from "../../src/vault/application/use-cases/run-vault-retention";
 import { signUpAndCreateVault } from "../helpers/api";
 
 /**
@@ -37,10 +38,10 @@ function recordingQueue<T>(): { sent: T[]; queue: Queue<T> } {
 }
 
 function freeRetentionService(
-	repository: VaultRepository,
+	repository: DrizzleVaultStore,
 	purgeQueue: CloudflareVaultPurgeQueue,
 ) {
-	return new VaultRetentionService(
+	return new RunVaultRetentionUseCase(
 		repository,
 		{ readOrganizationPolicy: async () => getSubscriptionPlanPolicy("free") },
 		purgeQueue,
@@ -63,7 +64,7 @@ describe("vault inactivity retention integration", () => {
 		const now = Date.now();
 		await backdateVault(fixture.vaultId, now - FREE_VAULT_INACTIVITY_DELETE_AFTER_MS);
 
-		const repository = new VaultRepository(createDb(env.DB));
+		const repository = new DrizzleVaultStore(createDb(env.DB));
 		const purges = recordingQueue<VaultPurgeMessage>();
 		await freeRetentionService(
 			repository,
@@ -95,16 +96,9 @@ describe("vault inactivity retention integration", () => {
 
 		const notices = recordingQueue<VaultRetentionEmailMessage>();
 		const purgeConsumer = new VaultPurgeConsumer(
-			{
-				markVaultPurgeRunning: (vaultId: string) =>
-					repository.markVaultPurgeRunning(vaultId),
-				markVaultPurgeFailed: (vaultId: string, message: string) =>
-					repository.markVaultPurgeFailed(vaultId, message),
-				hardDeleteVault: (vaultId: string) => repository.hardDeleteVault(vaultId),
-			} as never,
-			{
-				purgeVault: vi.fn(async () => new Response(null, { status: 204 })),
-			} as never,
+			new PurgeVaultUseCase(repository, {
+				purgeVault: vi.fn(async () => {}),
+			}),
 			new CloudflareVaultRetentionEmailQueue(notices.queue),
 		);
 		const purgeMessage = queueMessage(purges.sent[0]);
@@ -123,8 +117,10 @@ describe("vault inactivity retention integration", () => {
 		};
 		const noticeMessage = queueMessage(notices.sent[0]);
 		await new VaultRetentionEmailConsumer(
-			email as never,
-			"Synch <noreply@synch.run>",
+			new EmailRetentionNotificationSender(
+				email as never,
+				"Synch <noreply@synch.run>",
+			),
 		).handleMessage(noticeMessage as never);
 
 		expect(email.send).toHaveBeenCalledWith(
@@ -145,7 +141,7 @@ describe("vault inactivity retention integration", () => {
 			.bind(fixture.vaultId, now, now, now, now)
 			.run();
 
-		const repository = new VaultRepository(createDb(env.DB));
+		const repository = new DrizzleVaultStore(createDb(env.DB));
 		const purges = recordingQueue<VaultPurgeMessage>();
 		await freeRetentionService(
 			repository,

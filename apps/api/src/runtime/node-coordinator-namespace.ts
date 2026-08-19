@@ -1,8 +1,8 @@
 import { mkdirSync } from "node:fs";
 import path from "node:path";
 
-import { openExclusiveSqliteConnection } from "../sync/coordinator/store/sqlite-storage-handle";
-import type { CoordinatorStub } from "../sync/coordinator/proxy-repository";
+import { openExclusiveSqliteConnection } from "../sync-coordinator/adapters/outbound/sqlite/storage-handle";
+import type { CoordinatorStub } from "../sync-coordinator/adapters/outbound/durable-object-rpc/coordinator-proxy-repository";
 import { createNodeCoordinatorRuntime, type NodeCoordinatorSharedDeps } from "./node-coordinator";
 import type { NodeCoordinatorRuntime } from "./node-coordinator";
 

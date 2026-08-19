@@ -2,7 +2,16 @@ import type { IncomingMessage } from "node:http";
 import type { Duplex } from "node:stream";
 import { WebSocketServer, type WebSocket as WsWebSocket } from "ws";
 
-import { selectSyncWebSocketProtocol } from "../sync/access/token";
+import {
+	parseBearerToken,
+	SYNC_WEBSOCKET_AUTH_PROTOCOL_PREFIX,
+	SYNC_WEBSOCKET_PROTOCOL,
+} from "../sync-access/application";
+import {
+	formatClientControlMessageError,
+	parseClientControlMessage,
+} from "../sync-coordinator/adapters/inbound/websocket/protocol";
+import type { ClientControlMessage } from "../sync-coordinator/application/dto/protocol-types";
 import type { NodeRuntime } from "./node";
 
 const SOCKET_PATH_PATTERN = /^\/v1\/vaults\/([^/]+)\/socket$/;
@@ -63,7 +72,7 @@ export function createNodeWebSocketUpgradeHandler(runtime: NodeRuntime, publicUr
 		let session;
 		try {
 			session = await coordinator.socketConnectionService.prepareSocketSession(
-				request,
+				readSyncToken(request),
 				vaultId,
 			);
 		} catch {
@@ -79,7 +88,7 @@ export function createNodeWebSocketUpgradeHandler(runtime: NodeRuntime, publicUr
 
 		wss.handleUpgrade(req, socket, head, (rawWs) => {
 			const ws = rawWs as WsWebSocket;
-			coordinator.socketGateway.registerSocket(ws, session);
+			const connectionId = coordinator.socketGateway.registerSocket(ws, session);
 
 			ws.on("message", (data, isBinary) => {
 				const message = isBinary
@@ -87,7 +96,35 @@ export function createNodeWebSocketUpgradeHandler(runtime: NodeRuntime, publicUr
 					: (Buffer.isBuffer(data) ? data : Buffer.concat(data as Buffer[])).toString(
 							"utf8",
 						);
-				track(coordinator.socketMessageHandler.handle(ws as unknown as WebSocket, message))
+			let parsed: ClientControlMessage;
+				try {
+					if (typeof message !== "string") {
+						coordinator.socketGateway.sendSocketMessage(connectionId, {
+							type: "session_error",
+							code: "invalid_message",
+							message: "binary websocket messages are not supported",
+						});
+						return;
+					}
+					const result = parseClientControlMessage(JSON.parse(message));
+					if (!result.success) {
+						coordinator.socketGateway.sendSocketMessage(connectionId, {
+							type: "session_error",
+							code: "invalid_message",
+							message: formatClientControlMessageError(result.error),
+						});
+						return;
+					}
+					parsed = result.data;
+				} catch {
+					coordinator.socketGateway.sendSocketMessage(connectionId, {
+						type: "session_error",
+						code: "invalid_json",
+						message: "websocket message must be valid json",
+					});
+					return;
+				}
+				track(coordinator.socketMessageHandler.handle(connectionId, parsed))
 					.catch((error: unknown) => {
 						console.error("[node-websocket] message handling failed", error);
 					});
@@ -164,4 +201,31 @@ export function createNodeWebSocketUpgradeHandler(runtime: NodeRuntime, publicUr
 		close,
 		terminate,
 	};
+}
+
+function selectSyncWebSocketProtocol(request: Request): string | null {
+	const header = request.headers.get("sec-websocket-protocol");
+	if (!header) {
+		return null;
+	}
+	return header
+		.split(",")
+		.map((value) => value.trim())
+		.includes(SYNC_WEBSOCKET_PROTOCOL)
+		? SYNC_WEBSOCKET_PROTOCOL
+		: null;
+}
+
+function readSyncToken(request: Request): string | null {
+	const bearer = parseBearerToken(request.headers.get("authorization"));
+	if (bearer) return bearer;
+	for (const protocol of (request.headers.get("sec-websocket-protocol") ?? "")
+		.split(",")
+		.map((value) => value.trim())) {
+		if (protocol.startsWith(SYNC_WEBSOCKET_AUTH_PROTOCOL_PREFIX)) {
+			const token = protocol.slice(SYNC_WEBSOCKET_AUTH_PROTOCOL_PREFIX.length);
+			if (token) return token;
+		}
+	}
+	return null;
 }

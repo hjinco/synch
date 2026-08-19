@@ -2,51 +2,54 @@ import {
 	isCommunityEdition,
 	type DeploymentProfile,
 } from "../config/deployment-profile";
+import { createSubscriptionFeature } from "./features/create-subscription-feature";
+import { createVaultOrganizationReader } from "./features/create-vault-feature";
+import { createSyncTokenFeature } from "./features/create-sync-access-feature";
+import { blobObjectKey, blobObjectKeyPrefix } from "../platform/blob/object-key";
 import type { AppDb } from "../db/client";
-import { apiError } from "../errors";
-import type { SubscriptionProductIdsByPlanId } from "../subscription/policy";
-import { SubscriptionPolicyService } from "../subscription/policy-service";
-import { SyncTokenService } from "../sync/access/token-service";
-import { CoordinatorMaintenanceService } from "../sync/coordinator/maintenance-service";
+import type { SubscriptionProductIdsByPlanId } from "../subscription/application";
+import { SyncCoordinatorApplicationError } from "../sync-coordinator/application/errors/coordinator-errors";
+import { CoordinatorMaintenanceService } from "../sync-coordinator/application/use-cases/maintenance/maintenance-service";
 import type {
 	MaintenanceRunner,
 	MaintenanceScheduler,
-} from "../sync/coordinator/maintenance-scheduler";
+} from "../sync-coordinator/adapters/outbound/scheduler/maintenance-scheduler";
 import type {
 	BlobObjectRepository,
 	CoordinatorStorageLifecycle,
 	SocketGateway,
-} from "../sync/coordinator/ports";
-import { createCoordinatorApp } from "../sync/coordinator/routes";
-import { CoordinatorService } from "../sync/coordinator/service";
-import { BlobSyncService } from "../sync/coordinator/blob/sync-service";
-import { EntryHistoryService } from "../sync/coordinator/entry/history-service";
-import { EntrySyncService } from "../sync/coordinator/entry/sync-service";
-import { HealthSyncService } from "../sync/coordinator/health/sync-service";
-import { MutationCommitService } from "../sync/coordinator/mutation/commit-service";
-import { CoordinatorControlMessageHandler } from "../sync/coordinator/socket/control-message-handler";
-import { CoordinatorSocketConnectionService } from "../sync/coordinator/socket/connection-service";
-import { CoordinatorBlobStore } from "../sync/coordinator/store/blob-store";
-import { CoordinatorCursorStore } from "../sync/coordinator/store/cursor-store";
-import { CoordinatorEntryStore } from "../sync/coordinator/store/entry-store";
+} from "../sync-coordinator/application/ports/outbound";
+import { createCoordinatorApp } from "../sync-coordinator/adapters/inbound/http/routes";
+import { CoordinatorService } from "../sync-coordinator/application/use-cases/coordinator-service";
+import { BlobSyncService } from "../sync-coordinator/application/use-cases/blob/sync-service";
+import { EntryHistoryService } from "../sync-coordinator/application/use-cases/entry/history-service";
+import { EntrySyncService } from "../sync-coordinator/application/use-cases/entry/sync-service";
+import { HealthSyncService } from "../sync-coordinator/application/use-cases/health/sync-service";
+import { MutationCommitService } from "../sync-coordinator/application/use-cases/mutation/commit-service";
+import { CoordinatorControlMessageHandler } from "../sync-coordinator/application/use-cases/socket/control-message-handler";
+import { CoordinatorSocketConnectionService } from "../sync-coordinator/application/use-cases/socket/connection-service";
+import { CoordinatorBlobStore } from "../sync-coordinator/adapters/outbound/sqlite/blob-store";
+import { CoordinatorCursorStore } from "../sync-coordinator/adapters/outbound/sqlite/cursor-store";
+import { CoordinatorEntryStore } from "../sync-coordinator/adapters/outbound/sqlite/entry-store";
 import {
 	CoordinatorHealthStore,
 	type CoordinatorSocketCounter,
-} from "../sync/coordinator/store/health-store";
-import { CoordinatorHistoryStore } from "../sync/coordinator/store/history-store";
-import { CoordinatorMutationStore } from "../sync/coordinator/store/mutation-store";
-import type { CoordinatorStorageHandle } from "../sync/coordinator/store/storage-handle";
-import { CoordinatorSyncRepairService } from "../sync/coordinator/repair-service";
-import { VaultLifecycleService } from "../sync/coordinator/vault/lifecycle-service";
-import { VaultSyncStatusRepository } from "../sync/health/status-repository";
-import { VaultRepository } from "../vault/repository";
+} from "../sync-coordinator/adapters/outbound/sqlite/health-store";
+import { CoordinatorHistoryStore } from "../sync-coordinator/adapters/outbound/sqlite/history-store";
+import { CoordinatorMutationStore } from "../sync-coordinator/adapters/outbound/sqlite/mutation-store";
+import type { CoordinatorStorageHandle } from "../sync-coordinator/adapters/outbound/sqlite/storage-handle";
+import { CoordinatorSyncRepairService } from "../sync-coordinator/application/use-cases/repair/repair-service";
+import { VaultLifecycleService } from "../sync-coordinator/application/use-cases/vault/lifecycle-service";
+import { VaultSyncStatusRepository } from "../sync-coordinator/adapters/outbound/health-persistence/status-repository";
 
 export type CoordinatorApplicationDependencies = {
 	db: AppDb;
 	storage: CoordinatorStorageLifecycle;
 	storageHandle: CoordinatorStorageHandle;
 	blobStorage: BlobObjectRepository;
-	socketGateway: SocketGateway;
+	socketGateway: SocketGateway & {
+		openSocket(request: Request, session: import("../sync-coordinator/application/dto/types").SocketSession): Promise<Response>;
+	};
 	socketCounter: CoordinatorSocketCounter;
 	maintenanceScheduler: MaintenanceScheduler & MaintenanceRunner;
 };
@@ -80,14 +83,17 @@ export function createCoordinatorApplication(
 	);
 	const historyStore = new CoordinatorHistoryStore(deps.storageHandle);
 	const mutationStore = new CoordinatorMutationStore(deps.storageHandle);
-	const vaultRepository = new VaultRepository(deps.db);
-	const subscriptionPolicyService = new SubscriptionPolicyService(
-		isCommunityEdition(config.profile),
-		deps.db,
-		{ productIdsByPlanId: config.productIdsByPlanId },
-	);
+	const subscriptionFeature = createSubscriptionFeature(deps.db, {
+		selfHosted: isCommunityEdition(config.profile),
+		productIdsByPlanId: config.productIdsByPlanId,
+	});
+	const vaultOrganizationReader = createVaultOrganizationReader(deps.db);
 	const syncStatusRepository = new VaultSyncStatusRepository(deps.db);
-	const syncTokenService = new SyncTokenService(config.syncTokenSecret);
+	const syncTokenFeature = createSyncTokenFeature({
+		syncTokenSecret: config.syncTokenSecret,
+	});
+	const syncTokenService = syncTokenFeature.tokenVerifier;
+	const objectKeyBuilder = { blobObjectKey, blobObjectKeyPrefix };
 	const healthSyncService = new HealthSyncService(
 		healthStore,
 		syncStatusRepository,
@@ -101,6 +107,7 @@ export function createCoordinatorApplication(
 		healthStore,
 		deps.socketGateway,
 		deps.blobStorage,
+		objectKeyBuilder,
 		blobGracePeriodMs,
 		deps.maintenanceScheduler,
 		healthSyncService,
@@ -110,6 +117,7 @@ export function createCoordinatorApplication(
 		blobStore,
 		cursorStore,
 		deps.blobStorage,
+		objectKeyBuilder,
 		blobGracePeriodMs,
 		deps.maintenanceScheduler,
 		healthSyncService,
@@ -128,23 +136,25 @@ export function createCoordinatorApplication(
 		healthStore,
 		deps.socketGateway,
 		deps.blobStorage,
+		objectKeyBuilder,
 		{
 			readInitialVaultLimits: async (vaultId) => {
 				const organizationId =
-					await vaultRepository.readVaultOrganizationId(vaultId);
+					await vaultOrganizationReader.readVaultOrganizationId(vaultId);
 				if (!organizationId) {
-					throw apiError(404, "not_found", "vault not found");
+					throw new SyncCoordinatorApplicationError("not_found", {
+						message: "vault not found",
+					});
 				}
 
 				const policy =
-					await subscriptionPolicyService.readOrganizationPolicy(organizationId);
+					await subscriptionFeature.policyReader.readOrganizationPolicy(organizationId);
 				return policy.limits;
 			},
 		},
 		healthSyncService,
 	);
 	const socketConnectionService = new CoordinatorSocketConnectionService(
-		deps.socketGateway,
 		syncTokenService,
 		vaultLifecycleService,
 		healthSyncService,
@@ -159,6 +169,7 @@ export function createCoordinatorApplication(
 		blobStore,
 		cursorStore,
 		deps.blobStorage,
+		objectKeyBuilder,
 		deps.maintenanceScheduler,
 	);
 	const useCases = new CoordinatorService({
@@ -181,7 +192,10 @@ export function createCoordinatorApplication(
 	);
 
 	return {
-		app: createCoordinatorApp({ useCases }),
+		app: createCoordinatorApp({
+			useCases,
+			socketHandshake: deps.socketGateway,
+		}),
 		useCases,
 		socketMessageHandler,
 		socketConnectionService,

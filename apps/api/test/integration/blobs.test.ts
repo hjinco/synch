@@ -2,7 +2,7 @@ import { runInDurableObject } from "cloudflare:test";
 import { env } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
 
-import { getSubscriptionPlanPolicy } from "../../src/subscription/policy";
+import { getSubscriptionPlanPolicy } from "../../src/subscription/domain/policy";
 import {
 	apiRequest,
 	initializeCoordinatorState,
