@@ -21,13 +21,10 @@ export const entries = sqliteTable(
 		updatedByLocalVaultId: text("updated_by_local_vault_id").notNull(),
 		lastMutationId: text("last_mutation_id"),
 	},
-	(table) => ({
-		updatedSeqEntryIdIndex: index("idx_entries_updated_seq_entry_id").on(
-			table.updatedSeq,
-			table.entryId,
-		),
-		blobIdIndex: index("idx_entries_blob_id").on(table.blobId),
-	}),
+	(table) => [
+		index("idx_entries_updated_seq_entry_id").on(table.updatedSeq, table.entryId),
+		index("idx_entries_blob_id").on(table.blobId),
+	],
 );
 
 export const entryVersions = sqliteTable(
@@ -46,23 +43,23 @@ export const entryVersions = sqliteTable(
 		createdByUserId: text("created_by_user_id").notNull(),
 		createdByLocalVaultId: text("created_by_local_vault_id").notNull(),
 	},
-	(table) => ({
-		entryCapturedAtIndex: index("idx_entry_versions_entry_captured_at").on(
+	(table) => [
+		index("idx_entry_versions_entry_captured_at").on(
 			table.entryId,
 			table.capturedAt,
 			table.versionId,
 		),
-		autoBucketUnique: uniqueIndex("idx_entry_versions_auto_bucket").on(
+		uniqueIndex("idx_entry_versions_auto_bucket").on(
 			table.entryId,
 			table.reason,
 			table.bucketStartMs,
 		),
-		expiresAtIndex: index("idx_entry_versions_expires_at").on(table.expiresAt),
-		blobExpiresAtIndex: index("idx_entry_versions_blob_expires_at").on(
+		index("idx_entry_versions_expires_at").on(table.expiresAt),
+		index("idx_entry_versions_blob_expires_at").on(
 			table.blobId,
 			table.expiresAt,
 		),
-	}),
+	],
 );
 
 export const blobs = sqliteTable(
@@ -75,12 +72,9 @@ export const blobs = sqliteTable(
 		lastUploadedAt: integer("last_uploaded_at").notNull(),
 		deleteAfter: integer("delete_after"),
 	},
-	(table) => ({
-		stateDeleteAfterIndex: index("idx_blobs_state_delete_after").on(
-			table.state,
-			table.deleteAfter,
-		),
-	}),
+	(table) => [
+		index("idx_blobs_state_delete_after").on(table.state, table.deleteAfter),
+	],
 );
 
 export const coordinatorState = sqliteTable("coordinator_state", {
@@ -109,9 +103,7 @@ export const maintenanceJobs = sqliteTable(
 		lastErrorAt: integer("last_error_at"),
 		updatedAt: integer("updated_at").notNull(),
 	},
-	(table) => ({
-		dueAtIndex: index("idx_maintenance_jobs_due_at").on(table.dueAt),
-	}),
+	(table) => [index("idx_maintenance_jobs_due_at").on(table.dueAt)],
 );
 
 export const localVaultConnections = sqliteTable(
@@ -121,7 +113,7 @@ export const localVaultConnections = sqliteTable(
 		localVaultId: text("local_vault_id").notNull(),
 		lastConnectedAt: integer("last_connected_at").notNull(),
 	},
-	(table) => ({
-		pk: primaryKey({ columns: [table.userId, table.localVaultId] }),
-	}),
+	(table) => [
+		primaryKey({ columns: [table.userId, table.localVaultId] }),
+	],
 );
