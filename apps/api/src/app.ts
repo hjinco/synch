@@ -1,32 +1,46 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 
-import { registerAuthRoutes, type Auth } from "./auth";
-import { registerBillingRoutes } from "./billing/routes";
-import type { BillingService } from "./billing/service";
+import type { AuthHttpHandler } from "./auth/adapters/inbound/http/handler";
+import { registerAuthRoutes } from "./auth/adapters/inbound/http/routes";
+import type { SessionReader } from "./auth/application";
+import { registerBillingRoutes } from "./billing/adapters/inbound/http/routes";
+import type { BillingService } from "./billing/application";
+import { mapBillingApplicationError } from "./billing/adapters/inbound/http/error-mapper";
 import { onError } from "./errors";
-import { registerHealthRoutes } from "./health/routes";
-import { registerPluginVersionRoutes } from "./plugin-version/routes";
-import type { SubscriptionPolicyReader } from "./subscription/policy-service";
-import { registerSyncAccessRoutes } from "./sync/access/routes";
-import type { SyncService } from "./sync/access/service";
-import type { SyncTokenService } from "./sync/access/token-service";
-import { registerBlobRoutes } from "./sync/blob/routes";
-import type { BlobStorage } from "./sync/blob/storage";
-import { registerCoordinatorProxyRoutes } from "./sync/coordinator/proxy-routes";
-import type { CoordinatorProxyRepository } from "./sync/coordinator/proxy-repository";
-import { registerSyncRepairRoutes } from "./sync/repair/routes";
-import { registerVaultRoutes } from "./vault/routes";
-import type { VaultService } from "./vault/service";
+import type { CheckPluginVersion } from "./plugin-version/application";
+import { registerPluginVersionRoutes } from "./plugin-version/adapters/inbound/http/routes";
+import type { SubscriptionPolicyReader } from "./subscription/application";
+import type { GetSystemHealth } from "./system-health/application";
+import { registerSystemHealthRoutes } from "./system-health/adapters/inbound/http/routes";
+import type { IssueSyncToken } from "./sync-access/application";
+import { mapSyncAccessApplicationError } from "./sync-access/adapters/inbound/http/error-mapper";
+import { registerSyncAccessRoutes } from "./sync-access/adapters/inbound/http/routes";
+import type { DownloadBlob, UploadBlob } from "./sync-blob-transfer/application";
+import { mapBlobTransferApplicationError } from "./sync-blob-transfer/adapters/inbound/http/error-mapper";
+import { registerBlobTransferRoutes } from "./sync-blob-transfer/adapters/inbound/http/routes";
+import { registerCoordinatorProxyRoutes } from "./sync-coordinator/adapters/inbound/http/proxy-routes";
+import type { CoordinatorProxyRepository } from "./sync-coordinator/adapters/outbound/durable-object-rpc/coordinator-proxy-repository";
+import type { CoordinatorRequestTokenVerifier } from "./sync-coordinator/adapters/inbound/http/proxy-routes";
+import type { RunSyncRepair } from "./sync-repair/application";
+import { registerSyncRepairRoutes } from "./sync-repair/adapters/inbound/http/routes";
+import { registerVaultRoutes } from "./vault/adapters/inbound/http/routes";
+import { mapVaultApplicationError } from "./vault/adapters/inbound/http/error-mapper";
+import type { VaultService } from "./vault/application";
 
 export type AppDependencies = {
-	auth: Auth;
-	syncService: SyncService;
-	syncTokenService: SyncTokenService;
-	blobRepository: BlobStorage;
+	authHttpHandler: AuthHttpHandler;
+	sessionReader: SessionReader;
+	syncTokenIssuer: IssueSyncToken;
+	syncTokenRequestVerifier: CoordinatorRequestTokenVerifier;
+	uploadBlob: UploadBlob;
+	downloadBlob: DownloadBlob;
+	runSyncRepair: RunSyncRepair;
 	coordinatorProxyRepository: CoordinatorProxyRepository;
 	vaultService: VaultService;
 	subscriptionPolicyService: SubscriptionPolicyReader;
+	pluginVersionChecker: CheckPluginVersion;
+	systemHealth: GetSystemHealth;
 	billingService?: BillingService;
 };
 
@@ -35,7 +49,7 @@ export type AppConfig = {
 	adminToken?: string;
 };
 
-export type { VaultRecord } from "./vault/types";
+export type { VaultRecord } from "./vault/application";
 
 export function createApp(deps: AppDependencies, config: AppConfig): Hono {
 	const app = new Hono();
@@ -48,21 +62,30 @@ export function createApp(deps: AppDependencies, config: AppConfig): Hono {
 		}),
 	);
 
-	registerAuthRoutes(app, deps.auth);
-	registerHealthRoutes(app);
-	registerPluginVersionRoutes(app);
-	registerSyncAccessRoutes(app, deps);
+	registerAuthRoutes(app, deps.authHttpHandler);
+	registerSystemHealthRoutes(app, deps.systemHealth);
+	registerPluginVersionRoutes(app, deps.pluginVersionChecker);
+	registerSyncAccessRoutes(app, {
+		syncTokenIssuer: deps.syncTokenIssuer,
+		sessionReader: deps.sessionReader,
+	});
 	registerVaultRoutes(app, deps);
 	if (deps.billingService) {
 		registerBillingRoutes(app, {
-			auth: deps.auth,
+			sessionReader: deps.sessionReader,
 			billingService: deps.billingService,
 		});
 	}
-	registerBlobRoutes(app, deps);
-	registerCoordinatorProxyRoutes(app, deps);
-	registerSyncRepairRoutes(app, {
+	registerBlobTransferRoutes(app, {
+		uploadBlob: deps.uploadBlob,
+		downloadBlob: deps.downloadBlob,
+	});
+	registerCoordinatorProxyRoutes(app, {
+		syncTokenVerifier: deps.syncTokenRequestVerifier,
 		coordinatorProxyRepository: deps.coordinatorProxyRepository,
+	});
+	registerSyncRepairRoutes(app, {
+		runSyncRepair: deps.runSyncRepair,
 		adminToken: config.adminToken,
 	});
 
@@ -76,7 +99,13 @@ export function createApp(deps: AppDependencies, config: AppConfig): Hono {
 		),
 	);
 
-	app.onError(onError);
+	app.onError((error, c) =>
+		mapSyncAccessApplicationError(error) ??
+		mapBlobTransferApplicationError(error) ??
+		mapVaultApplicationError(error) ??
+		mapBillingApplicationError(error) ??
+		onError(error, c),
+	);
 
 	return app;
 }

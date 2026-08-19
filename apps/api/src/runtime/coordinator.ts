@@ -1,12 +1,12 @@
-import { readPolarProductIdsByPlanId } from "../billing/product-ids";
+import { readPolarProductIdsByPlanId } from "../billing/adapters/outbound/product-ids";
 import { createCoordinatorApplication } from "../composition/create-coordinator-application";
 import { readCloudflareProfile } from "../config/cloudflare";
 import { createDb } from "../db/client";
-import { BlobRepository } from "../sync/blob/repository";
-import { CoordinatorMaintenanceScheduler } from "../sync/coordinator/maintenance-scheduler";
-import { CoordinatorSocketService } from "../sync/coordinator/socket/service";
-import { DurableCoordinatorStorage } from "../sync/coordinator/storage-lifecycle";
-import { DurableObjectCoordinatorStorageHandle } from "../sync/coordinator/store/storage-handle";
+import { R2BlobObjectStorage } from "../sync-blob-transfer/adapters/outbound/r2-object-storage";
+import { CoordinatorMaintenanceScheduler } from "../sync-coordinator/adapters/outbound/scheduler/maintenance-scheduler";
+import { CoordinatorSocketService } from "../sync-coordinator/adapters/outbound/socket/durable-object-service";
+import { DurableCoordinatorStorage } from "../sync-coordinator/adapters/outbound/storage-lifecycle/durable-object-storage";
+import { DurableObjectCoordinatorStorageHandle } from "../sync-coordinator/adapters/outbound/sqlite/storage-handle";
 
 export function createCoordinatorRuntime(ctx: DurableObjectState, env: Env) {
 	const profile = readCloudflareProfile(env);
@@ -20,7 +20,7 @@ export function createCoordinatorRuntime(ctx: DurableObjectState, env: Env) {
 			db,
 			storage,
 			storageHandle,
-			blobStorage: new BlobRepository(env.SYNC_BLOBS),
+			blobStorage: new R2BlobObjectStorage(env.SYNC_BLOBS),
 			socketGateway: socketService,
 			socketCounter: { count: () => ctx.getWebSockets().length },
 			maintenanceScheduler,
@@ -40,6 +40,7 @@ export function createCoordinatorRuntime(ctx: DurableObjectState, env: Env) {
 		app: application.app,
 		useCases: application.useCases,
 		socketMessageHandler: application.socketMessageHandler,
+		socketGateway: socketService,
 		ready,
 	};
 }

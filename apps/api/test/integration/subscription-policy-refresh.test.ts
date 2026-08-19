@@ -6,7 +6,7 @@ import { createQueueConsumer } from "../../src/runtime";
 import {
 	getSubscriptionPlanPolicy,
 	type SubscriptionPlanPolicy,
-} from "../../src/subscription/policy";
+} from "../../src/subscription/domain/policy";
 import { signUpAndCreateVault } from "../helpers/api";
 
 describe("subscription policy refresh integration", () => {

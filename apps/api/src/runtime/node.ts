@@ -10,8 +10,7 @@ import { NODE_COMMUNITY_PROFILE } from "../config/deployment-profile";
 import { resolveNodeAsset } from "../config/node-assets";
 import { createLibsqlDb } from "../db/client";
 import * as schema from "../db/d1";
-import type { BlobStorage } from "../sync/blob/storage";
-import { InlineVaultPurgeQueue } from "../vault/inline-purge-queue";
+import type { BlobObjectStorage } from "../sync-blob-transfer/application/ports/outbound/blob-object-storage";
 import { NodeCoordinatorNamespace } from "./node-coordinator-namespace";
 
 const DEFAULT_MIGRATIONS_FOLDER = resolveNodeAsset("drizzle");
@@ -51,24 +50,24 @@ export interface NodeRuntimeConfig {
 	authAllowedEmails: string;
 	syncTokenSecret: string;
 	syncTokenTtlSeconds?: number;
-	blobStorage: BlobStorage;
+	blobStorage: BlobObjectStorage;
 	/** Defaults to the drizzle/*.sql folder shared with the D1 (Cloudflare) backend. */
 	migrationsFolder?: string;
 }
 
 /**
- * Wires the same portable core (`createApp`, `VaultRepository`,
- * `SubscriptionPolicyService`, `SyncService`, ...) used on Cloudflare
+ * Wires the same portable core (`createApp`, Vault composition,
+ * subscription policy use cases, sync-access/blob-transfer features, ...)
+ * used on Cloudflare
  * (`runtime/http.ts`), but entirely with the self-hosted backends built in
  * earlier stages: a libSQL file for the app DB, `NodeCoordinatorNamespace`
  * (one SQLite file per vault) in place of the Durable Object namespace, and
- * caller-supplied `BlobStorage` (disk or S3-compatible) in place of R2.
+ * caller-supplied blob object storage (disk or S3-compatible) in place of R2.
  *
  * Always self-hosted: billing/Polar stays off (there's no Cloudflare Queue
  * to refresh subscription policy against, and self-hosted vaults get the
- * unlimited `self_hosted` policy tier unconditionally - see
- * `SubscriptionPolicyService`). Email verification is already disabled for
- * self-hosted mode in `auth/email.ts`, so no mailer is needed either.
+ * unlimited `self_hosted` policy tier unconditionally). Email verification is already disabled for
+ * self-hosted mode by the auth feature configuration, so no mailer is needed either.
  */
 export async function createNodeRuntime(config: NodeRuntimeConfig) {
 	mkdirSync(config.dataDir, { recursive: true });
@@ -94,7 +93,6 @@ export async function createNodeRuntime(config: NodeRuntimeConfig) {
 			db,
 			blobStorage: config.blobStorage,
 			coordinatorNamespace,
-			createVaultPurgeQueue: (consumer) => new InlineVaultPurgeQueue(consumer),
 		},
 		{
 			profile: NODE_COMMUNITY_PROFILE,
@@ -119,7 +117,7 @@ export async function createNodeRuntime(config: NodeRuntimeConfig) {
 	return {
 		fetch: (request: Request) => application.app.fetch(request),
 		coordinatorNamespace,
-		syncTokenService: application.syncTokenService,
+		syncTokenVerifier: application.syncTokenVerifier,
 		dispose: () => {
 			coordinatorNamespace.closeAll();
 			void client.close();

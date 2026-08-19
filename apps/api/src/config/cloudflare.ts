@@ -1,6 +1,8 @@
-import type { SubscriptionPolicyRefreshMessage } from "../subscription/policy-refresh-queue";
-import type { VaultPurgeMessage } from "../vault/purge-queue";
-import type { VaultRetentionEmailMessage } from "../vault/retention-queue";
+import type { SubscriptionPolicyRefreshMessage } from "../subscription/application";
+import type {
+	VaultPurgeMessage,
+	VaultRetentionEmailMessage,
+} from "../vault/application";
 import {
 	capabilitiesFor,
 	createCloudflareProfile,

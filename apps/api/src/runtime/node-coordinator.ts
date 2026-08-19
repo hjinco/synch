@@ -3,19 +3,20 @@ import type Database from "better-sqlite3";
 import { createCoordinatorApplication } from "../composition/create-coordinator-application";
 import type { DeploymentProfile } from "../config/deployment-profile";
 import type { AppDb } from "../db/client";
-import type { SubscriptionProductIdsByPlanId } from "../subscription/policy";
-import type { BlobStorage } from "../sync/blob/storage";
-import { NodeMaintenanceScheduler } from "../sync/coordinator/node-maintenance-scheduler";
-import { NodeSocketGateway } from "../sync/coordinator/socket/node-service";
-import { SqliteCoordinatorStorageHandle } from "../sync/coordinator/store/sqlite-storage-handle";
-import { SqliteCoordinatorStorage } from "../sync/coordinator/store/sqlite-storage-lifecycle";
-import { VaultLockRegistry } from "../sync/coordinator/store/vault-lock";
+import type { SubscriptionProductIdsByPlanId } from "../subscription/application";
+import type { BlobObjectStorage } from "../sync-blob-transfer/application/ports/outbound/blob-object-storage";
+import { NodeMaintenanceScheduler } from "../sync-coordinator/adapters/outbound/scheduler/node-maintenance-scheduler";
+import { NodeSocketGateway } from "../sync-coordinator/adapters/outbound/socket/node-service";
+import { SqliteCoordinatorStorageHandle } from "../sync-coordinator/adapters/outbound/sqlite/storage-handle";
+import { SqliteCoordinatorStorage } from "../sync-coordinator/adapters/outbound/sqlite/storage-lifecycle";
+import { VaultLockRegistry } from "../sync-coordinator/adapters/outbound/sqlite/vault-lock";
+import type { ClientControlMessage } from "../sync-coordinator/application/dto/protocol-types";
 
 const ALARM_FAILURE_RETRY_MS = 30 * 1000;
 
 export interface NodeCoordinatorSharedDeps {
 	db: AppDb;
-	blobStorage: BlobStorage;
+	blobStorage: BlobObjectStorage;
 	syncTokenSecret: string;
 	profile: Extract<DeploymentProfile, { platform: "node" }>;
 	productIdsByPlanId: SubscriptionProductIdsByPlanId;
@@ -93,15 +94,15 @@ export function createNodeCoordinatorRuntime(
 				vaultLock.run(vaultId, () => application.useCases.handleSocketClose()),
 		},
 		socketMessageHandler: {
-			handle: (ws: WebSocket, message: string | ArrayBuffer) =>
+			handle: (connectionId: string, message: ClientControlMessage) =>
 				vaultLock.run(vaultId, () =>
-					application.socketMessageHandler.handle(ws, message),
+					application.socketMessageHandler.handle(connectionId, message),
 				),
 		},
 		socketConnectionService: {
-			prepareSocketSession: (request: Request, id: string) =>
+			prepareSocketSession: (token: string | null, id: string) =>
 				vaultLock.run(vaultId, () =>
-					application.socketConnectionService.prepareSocketSession(request, id),
+					application.socketConnectionService.prepareSocketSession(token, id),
 				),
 			completeSocketOpen: () =>
 				vaultLock.run(vaultId, () =>

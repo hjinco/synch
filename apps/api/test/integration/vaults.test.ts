@@ -5,7 +5,7 @@ import { eq } from "drizzle-orm";
 import { createDb } from "../../src/db/client";
 import * as schema from "../../src/db/d1";
 import { createRuntimeApp } from "../../src/runtime";
-import { VaultRepository } from "../../src/vault/repository";
+import { DrizzleVaultStore } from "../../src/vault/adapters/outbound/drizzle-vault-store";
 import {
 	DEFAULT_VAULT_WRAPPER,
 	jsonRequest,
@@ -301,7 +301,7 @@ describe("vault integration", () => {
 	it("rolls back vault creation when the initial wrapper cannot be stored", async () => {
 		const account = await signUpAccount();
 		const db = createDb(env.DB);
-		const repository = new VaultRepository(db);
+		const repository = new DrizzleVaultStore(db);
 		const organizationId = await repository.readDefaultOrganizationIdForUser(account.userId);
 		if (!organizationId) {
 			throw new Error("test account is missing an organization");

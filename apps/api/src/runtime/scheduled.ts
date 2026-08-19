@@ -1,12 +1,10 @@
-import { readPolarProductIdsByPlanId } from "../billing/product-ids";
+import { readPolarProductIdsByPlanId } from "../billing/adapters/outbound/product-ids";
 import { readCloudflareProfile } from "../config/cloudflare";
 import { isCommunityEdition } from "../config/deployment-profile";
+import { createSubscriptionFeature } from "../composition/features/create-subscription-feature";
+import { createVaultRetentionFeature } from "../composition/features/create-vault-feature";
 import { createDb } from "../db/client";
-import { SubscriptionPolicyService } from "../subscription/policy-service";
-import { CloudflareVaultPurgeQueue } from "../vault/purge-queue";
-import type { VaultPurgeMessage } from "../vault/purge-queue";
-import { VaultRepository } from "../vault/repository";
-import { VaultRetentionService } from "../vault/retention-service";
+import type { VaultPurgeMessage } from "../vault/application";
 
 export async function runVaultRetentionSchedule(
 	env: Env,
@@ -21,14 +19,14 @@ export async function runVaultRetentionSchedule(
 	}
 
 	const db = createDb(env.DB);
-	const service = new VaultRetentionService(
-		new VaultRepository(db),
-		new SubscriptionPolicyService(false, db, {
-			productIdsByPlanId: readPolarProductIdsByPlanId(env),
-		}),
-		new CloudflareVaultPurgeQueue(
-			env.VAULT_PURGE_QUEUE as Queue<VaultPurgeMessage>,
-		),
-	);
-	await service.run(now);
+	const subscriptionFeature = createSubscriptionFeature(db, {
+		selfHosted: false,
+		productIdsByPlanId: readPolarProductIdsByPlanId(env),
+	});
+	const retention = createVaultRetentionFeature({
+		db,
+		policyReader: subscriptionFeature.policyReader,
+		vaultPurgeQueue: env.VAULT_PURGE_QUEUE as Queue<VaultPurgeMessage>,
+	});
+	await retention.run(now);
 }

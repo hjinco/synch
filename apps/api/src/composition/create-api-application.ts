@@ -1,48 +1,46 @@
 import { createApp } from "../app";
-import { createAuth, type AuthConfig } from "../auth/factory";
-import { createPolarAuthPlugin, type PolarClientConfig } from "../billing/polar";
-import { BillingRepository } from "../billing/repository";
-import { BillingService } from "../billing/service";
+import type { AuthFeatureConfig } from "../auth/application/dto/auth-config";
+import type { BillingApplicationConfig } from "../billing/application";
 import {
 	capabilitiesFor,
 	isCommunityEdition,
 	type DeploymentProfile,
 } from "../config/deployment-profile";
+import { createSubscriptionFeature } from "./features/create-subscription-feature";
+import { createAuthFeature } from "./features/create-auth-feature";
+import { createVaultFeature } from "./features/create-vault-feature";
+import { createBillingFeature } from "./features/create-billing-feature";
+import { createSyncAccessFeature } from "./features/create-sync-access-feature";
+import { createSyncBlobTransferFeature } from "./features/create-sync-blob-transfer-feature";
+import { createSyncRepairFeature } from "./features/create-sync-repair-feature";
 import type { AppDb } from "../db/client";
-import { SubscriptionPolicyService } from "../subscription/policy-service";
-import type { SubscriptionProductIdsByPlanId } from "../subscription/policy";
-import { SyncService } from "../sync/access/service";
-import { SyncTokenService } from "../sync/access/token-service";
-import type { BlobStorage } from "../sync/blob/storage";
+import { CheckPluginVersionUseCase } from "../plugin-version/application/use-cases/check-plugin-version";
+import type { SubscriptionProductIdsByPlanId } from "../subscription/application";
 import {
 	CoordinatorProxyRepository,
 	type CoordinatorNamespace,
-} from "../sync/coordinator/proxy-repository";
-import { VaultPurgeConsumer } from "../vault/purge-consumer";
-import type { VaultPurgeQueue } from "../vault/purge-queue";
-import { VaultRepository } from "../vault/repository";
-import { VaultService } from "../vault/service";
+} from "../sync-coordinator/adapters/outbound/durable-object-rpc/coordinator-proxy-repository";
+import type { BlobObjectStorage } from "../sync-blob-transfer/application/ports/outbound/blob-object-storage";
+import { blobObjectKey, blobObjectKeyPrefix } from "../platform/blob/object-key";
+import type { VaultPurgeMessage } from "../vault/application";
+import { GetSystemHealthUseCase } from "../system-health/application/use-cases/get-system-health";
 
 export type ApiApplicationDependencies = {
 	db: AppDb;
-	blobStorage: BlobStorage;
+	blobStorage: BlobObjectStorage;
 	coordinatorNamespace: CoordinatorNamespace;
-	createVaultPurgeQueue(consumer: VaultPurgeConsumer): VaultPurgeQueue;
+	vaultPurgeQueue?: Queue<VaultPurgeMessage>;
 };
 
 export type ApiApplicationConfig = {
 	profile: DeploymentProfile;
 	corsOrigin: string;
-	auth: Omit<AuthConfig, "emailVerification" | "plugins">;
+	auth: Omit<AuthFeatureConfig, "emailVerification">;
 	syncTokenSecret: string;
 	adminToken?: string;
 	syncTokenTtlSeconds?: number;
 	productIdsByPlanId: SubscriptionProductIdsByPlanId;
-	billing?: PolarClientConfig & {
-		publicBaseUrl: string;
-		wwwBaseUrl: string;
-		onSubscriptionUpsert?: (organizationId: string) => Promise<void>;
-	};
+	billing?: Omit<BillingApplicationConfig, "productIdsByPlanId">;
 };
 
 /**
@@ -55,53 +53,65 @@ export function createApiApplication(
 	config: ApiApplicationConfig,
 ) {
 	const capabilities = capabilitiesFor(config.profile);
-	const vaultRepository = new VaultRepository(deps.db);
 	const coordinatorProxyRepository = new CoordinatorProxyRepository(
 		deps.coordinatorNamespace,
 	);
-	const subscriptionPolicyService = new SubscriptionPolicyService(
-		isCommunityEdition(config.profile),
-		deps.db,
-		{
-			productIdsByPlanId: config.productIdsByPlanId,
-		},
-	);
-	const billingFeature = createBillingFeature(deps.db, config, capabilities.billing);
-	const auth = createAuth(deps.db, {
+	const subscriptionFeature = createSubscriptionFeature(deps.db, {
+		selfHosted: isCommunityEdition(config.profile),
+		productIdsByPlanId: config.productIdsByPlanId,
+	});
+	const vaultFeature = createVaultFeature({
+		db: deps.db,
+		policyReader: subscriptionFeature.policyReader,
+		coordinatorPurgeTransport: coordinatorProxyRepository,
+		vaultPurgeQueue: deps.vaultPurgeQueue,
+	});
+	const billingFeature = createBillingFeature({
+		db: deps.db,
+		enabled: capabilities.billing === "polar",
+		billing: config.billing
+			? { ...config.billing, productIdsByPlanId: config.productIdsByPlanId }
+			: undefined,
+		productIdsByPlanId: config.productIdsByPlanId,
+		subscriptionAccessReader: subscriptionFeature.accessReader,
+	});
+	const authFeature = createAuthFeature(deps.db, {
 		...config.auth,
 		emailVerification: capabilities.emailVerification,
-		plugins: billingFeature.authPlugin ? [billingFeature.authPlugin] : [],
+	}, billingFeature.authPlugin ? [billingFeature.authPlugin] : []);
+	const syncAccessFeature = createSyncAccessFeature({
+		vaultService: vaultFeature.service,
+		coordinatorNamespace: deps.coordinatorNamespace,
+		syncTokenSecret: config.syncTokenSecret,
+		syncTokenTtlSeconds: config.syncTokenTtlSeconds,
 	});
-	const syncTokenService = new SyncTokenService(config.syncTokenSecret);
-	const purgeVaultService = new VaultService(
-		vaultRepository,
-		subscriptionPolicyService,
-	);
-	const vaultPurgeQueue = deps.createVaultPurgeQueue(
-		new VaultPurgeConsumer(purgeVaultService, coordinatorProxyRepository),
-	);
-	const vaultService = new VaultService(
-		vaultRepository,
-		subscriptionPolicyService,
-		vaultPurgeQueue,
-	);
-	const syncService = new SyncService(
-		vaultService,
-		syncTokenService,
-		config.syncTokenTtlSeconds,
-		coordinatorProxyRepository,
-	);
+	const syncBlobTransferFeature = createSyncBlobTransferFeature({
+		objectStorage: deps.blobStorage,
+		coordinatorNamespace: deps.coordinatorNamespace,
+		tokenVerifier: syncAccessFeature.tokenVerifier,
+		objectKeyBuilder: { blobObjectKey, blobObjectKeyPrefix },
+	});
+	const syncRepairFeature = createSyncRepairFeature({
+		coordinatorNamespace: deps.coordinatorNamespace,
+	});
+	const pluginVersionChecker = new CheckPluginVersionUseCase();
+	const systemHealth = new GetSystemHealthUseCase();
 
 	return {
 		app: createApp(
 			{
-				auth,
-				syncService,
-				vaultService,
-				syncTokenService,
-				blobRepository: deps.blobStorage,
+				authHttpHandler: authFeature.authHttpHandler,
+				sessionReader: authFeature.sessionReader,
+				syncTokenIssuer: syncAccessFeature.tokenIssuer,
+				syncTokenRequestVerifier: syncAccessFeature.requestTokenVerifier,
+				uploadBlob: syncBlobTransferFeature.uploadBlob,
+				downloadBlob: syncBlobTransferFeature.downloadBlob,
+				runSyncRepair: syncRepairFeature.runSyncRepair,
+				vaultService: vaultFeature.service,
 				coordinatorProxyRepository,
-				subscriptionPolicyService,
+				subscriptionPolicyService: subscriptionFeature.policyReader,
+				pluginVersionChecker,
+				systemHealth,
 				billingService: billingFeature.service,
 			},
 			{
@@ -109,33 +119,6 @@ export function createApiApplication(
 				adminToken: config.adminToken,
 			},
 		),
-		syncTokenService,
-	};
-}
-
-function createBillingFeature(
-	db: AppDb,
-	config: ApiApplicationConfig,
-	capability: "polar" | "disabled",
-): {
-	authPlugin: ReturnType<typeof createPolarAuthPlugin>;
-	service?: BillingService;
-} {
-	if (capability === "disabled") {
-		return { authPlugin: null };
-	}
-	if (!config.billing) {
-		throw new Error("billing configuration is required for the managed edition");
-	}
-
-	const repository = new BillingRepository(db);
-	return {
-		authPlugin: createPolarAuthPlugin(config.billing, repository, {
-			onSubscriptionUpsert: config.billing.onSubscriptionUpsert,
-		}),
-		service: new BillingService(repository, {
-			...config.billing,
-			productIdsByPlanId: config.productIdsByPlanId,
-		}),
+		syncTokenVerifier: syncAccessFeature.tokenVerifier,
 	};
 }
