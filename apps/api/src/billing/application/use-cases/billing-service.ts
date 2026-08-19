@@ -1,3 +1,4 @@
+import { logServerError } from "../../../errors";
 import type {
 	PaidSubscriptionPlanId,
 	SubscriptionAccessReader,
@@ -147,9 +148,10 @@ export class BillingApplicationService implements BillingServicePort {
 		await this.subscriptionStore.upsertPolarSubscription(updatedSubscription);
 		try {
 			await this.config.onSubscriptionUpsert?.(updatedSubscription.organizationId);
-		} catch {
+		} catch (error) {
 			// Polar and the local subscription record are already updated. The
 			// webhook remains responsible for retrying this policy refresh.
+			logServerError("billing subscription policy refresh", error);
 		}
 
 		return {

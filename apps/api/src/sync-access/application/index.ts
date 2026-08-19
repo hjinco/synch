@@ -9,7 +9,13 @@ export {
 	parseBearerToken,
 } from "./dto/token";
 export type { SyncPauseState } from "./dto/sync-access";
-export { SyncAccessApplicationError } from "./errors/sync-access-errors";
-export type { SyncAccessApplicationErrorCode } from "./errors/sync-access-errors";
+export {
+	SyncAccessApplicationError,
+	syncAccessPublicError,
+} from "./errors/sync-access-errors";
+export type {
+	SyncAccessApplicationErrorCode,
+	SyncAccessPublicError,
+} from "./errors/sync-access-errors";
 export type { IssueSyncToken } from "./ports/inbound/issue-sync-token";
 export type { VerifySyncToken } from "./ports/inbound/verify-sync-token";

@@ -440,6 +440,12 @@ describe("BillingApplicationService", () => {
 			active: true,
 		});
 		expect(repository.upsertPolarSubscription).toHaveBeenCalledOnce();
+		expect(console.error).toHaveBeenCalledWith(
+			expect.any(String),
+			expect.objectContaining({
+				source: "billing subscription policy refresh",
+			}),
+		);
 	});
 
 	it("rejects plan changes when there is no active subscription", async () => {

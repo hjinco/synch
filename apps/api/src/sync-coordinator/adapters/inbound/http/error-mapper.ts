@@ -1,3 +1,4 @@
+import { syncAccessPublicError } from "../../../../sync-access/application";
 import { SyncCoordinatorApplicationError } from "../../../application/errors/coordinator-errors";
 
 const DOMAIN_STATUS: Record<string, 409 | 413> = {
@@ -9,6 +10,10 @@ const DOMAIN_STATUS: Record<string, 409 | 413> = {
 };
 
 export function mapSyncCoordinatorApplicationError(error: unknown): Response | undefined {
+	const syncAccess = syncAccessPublicError(error);
+	if (syncAccess) {
+		return response({ error: syncAccess.code, message: syncAccess.message }, syncAccess.status);
+	}
 	if (!(error instanceof SyncCoordinatorApplicationError)) return undefined;
 	if (error.code === "sync_paused") {
 		return response(
