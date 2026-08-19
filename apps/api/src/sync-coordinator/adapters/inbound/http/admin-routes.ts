@@ -2,11 +2,14 @@ import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
 import { z } from "zod";
 
-import type { RunSyncRepair } from "../../../application/ports/inbound/run-sync-repair";
+import type { CoordinatorProxyRepository } from "../../outbound/durable-object-rpc/coordinator-proxy-repository";
 
-export function registerSyncRepairRoutes(
+export function registerCoordinatorAdminRoutes(
 	app: Hono,
-	deps: { runSyncRepair: RunSyncRepair; adminToken?: string },
+	deps: {
+		coordinatorProxyRepository: Pick<CoordinatorProxyRepository, "repairSyncState">;
+		adminToken?: string;
+	},
 ): void {
 	app.post(
 		"/admin/v1/vaults/:vaultId/sync-repair",
@@ -21,7 +24,7 @@ export function registerSyncRepairRoutes(
 			}
 
 			const { vaultId } = c.req.valid("param");
-			const result = await deps.runSyncRepair.runSyncRepair(vaultId);
+			const result = await deps.coordinatorProxyRepository.repairSyncState(vaultId);
 			if (result.status === "manual_repair_required") {
 				return c.json(
 					{ error: "sync_repair_required", ...result },

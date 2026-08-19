@@ -12,7 +12,6 @@ import { createVaultFeature } from "./features/create-vault-feature";
 import { createBillingFeature } from "./features/create-billing-feature";
 import { createSyncAccessFeature } from "./features/create-sync-access-feature";
 import { createSyncBlobTransferFeature } from "./features/create-sync-blob-transfer-feature";
-import { createSyncRepairFeature } from "./features/create-sync-repair-feature";
 import type { AppDb } from "../db/client";
 import { CheckPluginVersionUseCase } from "../plugin-version/application/use-cases/check-plugin-version";
 import type { SubscriptionProductIdsByPlanId } from "../subscription/application";
@@ -91,9 +90,6 @@ export function createApiApplication(
 		tokenVerifier: syncAccessFeature.tokenVerifier,
 		objectKeyBuilder: { blobObjectKey, blobObjectKeyPrefix },
 	});
-	const syncRepairFeature = createSyncRepairFeature({
-		coordinatorNamespace: deps.coordinatorNamespace,
-	});
 	const pluginVersionChecker = new CheckPluginVersionUseCase();
 	const systemHealth = new GetSystemHealthUseCase();
 
@@ -106,7 +102,6 @@ export function createApiApplication(
 				syncTokenRequestVerifier: syncAccessFeature.requestTokenVerifier,
 				uploadBlob: syncBlobTransferFeature.uploadBlob,
 				downloadBlob: syncBlobTransferFeature.downloadBlob,
-				runSyncRepair: syncRepairFeature.runSyncRepair,
 				vaultService: vaultFeature.service,
 				coordinatorProxyRepository,
 				subscriptionPolicyService: subscriptionFeature.policyReader,

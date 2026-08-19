@@ -19,11 +19,12 @@ import { registerSyncAccessRoutes } from "./sync-access/adapters/inbound/http/ro
 import type { DownloadBlob, UploadBlob } from "./sync-blob-transfer/application";
 import { mapBlobTransferApplicationError } from "./sync-blob-transfer/adapters/inbound/http/error-mapper";
 import { registerBlobTransferRoutes } from "./sync-blob-transfer/adapters/inbound/http/routes";
-import { registerCoordinatorProxyRoutes } from "./sync-coordinator/adapters/inbound/http/proxy-routes";
+import { registerCoordinatorAdminRoutes } from "./sync-coordinator/adapters/inbound/http/admin-routes";
+import {
+	registerCoordinatorProxyRoutes,
+	type CoordinatorRequestTokenVerifier,
+} from "./sync-coordinator/adapters/inbound/http/proxy-routes";
 import type { CoordinatorProxyRepository } from "./sync-coordinator/adapters/outbound/durable-object-rpc/coordinator-proxy-repository";
-import type { CoordinatorRequestTokenVerifier } from "./sync-coordinator/adapters/inbound/http/proxy-routes";
-import type { RunSyncRepair } from "./sync-repair/application";
-import { registerSyncRepairRoutes } from "./sync-repair/adapters/inbound/http/routes";
 import { registerVaultRoutes } from "./vault/adapters/inbound/http/routes";
 import { mapVaultApplicationError } from "./vault/adapters/inbound/http/error-mapper";
 import type { VaultService } from "./vault/application";
@@ -35,7 +36,6 @@ export type AppDependencies = {
 	syncTokenRequestVerifier: CoordinatorRequestTokenVerifier;
 	uploadBlob: UploadBlob;
 	downloadBlob: DownloadBlob;
-	runSyncRepair: RunSyncRepair;
 	coordinatorProxyRepository: CoordinatorProxyRepository;
 	vaultService: VaultService;
 	subscriptionPolicyService: SubscriptionPolicyReader;
@@ -84,8 +84,8 @@ export function createApp(deps: AppDependencies, config: AppConfig): Hono {
 		syncTokenVerifier: deps.syncTokenRequestVerifier,
 		coordinatorProxyRepository: deps.coordinatorProxyRepository,
 	});
-	registerSyncRepairRoutes(app, {
-		runSyncRepair: deps.runSyncRepair,
+	registerCoordinatorAdminRoutes(app, {
+		coordinatorProxyRepository: deps.coordinatorProxyRepository,
 		adminToken: config.adminToken,
 	});
 
