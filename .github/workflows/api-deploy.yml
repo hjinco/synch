@@ -28,6 +28,8 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
+      - run: pnpm check:api-lockfile
+
       - run: pnpm -C apps/api check:public
 
       - run: pnpm -C apps/api typecheck

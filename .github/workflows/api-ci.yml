@@ -9,6 +9,7 @@ on:
       - "package.json"
       - "pnpm-lock.yaml"
       - "pnpm-workspace.yaml"
+      - "scripts/sync-api-lockfile.mjs"
       - ".github/workflows/api-ci.yml"
       - ".github/actions/detect-affected/action.yml"
   push:
@@ -20,6 +21,7 @@ on:
       - "package.json"
       - "pnpm-lock.yaml"
       - "pnpm-workspace.yaml"
+      - "scripts/sync-api-lockfile.mjs"
       - ".github/workflows/api-ci.yml"
       - ".github/actions/detect-affected/action.yml"
 
@@ -43,7 +45,7 @@ jobs:
         uses: ./.github/actions/detect-affected
         with:
           package-dir: apps/api
-          full-run-paths: .github/workflows/api-ci.yml .github/actions/detect-affected/action.yml packages/vault-crypto
+          full-run-paths: .github/workflows/api-ci.yml .github/actions/detect-affected/action.yml packages/vault-crypto scripts/sync-api-lockfile.mjs
 
   api:
     needs: detect
@@ -63,6 +65,8 @@ jobs:
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
+
+      - run: pnpm check:api-lockfile
 
       - run: pnpm -C apps/api check:public
 
@@ -93,7 +97,7 @@ jobs:
             --exclude=.wrangler \
             --exclude=dist \
             -C apps/api -cf - . | tar -C "$template_dir" -xf -
-          pnpm --dir "$template_dir" install --no-frozen-lockfile
+          pnpm --dir "$template_dir" install --frozen-lockfile
           pnpm --dir "$template_dir" run build:cloudflare:community
 
       - name: Build Cloudflare managed artifact
