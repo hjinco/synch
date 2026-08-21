@@ -222,13 +222,19 @@ export class SyncPushService {
           }
 
           if (batchResult.status === "accepted") {
-            acceptedPushMutations.push(
+            const acceptedPushMutation =
               await mutationCommitter.buildAcceptedPushMutation(
                 mutation,
                 prepared,
                 batchResult,
-              ),
-            );
+              );
+            acceptedPushMutations.push(acceptedPushMutation);
+            if (acceptedPushMutation.remoteBlobId) {
+              // The coordinator made this blob live as part of accepting the
+              // mutation. A replay after a local apply failure is idempotent,
+              // and a redundant upload is rejected before reaching storage.
+              this.remotelyStagedBlobIds.delete(acceptedPushMutation.remoteBlobId);
+            }
             cursor = Math.max(cursor, batchResult.cursor);
             acceptedCursors.push(batchResult.cursor);
             acceptedFiles.push({

@@ -53,6 +53,53 @@ describe("SyncPushService retry uploads", () => {
     await store.close();
   });
 
+  it("forgets a blob after its commit is accepted", async () => {
+    const { store, blobId, bytes, hash } = await arrangePendingUpsert();
+    const uploadedBlobIds: string[] = [];
+    const session = createPushSession(async (mutation) => ({
+      cursor: mutation.baseRevision + 1,
+      entryId: mutation.entryId,
+      revision: mutation.baseRevision + 1,
+    }));
+    const service = createRetryUploadService(
+      store,
+      { "Folder/note.md": bytes },
+      uploadedBlobIds,
+    );
+
+    await expect(service.pushPendingMutations(session)).resolves.toMatchObject({
+      mutationsPushed: 1,
+    });
+    expect(uploadedBlobIds).toEqual([blobId]);
+
+    await store.markEntryDirty({
+      mutationId: "mutation-note-replay",
+      entryId: "entry-note",
+      op: "upsert",
+      baseRevision: 1,
+      baseBlobId: blobId,
+      baseHash: hash,
+      blobId,
+      hash,
+      encryptedMetadata: await encryptMutationMetadata({
+        entryId: "entry-note",
+        baseRevision: 1,
+        op: "upsert",
+        blobId,
+        path: "Folder/note.md",
+        hash,
+      }),
+      createdAt: 2,
+    });
+
+    await expect(service.pushPendingMutations(session)).resolves.toMatchObject({
+      mutationsPushed: 1,
+    });
+    expect(uploadedBlobIds).toEqual([blobId, blobId]);
+
+    await store.close();
+  });
+
   it("re-uploads after the server reports the blob is missing", async () => {
     const { store, blobId, bytes } = await arrangePendingUpsert();
     const uploadedBlobIds: string[] = [];
