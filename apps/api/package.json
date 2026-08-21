@@ -59,14 +59,14 @@
 		"wrangler": "^4.82.2"
 	},
 	"dependencies": {
-		"@better-auth/drizzle-adapter": "^1.6.2",
+		"@better-auth/drizzle-adapter": "1.6.2",
 		"@hono/node-server": "^2.0.12",
 		"@hono/zod-validator": "^0.7.6",
 		"@libsql/client": "^0.15.15",
-		"@polar-sh/better-auth": "^1.8.3",
+		"@polar-sh/better-auth": "1.8.3",
 		"@polar-sh/sdk": "^0.46.7",
 		"aws4fetch": "^1.0.20",
-		"better-auth": "^1.6.2",
+		"better-auth": "1.6.2",
 		"better-sqlite3": "^12.4.1",
 		"drizzle-orm": "^0.45.2",
 		"hono": "^4.12.14",
