@@ -43,14 +43,17 @@ const temporaryDirectory = mkdtempSync(
 
 try {
 	const pnpmCommand = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
+	// The injected deploy implementation records absolute workspace paths in
+	// its lockfile. Legacy deploy writes a filtered lockfile inside the target's
+	// virtual store without those checkout-specific paths.
 	const result = spawnSync(
 		pnpmCommand,
 		[
-			"--config.inject-workspace-packages=true",
 			"--filter",
 			"@synch/api",
 			"deploy",
 			temporaryDirectory,
+			"--legacy",
 			"--reporter=append-only",
 		],
 		{
@@ -68,10 +71,12 @@ try {
 
 	const generatedLockfilePath = path.join(
 		temporaryDirectory,
-		"pnpm-lock.yaml",
+		"node_modules",
+		".pnpm",
+		"lock.yaml",
 	);
 	const normalizedLockfile = normalizeImporterSpecifiers(
-		readFileSync(generatedLockfilePath, "utf8"),
+		extractApiLockfile(readFileSync(generatedLockfilePath, "utf8")),
 		expectedSpecifiers,
 	);
 
@@ -167,6 +172,46 @@ function normalizeImporterSpecifiers(lockfile, specifiers) {
 	}
 
 	return lines.join("\n");
+}
+
+function extractApiLockfile(lockfile) {
+	const lines = lockfile.split("\n");
+	const importersIndex = lines.indexOf("importers:");
+	const apiImporterIndex = lines.indexOf("  apps/api:");
+	const packagesIndex = lines.indexOf("packages:");
+
+	if (
+		importersIndex === -1 ||
+		apiImporterIndex === -1 ||
+		packagesIndex === -1
+	) {
+		throw new Error("pnpm deploy did not produce an API lockfile.");
+	}
+
+	let apiImporterEnd = apiImporterIndex + 1;
+	while (
+		apiImporterEnd < packagesIndex &&
+		!/^  [^ ].*:$/.test(lines[apiImporterEnd])
+	) {
+		apiImporterEnd += 1;
+	}
+
+	const apiImporterLines = lines.slice(
+		apiImporterIndex + 1,
+		apiImporterEnd,
+	);
+	while (apiImporterLines.at(-1) === "") {
+		apiImporterLines.pop();
+	}
+
+	return [
+		...lines.slice(0, importersIndex + 1),
+		"",
+		"  .:",
+		...apiImporterLines,
+		"",
+		...lines.slice(packagesIndex),
+	].join("\n");
 }
 
 function parsePackageField(line) {
