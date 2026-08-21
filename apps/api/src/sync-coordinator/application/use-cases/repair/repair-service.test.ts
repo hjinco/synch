@@ -5,7 +5,7 @@ import {
 	closeAllTestSqliteCoordinators,
 	createSqliteCoordinator,
 } from "../../../adapters/outbound/sqlite/test-helpers";
-import { STAGED_BLOB_STALE_MS } from "../../../adapters/outbound/sqlite/health-store";
+import { STAGED_BLOB_STALE_MS } from "../../../domain/health-policy";
 
 const objectKeyBuilder = {
 	blobObjectKey: (vaultId: string, blobId: string) => `${vaultId}/${blobId}`,
@@ -25,6 +25,7 @@ describe("CoordinatorSyncRepairService", () => {
 			100,
 			now - STAGED_BLOB_STALE_MS - 1,
 			now - 1,
+			STAGED_BLOB_STALE_MS,
 		);
 		handle.exec(
 			"UPDATE coordinator_state SET sync_paused_at = ?, sync_pause_reason = ? WHERE id = 1",
@@ -72,6 +73,7 @@ describe("CoordinatorSyncRepairService", () => {
 			100,
 			now - STAGED_BLOB_STALE_MS - 1,
 			now - 1,
+			STAGED_BLOB_STALE_MS,
 		);
 		handle.exec(
 			`
@@ -165,6 +167,7 @@ describe("CoordinatorSyncRepairService", () => {
 			100,
 			now - STAGED_BLOB_STALE_MS - 1,
 			now - 1,
+			STAGED_BLOB_STALE_MS,
 		);
 		handle.exec(
 			"UPDATE coordinator_state SET sync_paused_at = ?, sync_pause_reason = ? WHERE id = 1",

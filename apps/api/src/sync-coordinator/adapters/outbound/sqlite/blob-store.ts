@@ -4,7 +4,10 @@ import * as doSchema from "../../../../db/do";
 import { SyncCoordinatorApplicationError } from "../../../application/errors/coordinator-errors";
 import type { StageBlobResult, UnreferencedStagedBlobDeleteResult } from "../../../application/ports/outbound";
 import type { BlobRow, BlobState } from "../../../application/dto/types";
-import { STAGED_BLOB_STALE_MS } from "./health-store";
+import {
+	BLOB_UNREFERENCED_SQL,
+	COLLECTIBLE_BLOB_SQL,
+} from "./blob-collectability";
 import type { CoordinatorDb, CoordinatorStorageHandle } from "./storage-handle";
 
 type BlobDb = Pick<CoordinatorDb, "delete" | "insert" | "select" | "update">;
@@ -17,6 +20,7 @@ export class CoordinatorBlobStore {
 		sizeBytes: number,
 		now: number,
 		deleteAfter: number,
+		staleAfterMs: number,
 	): Promise<StageBlobResult> {
 		return this.handle.db.transaction((tx) => {
 			const storage = tx
@@ -54,7 +58,7 @@ export class CoordinatorBlobStore {
 			// row, and persist the quarantine in this same transaction.
 			if (
 				existing?.state === "staged" &&
-				now - Number(existing.createdAt) >= STAGED_BLOB_STALE_MS
+				now - Number(existing.createdAt) >= staleAfterMs
 			) {
 				const reason =
 					`staged blob ${blobId} remained staged for at least one hour`;
@@ -147,7 +151,7 @@ export class CoordinatorBlobStore {
 		return row ? toBlobRow(row) : null;
 	}
 
-	listStaleStagedBlobs(now: number, limit: number): BlobRow[] {
+	listStaleStagedBlobs(now: number, staleAfterMs: number, limit: number): BlobRow[] {
 		return this.handle
 			.exec<{
 				blob_id: string;
@@ -171,7 +175,7 @@ export class CoordinatorBlobStore {
 				ORDER BY created_at ASC, blob_id ASC
 				LIMIT ?
 				`,
-				now - STAGED_BLOB_STALE_MS,
+				now - staleAfterMs,
 				limit,
 			)
 			.toArray()
@@ -318,19 +322,7 @@ export class CoordinatorBlobStore {
 					blobs.last_uploaded_at,
 					blobs.delete_after
 				FROM blobs
-				WHERE blobs.state IN ('staged', 'pending_delete')
-					AND blobs.delete_after <= ?
-					AND NOT EXISTS (
-						SELECT 1
-						FROM entries
-						WHERE entries.blob_id = blobs.blob_id
-					)
-					AND NOT EXISTS (
-						SELECT 1
-						FROM entry_versions
-						WHERE entry_versions.blob_id = blobs.blob_id
-							AND entry_versions.expires_at > ?
-					)
+				WHERE ${COLLECTIBLE_BLOB_SQL}
 				ORDER BY blobs.delete_after ASC, blobs.blob_id ASC
 				LIMIT ?
 				`,
@@ -350,19 +342,7 @@ export class CoordinatorBlobStore {
 					SELECT size_bytes
 					FROM blobs
 					WHERE blob_id = ?
-						AND state IN ('staged', 'pending_delete')
-						AND delete_after <= ?
-						AND NOT EXISTS (
-							SELECT 1
-							FROM entries
-							WHERE entries.blob_id = blobs.blob_id
-						)
-						AND NOT EXISTS (
-							SELECT 1
-							FROM entry_versions
-							WHERE entry_versions.blob_id = blobs.blob_id
-								AND entry_versions.expires_at > ?
-						)
+						AND ${COLLECTIBLE_BLOB_SQL}
 					LIMIT 1
 					`,
 					blobId,
@@ -395,17 +375,7 @@ export class CoordinatorBlobStore {
 					FROM blobs
 					WHERE blobs.state = 'pending_delete'
 						AND blobs.delete_after IS NOT NULL
-						AND NOT EXISTS (
-							SELECT 1
-							FROM entries
-							WHERE entries.blob_id = blobs.blob_id
-						)
-						AND NOT EXISTS (
-							SELECT 1
-							FROM entry_versions
-							WHERE entry_versions.blob_id = blobs.blob_id
-								AND entry_versions.expires_at > ?
-						)
+						AND ${BLOB_UNREFERENCED_SQL}
 					UNION ALL
 					SELECT entry_versions.expires_at AS delete_after
 					FROM entry_versions
@@ -431,17 +401,7 @@ export class CoordinatorBlobStore {
 					ELSE delete_after
 				END
 			WHERE state != 'staged'
-				AND NOT EXISTS (
-					SELECT 1
-					FROM entries
-					WHERE entries.blob_id = blobs.blob_id
-				)
-				AND NOT EXISTS (
-					SELECT 1
-					FROM entry_versions
-					WHERE entry_versions.blob_id = blobs.blob_id
-						AND entry_versions.expires_at > ?
-				)
+				AND ${BLOB_UNREFERENCED_SQL}
 			`,
 			now,
 			now,
@@ -461,17 +421,7 @@ export class CoordinatorBlobStore {
 				END
 			WHERE blob_id = ?
 				AND state != 'staged'
-				AND NOT EXISTS (
-					SELECT 1
-					FROM entries
-					WHERE entries.blob_id = blobs.blob_id
-				)
-				AND NOT EXISTS (
-					SELECT 1
-					FROM entry_versions
-					WHERE entry_versions.blob_id = blobs.blob_id
-						AND entry_versions.expires_at > ?
-				)
+				AND ${BLOB_UNREFERENCED_SQL}
 			`,
 			now,
 			now,

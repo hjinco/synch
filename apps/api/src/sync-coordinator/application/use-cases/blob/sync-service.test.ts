@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { SyncCoordinatorApplicationError } from "../../errors/coordinator-errors";
+import { STAGED_BLOB_STALE_MS } from "../../../domain/health-policy";
 import type { BlobObjectRepository, SyncTokenVerifier } from "../../ports/outbound";
 import {
 	createCoordinatorService,
@@ -119,6 +120,7 @@ describe("coordinator blob lifecycle", () => {
 			66_701,
 			expect.any(Number),
 			expect.any(Number),
+			STAGED_BLOB_STALE_MS,
 		);
 		expect(socketService.closeAllSockets).toHaveBeenCalledWith(
 			4403,

@@ -7,6 +7,7 @@ import type {
 	VaultStateStore,
 } from "../../ports/outbound";
 import type { MaintenanceScheduler } from "../../ports/outbound";
+import { STAGED_BLOB_STALE_MS } from "../../../domain/health-policy";
 
 const MAX_REPAIRABLE_STALE_STAGED_BLOBS = 100;
 const STALE_BLOB_PAUSE_REASON_PREFIX = "staged blob ";
@@ -32,6 +33,7 @@ export class CoordinatorSyncRepairService {
 		const pause = this.vaultStateStore.readSyncPause();
 		const staleBlobs = this.blobStore.listStaleStagedBlobs(
 			now,
+			STAGED_BLOB_STALE_MS,
 			MAX_REPAIRABLE_STALE_STAGED_BLOBS + 1,
 		);
 
@@ -90,6 +92,7 @@ export class CoordinatorSyncRepairService {
 
 		const remainingStaleBlobs = this.blobStore.listStaleStagedBlobs(
 			now,
+			STAGED_BLOB_STALE_MS,
 			MAX_REPAIRABLE_STALE_STAGED_BLOBS + 1,
 		);
 		const nextGcAt = this.blobStore.nextBlobGcAt();

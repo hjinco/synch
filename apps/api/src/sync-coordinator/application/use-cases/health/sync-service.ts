@@ -1,6 +1,9 @@
 import type { MaintenanceScheduler } from "../../ports/outbound";
 import type { HealthStateStore } from "../../ports/outbound";
-import { nextHealthSummaryFlushAt } from "./health-policy";
+import {
+	evaluateHealth,
+	nextHealthSummaryFlushAt,
+} from "../../../domain/health-policy";
 import type { VaultSyncStatusSummary } from "../../dto/health";
 
 const DEFAULT_HEALTH_SUMMARY_FLUSH_DELAY_MS = 10 * 60 * 1000;
@@ -37,10 +40,17 @@ export class HealthSyncService {
 		}
 
 		const now = options.now ?? Date.now();
-		const summary = this.healthStore.readHealthSummary(now, this.cursorActiveTtlMs);
-		if (!summary) {
+		const snapshot = this.healthStore.readHealthSnapshot(now, this.cursorActiveTtlMs);
+		if (!snapshot) {
 			return null;
 		}
+
+		const evaluated = evaluateHealth(snapshot, now);
+		const summary: VaultSyncStatusSummary = {
+			...snapshot,
+			healthStatus: evaluated.status,
+			healthReasons: evaluated.reasons,
+		};
 
 		try {
 			await this.syncStatusRepository.upsert(summary, now);

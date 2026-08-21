@@ -1,9 +1,9 @@
-import type { VaultSyncStatusSummary } from "../../dto/health";
+import type { VaultHealthSnapshot } from "../../dto/health";
 import type { StorageStatusSnapshot } from "../../dto/types";
 
 export interface HealthStateStore {
 	recordGcCompleted(now?: number): void;
-	readHealthSummary(now: number, activeCursorTtlMs: number): VaultSyncStatusSummary | null;
+	readHealthSnapshot(now: number, activeCursorTtlMs: number): VaultHealthSnapshot | null;
 	readStorageStatus(): StorageStatusSnapshot;
 }
 

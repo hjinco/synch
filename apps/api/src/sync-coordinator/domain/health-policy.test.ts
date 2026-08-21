@@ -2,10 +2,75 @@ import { describe, expect, it } from "vitest";
 
 import {
 	ACTIVE_WITHOUT_RECENT_COMMIT_MS,
+	evaluateHealth,
+	nextHealthSummaryFlushAt,
+	PENDING_DELETE_BACKLOG_WARNING_COUNT,
 	PENDING_DELETE_STALE_MS,
 	STAGED_BLOB_STALE_MS,
-	nextHealthSummaryFlushAt,
-} from "./health-store";
+	type VaultHealthFacts,
+} from "./health-policy";
+
+describe("evaluateHealth", () => {
+	it("warns pending_delete_backlog only for collectible blobs", () => {
+		expect(
+			evaluateHealth(
+				createFacts({
+					collectiblePendingDeleteBlobCount:
+						PENDING_DELETE_BACKLOG_WARNING_COUNT + 1,
+				}),
+				10_000,
+			),
+		).toEqual({
+			status: "warning",
+			reasons: ["pending_delete_backlog"],
+		});
+	});
+
+	it("does not treat version-held pending_delete census as a backlog", () => {
+		expect(
+			evaluateHealth(
+				createFacts({
+					collectiblePendingDeleteBlobCount: 0,
+					oldestPendingDeleteAgeMs: null,
+				}),
+				10_000,
+			),
+		).toEqual({
+			status: "ok",
+			reasons: [],
+		});
+	});
+
+	it("warns pending_delete_stale from collectible age", () => {
+		expect(
+			evaluateHealth(
+				createFacts({
+					collectiblePendingDeleteBlobCount: 1,
+					oldestPendingDeleteAgeMs: PENDING_DELETE_STALE_MS,
+				}),
+				10_000,
+			),
+		).toEqual({
+			status: "warning",
+			reasons: ["pending_delete_stale"],
+		});
+	});
+
+	it("does not warn pending_delete_stale when only pinned blobs remain", () => {
+		expect(
+			evaluateHealth(
+				createFacts({
+					collectiblePendingDeleteBlobCount: 0,
+					oldestPendingDeleteAgeMs: null,
+				}),
+				10_000,
+			),
+		).toEqual({
+			status: "ok",
+			reasons: [],
+		});
+	});
+});
 
 describe("nextHealthSummaryFlushAt", () => {
 	it("schedules active_without_recent_commit at lastCommitAt + threshold", () => {
@@ -87,3 +152,16 @@ describe("nextHealthSummaryFlushAt", () => {
 		).toBeNull();
 	});
 });
+
+function createFacts(overrides: Partial<VaultHealthFacts> = {}): VaultHealthFacts {
+	return {
+		storageUsedBytes: 10,
+		storageLimitBytes: 100,
+		oldestStagedBlobAgeMs: null,
+		oldestPendingDeleteAgeMs: null,
+		collectiblePendingDeleteBlobCount: 0,
+		activeLocalVaultCount: 0,
+		lastCommitAt: null,
+		...overrides,
+	};
+}

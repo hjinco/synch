@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it } from "vitest";
 
 import { SyncCoordinatorApplicationError } from "../../../application/errors/coordinator-errors";
-import { STAGED_BLOB_STALE_MS } from "./health-store";
+import { STAGED_BLOB_STALE_MS } from "../../../domain/health-policy";
+import { CoordinatorBlobStore } from "./blob-store";
 import { closeAllTestSqliteCoordinators, createSqliteCoordinator, testSession } from "./test-helpers";
 
 afterEach(() => {
@@ -12,7 +13,7 @@ describe("sqlite backend: blob staging", () => {
 	it("stages a blob and increments storage used bytes", async () => {
 		const { blobStore, healthStore } = await createSqliteCoordinator();
 
-		await blobStore.stageBlob("blob-1", 1_000, 100, 200);
+		await stage(blobStore, "blob-1", 1_000, 100, 200);
 
 		expect(blobStore.readBlob("blob-1")).toMatchObject({
 			blob_id: "blob-1",
@@ -24,11 +25,11 @@ describe("sqlite backend: blob staging", () => {
 
 	it("atomically pauses sync when a stale staged blob is retried", async () => {
 		const { blobStore, cursorStore } = await createSqliteCoordinator();
-		await blobStore.stageBlob("blob-stale", 1_000, 100, 200);
+		await stage(blobStore, "blob-stale", 1_000, 100, 200);
 
 		const retriedAt = 100 + STAGED_BLOB_STALE_MS;
 		await expect(
-			blobStore.stageBlob("blob-stale", 1_000, retriedAt, retriedAt + 100),
+			stage(blobStore, "blob-stale", 1_000, retriedAt, retriedAt + 100),
 		).resolves.toEqual({
 			status: "sync_paused",
 		});
@@ -50,7 +51,7 @@ describe("sqlite backend: blob staging", () => {
 			versionHistoryRetentionDays: 1,
 		});
 
-		await expect(blobStore.stageBlob("blob-1", 11, 100, 200)).rejects.toThrow(SyncCoordinatorApplicationError);
+		await expect(stage(blobStore, "blob-1", 11, 100, 200)).rejects.toThrow(SyncCoordinatorApplicationError);
 	});
 
 	it("rejects a blob that would exceed the vault storage quota", async () => {
@@ -60,7 +61,7 @@ describe("sqlite backend: blob staging", () => {
 			versionHistoryRetentionDays: 1,
 		});
 
-		await expect(blobStore.stageBlob("blob-1", 2_000, 100, 200)).rejects.toThrow(SyncCoordinatorApplicationError);
+		await expect(stage(blobStore, "blob-1", 2_000, 100, 200)).rejects.toThrow(SyncCoordinatorApplicationError);
 	});
 
 	it("does not mutate storage_used_bytes when a stage is rejected mid-transaction", async () => {
@@ -70,10 +71,10 @@ describe("sqlite backend: blob staging", () => {
 			versionHistoryRetentionDays: 1,
 		});
 
-		await blobStore.stageBlob("blob-a", 500, 100, 200);
+		await stage(blobStore, "blob-a", 500, 100, 200);
 		expect(healthStore.readStorageStatus().storageUsedBytes).toBe(500);
 
-		await expect(blobStore.stageBlob("blob-b", 900, 100, 200)).rejects.toThrow(SyncCoordinatorApplicationError);
+		await expect(stage(blobStore, "blob-b", 900, 100, 200)).rejects.toThrow(SyncCoordinatorApplicationError);
 
 		// The rejected stage must not have partially applied: no leftover blob
 		// row, and the quota counter must reflect only the first, successful
@@ -86,7 +87,7 @@ describe("sqlite backend: blob staging", () => {
 
 	it("rejects re-staging a blob that is already live", async () => {
 		const { blobStore, mutationStore } = await createSqliteCoordinator();
-		await blobStore.stageBlob("blob-1", 100, 1_000, 2_000);
+		await stage(blobStore, "blob-1", 100, 1_000, 2_000);
 		await mutationStore.commitMutations(
 			testSession(),
 			{
@@ -108,14 +109,14 @@ describe("sqlite backend: blob staging", () => {
 		);
 
 		expect(blobStore.readBlob("blob-1")?.state).toBe("live");
-		await expect(blobStore.stageBlob("blob-1", 100, 3_000, 4_000)).rejects.toThrow(
+		await expect(stage(blobStore, "blob-1", 100, 3_000, 4_000)).rejects.toThrow(
 			SyncCoordinatorApplicationError,
 		);
 	});
 
 	it("collects a staged-but-never-committed blob once its grace period passes", async () => {
 		const { blobStore } = await createSqliteCoordinator();
-		await blobStore.stageBlob("blob-1", 100, 1_000, 1_500);
+		await stage(blobStore, "blob-1", 100, 1_000, 1_500);
 
 		const ready = blobStore.listBlobsReadyForDeletion(2_000, 10);
 		expect(ready.map((row) => row.blob_id)).toContain("blob-1");
@@ -126,7 +127,7 @@ describe("sqlite backend: blob staging", () => {
 
 	it("deletes an unreferenced staged blob and reports a missing row", async () => {
 		const { blobStore, healthStore } = await createSqliteCoordinator();
-		await blobStore.stageBlob("blob-1", 100, 1_000, 2_000);
+		await stage(blobStore, "blob-1", 100, 1_000, 2_000);
 
 		expect(blobStore.deleteUnreferencedStagedBlob("blob-1", 1_500)).toBe("deleted");
 		expect(blobStore.readBlob("blob-1")).toBeNull();
@@ -136,7 +137,7 @@ describe("sqlite backend: blob staging", () => {
 
 	it("does not delete a staged blob that is still referenced", async () => {
 		const { blobStore, handle, healthStore } = await createSqliteCoordinator();
-		await blobStore.stageBlob("blob-1", 100, 1_000, 2_000);
+		await stage(blobStore, "blob-1", 100, 1_000, 2_000);
 		handle.exec(
 			`
 			INSERT INTO entries (
@@ -169,7 +170,7 @@ describe("sqlite backend: blob staging", () => {
 
 	it("marks a live blob pending-delete once its entry stops referencing it", async () => {
 		const { blobStore, mutationStore } = await createSqliteCoordinator();
-		await blobStore.stageBlob("blob-1", 100, 1_000, 2_000);
+		await stage(blobStore, "blob-1", 100, 1_000, 2_000);
 		await mutationStore.commitMutations(
 			testSession(),
 			{
@@ -214,3 +215,13 @@ describe("sqlite backend: blob staging", () => {
 		expect(blobStore.readBlob("blob-1")?.state).toBe("pending_delete");
 	});
 });
+
+function stage(
+	blobStore: CoordinatorBlobStore,
+	blobId: string,
+	sizeBytes: number,
+	now: number,
+	deleteAfter: number,
+) {
+	return blobStore.stageBlob(blobId, sizeBytes, now, deleteAfter, STAGED_BLOB_STALE_MS);
+}

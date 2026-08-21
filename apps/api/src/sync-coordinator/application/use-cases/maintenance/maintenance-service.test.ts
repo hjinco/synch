@@ -3,9 +3,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { HealthSyncService } from "../health/sync-service";
 import { CoordinatorMaintenanceScheduler } from "../../../adapters/outbound/scheduler/maintenance-scheduler";
 import { CoordinatorMaintenanceService } from "./maintenance-service";
-import { ACTIVE_WITHOUT_RECENT_COMMIT_MS } from "../../../adapters/outbound/sqlite/health-store";
+import { ACTIVE_WITHOUT_RECENT_COMMIT_MS } from "../../../domain/health-policy";
 import type { HealthStateStore } from "../../ports/outbound";
-import type { VaultSyncStatusSummary } from "../../dto/health";
+import type { VaultHealthSnapshot } from "../../dto/health";
 
 type TestJob = {
 	key: string;
@@ -38,7 +38,7 @@ describe("CoordinatorMaintenanceService health flush drain", () => {
 		const deferSpy = vi.spyOn(scheduler, "defer");
 		const healthSyncService = new HealthSyncService(
 			createStateRepository({
-				readHealthSummary: vi.fn(() => createSummary({ lastCommitAt })),
+				readHealthSnapshot: vi.fn(() => createSnapshot({ lastCommitAt })),
 			}),
 			{ upsert: vi.fn(async () => {}) },
 			30 * 24 * 60 * 60 * 1000,
@@ -84,13 +84,7 @@ describe("CoordinatorMaintenanceService health flush drain", () => {
 		const scheduler = new CoordinatorMaintenanceScheduler(ctx);
 		const healthSyncService = new HealthSyncService(
 			createStateRepository({
-				readHealthSummary: vi.fn(() =>
-					createSummary({
-						lastCommitAt,
-						healthStatus: "warning",
-						healthReasons: ["active_without_recent_commit"],
-					}),
-				),
+				readHealthSnapshot: vi.fn(() => createSnapshot({ lastCommitAt })),
 			}),
 			{ upsert: vi.fn(async () => {}) },
 			30 * 24 * 60 * 60 * 1000,
@@ -111,18 +105,17 @@ describe("CoordinatorMaintenanceService health flush drain", () => {
 	});
 });
 
-function createSummary(
-	overrides: Partial<VaultSyncStatusSummary> = {},
-): VaultSyncStatusSummary {
+function createSnapshot(
+	overrides: Partial<VaultHealthSnapshot> = {},
+): VaultHealthSnapshot {
 	return {
 		vaultId: "vault-1",
-		healthStatus: "ok",
-		healthReasons: [],
 		currentCursor: 1,
 		entryCount: 1,
 		liveBlobCount: 1,
 		stagedBlobCount: 0,
 		pendingDeleteBlobCount: 0,
+		collectiblePendingDeleteBlobCount: 0,
 		storageUsedBytes: 10,
 		storageLimitBytes: 100,
 		activeLocalVaultCount: 1,
@@ -140,7 +133,7 @@ function createStateRepository(
 ): HealthStateStore {
 	return {
 		recordGcCompleted: vi.fn(),
-		readHealthSummary: vi.fn(() => null),
+		readHealthSnapshot: vi.fn(() => null),
 		readStorageStatus: vi.fn(() => ({
 			storageUsedBytes: 0,
 			storageLimitBytes: 100,

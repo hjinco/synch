@@ -1,15 +1,7 @@
 import type { StorageStatusSnapshot } from "../../../application/dto/types";
-import type {
-	VaultSyncHealthStatus,
-	VaultSyncStatusSummary,
-} from "../../../application/dto/health";
+import type { VaultHealthSnapshot } from "../../../application/dto/health";
+import { COLLECTIBLE_PENDING_DELETE_SQL } from "./blob-collectability";
 import type { CoordinatorStorageHandle } from "./storage-handle";
-
-export const STAGED_BLOB_STALE_MS = 60 * 60 * 1000;
-export const PENDING_DELETE_STALE_MS = 24 * 60 * 60 * 1000;
-export const ACTIVE_WITHOUT_RECENT_COMMIT_MS = 24 * 60 * 60 * 1000;
-const PENDING_DELETE_BACKLOG_WARNING_COUNT = 100;
-const STORAGE_NEAR_LIMIT_RATIO = 0.8;
 
 /** Live websocket count, kept separate from storage since it isn't backed by SQL. */
 export interface CoordinatorSocketCounter {
@@ -33,10 +25,10 @@ export class CoordinatorHealthStore {
 		);
 	}
 
-	readHealthSummary(
+	readHealthSnapshot(
 		now: number,
 		activeCursorTtlMs: number,
-	): VaultSyncStatusSummary | null {
+	): VaultHealthSnapshot | null {
 		const state = this.handle
 			.exec<{
 				vault_id: string;
@@ -70,6 +62,7 @@ export class CoordinatorHealthStore {
 				live_blob_count: number;
 				staged_blob_count: number;
 				pending_delete_blob_count: number;
+				collectible_pending_delete_blob_count: number;
 				oldest_staged_blob_at: number | null;
 				oldest_pending_delete_at: number | null;
 				active_local_vault_count: number;
@@ -80,23 +73,29 @@ export class CoordinatorHealthStore {
 					(SELECT count(*) FROM blobs WHERE state = 'live') AS live_blob_count,
 					(SELECT count(*) FROM blobs WHERE state = 'staged') AS staged_blob_count,
 					(SELECT count(*) FROM blobs WHERE state = 'pending_delete') AS pending_delete_blob_count,
+					(SELECT count(*) FROM blobs WHERE ${COLLECTIBLE_PENDING_DELETE_SQL}) AS collectible_pending_delete_blob_count,
 					(SELECT min(created_at) FROM blobs WHERE state = 'staged') AS oldest_staged_blob_at,
-					(SELECT min(delete_after) FROM blobs WHERE state = 'pending_delete') AS oldest_pending_delete_at,
+					(SELECT min(delete_after) FROM blobs WHERE ${COLLECTIBLE_PENDING_DELETE_SQL}) AS oldest_pending_delete_at,
 					(SELECT count(*) FROM local_vault_connections WHERE last_connected_at >= ?) AS active_local_vault_count
 				`,
+				now,
+				now,
+				now,
+				now,
 				activeSince,
 			)
 			.toArray()[0];
 
-		const summary = {
+		const snapshot = {
 			vaultId: state.vault_id,
-			healthStatus: "unknown",
-			healthReasons: [],
 			currentCursor: Number(state.current_cursor),
 			entryCount: Number(stats?.entry_count ?? 0),
 			liveBlobCount: Number(stats?.live_blob_count ?? 0),
 			stagedBlobCount: Number(stats?.staged_blob_count ?? 0),
 			pendingDeleteBlobCount: Number(stats?.pending_delete_blob_count ?? 0),
+			collectiblePendingDeleteBlobCount: Number(
+				stats?.collectible_pending_delete_blob_count ?? 0,
+			),
 			storageUsedBytes: Number(state.storage_used_bytes),
 			storageLimitBytes: Number(state.storage_limit_bytes),
 			activeLocalVaultCount: Number(stats?.active_local_vault_count ?? 0),
@@ -108,14 +107,9 @@ export class CoordinatorHealthStore {
 			),
 			lastCommitAt: nullableNumber(state.last_commit_at),
 			lastGcAt: nullableNumber(state.last_gc_at),
-		} satisfies VaultSyncStatusSummary;
-		const evaluated = evaluateHealth(summary, now);
+		} satisfies VaultHealthSnapshot;
 
-		return {
-			...summary,
-			healthStatus: evaluated.status,
-			healthReasons: evaluated.reasons,
-		};
+		return snapshot;
 	}
 
 	readStorageStatus(): StorageStatusSnapshot {
@@ -136,125 +130,6 @@ export class CoordinatorHealthStore {
 			storageLimitBytes: Number(state?.storage_limit_bytes ?? 0),
 		};
 	}
-}
-
-function evaluateHealth(
-	summary: VaultSyncStatusSummary,
-	now: number,
-): { status: VaultSyncHealthStatus; reasons: string[] } {
-	const reasons: string[] = [];
-	let status: VaultSyncHealthStatus = "ok";
-
-	const warning = (reason: string) => {
-		if (status === "ok") {
-			status = "warning";
-		}
-		reasons.push(reason);
-	};
-	const critical = (reason: string) => {
-		status = "critical";
-		reasons.push(reason);
-	};
-
-	if (
-		summary.storageLimitBytes > 0 &&
-		summary.storageUsedBytes >= summary.storageLimitBytes
-	) {
-		critical("storage_over_limit");
-	} else if (
-		summary.storageLimitBytes > 0 &&
-		summary.storageUsedBytes >=
-			Math.floor(summary.storageLimitBytes * STORAGE_NEAR_LIMIT_RATIO)
-	) {
-		warning("storage_near_limit");
-	}
-
-	if (
-		summary.oldestStagedBlobAgeMs !== null &&
-		summary.oldestStagedBlobAgeMs >= STAGED_BLOB_STALE_MS
-	) {
-		warning("staged_blob_stale");
-	}
-
-	if (
-		summary.oldestPendingDeleteAgeMs !== null &&
-		summary.oldestPendingDeleteAgeMs >= PENDING_DELETE_STALE_MS
-	) {
-		warning("pending_delete_stale");
-	}
-
-	if (summary.pendingDeleteBlobCount > PENDING_DELETE_BACKLOG_WARNING_COUNT) {
-		warning("pending_delete_backlog");
-	}
-
-	if (
-		summary.activeLocalVaultCount > 0 &&
-		(summary.lastCommitAt === null ||
-			now - summary.lastCommitAt >= ACTIVE_WITHOUT_RECENT_COMMIT_MS)
-	) {
-		warning("active_without_recent_commit");
-	}
-
-	return { status, reasons };
-}
-
-/**
- * Earliest future time when a time-based health reason can change.
- * Already-fired thresholds are skipped so flushes do not reschedule forever.
- */
-export function nextHealthSummaryFlushAt(
-	summary: Pick<
-		VaultSyncStatusSummary,
-		| "activeLocalVaultCount"
-		| "lastCommitAt"
-		| "oldestStagedBlobAgeMs"
-		| "oldestPendingDeleteAgeMs"
-	>,
-	now: number,
-): number | null {
-	const candidates: number[] = [];
-
-	if (summary.activeLocalVaultCount > 0 && summary.lastCommitAt !== null) {
-		const commitWarningAt =
-			summary.lastCommitAt + ACTIVE_WITHOUT_RECENT_COMMIT_MS;
-		if (commitWarningAt > now) {
-			candidates.push(commitWarningAt);
-		}
-	}
-
-	const stagedWarningAt = futureDueFromAge(
-		now,
-		summary.oldestStagedBlobAgeMs,
-		STAGED_BLOB_STALE_MS,
-	);
-	if (stagedWarningAt !== null) {
-		candidates.push(stagedWarningAt);
-	}
-
-	const pendingDeleteWarningAt = futureDueFromAge(
-		now,
-		summary.oldestPendingDeleteAgeMs,
-		PENDING_DELETE_STALE_MS,
-	);
-	if (pendingDeleteWarningAt !== null) {
-		candidates.push(pendingDeleteWarningAt);
-	}
-
-	if (candidates.length === 0) {
-		return null;
-	}
-	return Math.min(...candidates);
-}
-
-function futureDueFromAge(
-	now: number,
-	ageMs: number | null,
-	thresholdMs: number,
-): number | null {
-	if (ageMs === null || ageMs >= thresholdMs) {
-		return null;
-	}
-	return now + (thresholdMs - ageMs);
 }
 
 function nullableNumber(value: number | null): number | null {

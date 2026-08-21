@@ -142,6 +142,7 @@ describe("libSQL app DB", () => {
 			liveBlobCount: 0,
 			stagedBlobCount: 0,
 			pendingDeleteBlobCount: 0,
+			collectiblePendingDeleteBlobCount: 0,
 			storageUsedBytes: 0,
 			storageLimitBytes: 100,
 			activeLocalVaultCount: 0,

@@ -1,9 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { ACTIVE_WITHOUT_RECENT_COMMIT_MS } from "../../../adapters/outbound/sqlite/health-store";
+import {
+	ACTIVE_WITHOUT_RECENT_COMMIT_MS,
+	PENDING_DELETE_STALE_MS,
+} from "../../../domain/health-policy";
 import { HealthSyncService } from "./sync-service";
 import type { HealthStateStore } from "../../ports/outbound";
-import type { VaultSyncStatusSummary } from "../../dto/health";
+import type { VaultHealthSnapshot } from "../../dto/health";
 
 describe("HealthSyncService", () => {
 	it("coalesces delayed health summary flush scheduling", async () => {
@@ -46,7 +49,7 @@ describe("HealthSyncService", () => {
 
 	it("allows the next activity to schedule after a successful flush", async () => {
 		const stateRepository = createStateRepository({
-			readHealthSummary: vi.fn(() => createSummary({ lastCommitAt: 1_000 })),
+			readHealthSnapshot: vi.fn(() => createSnapshot({ lastCommitAt: 1_000 })),
 		});
 		const syncStatusRepository = {
 			upsert: vi.fn(async () => {}),
@@ -76,7 +79,7 @@ describe("HealthSyncService", () => {
 		const lastCommitAt = 1_000;
 		const now = 61_000;
 		const stateRepository = createStateRepository({
-			readHealthSummary: vi.fn(() => createSummary({ lastCommitAt })),
+			readHealthSnapshot: vi.fn(() => createSnapshot({ lastCommitAt })),
 		});
 		const syncStatusRepository = {
 			upsert: vi.fn(async () => {}),
@@ -99,46 +102,73 @@ describe("HealthSyncService", () => {
 		);
 	});
 
+	it("evaluates health policy before persisting the summary", async () => {
+		const now = PENDING_DELETE_STALE_MS;
+		const upsert = vi.fn(async () => {});
+		const service = new HealthSyncService(
+			createStateRepository({
+				readHealthSnapshot: vi.fn(() =>
+					createSnapshot({
+						activeLocalVaultCount: 0,
+						lastCommitAt: null,
+						collectiblePendingDeleteBlobCount: 1,
+						oldestPendingDeleteAgeMs: PENDING_DELETE_STALE_MS,
+					}),
+				),
+			}),
+			{ upsert },
+			30 * 24 * 60 * 60 * 1000,
+			{ defer: vi.fn(async () => {}) },
+		);
+
+		await service.flushSummary({ now });
+
+		expect(upsert).toHaveBeenCalledWith(
+			expect.objectContaining({
+				healthStatus: "warning",
+				healthReasons: ["pending_delete_stale"],
+			}),
+			now,
+		);
+	});
+
 	it("does not arm another flush when no future health deadline remains", async () => {
 		const lastCommitAt = 1_000;
 		const now = lastCommitAt + ACTIVE_WITHOUT_RECENT_COMMIT_MS;
-		const stateRepository = createStateRepository({
-			readHealthSummary: vi.fn(() =>
-				createSummary({
-					lastCommitAt,
-					healthStatus: "warning",
-					healthReasons: ["active_without_recent_commit"],
-				}),
-			),
-		});
-		const syncStatusRepository = {
-			upsert: vi.fn(async () => {}),
-		};
+		const upsert = vi.fn(async () => {});
 		const deferMaintenance = vi.fn(async () => {});
 		const service = new HealthSyncService(
-			stateRepository,
-			syncStatusRepository,
+			createStateRepository({
+				readHealthSnapshot: vi.fn(() => createSnapshot({ lastCommitAt })),
+			}),
+			{ upsert },
 			30 * 24 * 60 * 60 * 1000,
 			{ defer: deferMaintenance },
 		);
 
 		await expect(service.flushSummary({ now })).resolves.toBeNull();
 		expect(deferMaintenance).not.toHaveBeenCalled();
+		expect(upsert).toHaveBeenCalledWith(
+			expect.objectContaining({
+				healthStatus: "warning",
+				healthReasons: ["active_without_recent_commit"],
+			}),
+			now,
+		);
 	});
 });
 
-function createSummary(
-	overrides: Partial<VaultSyncStatusSummary> = {},
-): VaultSyncStatusSummary {
+function createSnapshot(
+	overrides: Partial<VaultHealthSnapshot> = {},
+): VaultHealthSnapshot {
 	return {
 		vaultId: "vault-1",
-		healthStatus: "ok",
-		healthReasons: [],
 		currentCursor: 1,
 		entryCount: 1,
 		liveBlobCount: 1,
 		stagedBlobCount: 0,
 		pendingDeleteBlobCount: 0,
+		collectiblePendingDeleteBlobCount: 0,
 		storageUsedBytes: 10,
 		storageLimitBytes: 100,
 		activeLocalVaultCount: 1,
@@ -156,7 +186,7 @@ function createStateRepository(
 ): HealthStateStore {
 	return {
 		recordGcCompleted: vi.fn(),
-		readHealthSummary: vi.fn(() => null),
+		readHealthSnapshot: vi.fn(() => null),
 		readStorageStatus: vi.fn(() => ({
 			storageUsedBytes: 0,
 			storageLimitBytes: 100,

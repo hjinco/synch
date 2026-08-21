@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
+import { STAGED_BLOB_STALE_MS } from "../../../domain/health-policy";
 import {
 	createCoordinatorService,
 	createMockCoordinatorSocketService,
@@ -492,6 +493,7 @@ describe("coordinator websocket control messages", () => {
 			50_000_000,
 			expect.any(Number),
 			expect.any(Number),
+			STAGED_BLOB_STALE_MS,
 		);
 		expect(socketService.broadcastStorageStatus).toHaveBeenCalledWith({
 			type: "storage_status_updated",

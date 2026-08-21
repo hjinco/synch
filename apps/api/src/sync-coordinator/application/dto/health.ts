@@ -1,14 +1,15 @@
-export type VaultSyncHealthStatus = "ok" | "warning" | "critical" | "unknown";
+import type { VaultSyncHealthStatus } from "../../domain/health-policy";
 
-export type VaultSyncStatusSummary = {
+export type { VaultSyncHealthStatus };
+
+export type VaultHealthSnapshot = {
 	vaultId: string;
-	healthStatus: VaultSyncHealthStatus;
-	healthReasons: string[];
 	currentCursor: number;
 	entryCount: number;
 	liveBlobCount: number;
 	stagedBlobCount: number;
 	pendingDeleteBlobCount: number;
+	collectiblePendingDeleteBlobCount: number;
 	storageUsedBytes: number;
 	storageLimitBytes: number;
 	activeLocalVaultCount: number;
@@ -17,4 +18,9 @@ export type VaultSyncStatusSummary = {
 	oldestPendingDeleteAgeMs: number | null;
 	lastCommitAt: number | null;
 	lastGcAt: number | null;
+};
+
+export type VaultSyncStatusSummary = VaultHealthSnapshot & {
+	healthStatus: VaultSyncHealthStatus;
+	healthReasons: string[];
 };

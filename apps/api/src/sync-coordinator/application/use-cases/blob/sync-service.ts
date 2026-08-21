@@ -1,4 +1,5 @@
 import { SyncCoordinatorApplicationError } from "../../errors/coordinator-errors";
+import { STAGED_BLOB_STALE_MS } from "../../../domain/health-policy";
 import type { MaintenanceScheduler } from "../../ports/outbound";
 import type {
 	BlobObjectRepository,
@@ -60,6 +61,7 @@ export class BlobSyncService {
 				sizeBytes,
 				now,
 				now + this.blobGracePeriodMs,
+				STAGED_BLOB_STALE_MS,
 			);
 			if (result.status === "sync_paused") {
 				this.socketService.closeAllSockets(4403, "sync paused for vault repair");
