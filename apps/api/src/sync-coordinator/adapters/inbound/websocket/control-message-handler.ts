@@ -15,14 +15,14 @@ import type {
 	RestoreEntryVersionsMessage,
 	RestoreEntryVersionsResult,
 	SocketSession,
-} from "../../dto/types";
+} from "../../../application/dto/types";
 import type {
 	HealthStateStore,
 	HealthSummaryScheduler,
 	SocketGateway,
 	VaultStateStore,
-} from "../../ports/outbound";
-import type { CoordinatorSocketMessageHandler } from "../../ports/inbound/socket-message-handler";
+} from "../../../application/ports/outbound";
+import type { CoordinatorSocketMessageHandler } from "./socket-message-handler";
 
 export type CoordinatorControlMessageUseCases = {
 	detachLocalVault(session: SocketSession): Promise<void>;

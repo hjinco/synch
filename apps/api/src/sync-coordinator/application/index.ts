@@ -1,5 +1,4 @@
 export type { CoordinatorApplicationPort } from "./ports/inbound/coordinator";
-export type { CoordinatorSocketMessageHandler } from "./ports/inbound/socket-message-handler";
 export type {
 	ClientControlMessage,
 	CommitMutationMessage,

@@ -1,10 +1,16 @@
+import { and, eq, gte, isNotNull, sql } from "drizzle-orm";
+
+import * as doSchema from "../../../../db/do";
+import type { EntryVersionPageCursor } from "../../../application/dto/types";
+import type {
+	DeletedEntryPurgeFacts,
+	DeletedEntryPurgeTransaction,
+} from "../../../application/ports/outbound/entry-store";
 import type {
 	EntryVersionListRow,
-	EntryVersionPageCursor,
 	EntryVersionReason,
 	EntryVersionRow,
-	PurgeDeletedEntryBatchResult,
-} from "../../../application/dto/types";
+} from "../../../application/ports/outbound/storage-models";
 import type { CoordinatorStorageHandle } from "./storage-handle";
 
 export class CoordinatorHistoryStore {
@@ -121,120 +127,67 @@ export class CoordinatorHistoryStore {
 			: null;
 	}
 
-	purgeDeletedEntryVersions(
-		entries: Array<{ entryId: string; revision: number }>,
+	withDeletedEntryPurgeTransaction<T>(
+		entryId: string,
 		retentionStart: number,
-	): {
-		results: PurgeDeletedEntryBatchResult[];
-		candidateBlobIds: string[];
-	} {
-		const results: PurgeDeletedEntryBatchResult[] = [];
-		const candidateBlobIds = new Set<string>();
+		operation: (transaction: DeletedEntryPurgeTransaction) => T,
+	): T {
+		return this.handle.db.transaction((tx) => {
+			const transaction: DeletedEntryPurgeTransaction = {
+				readFacts: (): DeletedEntryPurgeFacts => {
+					const current = tx
+						.select({
+							revision: doSchema.entries.revision,
+							deleted: doSchema.entries.deleted,
+						})
+						.from(doSchema.entries)
+						.where(eq(doSchema.entries.entryId, entryId))
+						.limit(1)
+						.get();
+					const hasRestorableHistory = tx
+						.select({ found: sql<number>`1` })
+						.from(doSchema.entryVersions)
+						.where(
+							and(
+								eq(doSchema.entryVersions.entryId, entryId),
+								eq(doSchema.entryVersions.opType, "upsert"),
+								isNotNull(doSchema.entryVersions.blobId),
+								gte(doSchema.entryVersions.capturedAt, retentionStart),
+							),
+						)
+						.limit(1)
+						.get();
+					const candidateBlobIds = tx
+						.select({ blobId: doSchema.entryVersions.blobId })
+						.from(doSchema.entryVersions)
+						.where(
+							and(
+								eq(doSchema.entryVersions.entryId, entryId),
+								isNotNull(doSchema.entryVersions.blobId),
+							),
+						)
+						.all()
+						.flatMap((row) => (row.blobId ? [row.blobId] : []));
 
-		for (const entry of entries) {
-			const current = this.handle
-				.exec<{
-					revision: number;
-					deleted: number;
-				}>(
-					`
-					SELECT revision, deleted
-					FROM entries
-					WHERE entry_id = ?
-					LIMIT 1
-					`,
-					entry.entryId,
-				)
-				.toArray()[0];
-			if (!current) {
-				results.push({
-					status: "rejected",
-					entryId: entry.entryId,
-					code: "not_found",
-					message: "entry not found",
-				});
-				continue;
-			}
+					return {
+						current: current
+							? {
+									revision: Number(current.revision),
+									deleted: Number(current.deleted) === 1,
+								}
+							: null,
+						hasRestorableHistory: Boolean(hasRestorableHistory),
+						candidateBlobIds: [...new Set(candidateBlobIds)],
+					};
+				},
+				deleteEntryVersions: () => {
+					tx.delete(doSchema.entryVersions)
+						.where(eq(doSchema.entryVersions.entryId, entryId))
+						.run();
+				},
+			};
 
-			const currentRevision = Number(current.revision);
-			if (Number(current.deleted) !== 1) {
-				results.push({
-					status: "rejected",
-					entryId: entry.entryId,
-					code: "not_deleted",
-					message: "entry is not deleted",
-				});
-				continue;
-			}
-
-			if (currentRevision !== entry.revision) {
-				results.push({
-					status: "rejected",
-					entryId: entry.entryId,
-					code: "stale_revision",
-					message: `expected revision ${currentRevision} but received ${entry.revision}`,
-					expectedRevision: currentRevision,
-				});
-				continue;
-			}
-
-			const restorable = this.handle
-				.exec<{ found: number }>(
-					`
-					SELECT 1 AS found
-					FROM entry_versions
-					WHERE entry_id = ?
-						AND op_type = 'upsert'
-						AND blob_id IS NOT NULL
-						AND captured_at >= ?
-					LIMIT 1
-					`,
-					entry.entryId,
-					retentionStart,
-				)
-				.toArray()[0];
-			if (!restorable) {
-				results.push({
-					status: "rejected",
-					entryId: entry.entryId,
-					code: "no_history",
-					message: "deleted entry has no restorable history",
-				});
-				continue;
-			}
-
-			for (const version of this.handle
-				.exec<{ blob_id: string | null }>(
-					`
-					SELECT DISTINCT blob_id
-					FROM entry_versions
-					WHERE entry_id = ?
-						AND blob_id IS NOT NULL
-					`,
-					entry.entryId,
-				)
-				.toArray()) {
-				if (version.blob_id) {
-					candidateBlobIds.add(version.blob_id);
-				}
-			}
-
-			this.handle.exec(
-				`
-				DELETE FROM entry_versions
-				WHERE entry_id = ?
-				`,
-				entry.entryId,
-			);
-			results.push({
-				status: "accepted",
-				entryId: entry.entryId,
-			});
-		}
-
-		return {
-			results,
-			candidateBlobIds: [...candidateBlobIds],
-		};
+			return operation(transaction);
+		});
 	}
 }

@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 
+import { decideDeletedEntryPurge } from "../../../domain/entry-policy";
 import { closeAllTestSqliteCoordinators, createSqliteCoordinator, testSession } from "./test-helpers";
 
 const STAGE_GRACE_PERIOD_MS = 30 * 60 * 1000;
@@ -94,10 +95,18 @@ describe("sqlite backend: entry history", () => {
 			VERSION_HISTORY_RETENTION_MS,
 		);
 
-		const { results } = historyStore.purgeDeletedEntryVersions(
-			[{ entryId: "entry-1", revision: 2 }],
+		const decision = historyStore.withDeletedEntryPurgeTransaction(
+			"entry-1",
 			0,
+			(transaction) => {
+				const facts = transaction.readFacts();
+				return decideDeletedEntryPurge({
+					current: facts.current,
+					receivedRevision: 2,
+					hasRestorableHistory: facts.hasRestorableHistory,
+				});
+			},
 		);
-		expect(results).toMatchObject([{ status: "rejected", code: "no_history" }]);
+		expect(decision).toEqual({ kind: "no_history" });
 	});
 });

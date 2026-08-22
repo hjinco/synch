@@ -7,6 +7,7 @@ import type {
 	StorageStatusUpdatedMessage,
 } from "../../../application/dto/types";
 import type { SocketGateway } from "../../../application/ports/outbound";
+import { shouldReplaceSocketSession } from "../../../domain/socket-policy";
 
 type SocketRecord = { id: string; session: SocketSession };
 
@@ -22,8 +23,8 @@ export class NodeSocketGateway implements SocketGateway {
 
 	registerSocket(socket: WsWebSocket, session: SocketSession): string {
 		const id = crypto.randomUUID();
-		this.closeSupersededSockets(socket, session);
 		this.sockets.set(socket, { id, session });
+		this.closeSupersededSockets(socket, session);
 		return id;
 	}
 
@@ -88,12 +89,18 @@ export class NodeSocketGateway implements SocketGateway {
 		for (const socket of this.sockets.keys()) this.closeNativeSocket(socket, code, reason);
 	}
 
+	private socketFor(connectionId: string): WsWebSocket | null {
+		for (const [socket, record] of this.sockets) {
+			if (record.id === connectionId) return socket;
+		}
+		return null;
+	}
+
 	private closeSupersededSockets(current: WsWebSocket, session: SocketSession): void {
 		for (const [socket, record] of this.sockets) {
 			if (
 				socket !== current &&
-				record.session.userId === session.userId &&
-				record.session.localVaultId === session.localVaultId
+				shouldReplaceSocketSession(record.session, session)
 			) {
 				this.sendSocketMessage(record.id, {
 					type: "session_error",
@@ -103,13 +110,6 @@ export class NodeSocketGateway implements SocketGateway {
 				this.closeSocket(record.id, 4409, "superseded by newer connection");
 			}
 		}
-	}
-
-	private socketFor(connectionId: string): WsWebSocket | null {
-		for (const [socket, record] of this.sockets) {
-			if (record.id === connectionId) return socket;
-		}
-		return null;
 	}
 
 	private trySend(socket: WsWebSocket, encoded: string): boolean {

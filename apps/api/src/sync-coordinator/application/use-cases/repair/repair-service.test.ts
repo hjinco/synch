@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { CoordinatorSyncRepairService } from "./repair-service";
+import { stageBlobForTest } from "../../../test-helpers";
 import {
 	closeAllTestSqliteCoordinators,
 	createSqliteCoordinator,
@@ -20,12 +21,12 @@ describe("CoordinatorSyncRepairService", () => {
 	it("removes unreferenced stale staged blobs and clears the pause", async () => {
 		const { blobStore, cursorStore, handle } = await createSqliteCoordinator();
 		const now = Date.now();
-		await blobStore.stageBlob(
+		stageBlobForTest(
+			blobStore,
 			"blob-stale",
 			100,
 			now - STAGED_BLOB_STALE_MS - 1,
 			now - 1,
-			STAGED_BLOB_STALE_MS,
 		);
 		handle.exec(
 			"UPDATE coordinator_state SET sync_paused_at = ?, sync_pause_reason = ? WHERE id = 1",
@@ -68,12 +69,12 @@ describe("CoordinatorSyncRepairService", () => {
 	it("keeps a paused vault when a stale blob is still referenced", async () => {
 		const { blobStore, cursorStore, handle } = await createSqliteCoordinator();
 		const now = Date.now();
-		await blobStore.stageBlob(
+		stageBlobForTest(
+			blobStore,
 			"blob-referenced",
 			100,
 			now - STAGED_BLOB_STALE_MS - 1,
 			now - 1,
-			STAGED_BLOB_STALE_MS,
 		);
 		handle.exec(
 			`
@@ -162,12 +163,12 @@ describe("CoordinatorSyncRepairService", () => {
 		const { blobStore, cursorStore, handle, healthStore } =
 			await createSqliteCoordinator();
 		const now = Date.now();
-		await blobStore.stageBlob(
+		stageBlobForTest(
+			blobStore,
 			"blob-stale",
 			100,
 			now - STAGED_BLOB_STALE_MS - 1,
 			now - 1,
-			STAGED_BLOB_STALE_MS,
 		);
 		handle.exec(
 			"UPDATE coordinator_state SET sync_paused_at = ?, sync_pause_reason = ? WHERE id = 1",

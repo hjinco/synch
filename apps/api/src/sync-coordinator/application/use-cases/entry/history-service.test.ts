@@ -6,7 +6,7 @@ import {
 	createTestCoordinatorState,
 	testSocketSession,
 	testWebSocket,
-} from "../test-helpers";
+} from "../../../test-helpers";
 
 describe("coordinator entry version history", () => {
 	it("lists entry history over the websocket control channel", async () => {

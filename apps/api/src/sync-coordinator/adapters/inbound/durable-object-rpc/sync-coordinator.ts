@@ -20,7 +20,7 @@ import type {
 	SocketSession,
 } from "../../../application/dto/types";
 import type { CoordinatorApplicationPort } from "../../../application/ports/inbound/coordinator";
-import type { CoordinatorSocketMessageHandler } from "../../../application/ports/inbound/socket-message-handler";
+import type { CoordinatorSocketMessageHandler } from "../websocket/socket-message-handler";
 import type { SyncRepairResult } from "../../../application/dto/sync-repair";
 import { SyncCoordinatorApplicationError } from "../../../application/errors/coordinator-errors";
 import { createCoordinatorRuntime } from "../../../../runtime";

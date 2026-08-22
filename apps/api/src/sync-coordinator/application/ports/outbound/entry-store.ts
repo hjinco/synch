@@ -1,15 +1,28 @@
 import type {
+	EntryStatePageCursor,
+	EntryVersionPageCursor,
+} from "../../dto/types";
+import type {
 	CurrentEntryRow,
 	DeletedEntryListRow,
-	DeletedEntryPageCursor,
-	EntryStatePageCursor,
 	EntryStateRow,
 	EntryVersionListRow,
-	EntryVersionPageCursor,
-	EntryVersionReason,
 	EntryVersionRow,
-	PurgeDeletedEntryBatchResult,
+} from "./storage-models";
+import type {
+	DeletedEntryPageCursor,
 } from "../../dto/types";
+
+export type DeletedEntryPurgeFacts = {
+	current: { revision: number; deleted: boolean } | null;
+	hasRestorableHistory: boolean;
+	candidateBlobIds: string[];
+};
+
+export interface DeletedEntryPurgeTransaction {
+	readFacts(): DeletedEntryPurgeFacts;
+	deleteEntryVersions(): void;
+}
 
 export interface EntryStateStore {
 	listEntryStates(
@@ -39,8 +52,9 @@ export interface EntryHistoryStore {
 		versionId: string,
 		retentionStart: number,
 	): EntryVersionRow | null;
-	purgeDeletedEntryVersions(
-		entries: Array<{ entryId: string; revision: number }>,
+	withDeletedEntryPurgeTransaction<T>(
+		entryId: string,
 		retentionStart: number,
-	): { results: PurgeDeletedEntryBatchResult[]; candidateBlobIds: string[] };
+		operation: (transaction: DeletedEntryPurgeTransaction) => T,
+	): T;
 }

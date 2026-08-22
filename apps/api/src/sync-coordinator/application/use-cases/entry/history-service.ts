@@ -1,4 +1,9 @@
 import { SyncCoordinatorApplicationError } from "../../errors/coordinator-errors";
+import {
+	decideDeletedEntryPurge,
+	isCurrentRevision,
+	isRestorePayloadCompatible,
+} from "../../../domain/entry-policy";
 import type {
 	CommitMutationsMessage,
 	DeletedEntriesPurgeResult,
@@ -7,6 +12,7 @@ import type {
 	ListDeletedEntriesMessage,
 	ListEntryVersionsMessage,
 	PurgeDeletedEntriesMessage,
+	PurgeDeletedEntryBatchResult,
 	RestoreEntryVersionBatchResult,
 	RestoreEntryVersionMessage,
 	RestoreEntryVersionResult,
@@ -144,14 +150,21 @@ export class EntryHistoryService {
 			});
 		}
 
-		if (current.revision !== message.baseRevision) {
+		if (!isCurrentRevision(current.revision, message.baseRevision)) {
 			throw new SyncCoordinatorApplicationError("stale_revision", {
 				expectedBaseRevision: current.revision,
 				receivedBaseRevision: message.baseRevision,
 			});
 		}
 
-		if (target.op_type !== message.op || target.blob_id !== message.blobId) {
+		if (
+			!isRestorePayloadCompatible({
+				targetOp: target.op_type,
+				targetBlobId: target.blob_id,
+				restoreOp: message.op,
+				restoreBlobId: message.blobId,
+			})
+		) {
 			throw new SyncCoordinatorApplicationError("version_mismatch", {
 				message: "restore payload does not match the requested version",
 			});
@@ -234,7 +247,7 @@ export class EntryHistoryService {
 				continue;
 			}
 
-			if (current.revision !== restore.baseRevision) {
+			if (!isCurrentRevision(current.revision, restore.baseRevision)) {
 				results.push({
 					status: "rejected",
 					entryId: restore.entryId,
@@ -247,7 +260,14 @@ export class EntryHistoryService {
 				continue;
 			}
 
-			if (target.op_type !== restore.op || target.blob_id !== restore.blobId) {
+			if (
+				!isRestorePayloadCompatible({
+					targetOp: target.op_type,
+					targetBlobId: target.blob_id,
+					restoreOp: restore.op,
+					restoreBlobId: restore.blobId,
+				})
+			) {
 				results.push(
 					rejectedRestore(
 						restore,
@@ -347,10 +367,82 @@ export class EntryHistoryService {
 	): Promise<DeletedEntriesPurgeResult> {
 		const versionHistoryRetentionMs = this.readVersionHistoryRetentionMs();
 		const retentionStart = Date.now() - versionHistoryRetentionMs;
-		const purged = this.historyStore.purgeDeletedEntryVersions(
-			message.entries,
-			retentionStart,
-		);
+		const results: PurgeDeletedEntryBatchResult[] = [];
+		const candidateBlobIds = new Set<string>();
+		for (const entry of message.entries) {
+			const outcome = this.historyStore.withDeletedEntryPurgeTransaction(
+				entry.entryId,
+				retentionStart,
+				(transaction) => {
+					const facts = transaction.readFacts();
+					const decision = decideDeletedEntryPurge({
+						current: facts.current,
+						receivedRevision: entry.revision,
+						hasRestorableHistory: facts.hasRestorableHistory,
+					});
+					switch (decision.kind) {
+						case "not_found":
+							return {
+								result: {
+									status: "rejected",
+									entryId: entry.entryId,
+									code: "not_found",
+									message: "entry not found",
+								} satisfies PurgeDeletedEntryBatchResult,
+								candidateBlobIds: [],
+							};
+						case "not_deleted":
+							return {
+								result: {
+									status: "rejected",
+									entryId: entry.entryId,
+									code: "not_deleted",
+									message: "entry is not deleted",
+								} satisfies PurgeDeletedEntryBatchResult,
+								candidateBlobIds: [],
+							};
+						case "stale_revision":
+							return {
+								result: {
+									status: "rejected",
+									entryId: entry.entryId,
+									code: "stale_revision",
+									message: `expected revision ${decision.expectedRevision} but received ${entry.revision}`,
+									expectedRevision: decision.expectedRevision,
+								} satisfies PurgeDeletedEntryBatchResult,
+								candidateBlobIds: [],
+							};
+						case "no_history":
+							return {
+								result: {
+									status: "rejected",
+									entryId: entry.entryId,
+									code: "no_history",
+									message: "deleted entry has no restorable history",
+								} satisfies PurgeDeletedEntryBatchResult,
+								candidateBlobIds: [],
+							};
+						case "accepted":
+							transaction.deleteEntryVersions();
+							return {
+								result: {
+									status: "accepted",
+									entryId: entry.entryId,
+								} satisfies PurgeDeletedEntryBatchResult,
+								candidateBlobIds: facts.candidateBlobIds,
+							};
+					}
+				},
+			);
+			results.push(outcome.result);
+			for (const blobId of outcome.candidateBlobIds) {
+				candidateBlobIds.add(blobId);
+			}
+		}
+		const purged = {
+			results,
+			candidateBlobIds: [...candidateBlobIds],
+		};
 		await this.purgedBlobCollector.collectPurgedBlobs(
 			session.vaultId,
 			purged.candidateBlobIds,

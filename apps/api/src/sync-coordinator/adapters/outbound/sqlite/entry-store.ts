@@ -2,12 +2,14 @@ import { eq } from "drizzle-orm";
 
 import * as doSchema from "../../../../db/do";
 import type {
-	CurrentEntryRow,
-	DeletedEntryListRow,
 	DeletedEntryPageCursor,
 	EntryStatePageCursor,
-	EntryStateRow,
 } from "../../../application/dto/types";
+import type {
+	CurrentEntryRow,
+	DeletedEntryListRow,
+	EntryStateRow,
+} from "../../../application/ports/outbound/storage-models";
 import type { CoordinatorStorageHandle } from "./storage-handle";
 
 export class CoordinatorEntryStore {

@@ -1,34 +1,42 @@
 import { vi } from "vitest";
 
-import { BlobSyncService } from "./blob/sync-service";
-import { EntryHistoryService } from "./entry/history-service";
-import { EntrySyncService } from "./entry/sync-service";
-import { HealthSyncService } from "./health/sync-service";
-import { CoordinatorMaintenanceService } from "./maintenance/maintenance-service";
+import { SyncCoordinatorApplicationError } from "./application/errors/coordinator-errors";
+import { decideBlobStage } from "./domain/blob-policy";
+import { STAGED_BLOB_STALE_MS } from "./domain/health-policy";
+import type { CoordinatorBlobStore } from "./adapters/outbound/sqlite/blob-store";
+import { BlobSyncService } from "./application/use-cases/blob/sync-service";
+import { EntryHistoryService } from "./application/use-cases/entry/history-service";
+import { EntrySyncService } from "./application/use-cases/entry/sync-service";
+import { HealthSyncService } from "./application/use-cases/health/sync-service";
+import { CoordinatorMaintenanceService } from "./application/use-cases/maintenance/maintenance-service";
 import type {
 	MaintenanceRunner,
 	MaintenanceScheduler,
-} from "../ports/outbound";
-import { MutationCommitService } from "./mutation/commit-service";
+} from "./application/ports/outbound";
+import { MutationCommitService } from "./application/use-cases/mutation/commit-service";
 import type {
 	BlobObjectRepository,
+	BlobStageTransaction,
 	BlobStateStore,
 	CoordinatorStorageLifecycle,
+	DeletedEntryPurgeTransaction,
 	EntryHistoryStore,
 	EntryStateStore,
 	HealthStateStore,
 	InitialVaultLimitReader,
+	MutationStore,
+	MutationTransaction,
 	SocketGateway,
 	SyncTokenVerifier,
 	VaultStateStore,
-} from "../ports/outbound";
-import { CoordinatorService } from "./coordinator-service";
-import { CoordinatorSyncRepairService } from "./repair/repair-service";
-import { CoordinatorControlMessageHandler } from "./socket/control-message-handler";
-import { CoordinatorSocketConnectionService } from "./socket/connection-service";
-import { VaultLifecycleService } from "./vault/lifecycle-service";
-import type { SocketSession } from "../dto/types";
-import { parseClientControlMessage } from "../../adapters/inbound/websocket/protocol";
+} from "./application/ports/outbound";
+import { CoordinatorService } from "./application/use-cases/coordinator-service";
+import { CoordinatorSyncRepairService } from "./application/use-cases/repair/repair-service";
+import { CoordinatorControlMessageHandler } from "./adapters/inbound/websocket/control-message-handler";
+import { CoordinatorSocketConnectionService } from "./application/use-cases/socket/connection-service";
+import { VaultLifecycleService } from "./application/use-cases/vault/lifecycle-service";
+import type { SocketSession } from "./application/dto/types";
+import { parseClientControlMessage } from "./adapters/inbound/websocket/protocol";
 
 export function testSocketSession(
 	overrides: Partial<SocketSession> = {},
@@ -44,6 +52,38 @@ export function testSocketSession(
 
 export function testWebSocket(): WebSocket {
 	return {} as WebSocket;
+}
+
+export function stageBlobForTest(
+	blobStore: CoordinatorBlobStore,
+	blobId: string,
+	sizeBytes: number,
+	now: number,
+	deleteAfter: number,
+): { status: "staged" | "sync_paused" } {
+	return blobStore.withStageTransaction(blobId, now, (transaction) => {
+		const decision = decideBlobStage({
+			blobId,
+			sizeBytes,
+			now,
+			staleAfterMs: STAGED_BLOB_STALE_MS,
+			...transaction.readFacts(),
+		});
+		if (decision.kind === "sync_paused") {
+			transaction.pauseSync(now, decision.reason);
+			return { status: "sync_paused" };
+		}
+		if (decision.kind === "rejected") {
+			throw new SyncCoordinatorApplicationError(decision.code);
+		}
+		transaction.persistStage({
+			sizeBytes,
+			now,
+			deleteAfter,
+			storageDeltaBytes: decision.storageDeltaBytes,
+		});
+		return { status: "staged" };
+	});
 }
 
 export function createTestCoordinatorState(
@@ -73,17 +113,23 @@ export function createTestCoordinatorState(
 		readEntry: vi.fn(() => null),
 		listEntryVersions: vi.fn(() => []),
 		readEntryVersion: vi.fn(() => null),
-		purgeDeletedEntryVersions: vi.fn(() => ({ results: [], candidateBlobIds: [] })),
-		commitMutations: vi.fn(async (_session, message) => ({
-			message: {
-				type: "commit_mutations_committed" as const,
-				requestId: message.requestId,
-				cursor: 0,
-				results: [],
-			},
-			broadcastCursor: null,
-		})),
-		stageBlob: vi.fn(async () => ({ status: "staged" as const })),
+		withDeletedEntryPurgeTransaction: vi.fn(
+			(
+				_entryId: string,
+				_retentionStart: number,
+				operation: (transaction: DeletedEntryPurgeTransaction) => unknown,
+			) =>
+				operation({
+					readFacts: vi.fn(() => ({
+						current: null,
+						hasRestorableHistory: false,
+						candidateBlobIds: [],
+					})),
+					deleteEntryVersions: vi.fn(),
+				}),
+		) as EntryHistoryStore["withDeletedEntryPurgeTransaction"],
+		withTransaction: vi.fn(runTestMutationTransaction) as MutationStore["withTransaction"],
+		withStageTransaction: vi.fn(runTestStageTransaction) as BlobStateStore["withStageTransaction"],
 		readBlob: vi.fn(() => null),
 		listStaleStagedBlobs: vi.fn(() => []),
 		deleteBlobRecord: vi.fn(),
@@ -102,6 +148,45 @@ export function createTestCoordinatorState(
 		})),
 		...overrides,
 	};
+}
+
+function runTestStageTransaction<T>(
+	_blobId: string,
+	_now: number,
+	operation: (transaction: BlobStageTransaction) => T,
+): T {
+	return operation({
+		readFacts: vi.fn(() => ({
+			existing: null,
+			isPinned: false,
+			storageUsedBytes: 0,
+			storageLimitBytes: 0,
+			maxFileSizeBytes: 0,
+		})),
+		persistStage: vi.fn(),
+		pauseSync: vi.fn(),
+	});
+}
+
+function runTestMutationTransaction<T>(
+	operation: (transaction: MutationTransaction) => T,
+): T {
+	let cursor = 0;
+	return operation({
+		readEntry: vi.fn(() => null),
+		readBlobState: vi.fn(() => "staged" as const),
+		restagePendingDeleteBlob: vi.fn(),
+		insertEntryVersion: vi.fn(() => true),
+		readCurrentCursor: vi.fn(() => cursor),
+		allocateCursor: vi.fn(() => {
+			cursor += 1;
+			return cursor;
+		}),
+		upsertEntry: vi.fn(),
+		markBlobLive: vi.fn(),
+		markBlobPendingDeleteIfUnreferenced: vi.fn(),
+		finalizeCommit: vi.fn(),
+	});
 }
 
 export function createMockCoordinatorSocketService(
@@ -249,7 +334,7 @@ export type TestCoordinatorState = CoordinatorStorageLifecycle &
 	VaultStateStore &
 	EntryStateStore &
 	EntryHistoryStore &
-		import("../ports/outbound").MutationStore &
+		import("./application/ports/outbound").MutationStore &
 	BlobStateStore &
 	HealthStateStore;
 
@@ -306,7 +391,6 @@ export function socketStateRepository(_session = testSocketSession()) {
 		recordLocalVaultConnection: vi.fn(),
 		deleteLocalVaultConnection: vi.fn(),
 		currentCursor: vi.fn(() => 11),
-		stageBlob: vi.fn(async () => ({ status: "staged" as const })),
 		readStorageStatus: vi.fn(() => ({
 			storageUsedBytes: 24_300_000,
 			storageLimitBytes: 100_000_000,

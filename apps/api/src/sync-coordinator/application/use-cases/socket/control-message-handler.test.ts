@@ -1,6 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { STAGED_BLOB_STALE_MS } from "../../../domain/health-policy";
 import {
 	createCoordinatorService,
 	createMockCoordinatorSocketService,
@@ -9,7 +8,7 @@ import {
 	socketStateRepository,
 	testSocketSession,
 	testWebSocket,
-} from "../test-helpers";
+} from "../../../test-helpers";
 
 describe("coordinator websocket control messages", () => {
 	it("uses subscription policy limits when initializing a websocket vault state", async () => {
@@ -488,13 +487,11 @@ describe("coordinator websocket control messages", () => {
 			50_000_000,
 		);
 
-		expect(stateRepository.stageBlob).toHaveBeenCalledWith(
-			"blob-unlimited",
-			50_000_000,
-			expect.any(Number),
-			expect.any(Number),
-			STAGED_BLOB_STALE_MS,
-		);
+		expect(stateRepository.withStageTransaction).toHaveBeenCalledWith(
+				"blob-unlimited",
+				expect.any(Number),
+				expect.any(Function),
+			);
 		expect(socketService.broadcastStorageStatus).toHaveBeenCalledWith({
 			type: "storage_status_updated",
 			storageStatus: {
@@ -588,21 +585,23 @@ describe("coordinator websocket control messages", () => {
 				throw new Error("r2 unavailable");
 			}),
 		};
-		const purgeDeletedEntryVersions = vi.fn(() => ({
-			results: [
-				{
-					status: "accepted" as const,
-					entryId: "entry-1",
-				},
-			],
-			candidateBlobIds: ["blob-1"],
-		}));
+		const withDeletedEntryPurgeTransaction = vi.fn(
+			(_entryId, _retentionStart, operation) =>
+				operation({
+					readFacts: vi.fn(() => ({
+						current: { revision: 2, deleted: true },
+						hasRestorableHistory: true,
+						candidateBlobIds: ["blob-1"],
+					})),
+					deleteEntryVersions: vi.fn(),
+				}),
+		);
 		const markBlobPendingDeleteIfUnpinned = vi.fn();
 		const deleteBlobIfCollectible = vi.fn();
 		const service = createCoordinatorService({
 			stateRepository: {
 				...stateRepository,
-				purgeDeletedEntryVersions,
+					withDeletedEntryPurgeTransaction,
 				markBlobPendingDeleteIfUnpinned,
 				readBlob: vi.fn(() => ({
 					blob_id: "blob-1",
@@ -641,7 +640,7 @@ describe("coordinator websocket control messages", () => {
 			candidateBlobIds: ["blob-1"],
 		});
 
-		expect(purgeDeletedEntryVersions).toHaveBeenCalled();
+		expect(withDeletedEntryPurgeTransaction).toHaveBeenCalled();
 		expect(markBlobPendingDeleteIfUnpinned).toHaveBeenCalledWith(
 			"blob-1",
 			expect.any(Number),

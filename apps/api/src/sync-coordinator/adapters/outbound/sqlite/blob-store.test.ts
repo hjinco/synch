@@ -1,9 +1,13 @@
 import { afterEach, describe, expect, it } from "vitest";
 
 import { SyncCoordinatorApplicationError } from "../../../application/errors/coordinator-errors";
-import { STAGED_BLOB_STALE_MS } from "../../../domain/health-policy";
+import { stageBlobForTest } from "../../../test-helpers";
 import { CoordinatorBlobStore } from "./blob-store";
-import { closeAllTestSqliteCoordinators, createSqliteCoordinator, testSession } from "./test-helpers";
+import {
+	closeAllTestSqliteCoordinators,
+	createSqliteCoordinator,
+	testSession,
+} from "./test-helpers";
 
 afterEach(() => {
 	closeAllTestSqliteCoordinators();
@@ -27,7 +31,7 @@ describe("sqlite backend: blob staging", () => {
 		const { blobStore, cursorStore } = await createSqliteCoordinator();
 		await stage(blobStore, "blob-stale", 1_000, 100, 200);
 
-		const retriedAt = 100 + STAGED_BLOB_STALE_MS;
+		const retriedAt = 100 + 60 * 60 * 1000;
 		await expect(
 			stage(blobStore, "blob-stale", 1_000, retriedAt, retriedAt + 100),
 		).resolves.toEqual({
@@ -51,7 +55,9 @@ describe("sqlite backend: blob staging", () => {
 			versionHistoryRetentionDays: 1,
 		});
 
-		await expect(stage(blobStore, "blob-1", 11, 100, 200)).rejects.toThrow(SyncCoordinatorApplicationError);
+		await expect(stage(blobStore, "blob-1", 11, 100, 200)).rejects.toThrow(
+			SyncCoordinatorApplicationError,
+		);
 	});
 
 	it("rejects a blob that would exceed the vault storage quota", async () => {
@@ -61,7 +67,9 @@ describe("sqlite backend: blob staging", () => {
 			versionHistoryRetentionDays: 1,
 		});
 
-		await expect(stage(blobStore, "blob-1", 2_000, 100, 200)).rejects.toThrow(SyncCoordinatorApplicationError);
+		await expect(stage(blobStore, "blob-1", 2_000, 100, 200)).rejects.toThrow(
+			SyncCoordinatorApplicationError,
+		);
 	});
 
 	it("does not mutate storage_used_bytes when a stage is rejected mid-transaction", async () => {
@@ -74,7 +82,9 @@ describe("sqlite backend: blob staging", () => {
 		await stage(blobStore, "blob-a", 500, 100, 200);
 		expect(healthStore.readStorageStatus().storageUsedBytes).toBe(500);
 
-		await expect(stage(blobStore, "blob-b", 900, 100, 200)).rejects.toThrow(SyncCoordinatorApplicationError);
+		await expect(stage(blobStore, "blob-b", 900, 100, 200)).rejects.toThrow(
+			SyncCoordinatorApplicationError,
+		);
 
 		// The rejected stage must not have partially applied: no leftover blob
 		// row, and the quota counter must reflect only the first, successful
@@ -216,12 +226,12 @@ describe("sqlite backend: blob staging", () => {
 	});
 });
 
-function stage(
+async function stage(
 	blobStore: CoordinatorBlobStore,
 	blobId: string,
 	sizeBytes: number,
 	now: number,
 	deleteAfter: number,
 ) {
-	return blobStore.stageBlob(blobId, sizeBytes, now, deleteAfter, STAGED_BLOB_STALE_MS);
+	return stageBlobForTest(blobStore, blobId, sizeBytes, now, deleteAfter);
 }

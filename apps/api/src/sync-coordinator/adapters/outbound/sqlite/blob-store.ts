@@ -2,8 +2,12 @@ import { and, eq, sql } from "drizzle-orm";
 
 import * as doSchema from "../../../../db/do";
 import { SyncCoordinatorApplicationError } from "../../../application/errors/coordinator-errors";
-import type { StageBlobResult, UnreferencedStagedBlobDeleteResult } from "../../../application/ports/outbound";
-import type { BlobRow, BlobState } from "../../../application/dto/types";
+import type {
+	BlobStageFacts,
+	BlobStageTransaction,
+	UnreferencedStagedBlobDeleteResult,
+} from "../../../application/ports/outbound/blob-state-store";
+import type { BlobRow, BlobState } from "../../../application/ports/outbound/storage-models";
 import {
 	BLOB_UNREFERENCED_SQL,
 	COLLECTIBLE_BLOB_SQL,
@@ -15,121 +19,96 @@ type BlobDb = Pick<CoordinatorDb, "delete" | "insert" | "select" | "update">;
 export class CoordinatorBlobStore {
 	constructor(private readonly handle: CoordinatorStorageHandle) {}
 
-	async stageBlob(
+	withStageTransaction<T>(
 		blobId: string,
-		sizeBytes: number,
 		now: number,
-		deleteAfter: number,
-		staleAfterMs: number,
-	): Promise<StageBlobResult> {
+		operation: (transaction: BlobStageTransaction) => T,
+	): T {
 		return this.handle.db.transaction((tx) => {
-			const storage = tx
-				.select({
-					usedBytes: doSchema.coordinatorState.storageUsedBytes,
-					storageLimitBytes: doSchema.coordinatorState.storageLimitBytes,
-					maxFileSizeBytes: doSchema.coordinatorState.maxFileSizeBytes,
-				})
-				.from(doSchema.coordinatorState)
-				.where(eq(doSchema.coordinatorState.id, 1))
-				.limit(1)
-				.get();
-			if (!storage) {
-				throw new SyncCoordinatorApplicationError(
-					"sync_state_uninitialized",
-					{ message: "vault sync state is not initialized" },
-				);
-			}
+			const transaction: BlobStageTransaction = {
+				readFacts: (): BlobStageFacts => {
+					const storage = tx
+						.select({
+							usedBytes: doSchema.coordinatorState.storageUsedBytes,
+							storageLimitBytes: doSchema.coordinatorState.storageLimitBytes,
+							maxFileSizeBytes: doSchema.coordinatorState.maxFileSizeBytes,
+						})
+						.from(doSchema.coordinatorState)
+						.where(eq(doSchema.coordinatorState.id, 1))
+						.limit(1)
+						.get();
+					if (!storage) {
+						throw new SyncCoordinatorApplicationError(
+							"sync_state_uninitialized",
+							{ message: "vault sync state is not initialized" },
+						);
+					}
 
-			const storageLimitBytes = Number(storage.storageLimitBytes);
-			const maxFileSizeBytes = Number(storage.maxFileSizeBytes);
-			const existing = tx
-				.select({
-					state: doSchema.blobs.state,
-					sizeBytes: doSchema.blobs.sizeBytes,
-					createdAt: doSchema.blobs.createdAt,
-				})
-				.from(doSchema.blobs)
-				.where(eq(doSchema.blobs.blobId, blobId))
-				.limit(1)
-				.get();
+					const existing = tx
+						.select({
+							state: doSchema.blobs.state,
+							sizeBytes: doSchema.blobs.sizeBytes,
+							createdAt: doSchema.blobs.createdAt,
+						})
+						.from(doSchema.blobs)
+						.where(eq(doSchema.blobs.blobId, blobId))
+						.limit(1)
+						.get();
 
-			// Older clients may retry the same PUT indefinitely after losing the
-			// upload/commit result. Detect that retry while we already hold the blob
-			// row, and persist the quarantine in this same transaction.
-			if (
-				existing?.state === "staged" &&
-				now - Number(existing.createdAt) >= staleAfterMs
-			) {
-				const reason =
-					`staged blob ${blobId} remained staged for at least one hour`;
-				tx.update(doSchema.coordinatorState)
-					.set({
-						syncPausedAt: sql`coalesce(${doSchema.coordinatorState.syncPausedAt}, ${now})`,
-						syncPauseReason: sql`coalesce(${doSchema.coordinatorState.syncPauseReason}, ${reason})`,
-					})
-					.where(eq(doSchema.coordinatorState.id, 1))
-					.run();
-				return { status: "sync_paused" };
-			}
+					return {
+						existing: existing
+							? {
+									state: existing.state as BlobState,
+									sizeBytes: Number(existing.sizeBytes),
+									createdAt: Number(existing.createdAt),
+									}
+							: null,
+						isPinned: existing ? this.isBlobPinned(blobId, false, now) : false,
+						storageUsedBytes: Number(storage.usedBytes),
+						storageLimitBytes: Number(storage.storageLimitBytes),
+						maxFileSizeBytes: Number(storage.maxFileSizeBytes),
+					};
+				},
+				persistStage: ({ sizeBytes, now: stagedAt, deleteAfter, storageDeltaBytes }) => {
+					if (storageDeltaBytes > 0) {
+						tx.update(doSchema.coordinatorState)
+							.set({
+								storageUsedBytes: sql`${doSchema.coordinatorState.storageUsedBytes} + ${storageDeltaBytes}`,
+							})
+							.where(eq(doSchema.coordinatorState.id, 1))
+							.run();
+					}
+					tx.insert(doSchema.blobs)
+						.values({
+							blobId,
+							state: "staged",
+							sizeBytes,
+							createdAt: stagedAt,
+							lastUploadedAt: stagedAt,
+							deleteAfter,
+						})
+						.onConflictDoUpdate({
+							target: doSchema.blobs.blobId,
+							set: {
+								state: "staged",
+								lastUploadedAt: stagedAt,
+								deleteAfter,
+							},
+						})
+						.run();
+				},
+				pauseSync: (pausedAt, reason) => {
+					tx.update(doSchema.coordinatorState)
+						.set({
+							syncPausedAt: sql`coalesce(${doSchema.coordinatorState.syncPausedAt}, ${pausedAt})`,
+							syncPauseReason: sql`coalesce(${doSchema.coordinatorState.syncPauseReason}, ${reason})`,
+						})
+						.where(eq(doSchema.coordinatorState.id, 1))
+						.run();
+				},
+			};
 
-			if (maxFileSizeBytes > 0 && sizeBytes > maxFileSizeBytes) {
-				throw new SyncCoordinatorApplicationError(
-					"file_too_large",
-					{ message: `blob exceeds maximum file size of ${maxFileSizeBytes} bytes`, maxFileSizeBytes, sizeBytes },
-				);
-			}
-
-			if (existing && this.isBlobPinned(blobId, false, now)) {
-				throw new SyncCoordinatorApplicationError("blob_already_live", {
-					message: `blob ${blobId} is already live`,
-					blobId,
-				});
-			}
-			if (existing && Number(existing.sizeBytes) !== sizeBytes) {
-				throw new SyncCoordinatorApplicationError(
-					"blob_size_changed",
-					{ message: `blob ${blobId} size changed between staged uploads`, blobId, previousSizeBytes: Number(existing.sizeBytes), sizeBytes },
-				);
-			}
-
-			if (!existing) {
-				const usedBytes = Number(storage.usedBytes);
-				if (
-					storageLimitBytes > 0 &&
-					usedBytes + sizeBytes > storageLimitBytes
-				) {
-					throw new SyncCoordinatorApplicationError(
-						"quota_exceeded",
-						{ message: `vault storage quota exceeded: ${usedBytes + sizeBytes}/${storageLimitBytes} bytes`, storageLimitBytes, sizeBytes, usedBytes },
-					);
-				}
-
-				tx.update(doSchema.coordinatorState)
-					.set({
-						storageUsedBytes: usedBytes + sizeBytes,
-					})
-					.where(eq(doSchema.coordinatorState.id, 1))
-					.run();
-			}
-			tx.insert(doSchema.blobs)
-				.values({
-					blobId,
-					state: "staged",
-					sizeBytes,
-					createdAt: now,
-					lastUploadedAt: now,
-					deleteAfter,
-				})
-				.onConflictDoUpdate({
-					target: doSchema.blobs.blobId,
-					set: {
-						state: "staged",
-						lastUploadedAt: now,
-						deleteAfter,
-					},
-				})
-				.run();
-			return { status: "staged" };
+			return operation(transaction);
 		});
 	}
 

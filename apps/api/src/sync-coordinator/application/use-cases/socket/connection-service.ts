@@ -37,11 +37,12 @@ export class CoordinatorSocketConnectionService {
 	): Promise<SocketSession> {
 		const claims = await this.syncTokenService.verifySyncToken(token, vaultId);
 		await this.vaultInitializer.ensureVaultState(claims.vaultId);
-		return {
+		const session = {
 			userId: claims.sub,
 			localVaultId: claims.localVaultId,
 			vaultId: claims.vaultId,
 			wantsStorageStatus: false,
 		};
+		return session;
 	}
 }

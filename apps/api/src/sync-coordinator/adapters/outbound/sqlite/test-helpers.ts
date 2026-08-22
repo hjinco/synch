@@ -9,6 +9,7 @@ import { CoordinatorEntryStore } from "./entry-store";
 import { CoordinatorHealthStore } from "./health-store";
 import { CoordinatorHistoryStore } from "./history-store";
 import { CoordinatorMutationStore } from "./mutation-store";
+import { MutationCommitService } from "../../../application/use-cases/mutation/commit-service";
 import {
 	openExclusiveSqliteConnection,
 	SqliteCoordinatorStorageHandle,
@@ -47,6 +48,38 @@ export async function createSqliteCoordinator(
 	const handle = new SqliteCoordinatorStorageHandle(sqlite);
 	const cursorStore = new CoordinatorCursorStore(handle);
 	cursorStore.ensureVaultState(vaultId, limits);
+	const blobStore = new CoordinatorBlobStore(handle);
+	const mutationStoreAdapter = new CoordinatorMutationStore(handle);
+	const mutationService = new MutationCommitService(
+		mutationStoreAdapter,
+		blobStore,
+		cursorStore,
+		{
+			exists: async () => true,
+			delete: async () => {},
+			deleteByPrefix: async () => {},
+		},
+		{
+			blobObjectKey: (id: string, blobId: string) => `${id}/${blobId}`,
+			blobObjectKeyPrefix: (id: string) => `${id}/`,
+		},
+		30 * 60 * 1000,
+		{ defer: async () => {} },
+		{ scheduleSummaryFlush: async () => {} },
+	);
+	const mutationStore = {
+		commitMutations: (
+			session: Parameters<MutationCommitService["commitMutations"]>[0],
+			message: Parameters<MutationCommitService["commitMutations"]>[1],
+			_stageGracePeriodMs?: number,
+			_versionHistoryRetentionMs?: number,
+		) => mutationService.commitMutations(session, message),
+		commitMutation: (
+			session: Parameters<MutationCommitService["commitMutation"]>[0],
+			message: Parameters<MutationCommitService["commitMutation"]>[1],
+			options?: Parameters<MutationCommitService["commitMutation"]>[2],
+		) => mutationService.commitMutation(session, message, options),
+	};
 
 	return {
 		vaultId,
@@ -54,10 +87,11 @@ export async function createSqliteCoordinator(
 		handle,
 		lifecycle,
 		cursorStore,
-		blobStore: new CoordinatorBlobStore(handle),
+		blobStore,
 		entryStore: new CoordinatorEntryStore(handle),
 		historyStore: new CoordinatorHistoryStore(handle),
-		mutationStore: new CoordinatorMutationStore(handle),
+		mutationStore,
+		mutationStoreAdapter,
 		healthStore: new CoordinatorHealthStore(handle, { count: () => 0 }),
 	};
 }

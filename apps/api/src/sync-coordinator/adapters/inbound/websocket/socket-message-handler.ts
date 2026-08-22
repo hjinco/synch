@@ -1,4 +1,4 @@
-import type { ClientControlMessage } from "../../dto/protocol-types";
+import type { ClientControlMessage } from "../../../application/dto/protocol-types";
 
 export interface CoordinatorSocketMessageHandler {
 	handle(connectionId: string, message: ClientControlMessage): Promise<void>;

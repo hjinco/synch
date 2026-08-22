@@ -6,6 +6,7 @@ import type {
 	StorageStatusUpdatedMessage,
 } from "../../../application/dto/types";
 import type { SocketGateway } from "../../../application/ports/outbound";
+import { shouldReplaceSocketSession } from "../../../domain/socket-policy";
 
 type SocketAttachment = SocketSession & { connectionId: string };
 
@@ -93,9 +94,33 @@ export class CoordinatorSocketService implements SocketGateway {
 		for (const socket of this.ctx.getWebSockets()) this.closeNativeSocket(socket, code, reason);
 	}
 
+	closeSupersededSockets(current: WebSocket, session: SocketSession): void {
+		const currentConnectionId = this.connectionIdFor(current);
+		for (const socket of this.ctx.getWebSockets()) {
+			const connectionId = this.connectionIdFor(socket);
+			if (socket === current || connectionId === currentConnectionId) continue;
+			const existing = this.readSocketSessionFromSocket(socket, connectionId);
+			if (existing && shouldReplaceSocketSession(existing, session)) {
+				this.sendSocketMessage(connectionId, {
+					type: "session_error",
+					code: "local_vault_replaced",
+					message: "connection replaced by a newer sync session for this local vault",
+				});
+				this.closeSocket(connectionId, 4409, "superseded by newer connection");
+			}
+		}
+	}
+
 	readSocketSession(connectionId: string): SocketSession | null {
 		const socket = this.findSocket(connectionId);
 		if (!socket) return null;
+		return this.readSocketSessionFromSocket(socket, connectionId);
+	}
+
+	private readSocketSessionFromSocket(
+		socket: WebSocket,
+		connectionId: string,
+	): SocketSession | null {
 		const attachment = socket.deserializeAttachment();
 		if (!attachment || typeof attachment !== "object") return null;
 		const maybeSession = attachment as Partial<SocketAttachment>;
@@ -111,23 +136,6 @@ export class CoordinatorSocketService implements SocketGateway {
 			vaultId: maybeSession.vaultId,
 			wantsStorageStatus: maybeSession.wantsStorageStatus === true,
 		};
-	}
-
-	closeSupersededSockets(current: WebSocket, session: SocketSession): void {
-		const currentConnectionId = this.connectionIdFor(current);
-		for (const socket of this.ctx.getWebSockets()) {
-			const connectionId = this.connectionIdFor(socket);
-			if (socket === current || connectionId === currentConnectionId) continue;
-			const existing = this.readSocketSession(connectionId);
-			if (existing?.userId === session.userId && existing.localVaultId === session.localVaultId) {
-				this.sendSocketMessage(connectionId, {
-					type: "session_error",
-					code: "local_vault_replaced",
-					message: "connection replaced by a newer sync session for this local vault",
-				});
-				this.closeSocket(connectionId, 4409, "superseded by newer connection");
-			}
-		}
 	}
 
 	private findSocket(connectionId: string): WebSocket | null {

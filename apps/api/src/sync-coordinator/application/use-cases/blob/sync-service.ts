@@ -1,4 +1,8 @@
 import { SyncCoordinatorApplicationError } from "../../errors/coordinator-errors";
+import {
+	decideBlobStage,
+	type BlobStageDecision,
+} from "../../../domain/blob-policy";
 import { STAGED_BLOB_STALE_MS } from "../../../domain/health-policy";
 import type { MaintenanceScheduler } from "../../ports/outbound";
 import type {
@@ -55,27 +59,43 @@ export class BlobSyncService {
 		await this.syncTokenService.verifySyncToken(token, vaultId);
 
 		const now = Date.now();
-		try {
-			const result = await this.blobStore.stageBlob(
+		const decision = this.blobStore.withStageTransaction(blobId, now, (transaction) => {
+			const facts = transaction.readFacts();
+			const next = decideBlobStage({
 				blobId,
 				sizeBytes,
 				now,
-				now + this.blobGracePeriodMs,
-				STAGED_BLOB_STALE_MS,
-			);
-			if (result.status === "sync_paused") {
-				this.socketService.closeAllSockets(4403, "sync paused for vault repair");
-				throw syncPausedError();
+				staleAfterMs: STAGED_BLOB_STALE_MS,
+				...facts,
+			});
+
+			if (next.kind === "sync_paused") {
+				transaction.pauseSync(now, next.reason);
+				return next;
 			}
-			await this.maintenanceScheduler.defer(
-				"blob_gc",
-				now + this.blobGracePeriodMs,
+			if (next.kind === "rejected") {
+				throwBlobStageError(blobId, next);
+			}
+
+			transaction.persistStage({
+				sizeBytes,
 				now,
-			);
-			this.broadcastStorageStatus();
-		} catch (error) {
-			throw error;
+				deleteAfter: now + this.blobGracePeriodMs,
+				storageDeltaBytes: next.storageDeltaBytes,
+			});
+			return next;
+		});
+		if (decision.kind === "sync_paused") {
+			this.socketService.closeAllSockets(4403, "sync paused for vault repair");
+			throw syncPausedError();
 		}
+
+		await this.maintenanceScheduler.defer(
+			"blob_gc",
+			now + this.blobGracePeriodMs,
+			now,
+		);
+		this.broadcastStorageStatus();
 	}
 
 	async abortStagedBlob(
@@ -223,4 +243,37 @@ export class BlobSyncService {
 
 function syncPausedError() {
 	return new SyncCoordinatorApplicationError("sync_paused");
+}
+
+function throwBlobStageError(
+	blobId: string,
+	decision: Extract<BlobStageDecision, { kind: "rejected" }>,
+): never {
+	switch (decision.code) {
+		case "file_too_large":
+			throw new SyncCoordinatorApplicationError("file_too_large", {
+				message: `blob exceeds maximum file size of ${decision.maxFileSizeBytes} bytes`,
+				maxFileSizeBytes: decision.maxFileSizeBytes,
+				sizeBytes: decision.sizeBytes,
+			});
+		case "blob_already_live":
+			throw new SyncCoordinatorApplicationError("blob_already_live", {
+				message: `blob ${blobId} is already live`,
+				blobId,
+			});
+		case "blob_size_changed":
+			throw new SyncCoordinatorApplicationError("blob_size_changed", {
+				message: `blob ${blobId} size changed between staged uploads`,
+				blobId,
+				previousSizeBytes: decision.previousSizeBytes,
+				sizeBytes: decision.sizeBytes,
+			});
+		case "quota_exceeded":
+			throw new SyncCoordinatorApplicationError("quota_exceeded", {
+				message: `vault storage quota exceeded: ${(decision.usedBytes ?? 0) + decision.sizeBytes}/${decision.storageLimitBytes} bytes`,
+				storageLimitBytes: decision.storageLimitBytes,
+				sizeBytes: decision.sizeBytes,
+				usedBytes: decision.usedBytes,
+			});
+	}
 }

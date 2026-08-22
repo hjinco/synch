@@ -6,7 +6,7 @@ import {
 	createCoordinatorService,
 	createTestCoordinatorState,
 	socketServiceMock,
-} from "../test-helpers";
+} from "../../../test-helpers";
 
 describe("coordinator blob lifecycle", () => {
 	it("coalesces storage status broadcasts and sends the latest snapshot", async () => {
@@ -94,10 +94,25 @@ describe("coordinator blob lifecycle", () => {
 				exp: 200,
 			})),
 		} as unknown as SyncTokenVerifier;
+		const pauseSync = vi.fn();
 		const stateRepository = createTestCoordinatorState({
-			stageBlob: vi.fn(async () => ({
-				status: "sync_paused" as const,
-			})),
+			withStageTransaction: vi.fn((_blobId, _now, operation) =>
+				operation({
+					readFacts: vi.fn(() => ({
+						existing: {
+							state: "staged" as const,
+							sizeBytes: 66_701,
+							createdAt: 0,
+						},
+						isPinned: false,
+						storageUsedBytes: 0,
+						storageLimitBytes: 100_000_000,
+						maxFileSizeBytes: 10_000_000,
+					})),
+					persistStage: vi.fn(),
+					pauseSync,
+				}),
+			),
 		});
 		const socketService = socketServiceMock();
 		const service = createCoordinatorService({
@@ -115,13 +130,15 @@ describe("coordinator blob lifecycle", () => {
 			),
 		).rejects.toMatchObject({ code: "sync_paused" });
 
-		expect(stateRepository.stageBlob).toHaveBeenCalledWith(
-			"blob-stale",
-			66_701,
-			expect.any(Number),
-			expect.any(Number),
-			STAGED_BLOB_STALE_MS,
-		);
+			expect(stateRepository.withStageTransaction).toHaveBeenCalledWith(
+				"blob-stale",
+				expect.any(Number),
+				expect.any(Function),
+			);
+			expect(pauseSync).toHaveBeenCalledWith(
+				expect.any(Number),
+				expect.stringContaining("blob-stale"),
+			);
 		expect(socketService.closeAllSockets).toHaveBeenCalledWith(
 			4403,
 			"sync paused for vault repair",
@@ -182,7 +199,7 @@ describe("coordinator blob lifecycle", () => {
 			})),
 		} as unknown as SyncTokenVerifier;
 		const stateRepository = createTestCoordinatorState({
-			stageBlob: vi.fn(async () => {
+			withStageTransaction: vi.fn(() => {
 				throw new SyncCoordinatorApplicationError("quota_exceeded", {
 					message: "simulated quota failure",
 				});
@@ -212,7 +229,7 @@ describe("coordinator blob lifecycle", () => {
 			})),
 		} as unknown as SyncTokenVerifier;
 		const stateRepository = createTestCoordinatorState({
-			stageBlob: vi.fn(async () => {
+			withStageTransaction: vi.fn(() => {
 				throw new SyncCoordinatorApplicationError("blob_size_changed", {
 					message: "simulated blob size conflict",
 				});

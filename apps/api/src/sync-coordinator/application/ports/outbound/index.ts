@@ -2,11 +2,22 @@ export type { SyncTokenVerifier } from "./token-verifier";
 export type { BlobObjectKeyBuilder, BlobObjectRepository } from "./blob-storage";
 export type { CoordinatorStorageLifecycle } from "./storage-lifecycle";
 export type { InitialVaultLimitReader, VaultStateStore } from "./vault-state-store";
-export type { EntryHistoryStore, EntryStateStore } from "./entry-store";
-export type { MutationCommitter, MutationStore } from "./mutation-store";
 export type {
+	DeletedEntryPurgeFacts,
+	DeletedEntryPurgeTransaction,
+	EntryHistoryStore,
+	EntryStateStore,
+} from "./entry-store";
+export type {
+	MutationCommitter,
+	MutationEntrySnapshot,
+	MutationStore,
+	MutationTransaction,
+} from "./mutation-store";
+export type {
+	BlobStageFacts,
+	BlobStageTransaction,
 	BlobStateStore,
-	StageBlobResult,
 	UnreferencedStagedBlobDeleteResult,
 } from "./blob-state-store";
 export type {

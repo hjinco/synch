@@ -26,7 +26,7 @@ import { EntryHistoryService } from "../sync-coordinator/application/use-cases/e
 import { EntrySyncService } from "../sync-coordinator/application/use-cases/entry/sync-service";
 import { HealthSyncService } from "../sync-coordinator/application/use-cases/health/sync-service";
 import { MutationCommitService } from "../sync-coordinator/application/use-cases/mutation/commit-service";
-import { CoordinatorControlMessageHandler } from "../sync-coordinator/application/use-cases/socket/control-message-handler";
+import { CoordinatorControlMessageHandler } from "../sync-coordinator/adapters/inbound/websocket/control-message-handler";
 import { CoordinatorSocketConnectionService } from "../sync-coordinator/application/use-cases/socket/connection-service";
 import { CoordinatorBlobStore } from "../sync-coordinator/adapters/outbound/sqlite/blob-store";
 import { CoordinatorCursorStore } from "../sync-coordinator/adapters/outbound/sqlite/cursor-store";

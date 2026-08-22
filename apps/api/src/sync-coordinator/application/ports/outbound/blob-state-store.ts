@@ -1,16 +1,36 @@
-import type { BlobRow } from "../../dto/types";
+import type { BlobRow } from "./storage-models";
 
 export type UnreferencedStagedBlobDeleteResult = "deleted" | "missing" | "referenced";
-export type StageBlobResult = { status: "staged" } | { status: "sync_paused" };
+
+export type BlobStageFacts = {
+	existing: {
+		state: BlobRow["state"];
+		sizeBytes: number;
+		createdAt: number;
+	} | null;
+	isPinned: boolean;
+	storageUsedBytes: number;
+	storageLimitBytes: number;
+	maxFileSizeBytes: number;
+};
+
+export interface BlobStageTransaction {
+	readFacts(): BlobStageFacts;
+	persistStage(input: {
+		sizeBytes: number;
+		now: number;
+		deleteAfter: number;
+		storageDeltaBytes: number;
+	}): void;
+	pauseSync(now: number, reason: string): void;
+}
 
 export interface BlobStateStore {
-	stageBlob(
+	withStageTransaction<T>(
 		blobId: string,
-		sizeBytes: number,
 		now: number,
-		deleteAfter: number,
-		staleAfterMs: number,
-	): Promise<StageBlobResult>;
+		operation: (transaction: BlobStageTransaction) => T,
+	): T;
 	readBlob(blobId: string): BlobRow | null;
 	listStaleStagedBlobs(now: number, staleAfterMs: number, limit: number): BlobRow[];
 	deleteBlobRecord(blobId: string): void;
