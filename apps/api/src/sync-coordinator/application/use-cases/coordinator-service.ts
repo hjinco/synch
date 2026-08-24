@@ -40,6 +40,9 @@ export interface BlobUseCases {
 	): Promise<void>;
 	abortStagedBlob(token: string | null | undefined, vaultId: string, blobId: string): Promise<void>;
 	deleteBlob(token: string | null | undefined, vaultId: string, blobId: string): Promise<void>;
+}
+
+export interface BlobGarbageCollectionPort {
 	runGc(vaultId?: string, options?: GcOptions): Promise<number | null>;
 }
 
@@ -119,7 +122,8 @@ export interface SyncRepairUseCases {
 }
 
 export type CoordinatorServiceDependencies = {
-	blobSyncService: BlobUseCases;
+	blobTransferService: BlobUseCases;
+	blobGarbageCollection: BlobGarbageCollectionPort;
 	entryHistoryService: EntryHistoryUseCases;
 	entrySyncService: EntrySyncUseCases;
 	healthSyncService: HealthUseCases;
@@ -205,15 +209,15 @@ export class CoordinatorService {
 		blobId: string,
 		sizeBytes: number,
 	): Promise<void> {
-		await this.services.blobSyncService.stageBlob(token, vaultId, blobId, sizeBytes);
+		await this.services.blobTransferService.stageBlob(token, vaultId, blobId, sizeBytes);
 	}
 
 	async abortStagedBlob(token: string | null | undefined, vaultId: string, blobId: string): Promise<void> {
-		await this.services.blobSyncService.abortStagedBlob(token, vaultId, blobId);
+		await this.services.blobTransferService.abortStagedBlob(token, vaultId, blobId);
 	}
 
 	async deleteBlob(token: string | null | undefined, vaultId: string, blobId: string): Promise<void> {
-		await this.services.blobSyncService.deleteBlob(token, vaultId, blobId);
+		await this.services.blobTransferService.deleteBlob(token, vaultId, blobId);
 	}
 
 	async applyVaultPolicy(
@@ -255,7 +259,7 @@ export class CoordinatorService {
 		vaultId?: string,
 		options: GcOptions = {},
 	): Promise<number | null> {
-		return await this.services.blobSyncService.runGc(vaultId, options);
+		return await this.services.blobGarbageCollection.runGc(vaultId, options);
 	}
 
 	async handleAlarm(): Promise<void> {

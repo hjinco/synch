@@ -1,9 +1,8 @@
 import { decideEntryMutation } from "../../../domain/entry-policy";
-import type { MaintenanceScheduler } from "../../ports/outbound";
 import type {
+	BlobGcScheduler,
 	BlobObjectKeyBuilder,
 	BlobObjectRepository,
-	BlobStateStore,
 	HealthSummaryScheduler,
 	MutationStore,
 	VaultStateStore,
@@ -20,7 +19,7 @@ import type {
 export class MutationCommitService {
 	constructor(
 		private readonly mutationStore: MutationStore,
-		private readonly blobStore: Pick<BlobStateStore, "nextBlobGcAt">,
+		private readonly blobGcScheduler: BlobGcScheduler,
 		private readonly vaultStateStore: Pick<
 			VaultStateStore,
 			"readVersionHistoryRetentionDays"
@@ -28,7 +27,6 @@ export class MutationCommitService {
 		private readonly blobRepository: BlobObjectRepository,
 		private readonly objectKeyBuilder: BlobObjectKeyBuilder,
 		private readonly blobGracePeriodMs: number,
-		private readonly maintenanceScheduler: MaintenanceScheduler,
 		private readonly healthSummaryScheduler: HealthSummaryScheduler,
 	) {}
 
@@ -248,10 +246,7 @@ export class MutationCommitService {
 		});
 
 		if (result.broadcastCursor !== null) {
-			const nextGcAt = this.blobStore.nextBlobGcAt();
-			if (nextGcAt !== null) {
-				await this.maintenanceScheduler.defer("blob_gc", nextGcAt);
-			}
+			await this.blobGcScheduler.scheduleNext();
 			await this.healthSummaryScheduler.scheduleSummaryFlush();
 		}
 		return result;

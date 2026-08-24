@@ -1,12 +1,13 @@
 import type {
 	BlobObjectRepository,
 	BlobObjectKeyBuilder,
-	BlobStateStore,
+	BlobGcScheduler,
+	BlobGcStore,
 	SyncRepairResult,
 	SyncPauseState,
+	StaleStagedBlobStore,
 	VaultStateStore,
 } from "../../ports/outbound";
-import type { MaintenanceScheduler } from "../../ports/outbound";
 import { STAGED_BLOB_STALE_MS } from "../../../domain/health-policy";
 
 const MAX_REPAIRABLE_STALE_STAGED_BLOBS = 100;
@@ -14,14 +15,15 @@ const STALE_BLOB_PAUSE_REASON_PREFIX = "staged blob ";
 
 export class CoordinatorSyncRepairService {
 	constructor(
-		private readonly blobStore: BlobStateStore,
+		private readonly staleStagedBlobStore: StaleStagedBlobStore,
+		private readonly blobGcStore: BlobGcStore,
 		private readonly vaultStateStore: Pick<
 			VaultStateStore,
 			"vaultStateExistsFor" | "readSyncPause" | "clearSyncPause"
 		>,
 		private readonly blobStorage: BlobObjectRepository,
 		private readonly objectKeyBuilder: BlobObjectKeyBuilder,
-		private readonly maintenanceScheduler: MaintenanceScheduler,
+		private readonly blobGcScheduler: BlobGcScheduler,
 	) {}
 
 	async repairSyncState(vaultId: string): Promise<SyncRepairResult> {
@@ -31,7 +33,7 @@ export class CoordinatorSyncRepairService {
 
 		const now = Date.now();
 		const pause = this.vaultStateStore.readSyncPause();
-		const staleBlobs = this.blobStore.listStaleStagedBlobs(
+		const staleBlobs = this.staleStagedBlobStore.listStaleStagedBlobs(
 			now,
 			STAGED_BLOB_STALE_MS,
 			MAX_REPAIRABLE_STALE_STAGED_BLOBS + 1,
@@ -62,7 +64,7 @@ export class CoordinatorSyncRepairService {
 			// blob live after its object has already been deleted. A leftover
 			// object is recoverable; a live entry pointing at missing ciphertext
 			// is not.
-			const metadataResult = this.blobStore.deleteUnreferencedStagedBlob(
+			const metadataResult = this.staleStagedBlobStore.deleteUnreferencedStagedBlob(
 				blob.blob_id,
 				now,
 			);
@@ -90,17 +92,17 @@ export class CoordinatorSyncRepairService {
 			}
 		}
 
-		const remainingStaleBlobs = this.blobStore.listStaleStagedBlobs(
+		const remainingStaleBlobs = this.staleStagedBlobStore.listStaleStagedBlobs(
 			now,
 			STAGED_BLOB_STALE_MS,
 			MAX_REPAIRABLE_STALE_STAGED_BLOBS + 1,
 		);
-		const nextGcAt = this.blobStore.nextBlobGcAt();
+		const nextGcAt = this.blobGcStore.nextGcAt(now);
 
 		// Re-arm the shared GC job after repair. The scheduler buckets this to
 		// the next alarm boundary and the normal GC handler will remove the job
 		// or compute the next real deadline.
-		await this.maintenanceScheduler.defer("blob_gc", now, now);
+		await this.blobGcScheduler.scheduleNow(now);
 
 		if (issue || remainingStaleBlobs.length > 0) {
 			return repairRequiredResult(

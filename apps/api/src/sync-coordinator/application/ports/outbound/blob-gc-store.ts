@@ -1,0 +1,18 @@
+import type { BlobRow } from "./storage-models";
+
+export type BlobGcCandidate = BlobRow;
+
+export type BlobGcDeleteResult = "deleted" | "skipped";
+
+export interface BlobGcStore {
+	expireEntryVersions(now: number): void;
+	listCollectibleBlobs(now: number, limit: number): BlobGcCandidate[];
+	readCollectibleBlob(blobId: string, now: number): BlobGcCandidate | null;
+	markBlobPendingDeleteIfUnpinned(blobId: string, now: number): void;
+	deleteBlobIfCollectible(blobId: string, now: number): BlobGcDeleteResult;
+	nextGcAt(now: number): number | null;
+}
+
+export interface PurgedBlobCollector {
+	collectPurgedBlobs(vaultId: string, blobIds: readonly string[]): Promise<void>;
+}

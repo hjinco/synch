@@ -4,7 +4,10 @@ import { SyncCoordinatorApplicationError } from "./application/errors/coordinato
 import { decideBlobStage } from "./domain/blob-policy";
 import { STAGED_BLOB_STALE_MS } from "./domain/health-policy";
 import type { CoordinatorBlobStore } from "./adapters/outbound/sqlite/blob-store";
-import { BlobSyncService } from "./application/use-cases/blob/sync-service";
+import { BlobTransferService } from "./application/use-cases/blob/sync-service";
+import { CoalescedStorageStatusNotifier } from "./application/use-cases/blob/storage-status-notifier";
+import { BlobGcSchedulingService } from "./application/use-cases/blob-gc/blob-gc-scheduler";
+import { BlobGarbageCollectionService } from "./application/use-cases/blob-gc/blob-garbage-collection-service";
 import { EntryHistoryService } from "./application/use-cases/entry/history-service";
 import { EntrySyncService } from "./application/use-cases/entry/sync-service";
 import { HealthSyncService } from "./application/use-cases/health/sync-service";
@@ -17,6 +20,7 @@ import { MutationCommitService } from "./application/use-cases/mutation/commit-s
 import type {
 	BlobObjectRepository,
 	BlobStageTransaction,
+	BlobGcStore,
 	BlobStateStore,
 	CoordinatorStorageLifecycle,
 	DeletedEntryPurgeTransaction,
@@ -27,6 +31,7 @@ import type {
 	MutationStore,
 	MutationTransaction,
 	SocketGateway,
+	StaleStagedBlobStore,
 	SyncTokenVerifier,
 	VaultStateStore,
 } from "./application/ports/outbound";
@@ -136,10 +141,12 @@ export function createTestCoordinatorState(
 		abortStagedBlob: vi.fn(),
 		deleteUnreferencedStagedBlob: vi.fn(() => "referenced" as const),
 		isBlobPinned: vi.fn(() => false),
-		listBlobsReadyForDeletion: vi.fn(() => []),
-		deleteBlobIfCollectible: vi.fn(),
+		expireEntryVersions: vi.fn(),
+		listCollectibleBlobs: vi.fn(() => []),
+		readCollectibleBlob: vi.fn(() => null),
+		deleteBlobIfCollectible: vi.fn(() => "skipped" as const),
 		markBlobPendingDeleteIfUnpinned: vi.fn(),
-		nextBlobGcAt: vi.fn(() => null),
+		nextGcAt: vi.fn(() => null),
 		recordGcCompleted: vi.fn(),
 		readHealthSnapshot: vi.fn(() => null),
 		readStorageStatus: vi.fn(() => ({
@@ -228,27 +235,44 @@ export function createCoordinatorService({
 		30 * 24 * 60 * 60 * 1000,
 		maintenanceScheduler,
 	);
-	const blobSyncService = new BlobSyncService(
+	const blobGcScheduler = new BlobGcSchedulingService(
+		stateRepository,
+		maintenanceScheduler,
+	);
+	const storageStatusNotifier = new CoalescedStorageStatusNotifier(
+		stateRepository,
+		socketService,
+		storageStatusBroadcastDelayMs,
+	);
+	const blobTransferService = new BlobTransferService(
 		syncTokenService,
 		stateRepository,
-		stateRepository,
-		stateRepository,
+		blobGcScheduler,
 		socketService,
 		blobRepository,
 		objectKeyBuilder,
 		30 * 60 * 1000,
-		maintenanceScheduler,
 		healthSyncService,
-		storageStatusBroadcastDelayMs,
+		storageStatusNotifier,
 	);
-	const mutationCommitService = new MutationCommitService(
-		stateRepository,
+	const blobGarbageCollectionService = new BlobGarbageCollectionService(
 		stateRepository,
 		stateRepository,
 		blobRepository,
 		objectKeyBuilder,
-		30 * 60 * 1000,
+		blobGcScheduler,
+		stateRepository,
 		maintenanceScheduler,
+		healthSyncService,
+		storageStatusNotifier,
+	);
+	const mutationCommitService = new MutationCommitService(
+		stateRepository,
+		blobGcScheduler,
+		stateRepository,
+		blobRepository,
+		objectKeyBuilder,
+		30 * 60 * 1000,
 		healthSyncService,
 	);
 	let coordinatorService: CoordinatorService;
@@ -263,7 +287,7 @@ export function createCoordinatorService({
 			commitMutations: async (session, message, options) =>
 				await coordinatorService.commitMutations(session, message, options),
 		},
-		blobSyncService,
+		blobGarbageCollectionService,
 	);
 	const vaultLifecycleService = new VaultLifecycleService(
 		stateRepository,
@@ -286,19 +310,21 @@ export function createCoordinatorService({
 	);
 	const maintenanceService = new CoordinatorMaintenanceService(
 		maintenanceScheduler,
-		blobSyncService,
+		blobGarbageCollectionService,
 		healthSyncService,
 		vaultLifecycleService,
 	);
 	const syncRepairService = new CoordinatorSyncRepairService(
 		stateRepository,
 		stateRepository,
+		stateRepository,
 		blobRepository,
 		objectKeyBuilder,
-		maintenanceScheduler,
+		blobGcScheduler,
 	);
 	coordinatorService = new CoordinatorService({
-		blobSyncService,
+		blobTransferService,
+		blobGarbageCollection: blobGarbageCollectionService,
 		entryHistoryService,
 		entrySyncService,
 		healthSyncService,
@@ -316,7 +342,7 @@ export function createCoordinatorService({
 		healthSyncService,
 	);
 	return Object.assign(coordinatorService, {
-		dispose: () => blobSyncService.dispose(),
+		dispose: () => storageStatusNotifier.dispose(),
 		handleSocketMessage: async (_ws: WebSocket, message: string | ArrayBuffer) => {
 			if (typeof message !== "string") return;
 			const parsed = parseClientControlMessage(JSON.parse(message));
@@ -336,6 +362,8 @@ export type TestCoordinatorState = CoordinatorStorageLifecycle &
 	EntryHistoryStore &
 		import("./application/ports/outbound").MutationStore &
 	BlobStateStore &
+	BlobGcStore &
+	StaleStagedBlobStore &
 	HealthStateStore;
 
 function createSyncTokenVerifier(): SyncTokenVerifier {

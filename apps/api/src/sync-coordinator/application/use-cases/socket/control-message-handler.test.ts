@@ -548,7 +548,7 @@ describe("coordinator websocket control messages", () => {
 			stateRepository: {
 				...stateRepository,
 				readVaultId: vi.fn(() => "vault-1"),
-				listBlobsReadyForDeletion: vi.fn(() => [
+				listCollectibleBlobs: vi.fn(() => [
 					{
 						blob_id: "blob-1",
 						state: "pending_delete",
@@ -558,8 +558,8 @@ describe("coordinator websocket control messages", () => {
 						delete_after: 2,
 					},
 				]),
-				deleteBlobIfCollectible: vi.fn(),
-				nextBlobGcAt: vi.fn(() => null),
+				deleteBlobIfCollectible: vi.fn(() => "deleted" as const),
+				nextGcAt: vi.fn(() => null),
 				recordGcCompleted: vi.fn(),
 			} as never,
 			socketService,
@@ -603,7 +603,7 @@ describe("coordinator websocket control messages", () => {
 				...stateRepository,
 					withDeletedEntryPurgeTransaction,
 				markBlobPendingDeleteIfUnpinned,
-				readBlob: vi.fn(() => ({
+				readCollectibleBlob: vi.fn(() => ({
 					blob_id: "blob-1",
 					state: "pending_delete",
 					size_bytes: 100,
@@ -611,9 +611,8 @@ describe("coordinator websocket control messages", () => {
 					last_uploaded_at: 1,
 					delete_after: 1,
 				})),
-				isBlobPinned: vi.fn(() => false),
 				deleteBlobIfCollectible,
-				nextBlobGcAt: vi.fn(() => 1),
+				nextGcAt: vi.fn(() => 1),
 			} as never,
 			socketService: socketServiceMock(),
 			blobRepository: blobRepository as never,

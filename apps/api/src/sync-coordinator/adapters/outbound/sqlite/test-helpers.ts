@@ -4,6 +4,8 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { CoordinatorBlobStore } from "./blob-store";
+import { CoordinatorBlobGcStore } from "./blob-gc-store";
+import { CoordinatorStaleStagedBlobStore } from "./stale-staged-blob-store";
 import { CoordinatorCursorStore } from "./cursor-store";
 import { CoordinatorEntryStore } from "./entry-store";
 import { CoordinatorHealthStore } from "./health-store";
@@ -49,10 +51,17 @@ export async function createSqliteCoordinator(
 	const cursorStore = new CoordinatorCursorStore(handle);
 	cursorStore.ensureVaultState(vaultId, limits);
 	const blobStore = new CoordinatorBlobStore(handle);
+	const blobGcStore = new CoordinatorBlobGcStore(handle);
+	const staleStagedBlobStore = new CoordinatorStaleStagedBlobStore(handle);
 	const mutationStoreAdapter = new CoordinatorMutationStore(handle);
+	const blobGcScheduler = {
+		scheduleAt: async () => {},
+		scheduleNext: async () => null,
+		scheduleNow: async () => {},
+	};
 	const mutationService = new MutationCommitService(
 		mutationStoreAdapter,
-		blobStore,
+		blobGcScheduler,
 		cursorStore,
 		{
 			exists: async () => true,
@@ -64,7 +73,6 @@ export async function createSqliteCoordinator(
 			blobObjectKeyPrefix: (id: string) => `${id}/`,
 		},
 		30 * 60 * 1000,
-		{ defer: async () => {} },
 		{ scheduleSummaryFlush: async () => {} },
 	);
 	const mutationStore = {
@@ -88,6 +96,8 @@ export async function createSqliteCoordinator(
 		lifecycle,
 		cursorStore,
 		blobStore,
+		blobGcStore,
+		staleStagedBlobStore,
 		entryStore: new CoordinatorEntryStore(handle),
 		historyStore: new CoordinatorHistoryStore(handle),
 		mutationStore,

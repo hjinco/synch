@@ -19,7 +19,8 @@ afterEach(() => {
 
 describe("CoordinatorSyncRepairService", () => {
 	it("removes unreferenced stale staged blobs and clears the pause", async () => {
-		const { blobStore, cursorStore, handle } = await createSqliteCoordinator();
+		const { blobStore, blobGcStore, staleStagedBlobStore, cursorStore, handle } =
+			await createSqliteCoordinator();
 		const now = Date.now();
 		stageBlobForTest(
 			blobStore,
@@ -38,14 +39,19 @@ describe("CoordinatorSyncRepairService", () => {
 			delete: vi.fn(async () => {}),
 			deleteByPrefix: vi.fn(async () => {}),
 		};
-		const maintenanceScheduler = { defer: vi.fn(async () => {}) };
+		const blobGcScheduler = {
+			scheduleAt: vi.fn(async () => {}),
+			scheduleNext: vi.fn(async () => null),
+			scheduleNow: vi.fn(async () => {}),
+		};
 
 		const service = new CoordinatorSyncRepairService(
-			blobStore,
+			staleStagedBlobStore,
+			blobGcStore,
 			cursorStore,
 			blobStorage,
 			objectKeyBuilder,
-			maintenanceScheduler,
+			blobGcScheduler,
 		);
 
 		const result = await service.repairSyncState("vault-1");
@@ -59,15 +65,12 @@ describe("CoordinatorSyncRepairService", () => {
 		expect(blobStorage.delete).toHaveBeenCalledWith("vault-1/blob-stale");
 		expect(blobStore.readBlob("blob-stale")).toBeNull();
 		expect(cursorStore.readSyncPause()).toBeNull();
-		expect(maintenanceScheduler.defer).toHaveBeenCalledWith(
-			"blob_gc",
-			expect.any(Number),
-			expect.any(Number),
-		);
+		expect(blobGcScheduler.scheduleNow).toHaveBeenCalledWith(expect.any(Number));
 	});
 
 	it("keeps a paused vault when a stale blob is still referenced", async () => {
-		const { blobStore, cursorStore, handle } = await createSqliteCoordinator();
+		const { blobStore, blobGcStore, staleStagedBlobStore, cursorStore, handle } =
+			await createSqliteCoordinator();
 		const now = Date.now();
 		stageBlobForTest(
 			blobStore,
@@ -105,14 +108,19 @@ describe("CoordinatorSyncRepairService", () => {
 			delete: vi.fn(async () => {}),
 			deleteByPrefix: vi.fn(async () => {}),
 		};
-		const maintenanceScheduler = { defer: vi.fn(async () => {}) };
+		const blobGcScheduler = {
+			scheduleAt: vi.fn(async () => {}),
+			scheduleNext: vi.fn(async () => null),
+			scheduleNow: vi.fn(async () => {}),
+		};
 
 		const service = new CoordinatorSyncRepairService(
-			blobStore,
+			staleStagedBlobStore,
+			blobGcStore,
 			cursorStore,
 			blobStorage,
 			objectKeyBuilder,
-			maintenanceScheduler,
+			blobGcScheduler,
 		);
 
 		const result = await service.repairSyncState("vault-1");
@@ -127,7 +135,8 @@ describe("CoordinatorSyncRepairService", () => {
 	});
 
 	it("clears a stale-blob pause when the staged row is already gone", async () => {
-		const { blobStore, cursorStore, handle } = await createSqliteCoordinator();
+		const { blobGcStore, staleStagedBlobStore, cursorStore, handle } =
+			await createSqliteCoordinator();
 		const now = Date.now();
 		handle.exec(
 			"UPDATE coordinator_state SET sync_paused_at = ?, sync_pause_reason = ? WHERE id = 1",
@@ -139,14 +148,19 @@ describe("CoordinatorSyncRepairService", () => {
 			delete: vi.fn(async () => {}),
 			deleteByPrefix: vi.fn(async () => {}),
 		};
-		const maintenanceScheduler = { defer: vi.fn(async () => {}) };
+		const blobGcScheduler = {
+			scheduleAt: vi.fn(async () => {}),
+			scheduleNext: vi.fn(async () => null),
+			scheduleNow: vi.fn(async () => {}),
+		};
 
 		const result = await new CoordinatorSyncRepairService(
-			blobStore,
+			staleStagedBlobStore,
+			blobGcStore,
 			cursorStore,
 			blobStorage,
 			objectKeyBuilder,
-			maintenanceScheduler,
+			blobGcScheduler,
 		).repairSyncState("vault-1");
 
 		expect(result).toMatchObject({
@@ -160,7 +174,7 @@ describe("CoordinatorSyncRepairService", () => {
 	});
 
 	it("keeps the pause when object deletion fails after the staged row is dropped", async () => {
-		const { blobStore, cursorStore, handle, healthStore } =
+		const { blobStore, blobGcStore, staleStagedBlobStore, cursorStore, handle, healthStore } =
 			await createSqliteCoordinator();
 		const now = Date.now();
 		stageBlobForTest(
@@ -182,14 +196,19 @@ describe("CoordinatorSyncRepairService", () => {
 			}),
 			deleteByPrefix: vi.fn(async () => {}),
 		};
-		const maintenanceScheduler = { defer: vi.fn(async () => {}) };
+		const blobGcScheduler = {
+			scheduleAt: vi.fn(async () => {}),
+			scheduleNext: vi.fn(async () => null),
+			scheduleNow: vi.fn(async () => {}),
+		};
 
 		const result = await new CoordinatorSyncRepairService(
-			blobStore,
+			staleStagedBlobStore,
+			blobGcStore,
 			cursorStore,
 			blobStorage,
 			objectKeyBuilder,
-			maintenanceScheduler,
+			blobGcScheduler,
 		).repairSyncState("vault-1");
 
 		expect(result).toMatchObject({

@@ -1,6 +1,6 @@
 import type { MaintenanceRunner } from "../../ports/outbound";
 
-export interface BlobMaintenanceUseCases {
+export interface BlobGarbageCollectionPort {
 	runGc(
 		vaultId?: string,
 		options?: {
@@ -25,7 +25,7 @@ export interface VaultPurgeState {
 export class CoordinatorMaintenanceService {
 	constructor(
 		private readonly scheduler: MaintenanceRunner,
-		private readonly blobSyncService: BlobMaintenanceUseCases,
+		private readonly blobGarbageCollection: BlobGarbageCollectionPort,
 		private readonly healthSyncService: HealthMaintenanceUseCases,
 		private readonly vaultLifecycleService: VaultPurgeState,
 	) {}
@@ -37,7 +37,7 @@ export class CoordinatorMaintenanceService {
 
 		await this.scheduler.drain({
 			blob_gc: async (now) =>
-				await this.blobSyncService.runGc(undefined, {
+				await this.blobGarbageCollection.runGc(undefined, {
 					now,
 					scheduleHealthFlush: true,
 					scheduleNextGc: false,

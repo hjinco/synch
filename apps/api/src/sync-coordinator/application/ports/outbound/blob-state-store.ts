@@ -1,7 +1,5 @@
 import type { BlobRow } from "./storage-models";
 
-export type UnreferencedStagedBlobDeleteResult = "deleted" | "missing" | "referenced";
-
 export type BlobStageFacts = {
 	existing: {
 		state: BlobRow["state"];
@@ -32,13 +30,7 @@ export interface BlobStateStore {
 		operation: (transaction: BlobStageTransaction) => T,
 	): T;
 	readBlob(blobId: string): BlobRow | null;
-	listStaleStagedBlobs(now: number, staleAfterMs: number, limit: number): BlobRow[];
 	deleteBlobRecord(blobId: string): void;
 	abortStagedBlob(blobId: string, now?: number): void;
-	deleteUnreferencedStagedBlob(blobId: string, now?: number): UnreferencedStagedBlobDeleteResult;
 	isBlobPinned(blobId: string, includeStaging?: boolean, now?: number): boolean;
-	listBlobsReadyForDeletion(now: number, limit: number): BlobRow[];
-	deleteBlobIfCollectible(blobId: string, now?: number): void;
-	markBlobPendingDeleteIfUnpinned(blobId: string, now?: number): void;
-	nextBlobGcAt(): number | null;
 }

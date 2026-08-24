@@ -10,7 +10,3 @@ export interface HealthStateStore {
 export interface HealthSummaryScheduler {
 	scheduleSummaryFlush(now?: number): Promise<void>;
 }
-
-export interface PurgedBlobCollector {
-	collectPurgedBlobs(vaultId: string, blobIds: readonly string[]): Promise<void>;
-}

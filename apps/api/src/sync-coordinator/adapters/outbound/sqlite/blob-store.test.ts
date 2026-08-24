@@ -125,28 +125,34 @@ describe("sqlite backend: blob staging", () => {
 	});
 
 	it("collects a staged-but-never-committed blob once its grace period passes", async () => {
-		const { blobStore } = await createSqliteCoordinator();
+		const { blobStore, blobGcStore } = await createSqliteCoordinator();
 		await stage(blobStore, "blob-1", 100, 1_000, 1_500);
 
-		const ready = blobStore.listBlobsReadyForDeletion(2_000, 10);
+		blobGcStore.expireEntryVersions(2_000);
+		const ready = blobGcStore.listCollectibleBlobs(2_000, 10);
 		expect(ready.map((row) => row.blob_id)).toContain("blob-1");
 
-		blobStore.deleteBlobIfCollectible("blob-1", 2_000);
+		blobGcStore.deleteBlobIfCollectible("blob-1", 2_000);
 		expect(blobStore.readBlob("blob-1")).toBeNull();
 	});
 
 	it("deletes an unreferenced staged blob and reports a missing row", async () => {
-		const { blobStore, healthStore } = await createSqliteCoordinator();
+		const { blobStore, healthStore, staleStagedBlobStore } = await createSqliteCoordinator();
 		await stage(blobStore, "blob-1", 100, 1_000, 2_000);
 
-		expect(blobStore.deleteUnreferencedStagedBlob("blob-1", 1_500)).toBe("deleted");
+		expect(staleStagedBlobStore.deleteUnreferencedStagedBlob("blob-1", 1_500)).toBe(
+			"deleted",
+		);
 		expect(blobStore.readBlob("blob-1")).toBeNull();
 		expect(healthStore.readStorageStatus().storageUsedBytes).toBe(0);
-		expect(blobStore.deleteUnreferencedStagedBlob("blob-1", 1_500)).toBe("missing");
+		expect(staleStagedBlobStore.deleteUnreferencedStagedBlob("blob-1", 1_500)).toBe(
+			"missing",
+		);
 	});
 
 	it("does not delete a staged blob that is still referenced", async () => {
-		const { blobStore, handle, healthStore } = await createSqliteCoordinator();
+		const { blobStore, staleStagedBlobStore, handle, healthStore } =
+			await createSqliteCoordinator();
 		await stage(blobStore, "blob-1", 100, 1_000, 2_000);
 		handle.exec(
 			`
@@ -168,7 +174,7 @@ describe("sqlite backend: blob staging", () => {
 			"mutation-1",
 		);
 
-		expect(blobStore.deleteUnreferencedStagedBlob("blob-1", 1_500)).toBe(
+		expect(staleStagedBlobStore.deleteUnreferencedStagedBlob("blob-1", 1_500)).toBe(
 			"referenced",
 		);
 		expect(blobStore.readBlob("blob-1")).toMatchObject({
@@ -223,6 +229,116 @@ describe("sqlite backend: blob staging", () => {
 		);
 
 		expect(blobStore.readBlob("blob-1")?.state).toBe("pending_delete");
+	});
+
+	it("marks an unreferenced live blob pending-delete through the GC store", async () => {
+		const { blobStore, blobGcStore, handle } = await createSqliteCoordinator();
+		await stage(blobStore, "blob-1", 100, 1_000, 2_000);
+		handle.exec(
+			"UPDATE blobs SET state = ?, delete_after = NULL WHERE blob_id = ?",
+			"live",
+			"blob-1",
+		);
+
+		blobGcStore.markBlobPendingDeleteIfUnpinned("blob-1", 3_000);
+
+		expect(blobStore.readBlob("blob-1")).toMatchObject({
+			state: "pending_delete",
+			delete_after: 3_000,
+		});
+	});
+
+	it("keeps a blob collectible only after retained history expires", async () => {
+		const { blobStore, blobGcStore, handle } = await createSqliteCoordinator();
+		await stage(blobStore, "blob-history", 100, 1_000, 1_500);
+		handle.exec(
+			"UPDATE blobs SET state = ?, delete_after = ? WHERE blob_id = ?",
+			"pending_delete",
+			1_500,
+			"blob-history",
+		);
+		handle.exec(
+			`
+			INSERT INTO entry_versions (
+				version_id, entry_id, source_revision, op_type, blob_id,
+				encrypted_metadata, reason, bucket_start_ms, captured_at,
+				expires_at, created_by_user_id, created_by_local_vault_id
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			`,
+			"version-1",
+			"entry-1",
+			1,
+			"upsert",
+			"blob-history",
+			"metadata",
+			"auto",
+			null,
+			1_000,
+			3_000,
+			"user-1",
+			"local-1",
+		);
+
+		blobGcStore.expireEntryVersions(2_000);
+		expect(blobGcStore.readCollectibleBlob("blob-history", 2_000)).toBeNull();
+
+		blobGcStore.expireEntryVersions(3_000);
+		expect(blobGcStore.readCollectibleBlob("blob-history", 3_000)).toMatchObject({
+			blob_id: "blob-history",
+		});
+	});
+
+	it("returns the earliest future GC deadline", async () => {
+		const { blobStore, blobGcStore } = await createSqliteCoordinator();
+		await stage(blobStore, "blob-deadline", 100, 1_000, 5_000);
+
+		expect(blobGcStore.nextGcAt(2_000)).toBe(5_000);
+		expect(blobGcStore.nextGcAt(5_000)).toBe(5_000);
+		blobGcStore.deleteBlobIfCollectible("blob-deadline", 5_000);
+		expect(blobGcStore.nextGcAt(5_000)).toBeNull();
+	});
+
+	it("keeps due GC work scheduled after the first deletion batch", async () => {
+		const { blobStore, blobGcStore } = await createSqliteCoordinator();
+		for (let i = 0; i < 65; i += 1) {
+			await stage(blobStore, `blob-${i}`, 1, 1_000, 1_500);
+		}
+
+		const firstBatch = blobGcStore.listCollectibleBlobs(2_000, 64);
+		expect(firstBatch).toHaveLength(64);
+		for (const blob of firstBatch) {
+			expect(blobGcStore.deleteBlobIfCollectible(blob.blob_id, 2_000)).toBe(
+				"deleted",
+			);
+		}
+
+		expect(blobGcStore.nextGcAt(2_000)).toBe(2_000);
+	});
+
+	it("does not keep scheduling a due staged blob that is referenced", async () => {
+		const { blobStore, blobGcStore, handle } = await createSqliteCoordinator();
+		await stage(blobStore, "blob-referenced-due", 100, 1_000, 1_500);
+		handle.exec(
+			`
+			INSERT INTO entries (
+				entry_id, revision, blob_id, encrypted_metadata, deleted,
+				updated_seq, updated_at, updated_by_user_id,
+				updated_by_local_vault_id, last_mutation_id
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			`,
+			"entry-referenced-due",
+			1,
+			"blob-referenced-due",
+			"metadata",
+			0,
+			1,
+			1_000,
+			"user-1",
+			"local-1",
+			"mutation-1",
+		);
+
+		expect(blobGcStore.nextGcAt(2_000)).toBeNull();
 	});
 });
 

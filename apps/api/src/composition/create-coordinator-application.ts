@@ -21,7 +21,10 @@ import type {
 } from "../sync-coordinator/application/ports/outbound";
 import { createCoordinatorApp } from "../sync-coordinator/adapters/inbound/http/routes";
 import { CoordinatorService } from "../sync-coordinator/application/use-cases/coordinator-service";
-import { BlobSyncService } from "../sync-coordinator/application/use-cases/blob/sync-service";
+import { BlobTransferService } from "../sync-coordinator/application/use-cases/blob/sync-service";
+import { CoalescedStorageStatusNotifier } from "../sync-coordinator/application/use-cases/blob/storage-status-notifier";
+import { BlobGcSchedulingService } from "../sync-coordinator/application/use-cases/blob-gc/blob-gc-scheduler";
+import { BlobGarbageCollectionService } from "../sync-coordinator/application/use-cases/blob-gc/blob-garbage-collection-service";
 import { EntryHistoryService } from "../sync-coordinator/application/use-cases/entry/history-service";
 import { EntrySyncService } from "../sync-coordinator/application/use-cases/entry/sync-service";
 import { HealthSyncService } from "../sync-coordinator/application/use-cases/health/sync-service";
@@ -29,6 +32,8 @@ import { MutationCommitService } from "../sync-coordinator/application/use-cases
 import { CoordinatorControlMessageHandler } from "../sync-coordinator/adapters/inbound/websocket/control-message-handler";
 import { CoordinatorSocketConnectionService } from "../sync-coordinator/application/use-cases/socket/connection-service";
 import { CoordinatorBlobStore } from "../sync-coordinator/adapters/outbound/sqlite/blob-store";
+import { CoordinatorBlobGcStore } from "../sync-coordinator/adapters/outbound/sqlite/blob-gc-store";
+import { CoordinatorStaleStagedBlobStore } from "../sync-coordinator/adapters/outbound/sqlite/stale-staged-blob-store";
 import { CoordinatorCursorStore } from "../sync-coordinator/adapters/outbound/sqlite/cursor-store";
 import { CoordinatorEntryStore } from "../sync-coordinator/adapters/outbound/sqlite/entry-store";
 import {
@@ -75,6 +80,8 @@ export function createCoordinatorApplication(
 	const cursorActiveTtlMs =
 		config.cursorActiveTtlMs ?? DEFAULT_CURSOR_ACTIVE_TTL_MS;
 	const blobStore = new CoordinatorBlobStore(deps.storageHandle);
+	const blobGcStore = new CoordinatorBlobGcStore(deps.storageHandle);
+	const staleStagedBlobStore = new CoordinatorStaleStagedBlobStore(deps.storageHandle);
 	const cursorStore = new CoordinatorCursorStore(deps.storageHandle);
 	const entryStore = new CoordinatorEntryStore(deps.storageHandle);
 	const healthStore = new CoordinatorHealthStore(
@@ -100,26 +107,43 @@ export function createCoordinatorApplication(
 		cursorActiveTtlMs,
 		deps.maintenanceScheduler,
 	);
-	const blobSyncService = new BlobSyncService(
+	const blobGcScheduler = new BlobGcSchedulingService(
+		blobGcStore,
+		deps.maintenanceScheduler,
+	);
+	const storageStatusNotifier = new CoalescedStorageStatusNotifier(
+		healthStore,
+		deps.socketGateway,
+	);
+	const blobTransferService = new BlobTransferService(
 		syncTokenService,
 		blobStore,
-		cursorStore,
-		healthStore,
+		blobGcScheduler,
 		deps.socketGateway,
 		deps.blobStorage,
 		objectKeyBuilder,
 		blobGracePeriodMs,
+		healthSyncService,
+		storageStatusNotifier,
+	);
+	const blobGarbageCollectionService = new BlobGarbageCollectionService(
+		cursorStore,
+		blobGcStore,
+		deps.blobStorage,
+		objectKeyBuilder,
+		blobGcScheduler,
+		healthStore,
 		deps.maintenanceScheduler,
 		healthSyncService,
+		storageStatusNotifier,
 	);
 	const mutationCommitService = new MutationCommitService(
 		mutationStore,
-		blobStore,
+		blobGcScheduler,
 		cursorStore,
 		deps.blobStorage,
 		objectKeyBuilder,
 		blobGracePeriodMs,
-		deps.maintenanceScheduler,
 		healthSyncService,
 	);
 	const entrySyncService = new EntrySyncService(entryStore, cursorStore);
@@ -128,7 +152,7 @@ export function createCoordinatorApplication(
 		historyStore,
 		cursorStore,
 		mutationCommitService,
-		blobSyncService,
+		blobGarbageCollectionService,
 	);
 	const vaultLifecycleService = new VaultLifecycleService(
 		deps.storage,
@@ -161,19 +185,21 @@ export function createCoordinatorApplication(
 	);
 	const maintenanceService = new CoordinatorMaintenanceService(
 		deps.maintenanceScheduler,
-		blobSyncService,
+		blobGarbageCollectionService,
 		healthSyncService,
 		vaultLifecycleService,
 	);
 	const syncRepairService = new CoordinatorSyncRepairService(
-		blobStore,
+		staleStagedBlobStore,
+		blobGcStore,
 		cursorStore,
 		deps.blobStorage,
 		objectKeyBuilder,
-		deps.maintenanceScheduler,
+		blobGcScheduler,
 	);
 	const useCases = new CoordinatorService({
-		blobSyncService,
+		blobTransferService,
+		blobGarbageCollection: blobGarbageCollectionService,
 		entryHistoryService,
 		entrySyncService,
 		healthSyncService,
@@ -199,6 +225,6 @@ export function createCoordinatorApplication(
 		useCases,
 		socketMessageHandler,
 		socketConnectionService,
-		dispose: () => blobSyncService.dispose(),
+		dispose: () => storageStatusNotifier.dispose(),
 	};
 }

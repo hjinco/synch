@@ -18,12 +18,19 @@ export type {
 	BlobStageFacts,
 	BlobStageTransaction,
 	BlobStateStore,
-	UnreferencedStagedBlobDeleteResult,
 } from "./blob-state-store";
+export type {
+	BlobGcCandidate,
+	BlobGcDeleteResult,
+	BlobGcStore,
+	PurgedBlobCollector,
+} from "./blob-gc-store";
+export type { BlobGcScheduler } from "./blob-gc-scheduler";
+export type { StaleStagedBlobStore, UnreferencedStagedBlobDeleteResult } from "./stale-staged-blob-store";
+export type { StorageStatusNotifier } from "./storage-status-notifier";
 export type {
 	HealthStateStore,
 	HealthSummaryScheduler,
-	PurgedBlobCollector,
 } from "./health-store";
 export type {
 	MaintenanceJobHandler,
