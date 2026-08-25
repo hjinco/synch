@@ -1,9 +1,9 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 
-import type { AuthHttpHandler } from "./auth/adapters/inbound/http/handler";
-import { registerAuthRoutes } from "./auth/adapters/inbound/http/routes";
-import type { SessionReader } from "./auth/application";
+import type { AuthHttpHandler } from "./auth/routes";
+import { registerAuthRoutes } from "./auth/routes";
+import type { SessionReader } from "./auth/session";
 import { registerBillingRoutes } from "./billing/adapters/inbound/http/routes";
 import type { BillingService } from "./billing/application";
 import { mapBillingApplicationError } from "./billing/adapters/inbound/http/error-mapper";

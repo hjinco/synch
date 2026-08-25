@@ -1,7 +1,7 @@
 import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
 
-import type { SessionReader } from "../../../../auth/application";
+import type { SessionReader } from "../../../../auth/session";
 import { createEnsureAuthenticatedSession } from "../../../../platform/http/authenticated-session";
 import type { VaultService } from "../../../application";
 import { Hono } from "hono";

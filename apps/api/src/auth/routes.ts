@@ -1,3 +1,25 @@
+import { Hono } from "hono";
+
+export type AuthHttpHandler = (request: Request) => Promise<Response>;
+
+export function registerAuthRoutes(
+	app: Hono,
+	authHttpHandler: AuthHttpHandler,
+): void {
+	app.get("/verify-email", (c) => {
+		const url = new URL(c.req.url);
+		url.pathname = "/api/auth/verify-email";
+		return authHttpHandler(new Request(url.toString(), c.req.raw));
+	});
+	app.all("/api/auth/*", (c) =>
+		authHttpHandler(
+			normalizeDeviceAuthorizationRequest(
+				normalizeBearerSessionRequest(c.req.raw),
+			),
+		),
+	);
+}
+
 export function normalizeDeviceAuthorizationRequest(request: Request): Request {
 	if (!isDeviceAuthorizationClientRequest(request)) {
 		return request;

@@ -1,5 +1,5 @@
 import { createApp } from "../app";
-import type { AuthFeatureConfig } from "../auth/application/dto/auth-config";
+import type { AuthFeatureConfig } from "../auth/better-auth";
 import type { BillingApplicationConfig } from "../billing/application";
 import {
 	capabilitiesFor,

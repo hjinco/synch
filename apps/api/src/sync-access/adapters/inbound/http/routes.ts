@@ -2,7 +2,7 @@ import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
 import { z } from "zod";
 
-import type { SessionReader } from "../../../../auth/application";
+import type { SessionReader } from "../../../../auth/session";
 import type { IssueSyncToken } from "../../../application/ports/inbound/issue-sync-token";
 import { createEnsureAuthenticatedSession } from "../../../../platform/http/authenticated-session";
 

@@ -5,7 +5,7 @@ const authMocks = vi.hoisted(() => ({
 	readSession: vi.fn(),
 }));
 
-import type { SessionReader } from "../../../../auth/application";
+import type { SessionReader } from "../../../../auth/session";
 import { apiError, onError } from "../../../../errors";
 import { registerBillingRoutes } from "./routes";
 import type { BillingService } from "../../../application";
@@ -198,4 +198,3 @@ function fakeBillingService(overrides: Partial<BillingService> = {}): BillingSer
 		...overrides,
 	} as unknown as BillingService;
 }
-

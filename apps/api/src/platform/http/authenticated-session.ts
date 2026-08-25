@@ -3,7 +3,7 @@ import { createMiddleware } from "hono/factory";
 import type {
 	AuthenticatedUser,
 	SessionReader,
-} from "../../auth/application";
+} from "../../auth/session";
 import { apiError } from "../../errors";
 
 export type AuthenticatedSessionVariables = {
