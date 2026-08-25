@@ -1,6 +1,6 @@
 import { serve, type ServerType } from "@hono/node-server";
 import { type ChildProcess, spawn } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -40,6 +40,19 @@ const DEFAULT_VAULT_WRAPPER = {
 };
 
 const SELF_HOST_ALLOWED_EMAIL = "self-host-e2e@test.invalid";
+
+function listPublicFiles(dir: string, prefix = ""): string[] {
+	const files: string[] = [];
+	for (const entry of readdirSync(dir, { withFileTypes: true })) {
+		const relative = prefix ? `${prefix}/${entry.name}` : entry.name;
+		if (entry.isDirectory()) {
+			files.push(...listPublicFiles(path.join(dir, entry.name), relative));
+		} else if (entry.isFile()) {
+			files.push(relative);
+		}
+	}
+	return files.sort();
+}
 
 let counter = 0;
 function uniqueId(prefix: string): string {
@@ -276,38 +289,51 @@ describe("self-hosted Node runtime: end-to-end sync", () => {
 		// ahead of the Worker - the device-authorization flow's verification URI
 		// (getDeviceVerificationUri -> "<baseURL>/device") and the sign-in/sign-up
 		// pages depend on that. There's no equivalent outside Workers, so the Node
-		// runtime has to serve these itself; this guards against that regressing.
+		// runtime has to serve the whole directory itself. Listing files here
+		// asserts every file in public/ is reachable over HTTP.
 		const { dataDir, runtime, server, wss, baseUrl } = await bootServer();
 		cleanup.push(() => rmSync(dataDir, { recursive: true, force: true }));
 		cleanup.push(() => runtime.dispose());
 		cleanup.push(() => closeServer(server, wss));
 
-		for (const path of ["/device", "/signin", "/signup", "/vaults"]) {
-			const response = await fetch(`${baseUrl}${path}`);
-			expect(response.status, path).toBe(200);
-			expect(response.headers.get("content-type"), path).toMatch(/^text\/html/);
+		const publicFiles = listPublicFiles(path.join(API_ROOT, "public"));
+		expect(publicFiles).toEqual(expect.arrayContaining(["styles.css", "favicon.ico"]));
+
+		for (const file of publicFiles) {
+			const urlPath = `/${file}`;
+			const response = await fetch(`${baseUrl}${urlPath}`);
+			expect(response.status, urlPath).toBe(200);
+			const contentType = response.headers.get("content-type") ?? "";
+			if (file.endsWith(".html")) {
+				expect(contentType, urlPath).toMatch(/^text\/html/);
+			} else if (file.endsWith(".css")) {
+				expect(contentType, urlPath).toMatch(/css/);
+			} else if (file.endsWith(".js")) {
+				expect(contentType, urlPath).toMatch(/javascript/);
+			} else if (file.endsWith(".json")) {
+				expect(contentType, urlPath).toMatch(/^application\/json/);
+			} else if (file.endsWith(".txt")) {
+				expect(contentType, urlPath).toMatch(/^text\/plain/);
+			}
 		}
 
-		const robots = await fetch(`${baseUrl}/robots.txt`);
-		expect(robots.status).toBe(200);
-		expect(robots.headers.get("content-type")).toMatch(/^text\/plain/);
-
-		// The auth pages fetch their shared i18n runtime and locale catalogs.
-		const i18nRuntime = await fetch(`${baseUrl}/i18n.js`);
-		expect(i18nRuntime.status).toBe(200);
-		expect(i18nRuntime.headers.get("content-type")).toMatch(/javascript/);
-
-		// The vaults page lazy-loads the E2EE crypto bundle for vault creation.
-		// It is a tracked deployment artifact verified against the shared source in CI.
-		const vaultCrypto = await fetch(`${baseUrl}/vault-crypto.js`);
-		expect(vaultCrypto.status).toBe(200);
-		expect(vaultCrypto.headers.get("content-type")).toMatch(/javascript/);
-
-		for (const locale of ["ko", "ja", "zh-cn", "zh-tw", "de"]) {
-			const catalog = await fetch(`${baseUrl}/i18n/${locale}.json`);
-			expect(catalog.status, locale).toBe(200);
-			expect(catalog.headers.get("content-type"), locale).toMatch(/^application\/json/);
+		for (const page of ["/device", "/signin", "/signup", "/vaults"]) {
+			const response = await fetch(`${baseUrl}${page}`);
+			expect(response.status, page).toBe(200);
+			expect(response.headers.get("content-type"), page).toMatch(/^text\/html/);
 		}
+
+		const trailingSlash = await fetch(`${baseUrl}/device/`);
+		expect(trailingSlash.status).toBe(200);
+		expect(trailingSlash.headers.get("content-type")).toMatch(/^text\/html/);
+
+		const root = await fetch(`${baseUrl}/`);
+		expect(root.status).toBe(404);
+		await expect(root.json()).resolves.toMatchObject({ error: "not_found" });
+
+		const missing = await fetch(`${baseUrl}/definitely-not-a-public-asset`);
+		expect(missing.status).toBe(404);
+		await expect(missing.json()).resolves.toMatchObject({ error: "not_found" });
 	});
 
 	it("syncs a mutation between two simulated devices with no Cloudflare dependency", async () => {

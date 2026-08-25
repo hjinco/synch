@@ -2,7 +2,7 @@ import { serveStatic } from "@hono/node-server/serve-static";
 import { createClient } from "@libsql/client";
 import { drizzle as drizzleLibsql } from "drizzle-orm/libsql";
 import { migrate as migrateLibsql } from "drizzle-orm/libsql/migrator";
-import { mkdirSync, readdirSync } from "node:fs";
+import { mkdirSync } from "node:fs";
 import path from "node:path";
 
 import { createApiApplication } from "../composition/create-api-application";
@@ -16,30 +16,18 @@ import { NodeCoordinatorNamespace } from "./node-coordinator-namespace";
 const DEFAULT_MIGRATIONS_FOLDER = resolveNodeAsset("drizzle");
 
 // On Cloudflare, `wrangler.jsonc`'s "assets" binding serves apps/api/public/*
-// (device.html, signin.html, ...) ahead of the Worker entirely - the Worker
-// code never even sees those requests. There's no equivalent outside
-// Workers, so the Node runtime needs to serve them itself, including the
-// extensionless "clean URL" routes (e.g. /device -> device.html) that the
+// ahead of the Worker entirely. There's no equivalent outside Workers, so the
+// Node runtime serves that directory itself. `html_handling: "drop-trailing-slash"`
+// maps extensionless routes (e.g. /device -> device.html) that the
 // device-authorization flow and the auth pages link to.
 const PUBLIC_DIR = resolveNodeAsset("public");
-const STATIC_PAGES: Record<string, string> = {
-	"/device": "device.html",
-	"/signin": "signin.html",
-	"/signup": "signup.html",
-	"/vaults": "vaults.html",
-	"/robots.txt": "robots.txt",
-	"/i18n.js": "i18n.js",
-	"/vault-crypto.js": "vault-crypto.js",
-};
 
-/** The pages fetch their locale catalogs from /i18n/<locale>.json at runtime. */
-function i18nCatalogRoutes(): Record<string, string> {
-	return Object.fromEntries(
-		readdirSync(path.join(PUBLIC_DIR, "i18n")).map((file) => [
-			`/i18n/${file}`,
-			path.join("i18n", file),
-		]),
-	);
+function rewritePublicAssetPath(urlPath: string): string {
+	const relative = urlPath.replace(/^\/+|\/+$/g, "");
+	if (relative === "" || path.posix.extname(relative) !== "") {
+		return relative;
+	}
+	return `${relative}.html`;
 }
 
 export interface NodeRuntimeConfig {
@@ -110,9 +98,21 @@ export async function createNodeRuntime(config: NodeRuntimeConfig) {
 		},
 	);
 
-	for (const [route, file] of Object.entries({ ...STATIC_PAGES, ...i18nCatalogRoutes() })) {
-		application.app.get(route, serveStatic({ path: path.join(PUBLIC_DIR, file) }));
-	}
+	const servePublicAsset = serveStatic({
+		root: PUBLIC_DIR,
+		rewriteRequestPath: rewritePublicAssetPath,
+	});
+	// Fallback only: `GET *` would also match API routes and run if a handler
+	// called `next()`. `notFound` runs only when no route matched.
+	application.app.notFound(async (c) => {
+		if (c.req.method === "GET" || c.req.method === "HEAD") {
+			const asset = await servePublicAsset(c, async () => {});
+			if (asset) {
+				return asset;
+			}
+		}
+		return c.json({ error: "not_found", message: "unknown route" }, 404);
+	});
 
 	return {
 		fetch: (request: Request) => application.app.fetch(request),
