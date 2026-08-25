@@ -2,8 +2,7 @@ import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
 import { z } from "zod";
 
-import type { CheckPluginVersion } from "../../../application";
-import { isStrictSemver } from "../../../domain/policy";
+import { checkObsidianPluginVersion, isStrictSemver } from "./policy";
 
 const versionCheckQuerySchema = z.object({
 	version: z.string().refine(isStrictSemver, {
@@ -11,17 +10,14 @@ const versionCheckQuerySchema = z.object({
 	}),
 });
 
-export function registerPluginVersionRoutes(
-	app: Hono,
-	checkPluginVersion: CheckPluginVersion,
-): void {
+export function registerPluginVersionRoutes(app: Hono): void {
 	app.get(
 		"/v1/obsidian-plugin/version-check",
 		zValidator("query", versionCheckQuerySchema),
 		(c) => {
 			const { version } = c.req.valid("query");
 
-			return c.json(checkPluginVersion.execute(version));
+			return c.json(checkObsidianPluginVersion(version));
 		},
 	);
 }

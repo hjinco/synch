@@ -13,7 +13,6 @@ import { createBillingFeature } from "./features/create-billing-feature";
 import { createSyncAccessFeature } from "./features/create-sync-access-feature";
 import { createSyncBlobTransferFeature } from "./features/create-sync-blob-transfer-feature";
 import type { AppDb } from "../db/client";
-import { CheckPluginVersionUseCase } from "../plugin-version/application/use-cases/check-plugin-version";
 import type { SubscriptionProductIdsByPlanId } from "../subscription/application";
 import {
 	CoordinatorProxyRepository,
@@ -89,8 +88,6 @@ export function createApiApplication(
 		tokenVerifier: syncAccessFeature.tokenVerifier,
 		objectKeyBuilder: { blobObjectKey, blobObjectKeyPrefix },
 	});
-	const pluginVersionChecker = new CheckPluginVersionUseCase();
-
 	return {
 		app: createApp(
 			{
@@ -103,7 +100,6 @@ export function createApiApplication(
 				vaultService: vaultFeature.service,
 				coordinatorProxyRepository,
 				subscriptionPolicyService: subscriptionFeature.policyReader,
-				pluginVersionChecker,
 				billingService: billingFeature.service,
 			},
 			{

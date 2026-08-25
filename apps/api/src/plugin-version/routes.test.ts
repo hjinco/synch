@@ -4,8 +4,7 @@ import { describe, expect, it } from "vitest";
 import {
 	MIN_SUPPORTED_OBSIDIAN_PLUGIN_VERSION,
 	SYNCH_API_MAJOR_VERSION,
-} from "../../../domain/policy";
-import { CheckPluginVersionUseCase } from "../../../application/use-cases/check-plugin-version";
+} from "./policy";
 import { registerPluginVersionRoutes } from "./routes";
 
 describe("plugin version routes", () => {
@@ -54,7 +53,7 @@ describe("plugin version routes", () => {
 
 function createTestApp(): Hono {
 	const app = new Hono();
-	registerPluginVersionRoutes(app, new CheckPluginVersionUseCase());
+	registerPluginVersionRoutes(app);
 	return app;
 }
 

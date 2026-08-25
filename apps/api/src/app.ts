@@ -8,8 +8,7 @@ import { registerBillingRoutes } from "./billing/adapters/inbound/http/routes";
 import type { BillingService } from "./billing/application";
 import { mapBillingApplicationError } from "./billing/adapters/inbound/http/error-mapper";
 import { onError } from "./errors";
-import type { CheckPluginVersion } from "./plugin-version/application";
-import { registerPluginVersionRoutes } from "./plugin-version/adapters/inbound/http/routes";
+import { registerPluginVersionRoutes } from "./plugin-version/routes";
 import type { SubscriptionPolicyReader } from "./subscription/application";
 import type { IssueSyncToken } from "./sync-access/application";
 import { mapSyncAccessApplicationError } from "./sync-access/adapters/inbound/http/error-mapper";
@@ -37,7 +36,6 @@ export type AppDependencies = {
 	coordinatorProxyRepository: CoordinatorProxyRepository;
 	vaultService: VaultService;
 	subscriptionPolicyService: SubscriptionPolicyReader;
-	pluginVersionChecker: CheckPluginVersion;
 	billingService?: BillingService;
 };
 
@@ -66,7 +64,7 @@ export function createApp(deps: AppDependencies, config: AppConfig): Hono {
 			service: "synch-api",
 		}),
 	);
-	registerPluginVersionRoutes(app, deps.pluginVersionChecker);
+	registerPluginVersionRoutes(app);
 	registerSyncAccessRoutes(app, {
 		syncTokenIssuer: deps.syncTokenIssuer,
 		sessionReader: deps.sessionReader,
