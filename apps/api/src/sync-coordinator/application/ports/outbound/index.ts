@@ -16,14 +16,23 @@ export type {
 export type {
 	BlobStageFacts,
 	BlobStageTransaction,
+	BlobMutationFacts,
+	BlobMutationTransaction,
+	BlobReferenceSnapshot,
 	BlobStateStore,
 } from "./blob-state-store";
 export type {
 	BlobGcCandidate,
 	BlobGcDeleteResult,
 	BlobGcStore,
+	BlobPendingDeleteFacts,
+	BlobPendingDeleteTransaction,
 } from "./blob-gc-store";
-export type { StaleStagedBlobStore, UnreferencedStagedBlobDeleteResult } from "./stale-staged-blob-store";
+export type {
+	StaleStagedBlobFacts,
+	StaleStagedBlobStore,
+	StaleStagedBlobTransaction,
+} from "./stale-staged-blob-store";
 export type {
 	HealthStateStore,
 	VaultHealthSnapshot,

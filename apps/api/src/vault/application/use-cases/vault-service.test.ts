@@ -45,7 +45,11 @@ function setup(overrides: Record<string, unknown> = {}) {
 			purgeStatus: null,
 			purgeError: null,
 		})),
-		userCanManageVault: vi.fn(async () => true),
+		readVaultAuthorizationFacts: vi.fn(async () => ({
+			vault: { organizationId: "org-1", deleted: false },
+			vaultMembership: { role: "owner", status: "active" },
+			organizationRole: "owner",
+		})),
 		markVaultDeletionQueued: vi.fn(async () => true),
 		markVaultDeletionQueueFailed: vi.fn(async () => {}),
 		...overrides,

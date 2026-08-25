@@ -1,6 +1,11 @@
+import type { VaultAuthorizationFacts } from "../../../domain/policy";
+
+export type { VaultAuthorizationFacts } from "../../../domain/policy";
+
 export interface VaultAuthorizationStore {
-	userCanAccessVault(userId: string, vaultId: string): Promise<boolean>;
-	userCanManageVault(userId: string, vaultId: string): Promise<boolean>;
-	userCanGrantVaultAccess(userId: string, vaultId: string): Promise<boolean>;
+	readVaultAuthorizationFacts(
+		userId: string,
+		vaultId: string,
+	): Promise<VaultAuthorizationFacts>;
 	userIsOrganizationMember(userId: string, organizationId: string): Promise<boolean>;
 }

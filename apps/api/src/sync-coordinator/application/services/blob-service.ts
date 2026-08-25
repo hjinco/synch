@@ -3,6 +3,7 @@ import {
 	decideBlobStage,
 	type BlobStageDecision,
 } from "../../domain/blob-policy";
+import { isBlobPinned } from "../../domain/blob-gc-policy";
 import { STAGED_BLOB_STALE_MS } from "../../domain/health-policy";
 import type {
 	BlobObjectKeyBuilder,
@@ -42,13 +43,16 @@ export class BlobService {
 
 		const now = Date.now();
 		const decision = this.blobStore.withStageTransaction(blobId, now, (transaction) => {
-			const facts = transaction.readFacts();
+			const { referenceFacts, ...facts } = transaction.readFacts();
 			const next = decideBlobStage({
 				blobId,
 				sizeBytes,
 				now,
 				staleAfterMs: STAGED_BLOB_STALE_MS,
 				...facts,
+				isPinned: facts.existing
+					? isBlobPinned(referenceFacts, false)
+					: false,
 			});
 
 			if (next.kind === "sync_paused") {
@@ -85,15 +89,27 @@ export class BlobService {
 		blobId: string,
 	): Promise<void> {
 		await this.syncTokenService.verifySyncToken(token, vaultId);
-		this.blobStore.abortStagedBlob(blobId, Date.now());
+		const now = Date.now();
+		this.blobStore.withBlobTransaction(blobId, now, (transaction) => {
+			const facts = transaction.readFacts();
+			if (
+				!facts.blob ||
+				facts.blob.state !== "staged" ||
+				isBlobPinned(facts.referenceFacts, false)
+			) {
+				return;
+			}
+			transaction.deleteStagedBlob();
+		});
 		await this.healthService.scheduleSummaryFlush();
 		this.healthService.notifyStorageStatusChanged();
 	}
 
 	async deleteBlob(token: string | null | undefined, vaultId: string, blobId: string): Promise<void> {
 		await this.syncTokenService.verifySyncToken(token, vaultId);
-		const blob = this.blobStore.readBlob(blobId);
-		if (blob && this.blobStore.isBlobPinned(blobId, false)) {
+		const now = Date.now();
+		const { blob, referenceFacts } = this.blobStore.readBlobFacts(blobId, now);
+		if (blob && isBlobPinned(referenceFacts, false)) {
 			return;
 		}
 

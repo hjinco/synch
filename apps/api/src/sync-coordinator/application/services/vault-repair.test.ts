@@ -35,7 +35,10 @@ describe("VaultService sync repair", () => {
 			"staged blob blob-stale remained staged for at least one hour",
 		);
 		const blobStorage = createBlobStorage();
-		const blobGcService = { scheduleNow: vi.fn(async () => {}) };
+		const blobGcService = {
+			scheduleNow: vi.fn(async () => {}),
+			readNextGcAt: vi.fn(() => null),
+		};
 		const service = createVaultService(sqlite, blobStorage, blobGcService);
 
 		const result = await service.repairSyncState("vault-1");
@@ -261,8 +264,12 @@ function createBlobStorage(
 function createVaultService(
 	sqlite: Awaited<ReturnType<typeof createSqliteCoordinator>>,
 	blobStorage: BlobObjectRepository,
-	blobGcService: { scheduleNow: (now?: number) => Promise<void> } = {
+	blobGcService: {
+		scheduleNow: (now?: number) => Promise<void>;
+		readNextGcAt: (now?: number) => number | null;
+	} = {
 		scheduleNow: vi.fn(async () => {}),
+		readNextGcAt: vi.fn(() => null),
 	},
 ) {
 	return new VaultService(
@@ -282,7 +289,6 @@ function createVaultService(
 		},
 		{ scheduleSummaryFlush: async () => {} },
 		sqlite.staleStagedBlobStore,
-		sqlite.blobGcStore,
 		blobGcService,
 	);
 }

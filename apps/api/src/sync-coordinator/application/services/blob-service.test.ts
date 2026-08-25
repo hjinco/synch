@@ -103,9 +103,13 @@ describe("coordinator blob lifecycle", () => {
 							state: "staged" as const,
 							sizeBytes: 66_701,
 							createdAt: 0,
-						},
-						isPinned: false,
-						storageUsedBytes: 0,
+							},
+							referenceFacts: {
+								hasCurrentReference: false,
+								hasRetainedHistory: false,
+								hasActiveStaging: false,
+							},
+							storageUsedBytes: 0,
 						storageLimitBytes: 100_000_000,
 						maxFileSizeBytes: 10_000_000,
 					})),
@@ -130,15 +134,15 @@ describe("coordinator blob lifecycle", () => {
 			),
 		).rejects.toMatchObject({ code: "sync_paused" });
 
-			expect(stateRepository.withStageTransaction).toHaveBeenCalledWith(
-				"blob-stale",
-				expect.any(Number),
-				expect.any(Function),
-			);
-			expect(pauseSync).toHaveBeenCalledWith(
-				expect.any(Number),
-				expect.stringContaining("blob-stale"),
-			);
+		expect(stateRepository.withStageTransaction).toHaveBeenCalledWith(
+			"blob-stale",
+			expect.any(Number),
+			expect.any(Function),
+		);
+		expect(pauseSync).toHaveBeenCalledWith(
+			expect.any(Number),
+			expect.stringContaining("blob-stale"),
+		);
 		expect(socketService.closeAllSockets).toHaveBeenCalledWith(
 			4403,
 			"sync paused for vault repair",
@@ -157,15 +161,21 @@ describe("coordinator blob lifecycle", () => {
 			})),
 		} as unknown as SyncTokenVerifier;
 		const stateRepository = createTestCoordinatorState({
-			readBlob: vi.fn(() => ({
-				blob_id: "blob-1",
-				state: "live" as const,
-				size_bytes: 42,
-				created_at: 1,
-				last_uploaded_at: 1,
-				delete_after: null,
+			readBlobFacts: vi.fn(() => ({
+				blob: {
+					blob_id: "blob-1",
+					state: "live" as const,
+					size_bytes: 42,
+					created_at: 1,
+					last_uploaded_at: 1,
+					delete_after: null,
+				},
+				referenceFacts: {
+					hasCurrentReference: true,
+				hasRetainedHistory: false,
+				hasActiveStaging: false,
+			},
 			})),
-			isBlobPinned: vi.fn(() => true),
 		});
 		const blobRepository = {
 			delete: vi.fn(async () => undefined),
@@ -182,9 +192,53 @@ describe("coordinator blob lifecycle", () => {
 			"token",
 			"vault-1",
 		);
-		expect(stateRepository.readBlob).toHaveBeenCalledWith("blob-1");
-		expect(stateRepository.isBlobPinned).toHaveBeenCalledWith("blob-1", false);
+		expect(stateRepository.readBlobFacts).toHaveBeenCalledWith(
+			"blob-1",
+			expect.any(Number),
+		);
 		expect(blobRepository.delete).not.toHaveBeenCalled();
+	});
+
+	it("does not abort a staged blob after it becomes referenced", async () => {
+		const syncTokenService = {
+			verifySyncToken: vi.fn(async () => ({
+				sub: "user-1",
+				vaultId: "vault-1",
+				localVaultId: "local-vault-1",
+				scope: "vault:sync" as const,
+				iat: 100,
+				exp: 200,
+			})),
+		} as unknown as SyncTokenVerifier;
+		const deleteStagedBlob = vi.fn();
+		const stateRepository = createTestCoordinatorState({
+			withBlobTransaction: vi.fn((_blobId, _now, operation) =>
+				operation({
+					readFacts: vi.fn(() => ({
+						blob: { state: "staged" as const, sizeBytes: 42 },
+						referenceFacts: {
+							hasCurrentReference: true,
+							hasRetainedHistory: false,
+							hasActiveStaging: false,
+						},
+					})),
+					deleteStagedBlob,
+				}),
+			),
+		});
+		const service = createCoordinatorService({
+			syncTokenService,
+			stateRepository,
+		});
+
+		await service.abortStagedBlob("token", "vault-1", "blob-1");
+
+		expect(stateRepository.withBlobTransaction).toHaveBeenCalledWith(
+			"blob-1",
+			expect.any(Number),
+			expect.any(Function),
+		);
+		expect(deleteStagedBlob).not.toHaveBeenCalled();
 	});
 
 	it("maps blob staging domain failures without parsing error messages", async () => {

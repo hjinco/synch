@@ -1,11 +1,13 @@
-import { eq, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 
 import * as doSchema from "../../../../db/do";
 import type {
+	StaleStagedBlobFacts,
 	StaleStagedBlobStore,
-	UnreferencedStagedBlobDeleteResult,
+	StaleStagedBlobTransaction,
 } from "../../../application/ports/outbound/stale-staged-blob-store";
 import type { BlobRow, BlobState } from "../../../application/ports/outbound/storage-models";
+import { readBlobMutationFacts } from "./blob-reference-facts";
 import type { CoordinatorDb, CoordinatorStorageHandle } from "./storage-handle";
 
 type BlobDb = Pick<CoordinatorDb, "delete" | "select" | "update">;
@@ -37,65 +39,48 @@ export class CoordinatorStaleStagedBlobStore implements StaleStagedBlobStore {
 			.map(toBlobRow);
 	}
 
-	deleteUnreferencedStagedBlob(
+	withStagedBlobTransaction<T>(
 		blobId: string,
-		now = Date.now(),
-	): UnreferencedStagedBlobDeleteResult {
+		now: number,
+		operation: (transaction: StaleStagedBlobTransaction) => T,
+	): T {
 		return this.handle.db.transaction((tx) => {
-			const existing = tx
-				.select({
-					state: doSchema.blobs.state,
-					sizeBytes: doSchema.blobs.sizeBytes,
-				})
-				.from(doSchema.blobs)
-				.where(eq(doSchema.blobs.blobId, blobId))
-				.limit(1)
-				.get();
-			if (!existing) {
-				return "missing";
-			}
-			if (existing.state !== "staged" || isBlobPinned(this.handle, blobId, now)) {
-				return "referenced";
-			}
+			const transaction: StaleStagedBlobTransaction = {
+				readFacts: (): StaleStagedBlobFacts =>
+					readBlobMutationFacts(tx, blobId, now),
+				deleteStagedBlob: () => {
+					const existing = tx
+						.select({
+							sizeBytes: doSchema.blobs.sizeBytes,
+						})
+						.from(doSchema.blobs)
+						.where(
+							and(
+								eq(doSchema.blobs.blobId, blobId),
+								eq(doSchema.blobs.state, "staged"),
+							),
+						)
+						.limit(1)
+						.get();
+					if (!existing) {
+						return;
+					}
 
-			tx.delete(doSchema.blobs)
-				.where(eq(doSchema.blobs.blobId, blobId))
-				.run();
-			decrementStorageUsedBytes(tx, Number(existing.sizeBytes));
-			return "deleted";
+					tx.delete(doSchema.blobs)
+						.where(
+							and(
+								eq(doSchema.blobs.blobId, blobId),
+								eq(doSchema.blobs.state, "staged"),
+							),
+						)
+						.run();
+					decrementStorageUsedBytes(tx, Number(existing.sizeBytes));
+				},
+			};
+
+			return operation(transaction);
 		});
 	}
-}
-
-function isBlobPinned(
-	handle: CoordinatorStorageHandle,
-	blobId: string,
-	now: number,
-): boolean {
-	const row = handle
-		.exec<{ found: number }>(
-			`
-			SELECT 1 AS found
-			WHERE EXISTS (
-				SELECT 1
-				FROM entries
-				WHERE entries.blob_id = ?
-			)
-			OR EXISTS (
-				SELECT 1
-				FROM entry_versions
-				WHERE entry_versions.blob_id = ?
-					AND entry_versions.expires_at > ?
-			)
-			LIMIT 1
-			`,
-			blobId,
-			blobId,
-			now,
-		)
-		.toArray()[0];
-
-	return !!row;
 }
 
 function decrementStorageUsedBytes(db: BlobDb, sizeBytes: number): void {

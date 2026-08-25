@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { BlobGcService } from "./blob-gc-service";
+import type { BlobPendingDeleteTransaction } from "../ports/outbound";
 
 function blob(blobId: string) {
 	return {
@@ -22,12 +23,12 @@ function createFixture() {
 			readCollectibleBlob: vi.fn((blobId: string) =>
 				blobId === "blob-1" || blobId === "blob-2" ? blob(blobId) : null,
 			),
-			markBlobPendingDeleteIfUnpinned: vi.fn(),
+			withPendingDeleteTransaction: vi.fn(runPendingDeleteTransaction),
 			deleteCollectibleBlobs: vi.fn((blobIds: readonly string[]) =>
 				blobIds.map((blobId) => blob(blobId)),
 			),
 			deleteBlobIfCollectible: vi.fn(() => "deleted" as const),
-			nextGcAt: vi.fn(() => null),
+			readGcDeadlines: vi.fn(() => []),
 		},
 		blobStorage: {
 			exists: vi.fn(async () => true),
@@ -62,6 +63,22 @@ function createFixture() {
 	return { fixture, useCase };
 }
 
+function runPendingDeleteTransaction(
+	_blobId: string,
+	_now: number,
+	operation: (transaction: BlobPendingDeleteTransaction) => void,
+): void {
+	operation({
+		readFacts: vi.fn(() => ({
+			state: "pending_delete" as const,
+			deleteAfter: 1,
+			hasCurrentReference: false,
+			hasRetainedHistory: false,
+		})),
+		markPendingDelete: vi.fn(),
+	});
+}
+
 describe("BlobGcService purged blob collection", () => {
 	it("deduplicates candidates and deletes objects before sqlite rows", async () => {
 		vi.useFakeTimers();
@@ -72,7 +89,7 @@ describe("BlobGcService purged blob collection", () => {
 
 			await useCase.collectPurgedBlobs("vault-1", ["blob-1", "blob-1", "blob-2"]);
 
-			expect(fixture.blobGcStore.markBlobPendingDeleteIfUnpinned).toHaveBeenCalledTimes(2);
+			expect(fixture.blobGcStore.withPendingDeleteTransaction).toHaveBeenCalledTimes(2);
 			expect(fixture.blobStorage.deleteMany).toHaveBeenCalledWith([
 				"vault-1/blob-1",
 				"vault-1/blob-2",
@@ -164,9 +181,10 @@ describe("BlobGcService purged blob collection", () => {
 
 		await useCase.collectPurgedBlobs("vault-1", ["missing"]);
 
-		expect(fixture.blobGcStore.markBlobPendingDeleteIfUnpinned).toHaveBeenCalledWith(
+		expect(fixture.blobGcStore.withPendingDeleteTransaction).toHaveBeenCalledWith(
 			"missing",
 			expect.any(Number),
+			expect.any(Function),
 		);
 		expect(fixture.blobGcStore.deleteCollectibleBlobs).not.toHaveBeenCalled();
 		expect(fixture.blobStorage.deleteMany).not.toHaveBeenCalled();

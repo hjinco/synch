@@ -3,10 +3,16 @@ import { and, eq, sql } from "drizzle-orm";
 import * as doSchema from "../../../../db/do";
 import { SyncCoordinatorApplicationError } from "../../../application/errors/coordinator-errors";
 import type {
+	BlobMutationTransaction,
+	BlobReferenceSnapshot,
 	BlobStageFacts,
 	BlobStageTransaction,
 } from "../../../application/ports/outbound/blob-state-store";
 import type { BlobRow, BlobState } from "../../../application/ports/outbound/storage-models";
+import {
+	readBlobMutationFacts,
+	readBlobReferenceFacts,
+} from "./blob-reference-facts";
 import type { CoordinatorDb, CoordinatorStorageHandle } from "./storage-handle";
 
 type BlobDb = Pick<CoordinatorDb, "delete" | "insert" | "select" | "update">;
@@ -56,9 +62,9 @@ export class CoordinatorBlobStore {
 									state: existing.state as BlobState,
 									sizeBytes: Number(existing.sizeBytes),
 									createdAt: Number(existing.createdAt),
-									}
+								}
 							: null,
-						isPinned: existing ? this.isBlobPinned(blobId, false, now) : false,
+						referenceFacts: readBlobReferenceFacts(tx, blobId, now),
 						storageUsedBytes: Number(storage.usedBytes),
 						storageLimitBytes: Number(storage.storageLimitBytes),
 						maxFileSizeBytes: Number(storage.maxFileSizeBytes),
@@ -107,6 +113,48 @@ export class CoordinatorBlobStore {
 		});
 	}
 
+	withBlobTransaction<T>(
+		blobId: string,
+		now: number,
+		operation: (transaction: BlobMutationTransaction) => T,
+	): T {
+		return this.handle.db.transaction((tx) => {
+			const transaction: BlobMutationTransaction = {
+				readFacts: () => readBlobMutationFacts(tx, blobId, now),
+				deleteStagedBlob: () => {
+					const existing = tx
+						.select({
+							sizeBytes: doSchema.blobs.sizeBytes,
+						})
+						.from(doSchema.blobs)
+						.where(
+							and(
+								eq(doSchema.blobs.blobId, blobId),
+								eq(doSchema.blobs.state, "staged"),
+							),
+						)
+						.limit(1)
+						.get();
+					if (!existing) {
+						return;
+					}
+
+					tx.delete(doSchema.blobs)
+						.where(
+							and(
+								eq(doSchema.blobs.blobId, blobId),
+								eq(doSchema.blobs.state, "staged"),
+							),
+						)
+						.run();
+					decrementStorageUsedBytes(tx, Number(existing.sizeBytes));
+				},
+			};
+
+			return operation(transaction);
+		});
+	}
+
 	readBlob(blobId: string): BlobRow | null {
 		const row = this.handle.db
 			.select({
@@ -123,6 +171,13 @@ export class CoordinatorBlobStore {
 			.get();
 
 		return row ? toBlobRow(row) : null;
+	}
+
+	readBlobFacts(blobId: string, now: number): BlobReferenceSnapshot {
+		return {
+			blob: this.readBlob(blobId),
+			referenceFacts: readBlobReferenceFacts(this.handle.db, blobId, now),
+		};
 	}
 
 	deleteBlobRecord(blobId: string): void {
@@ -144,76 +199,6 @@ export class CoordinatorBlobStore {
 				decrementStorageUsedBytes(tx, Number(existing.sizeBytes));
 			}
 		});
-	}
-
-	abortStagedBlob(blobId: string, now = Date.now()): void {
-		this.handle.db.transaction((tx) => {
-			const existing = tx
-				.select({
-					sizeBytes: doSchema.blobs.sizeBytes,
-				})
-				.from(doSchema.blobs)
-				.where(
-					and(
-						eq(doSchema.blobs.blobId, blobId),
-						eq(doSchema.blobs.state, "staged"),
-					),
-				)
-				.limit(1)
-				.get();
-			if (!existing) {
-				return;
-			}
-
-			if (this.isBlobPinned(blobId, false, now)) {
-				return;
-			}
-
-			tx.delete(doSchema.blobs)
-				.where(eq(doSchema.blobs.blobId, blobId))
-				.run();
-			decrementStorageUsedBytes(tx, Number(existing.sizeBytes));
-		});
-	}
-
-	isBlobPinned(blobId: string, includeStaging = true, now = Date.now()): boolean {
-		const row = this.handle
-			.exec<{ found: number }>(
-				`
-				SELECT 1 AS found
-				WHERE EXISTS (
-					SELECT 1
-					FROM entries
-					WHERE entries.blob_id = ?
-				)
-				OR EXISTS (
-					SELECT 1
-					FROM entry_versions
-					WHERE entry_versions.blob_id = ?
-						AND entry_versions.expires_at > ?
-				)
-				OR (
-					?
-					AND EXISTS (
-						SELECT 1
-						FROM blobs
-						WHERE blobs.blob_id = ?
-							AND blobs.state = 'staged'
-							AND blobs.delete_after > ?
-					)
-				)
-				LIMIT 1
-				`,
-				blobId,
-				blobId,
-				now,
-				includeStaging ? 1 : 0,
-				blobId,
-				now,
-			)
-			.toArray()[0];
-
-		return !!row;
 	}
 
 	readBlobState(db: BlobDb, blobId: string): BlobState | null {

@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { BlobGcService, GC_BATCH_SIZE } from "./blob-gc-service";
+import type {
+	BlobGcStore,
+	BlobPendingDeleteTransaction,
+} from "../ports/outbound";
 
 function candidate(blobId: string) {
 	return {
@@ -21,7 +25,7 @@ function createFixture(overrides: Partial<Fixture> = {}) {
 			expireEntryVersions: vi.fn(),
 			listCollectibleBlobs: vi.fn(() => [candidate("blob-1"), candidate("blob-2")]),
 			readCollectibleBlob: vi.fn(() => null),
-			markBlobPendingDeleteIfUnpinned: vi.fn(),
+			withPendingDeleteTransaction: vi.fn(runPendingDeleteTransaction),
 			deleteCollectibleBlobs: vi.fn((blobIds: readonly string[]) => {
 				for (const blobId of blobIds) {
 					events.push(`metadata:${blobId}`);
@@ -29,7 +33,7 @@ function createFixture(overrides: Partial<Fixture> = {}) {
 				return blobIds.map((blobId) => candidate(blobId));
 			}),
 			deleteBlobIfCollectible: vi.fn(() => "deleted" as const),
-			nextGcAt: vi.fn(() => 5_000),
+			readGcDeadlines: vi.fn(() => [5_000]),
 		},
 		blobStorage: {
 			delete: vi.fn(async () => {}),
@@ -63,7 +67,7 @@ function createFixture(overrides: Partial<Fixture> = {}) {
 
 	const useCase = new BlobGcService(
 		fixture.vaultStateStore,
-		fixture.blobGcStore,
+		fixture.blobGcStore as unknown as BlobGcStore,
 		fixture.blobStorage,
 		fixture.objectKeyBuilder,
 		fixture.healthStore,
@@ -80,12 +84,18 @@ type Fixture = {
 		expireEntryVersions: MockFn<(now: number) => void>;
 		listCollectibleBlobs: MockFn<(now: number, limit: number) => Candidate[]>;
 		readCollectibleBlob: MockFn<(blobId: string, now: number) => Candidate | null>;
-		markBlobPendingDeleteIfUnpinned: MockFn<(blobId: string, now: number) => void>;
+		withPendingDeleteTransaction: MockFn<
+			(
+				blobId: string,
+				now: number,
+				operation: (transaction: BlobPendingDeleteTransaction) => void,
+			) => void
+		>;
 		deleteCollectibleBlobs: MockFn<(blobIds: readonly string[], now: number) => Candidate[]>;
 		deleteBlobIfCollectible: MockFn<
 			(blobId: string, now: number) => "deleted" | "skipped"
 		>;
-		nextGcAt: MockFn<(now: number) => number | null>;
+		readGcDeadlines: MockFn<(now: number) => readonly number[]>;
 	};
 	blobStorage: {
 		delete: MockFn<(key: string) => Promise<void>>;
@@ -111,6 +121,22 @@ type Fixture = {
 
 type MockFn<T extends (...args: any[]) => any> = ReturnType<typeof vi.fn<T>>;
 type Candidate = ReturnType<typeof candidate>;
+
+function runPendingDeleteTransaction(
+	_blobId: string,
+	_now: number,
+	operation: (transaction: BlobPendingDeleteTransaction) => void,
+): void {
+	operation({
+		readFacts: vi.fn(() => ({
+			state: "pending_delete" as const,
+			deleteAfter: 1,
+			hasCurrentReference: false,
+			hasRetainedHistory: false,
+		})),
+		markPendingDelete: vi.fn(),
+	});
+}
 
 describe("BlobGcService scheduled GC", () => {
 	it("deletes collectible objects in one batch before sqlite rows", async () => {

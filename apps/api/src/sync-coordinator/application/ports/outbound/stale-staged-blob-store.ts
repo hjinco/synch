@@ -1,14 +1,17 @@
+import type {
+	BlobMutationFacts,
+	BlobMutationTransaction,
+} from "./blob-state-store";
 import type { BlobRow } from "./storage-models";
-
-export type UnreferencedStagedBlobDeleteResult =
-	| "deleted"
-	| "missing"
-	| "referenced";
 
 export interface StaleStagedBlobStore {
 	listStaleStagedBlobs(now: number, staleAfterMs: number, limit: number): BlobRow[];
-	deleteUnreferencedStagedBlob(
+	withStagedBlobTransaction<T>(
 		blobId: string,
-		now?: number,
-	): UnreferencedStagedBlobDeleteResult;
+		now: number,
+		operation: (transaction: StaleStagedBlobTransaction) => T,
+	): T;
 }
+
+export type StaleStagedBlobFacts = BlobMutationFacts;
+export type StaleStagedBlobTransaction = BlobMutationTransaction;

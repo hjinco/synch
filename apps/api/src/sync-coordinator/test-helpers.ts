@@ -2,6 +2,7 @@ import { vi } from "vitest";
 
 import { SyncCoordinatorApplicationError } from "./application/errors/coordinator-errors";
 import { decideBlobStage } from "./domain/blob-policy";
+import { isBlobPinned } from "./domain/blob-gc-policy";
 import { STAGED_BLOB_STALE_MS } from "./domain/health-policy";
 import type { CoordinatorBlobStore } from "./adapters/outbound/sqlite/blob-store";
 import { BlobService } from "./application/services/blob-service";
@@ -16,6 +17,8 @@ import type {
 import { MutationService } from "./application/services/mutation-service";
 import type {
 	BlobObjectRepository,
+	BlobMutationTransaction,
+	BlobPendingDeleteTransaction,
 	BlobStageTransaction,
 	BlobGcStore,
 	BlobStateStore,
@@ -70,8 +73,16 @@ export function stageBlobForTest(
 			blobId,
 			sizeBytes,
 			now,
-			staleAfterMs: STAGED_BLOB_STALE_MS,
-			...transaction.readFacts(),
+		staleAfterMs: STAGED_BLOB_STALE_MS,
+			...(() => {
+				const { referenceFacts, ...facts } = transaction.readFacts();
+				return {
+					...facts,
+					isPinned: facts.existing
+						? isBlobPinned(referenceFacts, false)
+						: false,
+				};
+			})(),
 		});
 		if (decision.kind === "sync_paused") {
 			transaction.pauseSync(now, decision.reason);
@@ -134,19 +145,26 @@ export function createTestCoordinatorState(
 		) as EntryHistoryStore["withDeletedEntryPurgeTransaction"],
 		withTransaction: vi.fn(runTestMutationTransaction) as MutationStore["withTransaction"],
 		withStageTransaction: vi.fn(runTestStageTransaction) as BlobStateStore["withStageTransaction"],
+		withBlobTransaction: vi.fn(runTestBlobMutationTransaction) as BlobStateStore["withBlobTransaction"],
 		readBlob: vi.fn(() => null),
+		readBlobFacts: vi.fn(() => ({
+			blob: null,
+			referenceFacts: {
+				hasCurrentReference: false,
+				hasRetainedHistory: false,
+				hasActiveStaging: false,
+			},
+		})),
 		listStaleStagedBlobs: vi.fn(() => []),
 		deleteBlobRecord: vi.fn(),
-		abortStagedBlob: vi.fn(),
-		deleteUnreferencedStagedBlob: vi.fn(() => "referenced" as const),
-		isBlobPinned: vi.fn(() => false),
+		withStagedBlobTransaction: vi.fn(runTestBlobMutationTransaction) as StaleStagedBlobStore["withStagedBlobTransaction"],
 		expireEntryVersions: vi.fn(),
 		listCollectibleBlobs: vi.fn(() => []),
 		readCollectibleBlob: vi.fn(() => null),
 		deleteBlobIfCollectible: vi.fn(() => "skipped" as const),
 		deleteCollectibleBlobs: vi.fn(() => []),
-		markBlobPendingDeleteIfUnpinned: vi.fn(),
-		nextGcAt: vi.fn(() => null),
+		withPendingDeleteTransaction: vi.fn(runTestPendingDeleteTransaction) as BlobGcStore["withPendingDeleteTransaction"],
+		readGcDeadlines: vi.fn(() => []),
 		recordGcCompleted: vi.fn(),
 		readHealthSnapshot: vi.fn(() => null),
 		readStorageStatus: vi.fn(() => ({
@@ -165,13 +183,46 @@ function runTestStageTransaction<T>(
 	return operation({
 		readFacts: vi.fn(() => ({
 			existing: null,
-			isPinned: false,
+			referenceFacts: {
+				hasCurrentReference: false,
+				hasRetainedHistory: false,
+				hasActiveStaging: false,
+			},
 			storageUsedBytes: 0,
 			storageLimitBytes: 0,
 			maxFileSizeBytes: 0,
 		})),
 		persistStage: vi.fn(),
 		pauseSync: vi.fn(),
+	});
+}
+
+function runTestBlobMutationTransaction<T>(
+	_blobId: string,
+	_now: number,
+	operation: (transaction: BlobMutationTransaction) => T,
+): T {
+	return operation({
+		readFacts: vi.fn(() => ({
+			blob: null,
+			referenceFacts: {
+				hasCurrentReference: false,
+				hasRetainedHistory: false,
+				hasActiveStaging: false,
+			},
+		})),
+		deleteStagedBlob: vi.fn(),
+	});
+}
+
+function runTestPendingDeleteTransaction(
+	_blobId: string,
+	_now: number,
+	operation: (transaction: BlobPendingDeleteTransaction) => void,
+): void {
+	operation({
+		readFacts: vi.fn(() => null),
+		markPendingDelete: vi.fn(),
 	});
 }
 
@@ -285,7 +336,6 @@ export function createCoordinatorService({
 			},
 		},
 		healthService,
-		stateRepository,
 		stateRepository,
 		blobGcService,
 	);

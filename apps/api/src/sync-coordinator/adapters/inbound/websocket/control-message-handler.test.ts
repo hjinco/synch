@@ -558,7 +558,7 @@ describe("coordinator websocket control messages", () => {
 				readVaultId: vi.fn(() => "vault-1"),
 				listCollectibleBlobs: vi.fn(() => [candidate]),
 				deleteCollectibleBlobs: vi.fn(() => [candidate]),
-				nextGcAt: vi.fn(() => null),
+				readGcDeadlines: vi.fn(() => []),
 				recordGcCompleted: vi.fn(),
 			} as never,
 			socketService,
@@ -595,7 +595,17 @@ describe("coordinator websocket control messages", () => {
 					deleteEntryVersions: vi.fn(),
 				}),
 		);
-		const markBlobPendingDeleteIfUnpinned = vi.fn();
+		const withPendingDeleteTransaction = vi.fn((_blobId, _now, operation) =>
+			operation({
+				readFacts: vi.fn(() => ({
+					state: "pending_delete" as const,
+					deleteAfter: 1,
+					hasCurrentReference: false,
+					hasRetainedHistory: false,
+				})),
+				markPendingDelete: vi.fn(),
+			}),
+		);
 		const deleteCollectibleBlobs = vi.fn();
 		const candidate = {
 			blob_id: "blob-1",
@@ -608,11 +618,11 @@ describe("coordinator websocket control messages", () => {
 		const service = createCoordinatorService({
 			stateRepository: {
 				...stateRepository,
-					withDeletedEntryPurgeTransaction,
-				markBlobPendingDeleteIfUnpinned,
+				withDeletedEntryPurgeTransaction,
+				withPendingDeleteTransaction,
 				readCollectibleBlob: vi.fn(() => candidate),
 				deleteCollectibleBlobs,
-				nextGcAt: vi.fn(() => 1),
+				readGcDeadlines: vi.fn(() => [1]),
 			} as never,
 			socketService: socketServiceMock(),
 			blobRepository: blobRepository as never,
@@ -640,9 +650,10 @@ describe("coordinator websocket control messages", () => {
 		});
 
 		expect(withDeletedEntryPurgeTransaction).toHaveBeenCalled();
-		expect(markBlobPendingDeleteIfUnpinned).toHaveBeenCalledWith(
+		expect(withPendingDeleteTransaction).toHaveBeenCalledWith(
 			"blob-1",
 			expect.any(Number),
+			expect.any(Function),
 		);
 		expect(blobRepository.deleteMany).toHaveBeenCalledWith(["vault-1/blob-1"]);
 		expect(deleteCollectibleBlobs).not.toHaveBeenCalled();

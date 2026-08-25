@@ -1,11 +1,9 @@
-import { eq, sql } from "drizzle-orm";
+import { and, eq, ne, sql } from "drizzle-orm";
 
 import * as doSchema from "../../../../db/do";
-import {
-	decidePendingDelete,
-	earliestGcDeadline,
-} from "../../../domain/blob-gc-policy";
 import type {
+	BlobPendingDeleteFacts,
+	BlobPendingDeleteTransaction,
 	BlobGcDeleteResult,
 	BlobGcStore,
 } from "../../../application/ports/outbound/blob-gc-store";
@@ -14,6 +12,7 @@ import {
 	BLOB_UNREFERENCED_SQL,
 	COLLECTIBLE_BLOB_SQL,
 } from "./blob-collectability";
+import { readBlobReferenceFacts } from "./blob-reference-facts";
 import type { CoordinatorDb, CoordinatorStorageHandle } from "./storage-handle";
 
 type BlobDb = Pick<CoordinatorDb, "update">;
@@ -80,67 +79,62 @@ export class CoordinatorBlobGcStore implements BlobGcStore {
 		return row ? toBlobRow(row) : null;
 	}
 
-	markBlobPendingDeleteIfUnpinned(blobId: string, now: number): void {
-		const row = this.handle
-			.exec<{
-				state: string;
-				delete_after: number | null;
-				has_current_reference: number;
-				has_retained_history: number;
-			}>(
-				`
-				SELECT
-					state,
-					delete_after,
-					EXISTS (
-						SELECT 1
-						FROM entries
-						WHERE entries.blob_id = blobs.blob_id
-					) AS has_current_reference,
-					EXISTS (
-						SELECT 1
-						FROM entry_versions
-						WHERE entry_versions.blob_id = blobs.blob_id
-							AND entry_versions.expires_at > ?
-					) AS has_retained_history
-				FROM blobs
-				WHERE blob_id = ?
-				LIMIT 1
-				`,
-				now,
-				blobId,
-			)
-			.toArray()[0];
-		if (!row) {
-			return;
-		}
+	withPendingDeleteTransaction(
+		blobId: string,
+		now: number,
+		operation: (transaction: BlobPendingDeleteTransaction) => void,
+	): void {
+		this.handle.db.transaction((tx) => {
+			const transaction: BlobPendingDeleteTransaction = {
+				readFacts: (): BlobPendingDeleteFacts => {
+					const blob = tx
+						.select({
+							state: doSchema.blobs.state,
+							deleteAfter: doSchema.blobs.deleteAfter,
+						})
+						.from(doSchema.blobs)
+						.where(eq(doSchema.blobs.blobId, blobId))
+						.limit(1)
+						.get();
+					if (!blob) {
+						return null;
+					}
 
-		const decision = decidePendingDelete(
-			{
-				state: row.state as BlobRow["state"],
-				deleteAfter: row.delete_after === null ? null : Number(row.delete_after),
-				hasCurrentReference: Number(row.has_current_reference) !== 0,
-				hasRetainedHistory: Number(row.has_retained_history) !== 0,
-			},
-			now,
-		);
-		if (decision.kind !== "mark_pending_delete") {
-			return;
-		}
+					const referenceFacts = readBlobReferenceFacts(tx, blobId, now);
+					return {
+						state: blob.state as BlobRow["state"],
+						deleteAfter:
+							blob.deleteAfter === null ? null : Number(blob.deleteAfter),
+						hasCurrentReference: referenceFacts.hasCurrentReference,
+						hasRetainedHistory: referenceFacts.hasRetainedHistory,
+					};
+				},
+				markPendingDelete: (deleteAfter) => {
+					const referenceFacts = readBlobReferenceFacts(tx, blobId, now);
+					if (
+						referenceFacts.hasCurrentReference ||
+						referenceFacts.hasRetainedHistory
+					) {
+						return;
+					}
 
-		this.handle.exec(
-			`
-			UPDATE blobs
-			SET state = 'pending_delete',
-				delete_after = ?
-			WHERE blob_id = ?
-				AND state != 'staged'
-				AND ${BLOB_UNREFERENCED_SQL}
-			`,
-			decision.deleteAfter,
-			blobId,
-			now,
-		);
+					tx.update(doSchema.blobs)
+						.set({
+							state: "pending_delete",
+							deleteAfter,
+						})
+						.where(
+							and(
+								eq(doSchema.blobs.blobId, blobId),
+								ne(doSchema.blobs.state, "staged"),
+							),
+						)
+						.run();
+				},
+			};
+
+			operation(transaction);
+		});
 	}
 
 	deleteCollectibleBlobs(blobIds: readonly string[], now: number): BlobRow[] {
@@ -185,7 +179,7 @@ export class CoordinatorBlobGcStore implements BlobGcStore {
 		return this.deleteCollectibleBlobs([blobId], now).length > 0 ? "deleted" : "skipped";
 	}
 
-	nextGcAt(now: number): number | null {
+	readGcDeadlines(now: number): readonly number[] {
 		const rows = this.handle
 			.exec<{ delete_after: number | null }>(
 				`
@@ -216,11 +210,8 @@ export class CoordinatorBlobGcStore implements BlobGcStore {
 			)
 			.toArray();
 
-		return earliestGcDeadline(
-			rows.flatMap((row) =>
-				row.delete_after === null ? [] : [Number(row.delete_after)],
-			),
-			now,
+		return rows.flatMap((row) =>
+			row.delete_after === null ? [] : [Number(row.delete_after)],
 		);
 	}
 }

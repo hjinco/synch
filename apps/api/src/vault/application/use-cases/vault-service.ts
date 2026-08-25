@@ -1,4 +1,9 @@
 import type { SubscriptionPolicyReader } from "../../../subscription/application";
+import {
+	canAccessVault,
+	canGrantVaultAccess,
+	canManageVault,
+} from "../../domain/policy";
 import type {
 	VaultBootstrapRecord,
 	VaultKeyEnvelope,
@@ -86,7 +91,7 @@ export class VaultApplicationService implements VaultService {
 		vaultId: string,
 		envelope: VaultKeyEnvelope,
 	): Promise<VaultKeyWrapperRecord> {
-		if (!(await this.authorizationStore.userCanManageVault(userId, vaultId))) {
+		if (!(await this.userCanManageVault(userId, vaultId))) {
 			throw new VaultApplicationError("forbidden");
 		}
 
@@ -98,7 +103,11 @@ export class VaultApplicationService implements VaultService {
 	}
 
 	async userCanAccessVault(userId: string, vaultId: string): Promise<boolean> {
-		return await this.authorizationStore.userCanAccessVault(userId, vaultId);
+		const facts = await this.authorizationStore.readVaultAuthorizationFacts(
+			userId,
+			vaultId,
+		);
+		return canAccessVault(facts);
 	}
 
 	async getAccessibleVault(userId: string, vaultId: string): Promise<VaultRecord | null> {
@@ -106,11 +115,15 @@ export class VaultApplicationService implements VaultService {
 	}
 
 	async userCanManageVault(userId: string, vaultId: string): Promise<boolean> {
-		return await this.authorizationStore.userCanManageVault(userId, vaultId);
+		const facts = await this.authorizationStore.readVaultAuthorizationFacts(
+			userId,
+			vaultId,
+		);
+		return canManageVault(facts);
 	}
 
 	async deleteVault(userId: string, vaultId: string): Promise<VaultPurgeResult> {
-		if (!(await this.authorizationStore.userCanManageVault(userId, vaultId))) {
+		if (!(await this.userCanManageVault(userId, vaultId))) {
 			throw new VaultApplicationError("forbidden");
 		}
 
@@ -135,7 +148,12 @@ export class VaultApplicationService implements VaultService {
 			memberWrapper: VaultKeyWrapperInput & { kind: "member" };
 		},
 	): Promise<VaultKeyWrapperRecord> {
-		if (!(await this.authorizationStore.userCanGrantVaultAccess(requesterUserId, vaultId))) {
+		const authorizationFacts =
+			await this.authorizationStore.readVaultAuthorizationFacts(
+				requesterUserId,
+				vaultId,
+			);
+		if (!canGrantVaultAccess(authorizationFacts)) {
 			throw new VaultApplicationError("forbidden");
 		}
 

@@ -4,6 +4,7 @@ import {
 	decideBlobCollection,
 	decidePendingDelete,
 	earliestGcDeadline,
+	isBlobPinned,
 } from "./blob-gc-policy";
 
 describe("blob GC policy", () => {
@@ -97,5 +98,17 @@ describe("blob GC policy", () => {
 		expect(earliestGcDeadline([4, 8], 3)).toBe(4);
 		expect(earliestGcDeadline([1, 2], 3)).toBe(3);
 		expect(earliestGcDeadline([], 3)).toBeNull();
+	});
+
+	it("pins a blob when current state, retained history, or active staging references it", () => {
+		const facts = {
+			hasCurrentReference: false,
+			hasRetainedHistory: false,
+			hasActiveStaging: true,
+		};
+
+		expect(isBlobPinned(facts)).toBe(true);
+		expect(isBlobPinned(facts, false)).toBe(false);
+		expect(isBlobPinned({ ...facts, hasRetainedHistory: true }, false)).toBe(true);
 	});
 });

@@ -163,7 +163,6 @@ export function createCoordinatorApplication(
 		},
 		healthService,
 		staleStagedBlobStore,
-		blobGcStore,
 		blobGcService,
 	);
 	const socketConnectionService = new SocketConnectionService(

@@ -10,7 +10,10 @@ import type {
 	VaultKeyWrapperRecord,
 	VaultRecord,
 } from "../../domain/types";
-import type { VaultAuthorizationStore } from "../../application/ports/outbound/vault-authorization-store";
+import type {
+	VaultAuthorizationFacts,
+	VaultAuthorizationStore,
+} from "../../application/ports/outbound/vault-authorization-store";
 import type { VaultCatalogStore } from "../../application/ports/outbound/vault-catalog-store";
 import type { VaultKeyStore } from "../../application/ports/outbound/vault-key-store";
 import type { VaultLifecycleStore } from "../../application/ports/outbound/vault-lifecycle-store";
@@ -24,52 +27,59 @@ export class DrizzleVaultStore
 {
 	constructor(private readonly db: AppDb) {}
 
-	async userCanAccessVault(userId: string, vaultId: string): Promise<boolean> {
+	async readVaultAuthorizationFacts(
+		userId: string,
+		vaultId: string,
+	): Promise<VaultAuthorizationFacts> {
 		const rows = await this.db
 			.select({
-				vaultId: schema.vaultMembership.vaultId,
+				vaultId: schema.vault.id,
+				organizationId: schema.vault.organizationId,
+				deletedAt: schema.vault.deletedAt,
+				vaultMembershipRole: schema.vaultMembership.role,
+				vaultMembershipStatus: schema.vaultMembership.status,
+				organizationRole: schema.member.role,
 			})
-			.from(schema.vaultMembership)
-			.innerJoin(schema.vault, eq(schema.vault.id, schema.vaultMembership.vaultId))
-			.innerJoin(schema.member, eq(schema.member.organizationId, schema.vault.organizationId))
-			.where(
+			.from(schema.vault)
+			.leftJoin(
+				schema.vaultMembership,
 				and(
-					eq(schema.vaultMembership.vaultId, vaultId),
+					eq(schema.vaultMembership.vaultId, schema.vault.id),
 					eq(schema.vaultMembership.userId, userId),
-					eq(schema.vaultMembership.status, "active"),
-					eq(schema.member.userId, userId),
-					isNull(schema.vault.deletedAt),
 				),
+			)
+			.leftJoin(
+				schema.member,
+				and(
+					eq(schema.member.organizationId, schema.vault.organizationId),
+					eq(schema.member.userId, userId),
+				),
+			)
+			.where(
+				eq(schema.vault.id, vaultId),
 			)
 			.limit(1);
 
-		return rows.length > 0;
-	}
-
-	async userCanManageVault(userId: string, vaultId: string): Promise<boolean> {
-		const rows = await this.db
-			.select({
-				vaultId: schema.vaultMembership.vaultId,
-			})
-			.from(schema.vaultMembership)
-			.innerJoin(schema.vault, eq(schema.vault.id, schema.vaultMembership.vaultId))
-			.innerJoin(schema.member, eq(schema.member.organizationId, schema.vault.organizationId))
-			.where(
-				and(
-					eq(schema.vaultMembership.vaultId, vaultId),
-					eq(schema.vaultMembership.userId, userId),
-					eq(schema.vaultMembership.status, "active"),
-					eq(schema.member.userId, userId),
-					isNull(schema.vault.deletedAt),
-					or(
-						eq(schema.vaultMembership.role, "owner"),
-						eq(schema.vaultMembership.role, "admin"),
-					),
-				),
-			)
-			.limit(1);
-
-		return rows.length > 0;
+		const row = rows[0];
+		return {
+			vault: row
+				? {
+						organizationId: row.organizationId,
+						deleted: row.deletedAt !== null,
+					}
+				: null,
+			vaultMembership:
+				row?.vaultMembershipRole !== null &&
+				row?.vaultMembershipRole !== undefined &&
+				row?.vaultMembershipStatus !== null &&
+				row?.vaultMembershipStatus !== undefined
+					? {
+							role: row.vaultMembershipRole,
+							status: row.vaultMembershipStatus,
+						}
+					: null,
+			organizationRole: row?.organizationRole ?? null,
+		};
 	}
 
 	async listVaultsForUser(
@@ -230,30 +240,6 @@ export class DrizzleVaultStore
 			.limit(1);
 
 		return rows[0]?.organizationId ?? null;
-	}
-
-	async userCanGrantVaultAccess(userId: string, vaultId: string): Promise<boolean> {
-		if (await this.userCanManageVault(userId, vaultId)) {
-			return true;
-		}
-
-		const rows = await this.db
-			.select({
-				vaultId: schema.vault.id,
-			})
-			.from(schema.vault)
-			.innerJoin(schema.member, eq(schema.member.organizationId, schema.vault.organizationId))
-			.where(
-				and(
-					eq(schema.vault.id, vaultId),
-					eq(schema.member.userId, userId),
-					eq(schema.member.role, "owner"),
-					isNull(schema.vault.deletedAt),
-				),
-			)
-			.limit(1);
-
-		return rows.length > 0;
 	}
 
 	async userIsOrganizationMember(userId: string, organizationId: string): Promise<boolean> {

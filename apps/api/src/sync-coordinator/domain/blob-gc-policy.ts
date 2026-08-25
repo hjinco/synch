@@ -7,6 +7,13 @@ export type BlobCollectionFacts = {
 	hasRetainedHistory: boolean;
 };
 
+export type BlobReferenceFacts = Pick<
+	BlobCollectionFacts,
+	"hasCurrentReference" | "hasRetainedHistory"
+> & {
+	hasActiveStaging: boolean;
+};
+
 export type BlobCollectionDecision =
 	| { kind: "collectible" }
 	| {
@@ -69,6 +76,17 @@ export function decidePendingDelete(
 				? now
 				: Math.min(facts.deleteAfter, now),
 	};
+}
+
+export function isBlobPinned(
+	facts: BlobReferenceFacts,
+	includeStaging = true,
+): boolean {
+	return (
+		facts.hasCurrentReference ||
+		facts.hasRetainedHistory ||
+		(includeStaging && facts.hasActiveStaging)
+	);
 }
 
 export function earliestGcDeadline(

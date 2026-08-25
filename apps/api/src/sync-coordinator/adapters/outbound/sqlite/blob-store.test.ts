@@ -2,6 +2,11 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { SyncCoordinatorApplicationError } from "../../../application/errors/coordinator-errors";
 import { GC_BATCH_SIZE } from "../../../application/services/blob-gc-service";
+import {
+	decidePendingDelete,
+	earliestGcDeadline,
+	isBlobPinned,
+} from "../../../domain/blob-gc-policy";
 import { stageBlobForTest } from "../../../test-helpers";
 import { CoordinatorBlobStore } from "./blob-store";
 import {
@@ -191,12 +196,12 @@ describe("sqlite backend: blob staging", () => {
 		const { blobStore, healthStore, staleStagedBlobStore } = await createSqliteCoordinator();
 		await stage(blobStore, "blob-1", 100, 1_000, 2_000);
 
-		expect(staleStagedBlobStore.deleteUnreferencedStagedBlob("blob-1", 1_500)).toBe(
+		expect(deleteUnreferencedStagedBlob(staleStagedBlobStore, "blob-1", 1_500)).toBe(
 			"deleted",
 		);
 		expect(blobStore.readBlob("blob-1")).toBeNull();
 		expect(healthStore.readStorageStatus().storageUsedBytes).toBe(0);
-		expect(staleStagedBlobStore.deleteUnreferencedStagedBlob("blob-1", 1_500)).toBe(
+		expect(deleteUnreferencedStagedBlob(staleStagedBlobStore, "blob-1", 1_500)).toBe(
 			"missing",
 		);
 	});
@@ -225,7 +230,7 @@ describe("sqlite backend: blob staging", () => {
 			"mutation-1",
 		);
 
-		expect(staleStagedBlobStore.deleteUnreferencedStagedBlob("blob-1", 1_500)).toBe(
+		expect(deleteUnreferencedStagedBlob(staleStagedBlobStore, "blob-1", 1_500)).toBe(
 			"referenced",
 		);
 		expect(blobStore.readBlob("blob-1")).toMatchObject({
@@ -287,7 +292,7 @@ describe("sqlite backend: blob staging", () => {
 			"blob-1",
 		);
 
-		blobGcStore.markBlobPendingDeleteIfUnpinned("blob-1", 3_000);
+		markBlobPendingDeleteIfUnpinned(blobGcStore, "blob-1", 3_000);
 
 		expect(blobStore.readBlob("blob-1")).toMatchObject({
 			state: "pending_delete",
@@ -339,10 +344,10 @@ describe("sqlite backend: blob staging", () => {
 		const { blobStore, blobGcStore } = await createSqliteCoordinator();
 		await stage(blobStore, "blob-deadline", 100, 1_000, 5_000);
 
-		expect(blobGcStore.nextGcAt(2_000)).toBe(5_000);
-		expect(blobGcStore.nextGcAt(5_000)).toBe(5_000);
+		expect(earliestGcDeadline(blobGcStore.readGcDeadlines(2_000), 2_000)).toBe(5_000);
+		expect(earliestGcDeadline(blobGcStore.readGcDeadlines(5_000), 5_000)).toBe(5_000);
 		blobGcStore.deleteBlobIfCollectible("blob-deadline", 5_000);
-		expect(blobGcStore.nextGcAt(5_000)).toBeNull();
+		expect(earliestGcDeadline(blobGcStore.readGcDeadlines(5_000), 5_000)).toBeNull();
 	});
 
 	it("keeps due GC work scheduled after the first deletion batch", async () => {
@@ -360,7 +365,7 @@ describe("sqlite backend: blob staging", () => {
 			),
 		).toHaveLength(GC_BATCH_SIZE);
 
-		expect(blobGcStore.nextGcAt(2_000)).toBe(2_000);
+		expect(earliestGcDeadline(blobGcStore.readGcDeadlines(2_000), 2_000)).toBe(2_000);
 	});
 
 	it("does not keep scheduling a due staged blob that is referenced", async () => {
@@ -386,7 +391,7 @@ describe("sqlite backend: blob staging", () => {
 			"mutation-1",
 		);
 
-		expect(blobGcStore.nextGcAt(2_000)).toBeNull();
+		expect(earliestGcDeadline(blobGcStore.readGcDeadlines(2_000), 2_000)).toBeNull();
 	});
 });
 
@@ -398,4 +403,46 @@ async function stage(
 	deleteAfter: number,
 ) {
 	return stageBlobForTest(blobStore, blobId, sizeBytes, now, deleteAfter);
+}
+
+function deleteUnreferencedStagedBlob(
+	staleStagedBlobStore: Awaited<ReturnType<typeof createSqliteCoordinator>>["staleStagedBlobStore"],
+	blobId: string,
+	now: number,
+): "deleted" | "missing" | "referenced" {
+	return staleStagedBlobStore.withStagedBlobTransaction(
+		blobId,
+		now,
+		(transaction) => {
+			const facts = transaction.readFacts();
+			if (!facts.blob) {
+				return "missing";
+			}
+			if (
+				facts.blob.state !== "staged" ||
+				isBlobPinned(facts.referenceFacts, false)
+			) {
+				return "referenced";
+			}
+			transaction.deleteStagedBlob();
+			return "deleted";
+		},
+	);
+}
+
+function markBlobPendingDeleteIfUnpinned(
+	blobGcStore: Awaited<ReturnType<typeof createSqliteCoordinator>>["blobGcStore"],
+	blobId: string,
+	now: number,
+): void {
+	blobGcStore.withPendingDeleteTransaction(blobId, now, (transaction) => {
+		const facts = transaction.readFacts();
+		if (!facts) {
+			return;
+		}
+		const decision = decidePendingDelete(facts, now);
+		if (decision.kind === "mark_pending_delete") {
+			transaction.markPendingDelete(decision.deleteAfter);
+		}
+	});
 }

@@ -1,4 +1,8 @@
-import { decideBlobCollection } from "../../domain/blob-gc-policy";
+import {
+	decideBlobCollection,
+	decidePendingDelete,
+	earliestGcDeadline,
+} from "../../domain/blob-gc-policy";
 import type {
 	BlobGcCandidate,
 	BlobGcStore,
@@ -50,11 +54,15 @@ export class BlobGcService {
 	}
 
 	async scheduleNext(now = Date.now()): Promise<number | null> {
-		const nextGcAt = this.blobGcStore.nextGcAt(now);
+		const nextGcAt = this.readNextGcAt(now);
 		if (nextGcAt !== null) {
 			await this.scheduleAt(nextGcAt, now);
 		}
 		return nextGcAt;
+	}
+
+	readNextGcAt(now = Date.now()): number | null {
+		return earliestGcDeadline(this.blobGcStore.readGcDeadlines(now), now);
 	}
 
 	async scheduleNow(now = Date.now()): Promise<void> {
@@ -91,7 +99,7 @@ export class BlobGcService {
 			throw error;
 		}
 
-		const nextGcAt = this.blobGcStore.nextGcAt(now);
+		const nextGcAt = this.readNextGcAt(now);
 		if ((options.scheduleNextGc ?? true) && nextGcAt !== null) {
 			await this.scheduleAt(nextGcAt, now);
 		}
@@ -118,7 +126,21 @@ export class BlobGcService {
 		this.blobGcStore.expireEntryVersions(now);
 		const collectibleBlobs: BlobGcCandidate[] = [];
 		for (const blobId of uniqueBlobIds) {
-			this.blobGcStore.markBlobPendingDeleteIfUnpinned(blobId, now);
+			this.blobGcStore.withPendingDeleteTransaction(
+				blobId,
+				now,
+				(transaction) => {
+					const facts = transaction.readFacts();
+					if (!facts) {
+						return;
+					}
+
+					const decision = decidePendingDelete(facts, now);
+					if (decision.kind === "mark_pending_delete") {
+						transaction.markPendingDelete(decision.deleteAfter);
+					}
+				},
+			);
 			const blob = this.blobGcStore.readCollectibleBlob(blobId, now);
 			if (!blob || !this.isCollectible(blob, now)) {
 				continue;
