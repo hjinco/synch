@@ -1,0 +1,31 @@
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "synch-monitor",
+	"main": "src/index.ts",
+	"compatibility_date": "2026-04-14",
+	"triggers": {
+		"crons": ["*/5 * * * *"]
+	},
+	"kv_namespaces": [
+		{
+			"binding": "MONITOR_STATE",
+			"id": "9760c930b21a43559a5ee3cdffd3fbf2"
+		}
+	],
+	"observability": {
+		"enabled": true
+	},
+	"vars": {
+		"TARGET_WORKER": "synch-api-managed",
+		"TARGET_R2_BUCKET": "synch-bucket",
+		"TARGET_DO_NAMESPACE_ID": "448e884bf5174b64836adc97022b59d6",
+		"ALERT_CONFIG": "{\"warmupSamples\":288,\"maxSamples\":288,\"counterRatio\":3,\"counterMin\":100,\"counterDelta\":200,\"gaugeRatio\":1.2,\"gaugeDeltaBytes\":1048576,\"requiredBreachWindows\":2,\"requiredRecoveryWindows\":2,\"cooldownMinutes\":30}"
+	},
+	"secrets": {
+		"required": [
+			"CLOUDFLARE_ACCOUNT_ID",
+			"CF_ANALYTICS_TOKEN",
+			"DISCORD_WEBHOOK_URL"
+		]
+	}
+}

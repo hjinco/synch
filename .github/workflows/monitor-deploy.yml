@@ -1,0 +1,61 @@
+name: Deploy Monitor Worker
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "apps/monitor-worker/**"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+      - ".github/workflows/monitor-ci.yml"
+      - ".github/workflows/monitor-deploy.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-monitor-worker
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm -C apps/monitor-worker typecheck
+      - run: pnpm -C apps/monitor-worker test
+
+      - name: Validate deployment configuration
+        run: |
+          test -n "$CLOUDFLARE_API_TOKEN" || {
+            echo "Set CLOUDFLARE_API_TOKEN before deploying."
+            exit 1
+          }
+          test -n "$CLOUDFLARE_ACCOUNT_ID" || {
+            echo "Set CLOUDFLARE_ACCOUNT_ID before deploying."
+            exit 1
+          }
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      - name: Deploy monitor Worker
+        run: pnpm -C apps/monitor-worker exec wrangler deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
