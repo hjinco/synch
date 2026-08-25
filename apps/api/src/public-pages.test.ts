@@ -55,9 +55,11 @@ describe("API public pages", () => {
 		expect(html).not.toContain('<a href="/"');
 	});
 
-	it.each(apiPublicPages)("loads the shared i18n runtime on %s", async (page) => {
+	it.each(apiPublicPages)("loads shared stylesheet, favicon, and i18n runtime on %s", async (page) => {
 		const html = await readPage(page);
 
+		expect(html).toContain('<link rel="stylesheet" href="/styles.css" />');
+		expect(html).toContain('<link rel="icon" type="image/x-icon" href="/favicon.ico" />');
 		expect(html).toContain('<script src="/i18n.js"></script>');
 	});
 });
