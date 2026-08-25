@@ -206,7 +206,8 @@ For details, read the hosted service legal documents:
 ## Contributing
 
 Issues, bug reports, documentation improvements, and pull requests are
-welcome.
+welcome. See the [contributing guide](CONTRIBUTING.md) for more about when to
+open an issue or a pull request.
 
 ## License
 
