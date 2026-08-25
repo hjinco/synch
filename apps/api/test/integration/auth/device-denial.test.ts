@@ -19,6 +19,18 @@ describe("auth device denial integration", () => {
 			}),
 		});
 
+		const verifiedDevice = await jsonRequest<{ user_code: string; status: string }>(
+			`/api/auth/device?user_code=${deviceCode.json?.user_code}`,
+			{
+				headers: {
+					cookie: account.sessionCookie,
+					...apiAuthPageHeaders(),
+				},
+			},
+		);
+		expect(verifiedDevice.response.status).toBe(200);
+		expect(verifiedDevice.json?.status).toBe("pending");
+
 		const denyResponse = await jsonRequest<{ success: boolean }>("/api/auth/device/deny", {
 			method: "POST",
 			headers: {

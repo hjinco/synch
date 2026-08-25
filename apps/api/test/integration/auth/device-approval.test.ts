@@ -51,6 +51,7 @@ describe("auth device approval integration", () => {
 			`/api/auth/device?user_code=${deviceCode.json?.user_code}`,
 			{
 				headers: {
+					cookie: browserSessionCookie,
 					...apiAuthPageHeaders(),
 				},
 			},

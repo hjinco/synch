@@ -50,6 +50,10 @@ export const account = sqliteTable(
   "account",
   {
     id: text("id").primaryKey(),
+    // Better Auth 1.7 scopes account identity by issuer + accountId. The
+    // default keeps the 1.6 credential writer compatible during the expand
+    // migration; 1.7 writes the issuer explicitly.
+    issuer: text("issuer").notNull().default("local:credential"),
     accountId: text("account_id").notNull(),
     providerId: text("provider_id").notNull(),
     userId: text("user_id")
@@ -73,7 +77,13 @@ export const account = sqliteTable(
       .$onUpdate(() => /* @__PURE__ */ new Date())
       .notNull(),
   },
-  (table) => [index("account_userId_idx").on(table.userId)],
+  (table) => [
+    index("account_userId_idx").on(table.userId),
+    uniqueIndex("account_issuer_accountId_uidx").on(
+      table.issuer,
+      table.accountId,
+    ),
+  ],
 );
 
 export const verification = sqliteTable(
@@ -152,18 +162,25 @@ export const invitation = sqliteTable(
   ],
 );
 
-export const deviceCode = sqliteTable("device_code", {
-  id: text("id").primaryKey(),
-  deviceCode: text("device_code").notNull(),
-  userCode: text("user_code").notNull(),
-  userId: text("user_id"),
-  expiresAt: integer("expires_at", { mode: "timestamp_ms" }).notNull(),
-  status: text("status").notNull(),
-  lastPolledAt: integer("last_polled_at", { mode: "timestamp_ms" }),
-  pollingInterval: integer("polling_interval"),
-  clientId: text("client_id"),
-  scope: text("scope"),
-});
+export const deviceCode = sqliteTable(
+  "device_code",
+  {
+    id: text("id").primaryKey(),
+    deviceCode: text("device_code").notNull(),
+    userCode: text("user_code").notNull(),
+    userId: text("user_id"),
+    expiresAt: integer("expires_at", { mode: "timestamp_ms" }).notNull(),
+    status: text("status").notNull(),
+    lastPolledAt: integer("last_polled_at", { mode: "timestamp_ms" }),
+    pollingInterval: integer("polling_interval"),
+    clientId: text("client_id"),
+    scope: text("scope"),
+  },
+  (table) => [
+    uniqueIndex("device_code_deviceCode_uidx").on(table.deviceCode),
+    uniqueIndex("device_code_userCode_uidx").on(table.userCode),
+  ],
+);
 
 export const userRelations = relations(user, ({ many }) => ({
   sessions: many(session),

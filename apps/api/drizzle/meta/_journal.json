@@ -36,6 +36,13 @@
       "when": 1786857721602,
       "tag": "0004_great_old_lace",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1787651733618,
+      "tag": "0005_aromatic_power_pack",
+      "breakpoints": true
     }
   ]
 }
