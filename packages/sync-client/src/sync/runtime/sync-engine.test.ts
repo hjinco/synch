@@ -258,7 +258,6 @@ describe("SyncEngine", () => {
       TEST_VAULT_KEY,
       remoteBytes,
       { blobId: "blob-config" },
-      { syncFormatVersion: 1 },
     );
     vault.seedText(`${CONFIG_DIR}/app.json`, "{\"theme\":\"local\"}");
     await store.applyRemoteState({
@@ -312,7 +311,6 @@ describe("SyncEngine", () => {
       TEST_VAULT_KEY,
       remoteBytes,
       { blobId: "blob-config-new" },
-      { syncFormatVersion: 1 },
     );
     vault.seedFile(`${CONFIG_DIR}/app.json`, localBytes);
     await store.upsertEntry({
@@ -513,7 +511,6 @@ function createToken(): SyncTokenResponse {
     expiresAt: 1_000,
     vaultId: "vault-1",
     localVaultId: "local-vault-1",
-    syncFormatVersion: 1,
   };
 }
 

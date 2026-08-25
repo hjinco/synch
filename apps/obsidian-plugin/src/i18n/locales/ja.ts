@@ -210,8 +210,6 @@ export const ja = {
     "vault.setting": "Vault",
     "vault.viewDeletedFiles": "削除済みファイルを表示",
     "vault.deletedFilesDesc": "このvaultから削除された同期済みファイルを確認します。",
-    "vault.formatUpgradeDesc": "より高速でストレージ効率の良い最新のリモートvaultバージョンを使用するには、vault管理ページでこのリモートvaultを削除してから作成し直してください。リモートvaultを削除しても、ローカルObsidian vaultのファイルは削除されません。",
-    "vault.formatUpgradeTitle": "新しいvaultはより高速に同期し、ストレージ使用量を最大33%削減できます",
     "vault.disconnected": ({ label }: { label: string }) => `Vault ${label} はこのデバイスから切断されました。`,
     "vault.loaded": ({ label }: { label: string }) => `Vault ${label} をこのデバイスに読み込みました。`,
     "vault.notActive": "このデバイスにvaultが保存されていますが、有効ではありません。",

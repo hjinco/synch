@@ -47,7 +47,6 @@ export interface SynchSettingsController {
   watchStorageStatus(): void;
   unwatchStorageStatus(): void;
   getRemoteVaultStatusLabel(): string;
-  getRemoteVaultSyncFormatVersion(): number | null;
   getApiBaseUrl(): string;
   hasAuthenticatedSession(): boolean;
   isDeviceLoginInProgress(): boolean;

@@ -223,8 +223,6 @@ export const en = {
     "vault.setting": "Vault",
     "vault.viewDeletedFiles": "View deleted files",
     "vault.deletedFilesDesc": "Review synced files that were deleted from this vault.",
-    "vault.formatUpgradeDesc": "To use the latest remote vault version, which is faster and more storage-efficient, delete this remote vault from the vault management page, then create it again. Your local Obsidian vault files are not deleted when you remove the remote vault.",
-    "vault.formatUpgradeTitle": "New vaults can sync faster and use up to 33% less storage",
     "vault.disconnected": ({ label }: { label: string }) => `Vault ${label} disconnected from this device.`,
     "vault.connected": ({ label }: { label: string }) => `Vault ${label} connected on this device.`,
     "vault.createdConnected": ({ label }: { label: string }) => `Vault ${label} created and connected.`,

@@ -16,7 +16,6 @@ export interface SynchPluginSessionStoreDeps {
 export class SynchPluginSessionStore {
   private storedRemoteVaultKeySecret: StoredRemoteVaultKeySecret | null = null;
   private storedSyncConnection: SyncConnection | null = null;
-  private remoteVaultSyncFormatVersion: number | null = null;
 
   constructor(private readonly deps: SynchPluginSessionStoreDeps) {}
 
@@ -52,22 +51,5 @@ export class SynchPluginSessionStore {
 
   getStoredRemoteVaultId(): string | null {
     return this.storedSyncConnection?.remoteVaultId ?? null;
-  }
-
-  getRemoteVaultSyncFormatVersion(): number | null {
-    return this.remoteVaultSyncFormatVersion;
-  }
-
-  setRemoteVaultSyncFormatVersion(version: number): void {
-    if (this.remoteVaultSyncFormatVersion === version) {
-      return;
-    }
-
-    this.remoteVaultSyncFormatVersion = version;
-    this.deps.refreshUi();
-  }
-
-  clearRemoteVaultSyncFormatVersion(): void {
-    this.remoteVaultSyncFormatVersion = null;
   }
 }

@@ -10,7 +10,6 @@ function accessibleVault() {
 		organizationId: "org-1",
 		name: "Vault",
 		activeKeyVersion: 1,
-		syncFormatVersion: 2,
 		createdAt: new Date(0),
 		deletedAt: null,
 		purgeStatus: null,
@@ -19,7 +18,7 @@ function accessibleVault() {
 }
 
 describe("IssueSyncTokenUseCase", () => {
-	it("includes the sync format version in issued token responses", async () => {
+	it("issues a token for an accessible vault", async () => {
 		const vaultService = {
 			getAccessibleVault: vi.fn(async () => accessibleVault()),
 		} as unknown as VaultService;

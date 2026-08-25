@@ -51,7 +51,6 @@ export async function openRealtimeSession(input: {
       expiresAt: 100,
       vaultId: "vault-1",
       localVaultId: "local-vault-1",
-      syncFormatVersion: 1,
     },
     0,
     {

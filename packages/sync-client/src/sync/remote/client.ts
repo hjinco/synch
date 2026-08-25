@@ -10,7 +10,6 @@ export interface SyncTokenResponse {
   expiresAt: number;
   vaultId: string;
   localVaultId: string;
-  syncFormatVersion: number;
 }
 
 export class SyncAccessClient {

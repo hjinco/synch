@@ -64,17 +64,3 @@ export function populateDeletedFilesSetting(
       }),
     );
 }
-
-export function populateVaultFormatUpgradeSetting(
-  setting: Setting,
-  controller: SynchSettingsController,
-): void {
-  setting
-    .setName(t("vault.formatUpgradeTitle"))
-    .setDesc(t("vault.formatUpgradeDesc"))
-    .addButton((button) =>
-      button.setButtonText(t("vault.manageRemote")).onClick(() => {
-        controller.openRemoteVaultManagementPage();
-      }),
-    );
-}

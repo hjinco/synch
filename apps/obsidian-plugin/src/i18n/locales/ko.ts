@@ -207,8 +207,6 @@ export const ko = {
     "vault.setting": "Vault",
     "vault.viewDeletedFiles": "삭제된 파일 보기",
     "vault.deletedFilesDesc": "이 vault에서 삭제된 동기화 파일을 검토합니다.",
-    "vault.formatUpgradeDesc": "더 빠르고 저장 효율이 좋은 최신 버전의 원격 vault를 사용하려면 vault 관리 웹페이지에서 이 remote vault를 삭제한 뒤 다시 생성하세요. remote vault를 삭제해도 로컬 Obsidian vault 파일은 삭제되지 않습니다.",
-    "vault.formatUpgradeTitle": "새 vault는 더 빠르게 동기화하고 저장 용량을 최대 33% 줄일 수 있습니다",
     "vault.disconnected": ({ label }: { label: string }) => `Vault ${label} 연결이 이 기기에서 해제되었습니다.`,
     "vault.loaded": ({ label }: { label: string }) => `Vault ${label}이 이 기기에 로드되었습니다.`,
     "vault.notActive": "이 기기에 저장된 vault가 있지만 활성화되어 있지 않습니다.",

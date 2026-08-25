@@ -9,6 +9,9 @@ import type {
 } from "../dto/token";
 
 const DEFAULT_SYNC_TOKEN_TTL_SECONDS = 120;
+// TODO: Remove this field after MIN_SUPPORTED_OBSIDIAN_PLUGIN_VERSION is
+// raised past plugin releases that still validate syncFormatVersion.
+const CURRENT_SYNC_FORMAT_VERSION = 2;
 
 export class IssueSyncTokenUseCase implements IssueSyncToken {
 	private readonly syncTokenTtlSeconds: number;
@@ -49,7 +52,7 @@ export class IssueSyncTokenUseCase implements IssueSyncToken {
 			expiresAt: claims.exp,
 			vaultId: claims.vaultId,
 			localVaultId: claims.localVaultId,
-			syncFormatVersion: vault.syncFormatVersion,
+			syncFormatVersion: CURRENT_SYNC_FORMAT_VERSION,
 		};
 	}
 }

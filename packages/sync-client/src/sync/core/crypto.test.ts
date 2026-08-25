@@ -19,12 +19,6 @@ const TEST_METADATA_CONTEXT = {
 const TEST_BLOB_CONTEXT = {
   blobId: "blob-1",
 };
-const TEST_BLOB_OPTIONS = {
-  syncFormatVersion: 1,
-};
-const TEST_BLOB_V2_OPTIONS = {
-  syncFormatVersion: 2,
-};
 
 describe("sync crypto", () => {
   it("round-trips encrypted metadata", async () => {
@@ -40,35 +34,19 @@ describe("sync crypto", () => {
     });
   });
 
-  it("round-trips encrypted blobs", async () => {
+  it("round-trips encrypted binary blobs", async () => {
     const plaintext = new Uint8Array([1, 2, 3, 4, 5, 6]);
     const encrypted = await encryptSyncBlob(
       TEST_VAULT_KEY,
       plaintext,
       TEST_BLOB_CONTEXT,
-      TEST_BLOB_OPTIONS,
-    );
-
-    expect(encrypted).not.toEqual(plaintext);
-    await expect(
-      decryptSyncBlob(TEST_VAULT_KEY, encrypted, TEST_BLOB_CONTEXT, TEST_BLOB_OPTIONS),
-    ).resolves.toEqual(plaintext);
-  });
-
-  it("round-trips encrypted v2 binary blobs", async () => {
-    const plaintext = new Uint8Array([1, 2, 3, 4, 5, 6]);
-    const encrypted = await encryptSyncBlob(
-      TEST_VAULT_KEY,
-      plaintext,
-      TEST_BLOB_CONTEXT,
-      TEST_BLOB_V2_OPTIONS,
     );
 
     expect(new TextDecoder().decode(encrypted.slice(0, 4))).toBe("SYNB");
     expect(encrypted[4]).toBe(2);
     expect(() => JSON.parse(new TextDecoder().decode(encrypted))).toThrow();
     await expect(
-      decryptSyncBlob(TEST_VAULT_KEY, encrypted, TEST_BLOB_CONTEXT, TEST_BLOB_V2_OPTIONS),
+      decryptSyncBlob(TEST_VAULT_KEY, encrypted, TEST_BLOB_CONTEXT),
     ).resolves.toEqual(plaintext);
   });
 
@@ -81,7 +59,6 @@ describe("sync crypto", () => {
     const blob = await context.encryptBlob(
       new Uint8Array([7, 8, 9]),
       TEST_BLOB_CONTEXT,
-      TEST_BLOB_V2_OPTIONS,
     );
 
     await expect(context.decryptMetadata(metadata, TEST_METADATA_CONTEXT)).resolves.toEqual({
@@ -89,7 +66,7 @@ describe("sync crypto", () => {
       hash: "hash-context",
     });
     await expect(
-      context.decryptBlob(blob, TEST_BLOB_CONTEXT, TEST_BLOB_V2_OPTIONS),
+      context.decryptBlob(blob, TEST_BLOB_CONTEXT),
     ).resolves.toEqual(new Uint8Array([7, 8, 9]));
   });
 
@@ -98,25 +75,13 @@ describe("sync crypto", () => {
     await context.encryptBlob(
       new Uint8Array([1]),
       TEST_BLOB_CONTEXT,
-      TEST_BLOB_OPTIONS,
     );
 
     context.dispose();
 
     await expect(
-      context.encryptBlob(new Uint8Array([2]), TEST_BLOB_CONTEXT, TEST_BLOB_OPTIONS),
+      context.encryptBlob(new Uint8Array([2]), TEST_BLOB_CONTEXT),
     ).rejects.toMatchObject({ code: "disposed" });
-  });
-
-  it("rejects unsupported sync blob format versions", async () => {
-    await expect(
-      encryptSyncBlob(
-        TEST_VAULT_KEY,
-        new Uint8Array([1, 2, 3]),
-        TEST_BLOB_CONTEXT,
-        { syncFormatVersion: 3 },
-      ),
-    ).rejects.toMatchObject({ code: "unsupported_sync_format_version" });
   });
 
   it("rejects the wrong vault key", async () => {
@@ -153,7 +118,6 @@ describe("sync crypto", () => {
       TEST_VAULT_KEY,
       new Uint8Array([1, 2, 3]),
       TEST_BLOB_CONTEXT,
-      TEST_BLOB_OPTIONS,
     );
 
     await expect(
@@ -161,26 +125,26 @@ describe("sync crypto", () => {
         TEST_VAULT_KEY,
         encrypted,
         { blobId: "blob-2" },
-        TEST_BLOB_OPTIONS,
       ),
     ).rejects.toThrow();
   });
 
-  it("rejects v2 blobs served under the wrong blob id", async () => {
+  it("rejects blobs with an invalid binary envelope header", async () => {
     const encrypted = await encryptSyncBlob(
       TEST_VAULT_KEY,
       new Uint8Array([1, 2, 3]),
       TEST_BLOB_CONTEXT,
-      TEST_BLOB_V2_OPTIONS,
     );
+    const invalidMagic = encrypted.slice();
+    invalidMagic[0] = 0;
+    const unsupportedVersion = encrypted.slice();
+    unsupportedVersion[4] = 3;
 
     await expect(
-      decryptSyncBlob(
-        TEST_VAULT_KEY,
-        encrypted,
-        { blobId: "blob-2" },
-        TEST_BLOB_V2_OPTIONS,
-      ),
+      decryptSyncBlob(TEST_VAULT_KEY, invalidMagic, TEST_BLOB_CONTEXT),
+    ).rejects.toThrow();
+    await expect(
+      decryptSyncBlob(TEST_VAULT_KEY, unsupportedVersion, TEST_BLOB_CONTEXT),
     ).rejects.toThrow();
   });
 });

@@ -226,8 +226,6 @@ export const de = {
     "vault.setting": "Vault",
     "vault.viewDeletedFiles": "Gelöschte Dateien anzeigen",
     "vault.deletedFilesDesc": "Synchronisierte Dateien prüfen, die aus diesem Vault gelöscht wurden.",
-    "vault.formatUpgradeDesc": "Um die neueste Remote-Vault-Version zu nutzen, die schneller und speichereffizienter ist, löschen Sie dieses Remote-Vault auf der Vault-Verwaltungsseite und erstellen Sie es erneut. Ihre lokalen Obsidian-Vault-Dateien werden beim Entfernen des Remote-Vaults nicht gelöscht.",
-    "vault.formatUpgradeTitle": "Neue Vaults können schneller synchronisieren und bis zu 33 % weniger Speicher nutzen",
     "vault.disconnected": ({ label }: { label: string }) => `Vault ${label} wurde von diesem Gerät getrennt.`,
     "vault.connected": ({ label }: { label: string }) => `Vault ${label} wurde auf diesem Gerät verbunden.`,
     "vault.createdConnected": ({ label }: { label: string }) => `Vault ${label} wurde erstellt und verbunden.`,

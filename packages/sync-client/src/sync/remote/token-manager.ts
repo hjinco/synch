@@ -2,7 +2,6 @@ import type { SyncTokenResponse } from "./client";
 import { SyncAccessClient } from "./client";
 
 const REFRESH_SKEW_SECONDS = 15;
-const SUPPORTED_SYNC_FORMAT_VERSIONS = new Set([1, 2]);
 
 export interface SyncTokenManagerDeps {
   getApiBaseUrl: () => string;
@@ -18,8 +17,7 @@ export type SyncAccessClientLike = Pick<SyncAccessClient, "issueSyncToken">;
 export type SyncTokenErrorCode =
   | "not_signed_in"
   | "no_active_vault"
-  | "missing_local_vault_id"
-  | "unsupported_sync_format_version";
+  | "missing_local_vault_id";
 
 export class SyncTokenError extends Error {
   constructor(
@@ -73,7 +71,6 @@ export class SyncTokenManager {
         localVaultId,
       },
     );
-    assertSupportedSyncFormatVersion(issued.syncFormatVersion);
 
     this.cachedToken = issued;
     return issued;
@@ -98,14 +95,5 @@ export class SyncTokenManager {
   private nowSeconds(): number {
     const now = this.deps.now ?? Date.now;
     return Math.floor(now() / 1000);
-  }
-}
-
-function assertSupportedSyncFormatVersion(syncFormatVersion: number): void {
-  if (!SUPPORTED_SYNC_FORMAT_VERSIONS.has(syncFormatVersion)) {
-    throw new SyncTokenError(
-      "unsupported_sync_format_version",
-      `Unsupported sync format version: ${syncFormatVersion}.`,
-    );
   }
 }

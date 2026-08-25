@@ -103,7 +103,6 @@ export async function reapplyAllowedRemoteVaultConfig(
           deps.getRemoteVaultKey(),
           encryptedBytes,
           { blobId: remote.blobId },
-          { syncFormatVersion: token.syncFormatVersion },
         );
         const actualHash = await hashBytes(bytes);
         if (actualHash !== remote.hash) {

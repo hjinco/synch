@@ -217,7 +217,6 @@ export class PullPendingMutationHandler {
       this.deps.getRemoteVaultKey(),
       cachedBase.encryptedBytes,
       { blobId: base.blobId },
-      { syncFormatVersion: token.syncFormatVersion },
     );
     const localBytes = await this.deps.vaultAdapter.readBytes(local.path);
     const baseText = decodeUtf8(baseBytes);

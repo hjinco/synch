@@ -282,7 +282,7 @@ describe("SyncPushService requeue and batches", () => {
     await expect(
       decryptSyncBlob(TEST_VAULT_KEY, uploaded[0]?.bytes ?? new Uint8Array(), {
         blobId: uploaded[0]?.blobId ?? "",
-      }, { syncFormatVersion: 1 }),
+      }),
     ).resolves.toEqual(new TextEncoder().encode("current body"));
     expect(await store.listDirtyEntries()).toEqual([]);
     expect(await store.getEntryByPath("Folder/note.md")).toEqual({

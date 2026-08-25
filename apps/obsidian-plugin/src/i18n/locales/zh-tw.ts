@@ -210,8 +210,6 @@ export const zhTw = {
     "vault.setting": "Vault",
     "vault.viewDeletedFiles": "查看已刪除檔案",
     "vault.deletedFilesDesc": "查看從此 vault 刪除的已同步檔案。",
-    "vault.formatUpgradeDesc": "若要使用最新的遠端 vault 版本以獲得更快同步和更高儲存效率，請在 vault 管理頁面刪除此遠端 vault，然後重新建立。移除遠端 vault 不會刪除你的本機 Obsidian vault 檔案。",
-    "vault.formatUpgradeTitle": "新的 vault 同步更快，並最多可減少 33% 的儲存使用量",
     "vault.disconnected": ({ label }: { label: string }) => `Vault ${label} 已從此裝置中斷。`,
     "vault.loaded": ({ label }: { label: string }) => `Vault ${label} 已載入到此裝置。`,
     "vault.notActive": "此裝置上存有 vault，但尚未啟用。",

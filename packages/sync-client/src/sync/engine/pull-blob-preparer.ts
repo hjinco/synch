@@ -83,7 +83,6 @@ export class PullBlobPreparer {
       this.deps.getRemoteVaultKey(),
       encryptedBytes,
       { blobId },
-      { syncFormatVersion: token.syncFormatVersion },
     );
     const actualHash = await hashBytes(bytes);
     if (actualHash !== plan.hash) {

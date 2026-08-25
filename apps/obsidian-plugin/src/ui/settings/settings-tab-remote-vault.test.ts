@@ -106,43 +106,6 @@ describe("SynchSettingTab remote vault settings", () => {
     );
   });
 
-  it("shows the storage-efficient vault hint below deleted files for format v1 vaults", () => {
-    const openRemoteVaultManagementPage = vi.fn();
-    const tab = createSettingsTab({
-      hasAuthenticatedSession: () => true,
-      hasConnectedRemoteVault: () => true,
-      getRemoteVaultSyncFormatVersion: () => 1,
-      openRemoteVaultManagementPage,
-    });
-
-    tab.open();
-
-    const settingNames = getSettingNames();
-    const deletedFilesIndex = settingNames.indexOf(t("deleted.header"));
-    const hintIndex = settingNames.indexOf(t("vault.formatUpgradeTitle"));
-    expect(deletedFilesIndex).toBeGreaterThanOrEqual(0);
-    expect(hintIndex).toBe(deletedFilesIndex + 1);
-    expect(getSettingDescriptions()).toContain(t("vault.formatUpgradeDesc"));
-
-    getButtonComponents()
-      .find((button) => button.text === t("vault.manageRemote"))
-      ?.click();
-
-    expect(openRemoteVaultManagementPage).toHaveBeenCalled();
-  });
-
-  it("hides the storage-efficient vault hint for latest-version vaults", () => {
-    const tab = createSettingsTab({
-      hasAuthenticatedSession: () => true,
-      hasConnectedRemoteVault: () => true,
-      getRemoteVaultSyncFormatVersion: () => 2,
-    });
-
-    tab.open();
-
-    expect(getSettingNames()).not.toContain(t("vault.formatUpgradeTitle"));
-  });
-
   it("shows an empty deleted files modal", async () => {
     const tab = createSettingsTab({
       hasAuthenticatedSession: () => true,

@@ -31,7 +31,6 @@ export function createToken(): SyncTokenResponse {
     expiresAt: 1_000,
     vaultId: "vault-1",
     localVaultId: "local-vault-1",
-    syncFormatVersion: 1,
   };
 }
 
@@ -114,9 +113,7 @@ export async function encryptPendingMetadata(input: {
 }
 
 export async function encryptTestBlob(blobId: string, bytes: Uint8Array) {
-  return await encryptSyncBlob(TEST_VAULT_KEY, bytes, { blobId }, {
-    syncFormatVersion: 1,
-  });
+  return await encryptSyncBlob(TEST_VAULT_KEY, bytes, { blobId });
 }
 
 export async function hashText(value: string): Promise<string> {

@@ -340,10 +340,6 @@ export class SynchPluginController implements SynchSettingsController {
     );
   }
 
-  getRemoteVaultSyncFormatVersion(): number | null {
-    return this.sessionStore.getRemoteVaultSyncFormatVersion();
-  }
-
   hasConnectedRemoteVault(): boolean {
     return this.remoteVaultManager.hasConnectedRemoteVault();
   }
@@ -540,7 +536,6 @@ export class SynchPluginController implements SynchSettingsController {
       throw error;
     }
 
-    this.sessionStore.setRemoteVaultSyncFormatVersion(token.syncFormatVersion);
     return token;
   }
 
@@ -573,7 +568,6 @@ export class SynchPluginController implements SynchSettingsController {
 
   private clearSyncTokenState(): void {
     this.syncTokenManager.clear();
-    this.sessionStore.clearRemoteVaultSyncFormatVersion();
   }
 
   async createRemoteVaultFromPrompt(): Promise<void> {

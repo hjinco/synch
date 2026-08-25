@@ -13,6 +13,8 @@ export type SyncTokenIssueResponse = {
 	expiresAt: number;
 	vaultId: string;
 	localVaultId: string;
+	// Keep this compatibility field until the minimum supported plugin version
+	// is raised in a coordinated API/plugin release.
 	syncFormatVersion: number;
 };
 

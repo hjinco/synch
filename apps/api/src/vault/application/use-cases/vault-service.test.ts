@@ -39,7 +39,6 @@ function setup(overrides: Record<string, unknown> = {}) {
 			organizationId: "org-1",
 			name: "Personal",
 			activeKeyVersion: 1,
-			syncFormatVersion: 2,
 			createdAt: new Date("2026-04-22T00:00:00.000Z"),
 			deletedAt: null,
 			purgeStatus: null,

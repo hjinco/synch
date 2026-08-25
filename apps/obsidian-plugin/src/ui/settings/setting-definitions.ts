@@ -26,7 +26,6 @@ import {
   populateSyncStatusSetting,
   populateVaultConnectSetting,
   populateVaultConnectionSetting,
-  populateVaultFormatUpgradeSetting,
   populateVaultManageSetting,
   type ApiBaseUrlSettingOptions,
 } from "./sections";
@@ -243,14 +242,6 @@ export function buildSynchSettingDefinitions(
         populateDeletedFilesSetting(setting, host.app, controller, requestRefresh);
       },
     });
-    if (controller.getRemoteVaultSyncFormatVersion() === 1) {
-      definitions.push({
-        name: t("vault.formatUpgradeTitle"),
-        render: (setting) => {
-          populateVaultFormatUpgradeSetting(setting, controller);
-        },
-      });
-    }
   }
 
   definitions.push({

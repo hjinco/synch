@@ -67,9 +67,7 @@ export class PushMutationPreparer {
       return null;
     }
     const blobId = mutation.blobId;
-    const encryptedBytes = await syncCrypto.encryptBlob(bytes, { blobId }, {
-      syncFormatVersion: token.syncFormatVersion,
-    });
+    const encryptedBytes = await syncCrypto.encryptBlob(bytes, { blobId });
     const storageBytesAdded =
       mutation.blobId === mutation.baseBlobId && mutation.hash === mutation.baseHash
         ? 0

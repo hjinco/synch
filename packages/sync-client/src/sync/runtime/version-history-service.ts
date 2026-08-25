@@ -358,7 +358,6 @@ export class SyncVersionHistoryService {
       this.deps.getRemoteVaultKey(),
       encryptedBytes,
       { blobId: version.blobId },
-      { syncFormatVersion: token.syncFormatVersion },
     );
     const actualHash = await hashBytes(bytes);
     if (metadata.hash !== actualHash) {

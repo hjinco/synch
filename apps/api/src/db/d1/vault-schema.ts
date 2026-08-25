@@ -18,7 +18,6 @@ export const vault = sqliteTable("vault", {
 		.references(() => organization.id, { onDelete: "cascade" }),
 	name: text("name").notNull(),
 	activeKeyVersion: integer("active_key_version").notNull(),
-	syncFormatVersion: integer("sync_format_version").notNull().default(2),
 	createdAt: integer("created_at", { mode: "timestamp_ms" })
 		.defaultNow()
 		.notNull(),
