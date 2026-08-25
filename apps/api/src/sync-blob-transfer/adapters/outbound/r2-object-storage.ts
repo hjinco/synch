@@ -47,6 +47,24 @@ export class R2BlobObjectStorage implements BlobObjectStorage {
 		await this.bucket.delete(key);
 	}
 
+	async deleteMany(keys: readonly string[]): Promise<{ failedKeys: readonly string[] }> {
+		for (let index = 0; index < keys.length; index += R2_LIST_BATCH_SIZE) {
+			const chunk = keys.slice(index, index + R2_LIST_BATCH_SIZE);
+			if (chunk.length === 0) {
+				continue;
+			}
+			try {
+				await this.bucket.delete([...chunk]);
+			} catch (error) {
+				if (index === 0) {
+					throw error;
+				}
+				return { failedKeys: keys.slice(index) };
+			}
+		}
+		return { failedKeys: [] };
+	}
+
 	async deleteByPrefix(prefix: string): Promise<void> {
 		let cursor: string | undefined;
 		do {
@@ -55,9 +73,13 @@ export class R2BlobObjectStorage implements BlobObjectStorage {
 				cursor,
 				limit: R2_LIST_BATCH_SIZE,
 			});
-			const keys = listed.objects.map((object) => object.key);
-			if (keys.length > 0) {
-				await this.bucket.delete(keys);
+			const { failedKeys } = await this.deleteMany(
+				listed.objects.map((object) => object.key),
+			);
+			if (failedKeys.length > 0) {
+				throw new Error(
+					`r2 batch delete failed for ${failedKeys.length} key(s)`,
+				);
 			}
 			cursor = listed.truncated ? listed.cursor : undefined;
 		} while (cursor);

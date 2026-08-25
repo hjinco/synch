@@ -39,6 +39,34 @@ describe("R2BlobObjectStorage", () => {
 		expect(bucket.delete).toHaveBeenNthCalledWith(2, ["vault-1/blob-c"]);
 	});
 
+	it("deletes keys in R2 batches of 1000", async () => {
+		const bucket = {
+			delete: vi.fn(async () => {}),
+		};
+		const storage = new R2BlobObjectStorage(bucket as unknown as R2Bucket);
+		const keys = Array.from({ length: 1001 }, (_, index) => `vault-1/blob-${index}`);
+
+		await storage.deleteMany(keys);
+
+		expect(bucket.delete).toHaveBeenNthCalledWith(1, keys.slice(0, 1000));
+		expect(bucket.delete).toHaveBeenNthCalledWith(2, keys.slice(1000));
+	});
+
+	it("keeps earlier R2 chunks when a later batch fails", async () => {
+		const bucket = {
+			delete: vi
+				.fn()
+				.mockResolvedValueOnce(undefined)
+				.mockRejectedValueOnce(new Error("r2 unavailable")),
+		};
+		const storage = new R2BlobObjectStorage(bucket as unknown as R2Bucket);
+		const keys = Array.from({ length: 1001 }, (_, index) => `vault-1/blob-${index}`);
+
+		await expect(storage.deleteMany(keys)).resolves.toEqual({
+			failedKeys: keys.slice(1000),
+		});
+	});
+
 	it("reports a matching streamed upload", async () => {
 		const bucket = {
 			put: vi.fn(async (_key: string, body: ReadableStream<Uint8Array>) => {

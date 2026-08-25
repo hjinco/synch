@@ -144,6 +144,7 @@ export function createTestCoordinatorState(
 		listCollectibleBlobs: vi.fn(() => []),
 		readCollectibleBlob: vi.fn(() => null),
 		deleteBlobIfCollectible: vi.fn(() => "skipped" as const),
+		deleteCollectibleBlobs: vi.fn(() => []),
 		markBlobPendingDeleteIfUnpinned: vi.fn(),
 		nextGcAt: vi.fn(() => null),
 		recordGcCompleted: vi.fn(),
@@ -365,6 +366,7 @@ function createBlobObjectRepository(): BlobObjectRepository {
 	return {
 		exists: vi.fn(async () => true),
 		delete: vi.fn(async () => {}),
+		deleteMany: vi.fn(async () => ({ failedKeys: [] })),
 		deleteByPrefix: vi.fn(async () => {}),
 	};
 }

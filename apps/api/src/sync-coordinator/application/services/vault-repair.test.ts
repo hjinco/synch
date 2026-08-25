@@ -252,6 +252,7 @@ function createBlobStorage(
 	return {
 		exists: vi.fn(async () => true),
 		delete: vi.fn(async () => {}),
+		deleteMany: vi.fn(async () => ({ failedKeys: [] })),
 		deleteByPrefix: vi.fn(async () => {}),
 		...overrides,
 	};

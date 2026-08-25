@@ -16,7 +16,7 @@ import {
 } from "./blob-collectability";
 import type { CoordinatorDb, CoordinatorStorageHandle } from "./storage-handle";
 
-type BlobDb = Pick<CoordinatorDb, "delete" | "update">;
+type BlobDb = Pick<CoordinatorDb, "update">;
 
 export class CoordinatorBlobGcStore implements BlobGcStore {
 	constructor(private readonly handle: CoordinatorStorageHandle) {}
@@ -143,32 +143,46 @@ export class CoordinatorBlobGcStore implements BlobGcStore {
 		);
 	}
 
-	deleteBlobIfCollectible(blobId: string, now: number): BlobGcDeleteResult {
+	deleteCollectibleBlobs(blobIds: readonly string[], now: number): BlobRow[] {
+		if (blobIds.length === 0) {
+			return [];
+		}
+
+		// One JSON bind keeps this under Durable Object's 100 bound-parameter limit.
 		return this.handle.db.transaction((tx) => {
-			const collectible = this.handle
-				.exec<{ size_bytes: number }>(
+			const deleted = this.handle
+				.exec<BlobSqlRow>(
 					`
-					SELECT size_bytes
-					FROM blobs
-					WHERE blob_id = ?
+					DELETE FROM blobs
+					WHERE blobs.blob_id IN (SELECT value FROM json_each(?))
 						AND ${COLLECTIBLE_BLOB_SQL}
-					LIMIT 1
+					RETURNING
+						blobs.blob_id,
+						blobs.state,
+						blobs.size_bytes,
+						blobs.created_at,
+						blobs.last_uploaded_at,
+						blobs.delete_after
 					`,
-					blobId,
+					JSON.stringify(blobIds),
 					now,
 					now,
 				)
-				.toArray()[0];
-			if (!collectible) {
-				return "skipped";
+				.toArray()
+				.map(toBlobRow);
+			const reclaimedBytes = deleted.reduce(
+				(total, blob) => total + blob.size_bytes,
+				0,
+			);
+			if (reclaimedBytes > 0) {
+				decrementStorageUsedBytes(tx, reclaimedBytes);
 			}
-
-			tx.delete(doSchema.blobs)
-				.where(eq(doSchema.blobs.blobId, blobId))
-				.run();
-			decrementStorageUsedBytes(tx, Number(collectible.size_bytes));
-			return "deleted";
+			return deleted;
 		});
+	}
+
+	deleteBlobIfCollectible(blobId: string, now: number): BlobGcDeleteResult {
+		return this.deleteCollectibleBlobs([blobId], now).length > 0 ? "deleted" : "skipped";
 	}
 
 	nextGcAt(now: number): number | null {

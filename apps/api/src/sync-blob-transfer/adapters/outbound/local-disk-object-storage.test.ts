@@ -28,6 +28,35 @@ describe("LocalDiskBlobObjectStorage", () => {
 		expect(await storage.exists("vault-1/blob-1")).toBe(false);
 	});
 
+	it("deletes many keys without touching other vault prefixes", async () => {
+		dir = mkdtempSync(path.join(tmpdir(), "synch-blob-disk-"));
+		const storage = new LocalDiskBlobObjectStorage(dir);
+		await storage.upload("vault-1/blob-1", streamOf("one"), 3);
+		await storage.upload("vault-1/blob-2", streamOf("two"), 3);
+		await storage.upload("vault-2/blob-1", streamOf("keep"), 4);
+
+		await storage.deleteMany(["vault-1/blob-1", "vault-1/blob-2"]);
+
+		expect(await storage.exists("vault-1/blob-1")).toBe(false);
+		expect(await storage.exists("vault-1/blob-2")).toBe(false);
+		expect(await storage.exists("vault-2/blob-1")).toBe(true);
+	});
+
+	it("reports failed keys without rolling back deletes that succeeded", async () => {
+		dir = mkdtempSync(path.join(tmpdir(), "synch-blob-disk-"));
+		const storage = new LocalDiskBlobObjectStorage(dir);
+		await storage.upload("vault-1/blob-1", streamOf("one"), 3);
+		await storage.upload("vault-1/blob-2", streamOf("two"), 3);
+
+		await expect(
+			storage.deleteMany(["vault-1/blob-1", "vault-1/../escape", "vault-1/blob-2"]),
+		).resolves.toEqual({
+			failedKeys: ["vault-1/../escape"],
+		});
+		expect(await storage.exists("vault-1/blob-1")).toBe(false);
+		expect(await storage.exists("vault-1/blob-2")).toBe(false);
+	});
+
 	it("rejects traversal keys", async () => {
 		dir = mkdtempSync(path.join(tmpdir(), "synch-blob-disk-"));
 		const storage = new LocalDiskBlobObjectStorage(dir);

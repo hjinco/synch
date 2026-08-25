@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import { AwsClient } from "aws4fetch";
 
 import type { BlobObjectStorage } from "../../application/ports/outbound/blob-object-storage";
@@ -80,12 +82,33 @@ export class S3BlobObjectStorage implements BlobObjectStorage {
 		}
 	}
 
+	async deleteMany(keys: readonly string[]): Promise<{ failedKeys: readonly string[] }> {
+		const failedKeys: string[] = [];
+		for (let index = 0; index < keys.length; index += LIST_BATCH_SIZE) {
+			const chunk = keys.slice(index, index + LIST_BATCH_SIZE);
+			if (chunk.length === 0) {
+				continue;
+			}
+			try {
+				failedKeys.push(...(await this.deleteObjects([...chunk])));
+			} catch (error) {
+				if (index === 0 && failedKeys.length === 0) {
+					throw error;
+				}
+				failedKeys.push(...keys.slice(index));
+				break;
+			}
+		}
+		return { failedKeys };
+	}
+
 	async deleteByPrefix(prefix: string): Promise<void> {
 		let continuationToken: string | undefined;
 		do {
 			const { keys, nextContinuationToken } = await this.listObjects(prefix, continuationToken);
-			if (keys.length > 0) {
-				await this.deleteObjects(keys);
+			const { failedKeys } = await this.deleteMany(keys);
+			if (failedKeys.length > 0) {
+				throw new Error(`s3 batch delete failed for ${failedKeys.length} key(s)`);
 			}
 			continuationToken = nextContinuationToken;
 		} while (continuationToken);
@@ -139,7 +162,7 @@ export class S3BlobObjectStorage implements BlobObjectStorage {
 		};
 	}
 
-	private async deleteObjects(keys: string[]): Promise<void> {
+	private async deleteObjects(keys: string[]): Promise<string[]> {
 		const body = `<?xml version="1.0" encoding="UTF-8"?><Delete>${keys
 			.map((key) => `<Object><Key>${encodeXmlEntities(key)}</Key></Object>`)
 			.join("")}</Delete>`;
@@ -148,12 +171,24 @@ export class S3BlobObjectStorage implements BlobObjectStorage {
 		const response = await this.client.fetch(url.toString(), {
 			method: "POST",
 			body,
-			headers: { "content-type": "application/xml" },
+			headers: {
+				"content-type": "application/xml",
+				"content-md5": createHash("md5").update(body).digest("base64"),
+			},
 		});
 		if (!response.ok) {
 			throw new Error(`s3 batch delete failed: ${response.status} ${await response.text()}`);
 		}
+
+		return s3DeleteResultErrorKeys(await response.text());
 	}
+}
+
+export function s3DeleteResultErrorKeys(xml: string): string[] {
+	return [...xml.matchAll(/<Error>([\s\S]*?)<\/Error>/g)].flatMap((match) => {
+		const key = match[1].match(/<Key>([\s\S]*?)<\/Key>/);
+		return key ? [decodeXmlEntities(key[1])] : [];
+	});
 }
 
 function encodeXmlEntities(value: string): string {

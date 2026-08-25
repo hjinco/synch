@@ -1,5 +1,6 @@
 import { decideBlobCollection } from "../../domain/blob-gc-policy";
 import type {
+	BlobGcCandidate,
 	BlobGcStore,
 	BlobObjectKeyBuilder,
 	BlobObjectRepository,
@@ -9,7 +10,19 @@ import type {
 } from "../ports/outbound";
 import type { HealthService } from "./health-service";
 
-const GC_BATCH_SIZE = 64;
+/** Matches R2/S3 bulk-delete limits so one GC tick is one object-store round trip. */
+export const GC_BATCH_SIZE = 1000;
+
+export class BlobObjectBatchDeleteError extends Error {
+	readonly name = "BlobObjectBatchDeleteError";
+
+	constructor(
+		readonly failedKeys: readonly string[],
+		readonly deletedCount: number,
+	) {
+		super("blob_object_batch_delete_failed");
+	}
+}
 
 export type RunBlobGcOptions = {
 	now?: number;
@@ -60,15 +73,22 @@ export class BlobGcService {
 		const now = options.now ?? Date.now();
 		this.blobGcStore.expireEntryVersions(now);
 		const due = this.blobGcStore.listCollectibleBlobs(now, GC_BATCH_SIZE);
-		for (const blob of due) {
-			if (!this.isCollectible(blob, now)) {
-				continue;
-			}
-
-			await this.blobStorage.delete(
-				this.objectKeyBuilder.blobObjectKey(effectiveVaultId, blob.blob_id),
+		const collectible = due.filter((blob) => this.isCollectible(blob, now));
+		let deletedCount = 0;
+		try {
+			deletedCount = await this.deleteCollectibleBatch(
+				effectiveVaultId,
+				collectible,
+				now,
 			);
-			this.blobGcStore.deleteBlobIfCollectible(blob.blob_id, now);
+		} catch (error) {
+			if (
+				error instanceof BlobObjectBatchDeleteError &&
+				error.deletedCount > 0
+			) {
+				this.healthService.notifyStorageStatusChanged();
+			}
+			throw error;
 		}
 
 		const nextGcAt = this.blobGcStore.nextGcAt(now);
@@ -79,7 +99,7 @@ export class BlobGcService {
 		if (options.scheduleHealthFlush ?? true) {
 			await this.maintenanceScheduler.defer("health_summary_flush", now, now);
 		}
-		if (due.length > 0) {
+		if (deletedCount > 0) {
 			this.healthService.notifyStorageStatusChanged();
 		}
 		return nextGcAt;
@@ -96,28 +116,28 @@ export class BlobGcService {
 
 		const now = Date.now();
 		this.blobGcStore.expireEntryVersions(now);
-		let deletedCount = 0;
+		const collectibleBlobs: BlobGcCandidate[] = [];
 		for (const blobId of uniqueBlobIds) {
 			this.blobGcStore.markBlobPendingDeleteIfUnpinned(blobId, now);
 			const blob = this.blobGcStore.readCollectibleBlob(blobId, now);
 			if (!blob || !this.isCollectible(blob, now)) {
 				continue;
 			}
+			collectibleBlobs.push(blob);
+		}
 
-			try {
-				await this.blobStorage.delete(
-					this.objectKeyBuilder.blobObjectKey(vaultId, blobId),
-				);
-				if (this.blobGcStore.deleteBlobIfCollectible(blobId, now) === "deleted") {
-					deletedCount += 1;
-				}
-			} catch (error) {
-				console.error("[sync-coordinator] immediate purged blob deletion failed", {
-					vaultId,
-					blobId,
-					error: error instanceof Error ? error.message : String(error),
-				});
+		let deletedCount = 0;
+		try {
+			deletedCount = await this.deleteCollectibleBatch(vaultId, collectibleBlobs, now);
+		} catch (error) {
+			if (error instanceof BlobObjectBatchDeleteError) {
+				deletedCount = error.deletedCount;
 			}
+			console.error("[sync-coordinator] immediate purged blob deletion failed", {
+				vaultId,
+				blobIds: collectibleBlobs.map((blob) => blob.blob_id),
+				error: error instanceof Error ? error.message : String(error),
+			});
 		}
 
 		await this.scheduleNext(now);
@@ -125,6 +145,39 @@ export class BlobGcService {
 		if (deletedCount > 0) {
 			this.healthService.notifyStorageStatusChanged();
 		}
+	}
+
+	private async deleteCollectibleBatch(
+		vaultId: string,
+		blobs: readonly BlobGcCandidate[],
+		now: number,
+	): Promise<number> {
+		if (blobs.length === 0) {
+			return 0;
+		}
+
+		const { failedKeys } = await this.blobStorage.deleteMany(
+			blobs.map((blob) =>
+				this.objectKeyBuilder.blobObjectKey(vaultId, blob.blob_id),
+			),
+		);
+		const failedKeySet = new Set(failedKeys);
+		const succeededBlobIds = blobs
+			.filter(
+				(blob) =>
+					!failedKeySet.has(
+						this.objectKeyBuilder.blobObjectKey(vaultId, blob.blob_id),
+					),
+			)
+			.map((blob) => blob.blob_id);
+		const deletedCount =
+			succeededBlobIds.length === 0
+				? 0
+				: this.blobGcStore.deleteCollectibleBlobs(succeededBlobIds, now).length;
+		if (failedKeys.length > 0) {
+			throw new BlobObjectBatchDeleteError(failedKeys, deletedCount);
+		}
+		return deletedCount;
 	}
 
 	private isCollectible(

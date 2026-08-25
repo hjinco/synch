@@ -1,6 +1,7 @@
 export interface BlobObjectRepository {
 	exists(key: string): Promise<boolean>;
 	delete(key: string): Promise<void>;
+	deleteMany(keys: readonly string[]): Promise<{ failedKeys: readonly string[] }>;
 	deleteByPrefix(prefix: string): Promise<void>;
 }
 

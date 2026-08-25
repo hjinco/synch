@@ -23,14 +23,20 @@ function createFixture() {
 				blobId === "blob-1" || blobId === "blob-2" ? blob(blobId) : null,
 			),
 			markBlobPendingDeleteIfUnpinned: vi.fn(),
+			deleteCollectibleBlobs: vi.fn((blobIds: readonly string[]) =>
+				blobIds.map((blobId) => blob(blobId)),
+			),
 			deleteBlobIfCollectible: vi.fn(() => "deleted" as const),
 			nextGcAt: vi.fn(() => null),
 		},
 		blobStorage: {
 			exists: vi.fn(async () => true),
-			delete: vi.fn(async (key: string) => {
-				if (key.endsWith("blob-1")) throw new Error("temporary failure");
-			}),
+			delete: vi.fn(async () => {}),
+			deleteMany: vi.fn(
+				async (): Promise<{ failedKeys: readonly string[] }> => ({
+					failedKeys: [],
+				}),
+			),
 			deleteByPrefix: vi.fn(async () => {}),
 		},
 		objectKeyBuilder: {
@@ -57,7 +63,7 @@ function createFixture() {
 }
 
 describe("BlobGcService purged blob collection", () => {
-	it("deduplicates candidates and continues after an individual deletion failure", async () => {
+	it("deduplicates candidates and deletes objects before sqlite rows", async () => {
 		vi.useFakeTimers();
 		vi.setSystemTime(2);
 		try {
@@ -67,12 +73,76 @@ describe("BlobGcService purged blob collection", () => {
 			await useCase.collectPurgedBlobs("vault-1", ["blob-1", "blob-1", "blob-2"]);
 
 			expect(fixture.blobGcStore.markBlobPendingDeleteIfUnpinned).toHaveBeenCalledTimes(2);
-			expect(fixture.blobStorage.delete).toHaveBeenCalledTimes(2);
-			expect(fixture.blobGcStore.deleteBlobIfCollectible).toHaveBeenCalledTimes(1);
+			expect(fixture.blobStorage.deleteMany).toHaveBeenCalledWith([
+				"vault-1/blob-1",
+				"vault-1/blob-2",
+			]);
+			expect(fixture.blobGcStore.deleteCollectibleBlobs).toHaveBeenCalledWith(
+				["blob-1", "blob-2"],
+				2,
+			);
+			expect(fixture.blobStorage.delete).not.toHaveBeenCalled();
 			expect(scheduleNext).toHaveBeenCalledWith(2);
 			expect(fixture.healthService.scheduleSummaryFlush).toHaveBeenCalledWith(2);
 			expect(fixture.healthService.notifyStorageStatusChanged).toHaveBeenCalledOnce();
 		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it("does not delete sqlite rows when the object batch fails", async () => {
+		vi.useFakeTimers();
+		vi.setSystemTime(2);
+		const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+		try {
+			const { fixture, useCase } = createFixture();
+			fixture.blobStorage.deleteMany.mockRejectedValue(new Error("temporary failure"));
+			const scheduleNext = vi.spyOn(useCase, "scheduleNext");
+
+			await useCase.collectPurgedBlobs("vault-1", ["blob-1", "blob-2"]);
+
+			expect(fixture.blobGcStore.deleteCollectibleBlobs).not.toHaveBeenCalled();
+			expect(fixture.healthService.notifyStorageStatusChanged).not.toHaveBeenCalled();
+			expect(scheduleNext).toHaveBeenCalledWith(2);
+			expect(consoleError).toHaveBeenCalledWith(
+				"[sync-coordinator] immediate purged blob deletion failed",
+				expect.objectContaining({
+					vaultId: "vault-1",
+					blobIds: ["blob-1", "blob-2"],
+				}),
+			);
+		} finally {
+			consoleError.mockRestore();
+			vi.useRealTimers();
+		}
+	});
+
+	it("deletes sqlite rows for objects that succeeded when a batch is partial", async () => {
+		vi.useFakeTimers();
+		vi.setSystemTime(2);
+		const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+		try {
+			const { fixture, useCase } = createFixture();
+			fixture.blobStorage.deleteMany.mockResolvedValue({
+				failedKeys: ["vault-1/blob-2"],
+			});
+
+			await useCase.collectPurgedBlobs("vault-1", ["blob-1", "blob-2"]);
+
+			expect(fixture.blobGcStore.deleteCollectibleBlobs).toHaveBeenCalledWith(
+				["blob-1"],
+				2,
+			);
+			expect(fixture.healthService.notifyStorageStatusChanged).toHaveBeenCalledOnce();
+			expect(consoleError).toHaveBeenCalledWith(
+				"[sync-coordinator] immediate purged blob deletion failed",
+				expect.objectContaining({
+					vaultId: "vault-1",
+					blobIds: ["blob-1", "blob-2"],
+				}),
+			);
+		} finally {
+			consoleError.mockRestore();
 			vi.useRealTimers();
 		}
 	});
@@ -98,7 +168,8 @@ describe("BlobGcService purged blob collection", () => {
 			"missing",
 			expect.any(Number),
 		);
-		expect(fixture.blobStorage.delete).not.toHaveBeenCalled();
+		expect(fixture.blobGcStore.deleteCollectibleBlobs).not.toHaveBeenCalled();
+		expect(fixture.blobStorage.deleteMany).not.toHaveBeenCalled();
 		expect(fixture.healthService.notifyStorageStatusChanged).not.toHaveBeenCalled();
 	});
 });

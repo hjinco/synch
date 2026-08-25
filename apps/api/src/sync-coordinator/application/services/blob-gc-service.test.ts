@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { BlobGcService } from "./blob-gc-service";
+import { BlobGcService, GC_BATCH_SIZE } from "./blob-gc-service";
 
 function candidate(blobId: string) {
 	return {
@@ -19,15 +19,25 @@ function createFixture(overrides: Partial<Fixture> = {}) {
 		vaultStateStore: { readVaultId: vi.fn(() => "vault-1") },
 		blobGcStore: {
 			expireEntryVersions: vi.fn(),
-			listCollectibleBlobs: vi.fn(() => [candidate("blob-1")]),
+			listCollectibleBlobs: vi.fn(() => [candidate("blob-1"), candidate("blob-2")]),
 			readCollectibleBlob: vi.fn(() => null),
 			markBlobPendingDeleteIfUnpinned: vi.fn(),
+			deleteCollectibleBlobs: vi.fn((blobIds: readonly string[]) => {
+				for (const blobId of blobIds) {
+					events.push(`metadata:${blobId}`);
+				}
+				return blobIds.map((blobId) => candidate(blobId));
+			}),
 			deleteBlobIfCollectible: vi.fn(() => "deleted" as const),
 			nextGcAt: vi.fn(() => 5_000),
 		},
 		blobStorage: {
-			delete: vi.fn(async (key: string) => {
-				events.push(`object:${key}`);
+			delete: vi.fn(async () => {}),
+			deleteMany: vi.fn(async (keys: readonly string[]) => {
+				for (const key of keys) {
+					events.push(`object:${key}`);
+				}
+				return { failedKeys: [] };
 			}),
 			exists: vi.fn(async () => true),
 			deleteByPrefix: vi.fn(async () => {}),
@@ -71,6 +81,7 @@ type Fixture = {
 		listCollectibleBlobs: MockFn<(now: number, limit: number) => Candidate[]>;
 		readCollectibleBlob: MockFn<(blobId: string, now: number) => Candidate | null>;
 		markBlobPendingDeleteIfUnpinned: MockFn<(blobId: string, now: number) => void>;
+		deleteCollectibleBlobs: MockFn<(blobIds: readonly string[], now: number) => Candidate[]>;
 		deleteBlobIfCollectible: MockFn<
 			(blobId: string, now: number) => "deleted" | "skipped"
 		>;
@@ -78,6 +89,9 @@ type Fixture = {
 	};
 	blobStorage: {
 		delete: MockFn<(key: string) => Promise<void>>;
+		deleteMany: MockFn<
+			(keys: readonly string[]) => Promise<{ failedKeys: readonly string[] }>
+		>;
 		exists: MockFn<(key: string) => Promise<boolean>>;
 		deleteByPrefix: MockFn<(prefix: string) => Promise<void>>;
 	};
@@ -99,12 +113,8 @@ type MockFn<T extends (...args: any[]) => any> = ReturnType<typeof vi.fn<T>>;
 type Candidate = ReturnType<typeof candidate>;
 
 describe("BlobGcService scheduled GC", () => {
-	it("deletes collectible objects before metadata and schedules the next deadline", async () => {
+	it("deletes collectible objects in one batch before sqlite rows", async () => {
 		const { fixture, useCase, events } = createFixture();
-		fixture.blobGcStore.deleteBlobIfCollectible.mockImplementation(() => {
-			events.push("metadata:blob-1");
-			return "deleted";
-		});
 
 		await expect(
 			useCase.runGc("vault-1", {
@@ -115,11 +125,25 @@ describe("BlobGcService scheduled GC", () => {
 
 		expect(events).toEqual([
 			"object:vault-1/blob-1",
+			"object:vault-1/blob-2",
 			"metadata:blob-1",
+			"metadata:blob-2",
 			"schedule:5000",
 		]);
+		expect(fixture.blobStorage.deleteMany).toHaveBeenCalledWith([
+			"vault-1/blob-1",
+			"vault-1/blob-2",
+		]);
+		expect(fixture.blobGcStore.deleteCollectibleBlobs).toHaveBeenCalledWith(
+			["blob-1", "blob-2"],
+			2,
+		);
+		expect(fixture.blobStorage.delete).not.toHaveBeenCalled();
 		expect(fixture.blobGcStore.expireEntryVersions).toHaveBeenCalledWith(2);
-		expect(fixture.blobGcStore.listCollectibleBlobs).toHaveBeenCalledWith(2, 64);
+		expect(fixture.blobGcStore.listCollectibleBlobs).toHaveBeenCalledWith(
+			2,
+			GC_BATCH_SIZE,
+		);
 		expect(fixture.healthStore.recordGcCompleted).toHaveBeenCalledWith(2);
 		expect(fixture.maintenanceScheduler.defer).toHaveBeenCalledWith(
 			"health_summary_flush",
@@ -129,10 +153,11 @@ describe("BlobGcService scheduled GC", () => {
 		expect(fixture.healthService.notifyStorageStatusChanged).toHaveBeenCalledOnce();
 	});
 
-	it("does not record completion when object deletion fails", async () => {
+	it("does not delete sqlite rows when object deletion fails", async () => {
 		const { fixture, useCase } = createFixture({
 			blobStorage: {
-				delete: vi.fn(async () => {
+				delete: vi.fn(async () => {}),
+				deleteMany: vi.fn(async () => {
 					throw new Error("object store unavailable");
 				}),
 				exists: vi.fn(async () => true),
@@ -143,8 +168,33 @@ describe("BlobGcService scheduled GC", () => {
 		await expect(useCase.runGc("vault-1", { now: 2 })).rejects.toThrow(
 			"object store unavailable",
 		);
-		expect(fixture.blobGcStore.deleteBlobIfCollectible).not.toHaveBeenCalled();
+		expect(fixture.blobGcStore.deleteCollectibleBlobs).not.toHaveBeenCalled();
 		expect(fixture.healthStore.recordGcCompleted).not.toHaveBeenCalled();
+		expect(fixture.healthService.notifyStorageStatusChanged).not.toHaveBeenCalled();
+	});
+
+	it("deletes sqlite rows for objects that succeeded when a batch is partial", async () => {
+		const { fixture, useCase } = createFixture({
+			blobStorage: {
+				delete: vi.fn(async () => {}),
+				deleteMany: vi.fn(async () => ({ failedKeys: ["vault-1/blob-2"] })),
+				exists: vi.fn(async () => true),
+				deleteByPrefix: vi.fn(async () => {}),
+			},
+		});
+
+		await expect(useCase.runGc("vault-1", { now: 2 })).rejects.toMatchObject({
+			name: "BlobObjectBatchDeleteError",
+			deletedCount: 1,
+			failedKeys: ["vault-1/blob-2"],
+		});
+		expect(fixture.blobGcStore.deleteCollectibleBlobs).toHaveBeenCalledWith(
+			["blob-1"],
+			2,
+		);
+		expect(fixture.healthStore.recordGcCompleted).not.toHaveBeenCalled();
+		expect(fixture.healthService.notifyStorageStatusChanged).toHaveBeenCalledOnce();
+		expect(fixture.maintenanceScheduler.defer).not.toHaveBeenCalled();
 	});
 
 	it("is a no-op when no vault state exists", async () => {
@@ -154,6 +204,7 @@ describe("BlobGcService scheduled GC", () => {
 
 		await expect(useCase.runGc(undefined, { now: 2 })).resolves.toBeNull();
 		expect(fixture.blobGcStore.expireEntryVersions).not.toHaveBeenCalled();
-		expect(fixture.blobStorage.delete).not.toHaveBeenCalled();
+		expect(fixture.blobGcStore.deleteCollectibleBlobs).not.toHaveBeenCalled();
+		expect(fixture.blobStorage.deleteMany).not.toHaveBeenCalled();
 	});
 });

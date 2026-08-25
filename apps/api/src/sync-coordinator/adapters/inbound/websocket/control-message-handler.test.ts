@@ -542,23 +542,22 @@ describe("coordinator websocket control messages", () => {
 		const stateRepository = socketStateRepository();
 		const socketService = socketServiceMock();
 		const blobRepository = {
-			delete: vi.fn(async () => {}),
+			deleteMany: vi.fn(async () => ({ failedKeys: [] })),
+		};
+		const candidate = {
+			blob_id: "blob-1",
+			state: "pending_delete" as const,
+			size_bytes: 100,
+			created_at: 1,
+			last_uploaded_at: 1,
+			delete_after: 2,
 		};
 		const service = createCoordinatorService({
 			stateRepository: {
 				...stateRepository,
 				readVaultId: vi.fn(() => "vault-1"),
-				listCollectibleBlobs: vi.fn(() => [
-					{
-						blob_id: "blob-1",
-						state: "pending_delete",
-						size_bytes: 100,
-						created_at: 1,
-						last_uploaded_at: 1,
-						delete_after: 2,
-					},
-				]),
-				deleteBlobIfCollectible: vi.fn(() => "deleted" as const),
+				listCollectibleBlobs: vi.fn(() => [candidate]),
+				deleteCollectibleBlobs: vi.fn(() => [candidate]),
 				nextGcAt: vi.fn(() => null),
 				recordGcCompleted: vi.fn(),
 			} as never,
@@ -568,7 +567,7 @@ describe("coordinator websocket control messages", () => {
 
 		await service.runGc("vault-1", { scheduleHealthFlush: false });
 
-		expect(blobRepository.delete).toHaveBeenCalledWith("vault-1/blob-1");
+		expect(blobRepository.deleteMany).toHaveBeenCalledWith(["vault-1/blob-1"]);
 		expect(socketService.broadcastStorageStatus).toHaveBeenCalledWith({
 			type: "storage_status_updated",
 			storageStatus: {
@@ -581,7 +580,7 @@ describe("coordinator websocket control messages", () => {
 	it("leaves purged history blobs retryable when immediate R2 deletion fails", async () => {
 		const stateRepository = socketStateRepository();
 		const blobRepository = {
-			delete: vi.fn(async () => {
+			deleteMany: vi.fn(async () => {
 				throw new Error("r2 unavailable");
 			}),
 		};
@@ -597,21 +596,22 @@ describe("coordinator websocket control messages", () => {
 				}),
 		);
 		const markBlobPendingDeleteIfUnpinned = vi.fn();
-		const deleteBlobIfCollectible = vi.fn();
+		const deleteCollectibleBlobs = vi.fn();
+		const candidate = {
+			blob_id: "blob-1",
+			state: "pending_delete" as const,
+			size_bytes: 100,
+			created_at: 1,
+			last_uploaded_at: 1,
+			delete_after: 1,
+		};
 		const service = createCoordinatorService({
 			stateRepository: {
 				...stateRepository,
 					withDeletedEntryPurgeTransaction,
 				markBlobPendingDeleteIfUnpinned,
-				readCollectibleBlob: vi.fn(() => ({
-					blob_id: "blob-1",
-					state: "pending_delete",
-					size_bytes: 100,
-					created_at: 1,
-					last_uploaded_at: 1,
-					delete_after: 1,
-				})),
-				deleteBlobIfCollectible,
+				readCollectibleBlob: vi.fn(() => candidate),
+				deleteCollectibleBlobs,
 				nextGcAt: vi.fn(() => 1),
 			} as never,
 			socketService: socketServiceMock(),
@@ -644,8 +644,8 @@ describe("coordinator websocket control messages", () => {
 			"blob-1",
 			expect.any(Number),
 		);
-		expect(blobRepository.delete).toHaveBeenCalledWith("vault-1/blob-1");
-		expect(deleteBlobIfCollectible).not.toHaveBeenCalled();
+		expect(blobRepository.deleteMany).toHaveBeenCalledWith(["vault-1/blob-1"]);
+		expect(deleteCollectibleBlobs).not.toHaveBeenCalled();
 		consoleError.mockRestore();
 	});
 

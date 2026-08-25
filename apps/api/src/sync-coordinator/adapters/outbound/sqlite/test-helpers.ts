@@ -61,6 +61,7 @@ export async function createSqliteCoordinator(
 		{
 			exists: async () => true,
 			delete: async () => {},
+			deleteMany: async () => ({ failedKeys: [] }),
 			deleteByPrefix: async () => {},
 		},
 		{

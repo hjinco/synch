@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 
 import { SyncCoordinatorApplicationError } from "../../../application/errors/coordinator-errors";
+import { GC_BATCH_SIZE } from "../../../application/services/blob-gc-service";
 import { stageBlobForTest } from "../../../test-helpers";
 import { CoordinatorBlobStore } from "./blob-store";
 import {
@@ -132,6 +133,58 @@ describe("sqlite backend: blob staging", () => {
 
 		blobGcStore.deleteBlobIfCollectible("blob-1", 2_000);
 		expect(blobStore.readBlob("blob-1")).toBeNull();
+	});
+
+	it("deletes a collectible batch in one statement and skips referenced blobs", async () => {
+		const { blobStore, blobGcStore, handle, healthStore } =
+			await createSqliteCoordinator();
+		await stage(blobStore, "blob-a", 100, 1_000, 1_500);
+		await stage(blobStore, "blob-b", 50, 1_000, 1_500);
+		await stage(blobStore, "blob-referenced", 25, 1_000, 1_500);
+		handle.exec(
+			`
+			INSERT INTO entries (
+				entry_id, revision, blob_id, encrypted_metadata, deleted,
+				updated_seq, updated_at, updated_by_user_id,
+				updated_by_local_vault_id, last_mutation_id
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			`,
+			"entry-referenced",
+			1,
+			"blob-referenced",
+			"metadata",
+			0,
+			1,
+			1_000,
+			"user-1",
+			"local-1",
+			"mutation-1",
+		);
+
+		expect(
+			blobGcStore
+				.deleteCollectibleBlobs(["blob-a", "blob-b", "blob-referenced"], 2_000)
+				.map((blob) => blob.blob_id)
+				.sort(),
+		).toEqual(["blob-a", "blob-b"]);
+		expect(blobStore.readBlob("blob-a")).toBeNull();
+		expect(blobStore.readBlob("blob-b")).toBeNull();
+		expect(blobStore.readBlob("blob-referenced")?.state).toBe("staged");
+		expect(healthStore.readStorageStatus().storageUsedBytes).toBe(25);
+	});
+
+	it("deletes more collectible blobs than the durable object parameter limit allows", async () => {
+		const { blobStore, blobGcStore, healthStore } = await createSqliteCoordinator();
+		const blobIds = Array.from({ length: 101 }, (_, index) => `blob-${index}`);
+		for (const blobId of blobIds) {
+			await stage(blobStore, blobId, 1, 1_000, 1_500);
+		}
+
+		expect(
+			blobGcStore.deleteCollectibleBlobs(blobIds, 2_000).map((blob) => blob.blob_id).sort(),
+		).toEqual([...blobIds].sort());
+		expect(blobIds.every((blobId) => blobStore.readBlob(blobId) === null)).toBe(true);
+		expect(healthStore.readStorageStatus().storageUsedBytes).toBe(0);
 	});
 
 	it("deletes an unreferenced staged blob and reports a missing row", async () => {
@@ -294,17 +347,18 @@ describe("sqlite backend: blob staging", () => {
 
 	it("keeps due GC work scheduled after the first deletion batch", async () => {
 		const { blobStore, blobGcStore } = await createSqliteCoordinator();
-		for (let i = 0; i < 65; i += 1) {
+		for (let i = 0; i < GC_BATCH_SIZE + 1; i += 1) {
 			await stage(blobStore, `blob-${i}`, 1, 1_000, 1_500);
 		}
 
-		const firstBatch = blobGcStore.listCollectibleBlobs(2_000, 64);
-		expect(firstBatch).toHaveLength(64);
-		for (const blob of firstBatch) {
-			expect(blobGcStore.deleteBlobIfCollectible(blob.blob_id, 2_000)).toBe(
-				"deleted",
-			);
-		}
+		const firstBatch = blobGcStore.listCollectibleBlobs(2_000, GC_BATCH_SIZE);
+		expect(firstBatch).toHaveLength(GC_BATCH_SIZE);
+		expect(
+			blobGcStore.deleteCollectibleBlobs(
+				firstBatch.map((blob) => blob.blob_id),
+				2_000,
+			),
+		).toHaveLength(GC_BATCH_SIZE);
 
 		expect(blobGcStore.nextGcAt(2_000)).toBe(2_000);
 	});

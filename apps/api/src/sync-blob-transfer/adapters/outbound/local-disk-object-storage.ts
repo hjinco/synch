@@ -50,6 +50,15 @@ export class LocalDiskBlobObjectStorage implements BlobObjectStorage {
 		await rm(this.resolveKeyPath(key), { force: true });
 	}
 
+	async deleteMany(keys: readonly string[]): Promise<{ failedKeys: readonly string[] }> {
+		const results = await Promise.allSettled(keys.map((key) => this.delete(key)));
+		return {
+			failedKeys: results.flatMap((result, index) =>
+				result.status === "rejected" ? [keys[index]] : [],
+			),
+		};
+	}
+
 	async deleteByPrefix(prefix: string): Promise<void> {
 		await rm(this.resolveKeyPath(prefix), { recursive: true, force: true });
 	}

@@ -22,6 +22,7 @@ function storage(overrides: Partial<{
 		upload: vi.fn(async () => ({ size: 3, sizeMismatch: false })),
 		download: vi.fn(async () => body("blob")),
 		delete: vi.fn(async () => {}),
+		deleteMany: vi.fn(async () => ({ failedKeys: [] })),
 		deleteByPrefix: vi.fn(async () => {}),
 		exists: vi.fn(async () => false),
 		...overrides,
