@@ -22,7 +22,6 @@ import {
 import type { BlobObjectStorage } from "../sync-blob-transfer/application/ports/outbound/blob-object-storage";
 import { blobObjectKey, blobObjectKeyPrefix } from "../platform/blob/object-key";
 import type { VaultPurgeMessage } from "../vault/application";
-import { GetSystemHealthUseCase } from "../system-health/application/use-cases/get-system-health";
 
 export type ApiApplicationDependencies = {
 	db: AppDb;
@@ -91,7 +90,6 @@ export function createApiApplication(
 		objectKeyBuilder: { blobObjectKey, blobObjectKeyPrefix },
 	});
 	const pluginVersionChecker = new CheckPluginVersionUseCase();
-	const systemHealth = new GetSystemHealthUseCase();
 
 	return {
 		app: createApp(
@@ -106,7 +104,6 @@ export function createApiApplication(
 				coordinatorProxyRepository,
 				subscriptionPolicyService: subscriptionFeature.policyReader,
 				pluginVersionChecker,
-				systemHealth,
 				billingService: billingFeature.service,
 			},
 			{

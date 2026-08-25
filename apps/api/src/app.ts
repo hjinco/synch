@@ -11,8 +11,6 @@ import { onError } from "./errors";
 import type { CheckPluginVersion } from "./plugin-version/application";
 import { registerPluginVersionRoutes } from "./plugin-version/adapters/inbound/http/routes";
 import type { SubscriptionPolicyReader } from "./subscription/application";
-import type { GetSystemHealth } from "./system-health/application";
-import { registerSystemHealthRoutes } from "./system-health/adapters/inbound/http/routes";
 import type { IssueSyncToken } from "./sync-access/application";
 import { mapSyncAccessApplicationError } from "./sync-access/adapters/inbound/http/error-mapper";
 import { registerSyncAccessRoutes } from "./sync-access/adapters/inbound/http/routes";
@@ -40,7 +38,6 @@ export type AppDependencies = {
 	vaultService: VaultService;
 	subscriptionPolicyService: SubscriptionPolicyReader;
 	pluginVersionChecker: CheckPluginVersion;
-	systemHealth: GetSystemHealth;
 	billingService?: BillingService;
 };
 
@@ -63,7 +60,12 @@ export function createApp(deps: AppDependencies, config: AppConfig): Hono {
 	);
 
 	registerAuthRoutes(app, deps.authHttpHandler);
-	registerSystemHealthRoutes(app, deps.systemHealth);
+	app.get("/health", (c) =>
+		c.json({
+			ok: true,
+			service: "synch-api",
+		}),
+	);
 	registerPluginVersionRoutes(app, deps.pluginVersionChecker);
 	registerSyncAccessRoutes(app, {
 		syncTokenIssuer: deps.syncTokenIssuer,
