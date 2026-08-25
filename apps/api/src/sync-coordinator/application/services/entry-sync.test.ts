@@ -6,7 +6,7 @@ import {
 	createTestCoordinatorState,
 	testSocketSession,
 	testWebSocket,
-} from "../../../test-helpers";
+} from "../../test-helpers";
 
 describe("coordinator entry-state sync", () => {
 	it("lists entry-state delta pages over the websocket control channel", async () => {

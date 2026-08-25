@@ -9,7 +9,6 @@ export type {
 	EntryStateStore,
 } from "./entry-store";
 export type {
-	MutationCommitter,
 	MutationEntrySnapshot,
 	MutationStore,
 	MutationTransaction,
@@ -23,14 +22,13 @@ export type {
 	BlobGcCandidate,
 	BlobGcDeleteResult,
 	BlobGcStore,
-	PurgedBlobCollector,
 } from "./blob-gc-store";
-export type { BlobGcScheduler } from "./blob-gc-scheduler";
 export type { StaleStagedBlobStore, UnreferencedStagedBlobDeleteResult } from "./stale-staged-blob-store";
-export type { StorageStatusNotifier } from "./storage-status-notifier";
 export type {
 	HealthStateStore,
-	HealthSummaryScheduler,
+	VaultHealthSnapshot,
+	VaultSyncStatusSummary,
+	VaultSyncStatusWriter,
 } from "./health-store";
 export type {
 	MaintenanceJobHandler,
@@ -40,4 +38,8 @@ export type {
 	MaintenanceScheduler,
 } from "./scheduler";
 export type { SocketGateway } from "./socket-gateway";
-export type { SyncPauseState, SyncRepairIssue, SyncRepairResult } from "../../dto/sync-repair";
+export type {
+	SyncPauseState,
+	SyncRepairIssue,
+	SyncRepairResult,
+} from "../../dto/sync-repair";

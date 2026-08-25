@@ -6,15 +6,12 @@ import { onError } from "../../../../errors";
 import { mapSyncCoordinatorApplicationError } from "./error-mapper";
 import { BLOB_SIZE_HEADER, parseBlobSizeHeader } from "../../../../platform/http/blob-size";
 import { parseBearerToken, SYNC_WEBSOCKET_AUTH_PROTOCOL_PREFIX } from "../../../../sync-access/application";
-import type { SyncRepairResult } from "../../../application/ports/outbound";
+import type { SyncPauseState, SyncRepairResult } from "../../../application/dto/sync-repair";
 import type { SocketSession, VaultStateLimits } from "../../../application/dto/types";
 
 export interface CoordinatorHttpUseCases {
 	repairSyncState(vaultId: string): Promise<SyncRepairResult>;
-	readSyncPause(vaultId: string): {
-		pausedAt: number;
-		reason: string;
-	} | null;
+	readSyncPause(vaultId: string): SyncPauseState | null;
 	stageBlob(
 		token: string | null,
 		vaultId: string,

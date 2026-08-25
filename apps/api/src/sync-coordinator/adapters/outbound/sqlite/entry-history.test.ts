@@ -3,9 +3,6 @@ import { afterEach, describe, expect, it } from "vitest";
 import { decideDeletedEntryPurge } from "../../../domain/entry-policy";
 import { closeAllTestSqliteCoordinators, createSqliteCoordinator, testSession } from "./test-helpers";
 
-const STAGE_GRACE_PERIOD_MS = 30 * 60 * 1000;
-const VERSION_HISTORY_RETENTION_MS = 24 * 60 * 60 * 1000;
-
 afterEach(() => {
 	closeAllTestSqliteCoordinators();
 });
@@ -16,25 +13,20 @@ async function commit(
 	mutationId: string,
 	baseRevision: number,
 ) {
-	return store.commitMutations(
-		testSession(),
-		{
-			type: "commit_mutations",
-			requestId: `req-${mutationId}`,
-			mutations: [
-				{
-					mutationId,
-					entryId,
-					op: "upsert",
-					baseRevision,
-					blobId: null,
-					encryptedMetadata: `ciphertext-${mutationId}`,
-				},
-			],
-		},
-		STAGE_GRACE_PERIOD_MS,
-		VERSION_HISTORY_RETENTION_MS,
-	);
+	return store.commitMutations(testSession(), {
+		type: "commit_mutations",
+		requestId: `req-${mutationId}`,
+		mutations: [
+			{
+				mutationId,
+				entryId,
+				op: "upsert",
+				baseRevision,
+				blobId: null,
+				encryptedMetadata: `ciphertext-${mutationId}`,
+			},
+		],
+	});
 }
 
 describe("sqlite backend: entry state listing", () => {
@@ -91,8 +83,6 @@ describe("sqlite backend: entry history", () => {
 					},
 				],
 			},
-			STAGE_GRACE_PERIOD_MS,
-			VERSION_HISTORY_RETENTION_MS,
 		);
 
 		const decision = historyStore.withDeletedEntryPurgeTransaction(

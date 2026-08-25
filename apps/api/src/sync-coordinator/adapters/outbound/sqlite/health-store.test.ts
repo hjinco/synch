@@ -34,8 +34,6 @@ describe("sqlite backend: health summary", () => {
 					},
 				],
 			},
-			30 * 60 * 1000,
-			24 * 60 * 60 * 1000,
 		);
 
 		const snapshot = healthStore.readHealthSnapshot(10_000, 30 * 24 * 60 * 60 * 1000);

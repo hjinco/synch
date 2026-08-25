@@ -1,14 +1,14 @@
 import { describe, expect, it, vi } from "vitest";
 
-import type { SyncTokenVerifier } from "../../ports/outbound";
-import { CoordinatorSocketConnectionService } from "./connection-service";
+import type { SyncTokenVerifier } from "../ports/outbound";
+import { SocketConnectionService } from "./socket-connection-service";
 
-describe("CoordinatorSocketConnectionService", () => {
+describe("SocketConnectionService", () => {
 	it("maps verified claims to a socket session and schedules health", async () => {
 		const syncTokenVerifier = createSyncTokenVerifier();
 		const vaultInitializer = { ensureVaultState: vi.fn(async () => {}) };
 		const healthSummaryScheduler = { scheduleSummaryFlush: vi.fn(async () => {}) };
-		const service = new CoordinatorSocketConnectionService(
+		const service = new SocketConnectionService(
 			syncTokenVerifier,
 			vaultInitializer,
 			healthSummaryScheduler,
@@ -31,7 +31,7 @@ describe("CoordinatorSocketConnectionService", () => {
 		const syncTokenVerifier = createSyncTokenVerifier();
 		vi.mocked(syncTokenVerifier.verifySyncToken).mockRejectedValue(error);
 		const vaultInitializer = { ensureVaultState: vi.fn(async () => {}) };
-		const service = new CoordinatorSocketConnectionService(
+		const service = new SocketConnectionService(
 			syncTokenVerifier,
 			vaultInitializer,
 			{ scheduleSummaryFlush: vi.fn(async () => {}) },
@@ -45,7 +45,7 @@ describe("CoordinatorSocketConnectionService", () => {
 		const error = new Error("vault unavailable");
 		const vaultInitializer = { ensureVaultState: vi.fn(async () => { throw error; }) };
 		const scheduler = { scheduleSummaryFlush: vi.fn(async () => {}) };
-		const service = new CoordinatorSocketConnectionService(
+		const service = new SocketConnectionService(
 			createSyncTokenVerifier(),
 			vaultInitializer,
 			scheduler,

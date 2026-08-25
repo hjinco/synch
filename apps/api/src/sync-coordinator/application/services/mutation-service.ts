@@ -1,12 +1,10 @@
-import { decideEntryMutation } from "../../../domain/entry-policy";
+import { decideEntryMutation } from "../../domain/entry-policy";
 import type {
-	BlobGcScheduler,
 	BlobObjectKeyBuilder,
 	BlobObjectRepository,
-	HealthSummaryScheduler,
 	MutationStore,
 	VaultStateStore,
-} from "../../ports/outbound";
+} from "../ports/outbound";
 import type {
 	CommitMutationBatchResult,
 	CommitMutationMessage,
@@ -14,12 +12,14 @@ import type {
 	CommitMutationsMessage,
 	CommitMutationsResult,
 	SocketSession,
-} from "../../dto/types";
+} from "../dto/types";
+import type { BlobGcService } from "./blob-gc-service";
+import type { HealthService } from "./health-service";
 
-export class MutationCommitService {
+export class MutationService {
 	constructor(
 		private readonly mutationStore: MutationStore,
-		private readonly blobGcScheduler: BlobGcScheduler,
+		private readonly blobGcService: Pick<BlobGcService, "scheduleNext">,
 		private readonly vaultStateStore: Pick<
 			VaultStateStore,
 			"readVersionHistoryRetentionDays"
@@ -27,7 +27,7 @@ export class MutationCommitService {
 		private readonly blobRepository: BlobObjectRepository,
 		private readonly objectKeyBuilder: BlobObjectKeyBuilder,
 		private readonly blobGracePeriodMs: number,
-		private readonly healthSummaryScheduler: HealthSummaryScheduler,
+		private readonly healthService: Pick<HealthService, "scheduleSummaryFlush">,
 	) {}
 
 	async commitMutations(
@@ -246,8 +246,8 @@ export class MutationCommitService {
 		});
 
 		if (result.broadcastCursor !== null) {
-			await this.blobGcScheduler.scheduleNext();
-			await this.healthSummaryScheduler.scheduleSummaryFlush();
+			await this.blobGcService.scheduleNext();
+			await this.healthService.scheduleSummaryFlush();
 		}
 		return result;
 	}

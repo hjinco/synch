@@ -43,8 +43,6 @@ describe("sqlite backend: storage lifecycle", () => {
 					},
 				],
 			},
-			30 * 60 * 1000,
-			24 * 60 * 60 * 1000,
 		);
 		expect(entryStore.readEntry("entry-1")).not.toBeNull();
 

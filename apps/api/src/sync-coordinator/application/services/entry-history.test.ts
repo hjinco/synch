@@ -6,7 +6,7 @@ import {
 	createTestCoordinatorState,
 	testSocketSession,
 	testWebSocket,
-} from "../../../test-helpers";
+} from "../../test-helpers";
 
 describe("coordinator entry version history", () => {
 	it("lists entry history over the websocket control channel", async () => {
@@ -88,7 +88,10 @@ describe("coordinator entry version history", () => {
 			})),
 		});
 		const service = createCoordinatorService({ stateRepository });
-		const commitMutation = vi.spyOn(service, "commitMutation").mockResolvedValue({
+		const commitMutation = vi.spyOn(
+			service.mutationService,
+			"commitMutation",
+		).mockResolvedValue({
 			message: {
 				type: "commit_accepted",
 				requestId: "request-restore",
@@ -165,7 +168,10 @@ describe("coordinator entry version history", () => {
 			})),
 		});
 		const service = createCoordinatorService({ stateRepository });
-		const commitMutations = vi.spyOn(service, "commitMutations").mockResolvedValue({
+		const commitMutations = vi.spyOn(
+			service.mutationService,
+			"commitMutations",
+		).mockResolvedValue({
 			message: {
 				type: "commit_mutations_committed",
 				requestId: "request-restore-batch",

@@ -12,7 +12,3 @@ export interface BlobGcStore {
 	deleteBlobIfCollectible(blobId: string, now: number): BlobGcDeleteResult;
 	nextGcAt(now: number): number | null;
 }
-
-export interface PurgedBlobCollector {
-	collectPurgedBlobs(vaultId: string, blobIds: readonly string[]): Promise<void>;
-}

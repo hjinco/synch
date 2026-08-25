@@ -11,7 +11,7 @@ import { CoordinatorEntryStore } from "./entry-store";
 import { CoordinatorHealthStore } from "./health-store";
 import { CoordinatorHistoryStore } from "./history-store";
 import { CoordinatorMutationStore } from "./mutation-store";
-import { MutationCommitService } from "../../../application/use-cases/mutation/commit-service";
+import { MutationService } from "../../../application/services/mutation-service";
 import {
 	openExclusiveSqliteConnection,
 	SqliteCoordinatorStorageHandle,
@@ -54,14 +54,9 @@ export async function createSqliteCoordinator(
 	const blobGcStore = new CoordinatorBlobGcStore(handle);
 	const staleStagedBlobStore = new CoordinatorStaleStagedBlobStore(handle);
 	const mutationStoreAdapter = new CoordinatorMutationStore(handle);
-	const blobGcScheduler = {
-		scheduleAt: async () => {},
-		scheduleNext: async () => null,
-		scheduleNow: async () => {},
-	};
-	const mutationService = new MutationCommitService(
+	const mutationService = new MutationService(
 		mutationStoreAdapter,
-		blobGcScheduler,
+		{ scheduleNext: async () => null },
 		cursorStore,
 		{
 			exists: async () => true,
@@ -77,15 +72,14 @@ export async function createSqliteCoordinator(
 	);
 	const mutationStore = {
 		commitMutations: (
-			session: Parameters<MutationCommitService["commitMutations"]>[0],
-			message: Parameters<MutationCommitService["commitMutations"]>[1],
-			_stageGracePeriodMs?: number,
-			_versionHistoryRetentionMs?: number,
-		) => mutationService.commitMutations(session, message),
+			session: Parameters<MutationService["commitMutations"]>[0],
+			message: Parameters<MutationService["commitMutations"]>[1],
+			options?: Parameters<MutationService["commitMutations"]>[2],
+		) => mutationService.commitMutations(session, message, options),
 		commitMutation: (
-			session: Parameters<MutationCommitService["commitMutation"]>[0],
-			message: Parameters<MutationCommitService["commitMutation"]>[1],
-			options?: Parameters<MutationCommitService["commitMutation"]>[2],
+			session: Parameters<MutationService["commitMutation"]>[0],
+			message: Parameters<MutationService["commitMutation"]>[1],
+			options?: Parameters<MutationService["commitMutation"]>[2],
 		) => mutationService.commitMutation(session, message, options),
 	};
 

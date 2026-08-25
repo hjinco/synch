@@ -1,30 +1,97 @@
 import type {
 	BlobObjectRepository,
 	BlobObjectKeyBuilder,
-	BlobGcScheduler,
 	BlobGcStore,
-	SyncRepairResult,
-	SyncPauseState,
+	CoordinatorStorageLifecycle,
+	HealthStateStore,
+	InitialVaultLimitReader,
+	SocketGateway,
 	StaleStagedBlobStore,
 	VaultStateStore,
-} from "../../ports/outbound";
-import { STAGED_BLOB_STALE_MS } from "../../../domain/health-policy";
+} from "../ports/outbound";
+import type { SyncPauseState, SyncRepairResult } from "../dto/sync-repair";
+import type { SocketSession, VaultStateLimits } from "../dto/types";
+import { STAGED_BLOB_STALE_MS } from "../../domain/health-policy";
+import type { BlobGcService } from "./blob-gc-service";
+import type { HealthService } from "./health-service";
 
-const MAX_REPAIRABLE_STALE_STAGED_BLOBS = 100;
+export const MAX_REPAIRABLE_STALE_STAGED_BLOBS = 100;
 const STALE_BLOB_PAUSE_REASON_PREFIX = "staged blob ";
 
-export class CoordinatorSyncRepairService {
+export class VaultService {
+	private purged = false;
+
 	constructor(
+		private readonly storage: CoordinatorStorageLifecycle,
+		private readonly vaultStateStore: VaultStateStore,
+		private readonly healthStore: Pick<HealthStateStore, "readStorageStatus">,
+		private readonly socketGateway: Pick<
+			SocketGateway,
+			"broadcastPolicyUpdated" | "closeAllSockets"
+		>,
+		private readonly blobRepository: BlobObjectRepository,
+		private readonly objectKeyBuilder: BlobObjectKeyBuilder,
+		private readonly initialVaultLimitReader: InitialVaultLimitReader,
+		private readonly healthService: Pick<HealthService, "scheduleSummaryFlush">,
 		private readonly staleStagedBlobStore: StaleStagedBlobStore,
 		private readonly blobGcStore: BlobGcStore,
-		private readonly vaultStateStore: Pick<
-			VaultStateStore,
-			"vaultStateExistsFor" | "readSyncPause" | "clearSyncPause"
-		>,
-		private readonly blobStorage: BlobObjectRepository,
-		private readonly objectKeyBuilder: BlobObjectKeyBuilder,
-		private readonly blobGcScheduler: BlobGcScheduler,
+		private readonly blobGcService: Pick<BlobGcService, "scheduleNow">,
 	) {}
+
+	isPurged(): boolean {
+		return this.purged;
+	}
+
+	readSyncPause(vaultId: string): SyncPauseState | null {
+		if (!this.vaultStateStore.vaultStateExistsFor(vaultId)) {
+			return null;
+		}
+		return this.vaultStateStore.readSyncPause();
+	}
+
+	async ensureVaultState(vaultId: string): Promise<void> {
+		if (this.vaultStateStore.vaultStateExistsFor(vaultId)) {
+			return;
+		}
+
+		const initialLimits =
+			await this.initialVaultLimitReader.readInitialVaultLimits(vaultId);
+		this.vaultStateStore.ensureVaultState(vaultId, initialLimits);
+	}
+
+	async detachLocalVault(session: SocketSession): Promise<void> {
+		this.vaultStateStore.deleteLocalVaultConnection(
+			session.userId,
+			session.localVaultId,
+		);
+		await this.healthService.scheduleSummaryFlush();
+	}
+
+	async applyVaultPolicy(
+		vaultId: string,
+		limits: VaultStateLimits,
+	): Promise<{ applied: boolean }> {
+		const applied = this.vaultStateStore.applyVaultPolicy(vaultId, limits);
+		if (applied) {
+			await this.healthService.scheduleSummaryFlush();
+			this.socketGateway.broadcastPolicyUpdated({
+				type: "policy_updated",
+				policy: {
+					storageLimitBytes: limits.storageLimitBytes,
+					maxFileSizeBytes: limits.maxFileSizeBytes,
+				},
+				storageStatus: this.healthStore.readStorageStatus(),
+			});
+		}
+		return { applied };
+	}
+
+	async purgeVault(vaultId: string): Promise<void> {
+		this.purged = true;
+		this.socketGateway.closeAllSockets(4403, "vault deleted");
+		await this.blobRepository.deleteByPrefix(this.objectKeyBuilder.blobObjectKeyPrefix(vaultId));
+		await this.storage.purgeVaultState();
+	}
 
 	async repairSyncState(vaultId: string): Promise<SyncRepairResult> {
 		if (!this.vaultStateStore.vaultStateExistsFor(vaultId)) {
@@ -74,7 +141,7 @@ export class CoordinatorSyncRepairService {
 			}
 
 			try {
-				await this.blobStorage.delete(
+				await this.blobRepository.delete(
 					this.objectKeyBuilder.blobObjectKey(vaultId, blob.blob_id),
 				);
 			} catch (error) {
@@ -102,7 +169,7 @@ export class CoordinatorSyncRepairService {
 		// Re-arm the shared GC job after repair. The scheduler buckets this to
 		// the next alarm boundary and the normal GC handler will remove the job
 		// or compute the next real deadline.
-		await this.blobGcScheduler.scheduleNow(now);
+		await this.blobGcService.scheduleNow(now);
 
 		if (issue || remainingStaleBlobs.length > 0) {
 			return repairRequiredResult(

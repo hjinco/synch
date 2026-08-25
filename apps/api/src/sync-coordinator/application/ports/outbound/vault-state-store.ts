@@ -1,6 +1,8 @@
 import type { SyncPauseState } from "../../dto/sync-repair";
 import type { VaultStateLimits } from "../../dto/types";
 
+export type { SyncPauseState };
+
 export interface InitialVaultLimitReader {
 	readInitialVaultLimits(vaultId: string): Promise<VaultStateLimits>;
 }

@@ -3,16 +3,15 @@ import { describe, expect, it, vi } from "vitest";
 import {
 	ACTIVE_WITHOUT_RECENT_COMMIT_MS,
 	PENDING_DELETE_STALE_MS,
-} from "../../../domain/health-policy";
-import { HealthSyncService } from "./sync-service";
-import type { HealthStateStore } from "../../ports/outbound";
-import type { VaultHealthSnapshot } from "../../dto/health";
+} from "../../domain/health-policy";
+import { HealthService } from "./health-service";
+import type { HealthStateStore, VaultHealthSnapshot } from "../ports/outbound";
 
-describe("HealthSyncService", () => {
+describe("HealthService", () => {
 	it("coalesces delayed health summary flush scheduling", async () => {
 		const stateRepository = createStateRepository();
 		const deferMaintenance = vi.fn(async () => {});
-		const service = new HealthSyncService(
+		const service = new HealthService(
 			stateRepository,
 			null,
 			30 * 24 * 60 * 60 * 1000,
@@ -34,7 +33,7 @@ describe("HealthSyncService", () => {
 	it("keeps the earliest scheduled flush after later activity", async () => {
 		const stateRepository = createStateRepository();
 		const deferMaintenance = vi.fn(async () => {});
-		const service = new HealthSyncService(
+		const service = new HealthService(
 			stateRepository,
 			null,
 			30 * 24 * 60 * 60 * 1000,
@@ -55,7 +54,7 @@ describe("HealthSyncService", () => {
 			upsert: vi.fn(async () => {}),
 		};
 		const deferMaintenance = vi.fn(async () => {});
-		const service = new HealthSyncService(
+		const service = new HealthService(
 			stateRepository,
 			syncStatusRepository,
 			30 * 24 * 60 * 60 * 1000,
@@ -85,7 +84,7 @@ describe("HealthSyncService", () => {
 			upsert: vi.fn(async () => {}),
 		};
 		const deferMaintenance = vi.fn(async () => {});
-		const service = new HealthSyncService(
+		const service = new HealthService(
 			stateRepository,
 			syncStatusRepository,
 			30 * 24 * 60 * 60 * 1000,
@@ -105,7 +104,7 @@ describe("HealthSyncService", () => {
 	it("evaluates health policy before persisting the summary", async () => {
 		const now = PENDING_DELETE_STALE_MS;
 		const upsert = vi.fn(async () => {});
-		const service = new HealthSyncService(
+		const service = new HealthService(
 			createStateRepository({
 				readHealthSnapshot: vi.fn(() =>
 					createSnapshot({
@@ -137,7 +136,7 @@ describe("HealthSyncService", () => {
 		const now = lastCommitAt + ACTIVE_WITHOUT_RECENT_COMMIT_MS;
 		const upsert = vi.fn(async () => {});
 		const deferMaintenance = vi.fn(async () => {});
-		const service = new HealthSyncService(
+		const service = new HealthService(
 			createStateRepository({
 				readHealthSnapshot: vi.fn(() => createSnapshot({ lastCommitAt })),
 			}),
@@ -155,6 +154,57 @@ describe("HealthSyncService", () => {
 			}),
 			now,
 		);
+	});
+
+	it("re-arms an immediate flush when persistence fails", async () => {
+		const now = 61_000;
+		const failure = new Error("status write failed");
+		const deferMaintenance = vi.fn(async () => {});
+		const service = new HealthService(
+			createStateRepository({
+				readHealthSnapshot: vi.fn(() => createSnapshot({ lastCommitAt: 1_000 })),
+			}),
+			{
+				upsert: vi.fn(async () => {
+					throw failure;
+				}),
+			},
+			30 * 24 * 60 * 60 * 1000,
+			{ defer: deferMaintenance },
+		);
+
+		await expect(service.flushSummary({ now })).resolves.toBeNull();
+		expect(deferMaintenance).toHaveBeenCalledWith("health_summary_flush", now, now);
+
+		await service.scheduleSummaryFlush(now);
+		expect(deferMaintenance).toHaveBeenCalledWith(
+			"health_summary_flush",
+			now + 10 * 60 * 1000,
+			now,
+		);
+	});
+
+	it("rethrows persistence failures when throwOnError is set", async () => {
+		const now = 61_000;
+		const failure = new Error("status write failed");
+		const deferMaintenance = vi.fn(async () => {});
+		const service = new HealthService(
+			createStateRepository({
+				readHealthSnapshot: vi.fn(() => createSnapshot({ lastCommitAt: 1_000 })),
+			}),
+			{
+				upsert: vi.fn(async () => {
+					throw failure;
+				}),
+			},
+			30 * 24 * 60 * 60 * 1000,
+			{ defer: deferMaintenance },
+		);
+
+		await expect(service.flushSummary({ now, throwOnError: true })).rejects.toBe(
+			failure,
+		);
+		expect(deferMaintenance).not.toHaveBeenCalled();
 	});
 });
 

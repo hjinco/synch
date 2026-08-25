@@ -1,12 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
-import { SyncCoordinatorApplicationError } from "../../errors/coordinator-errors";
-import { STAGED_BLOB_STALE_MS } from "../../../domain/health-policy";
-import type { BlobObjectRepository, SyncTokenVerifier } from "../../ports/outbound";
+import { SyncCoordinatorApplicationError } from "../errors/coordinator-errors";
+import { STAGED_BLOB_STALE_MS } from "../../domain/health-policy";
+import type { BlobObjectRepository, SyncTokenVerifier } from "../ports/outbound";
 import {
 	createCoordinatorService,
 	createTestCoordinatorState,
 	socketServiceMock,
-} from "../../../test-helpers";
+} from "../../test-helpers";
 
 describe("coordinator blob lifecycle", () => {
 	it("coalesces storage status broadcasts and sends the latest snapshot", async () => {

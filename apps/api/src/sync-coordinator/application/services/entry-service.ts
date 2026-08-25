@@ -1,15 +1,17 @@
-import { SyncCoordinatorApplicationError } from "../../errors/coordinator-errors";
+import { SyncCoordinatorApplicationError } from "../errors/coordinator-errors";
 import {
 	decideDeletedEntryPurge,
 	isCurrentRevision,
 	isRestorePayloadCompatible,
-} from "../../../domain/entry-policy";
+} from "../../domain/entry-policy";
 import type {
 	CommitMutationsMessage,
 	DeletedEntriesPurgeResult,
 	DeletedEntriesListedMessage,
+	EntryStatesListedMessage,
 	EntryVersionsListedMessage,
 	ListDeletedEntriesMessage,
+	ListEntryStatesMessage,
 	ListEntryVersionsMessage,
 	PurgeDeletedEntriesMessage,
 	PurgeDeletedEntryBatchResult,
@@ -19,19 +21,20 @@ import type {
 	RestoreEntryVersionsMessage,
 	RestoreEntryVersionsResult,
 	SocketSession,
-} from "../../dto/types";
+} from "../dto/types";
 import type {
 	EntryHistoryStore,
 	EntryStateStore,
-	MutationCommitter,
-	PurgedBlobCollector,
 	VaultStateStore,
-} from "../../ports/outbound";
+} from "../ports/outbound";
+import type { BlobGcService } from "./blob-gc-service";
+import type { MutationService } from "./mutation-service";
 
 const MAX_HISTORY_BATCH = 100;
 const MAX_DELETED_ENTRIES_BATCH = 100;
+const MAX_ENTRY_STATE_BATCH = 500;
 
-export class EntryHistoryService {
+export class EntryService {
 	constructor(
 		private readonly entryStore: EntryStateStore,
 		private readonly historyStore: EntryHistoryStore,
@@ -39,9 +42,62 @@ export class EntryHistoryService {
 			VaultStateStore,
 			"currentCursor" | "readVersionHistoryRetentionDays"
 		>,
-		private readonly mutationCommitter: MutationCommitter,
-		private readonly purgedBlobCollector: PurgedBlobCollector,
+		private readonly mutationService: Pick<
+			MutationService,
+			"commitMutation" | "commitMutations"
+		>,
+		private readonly blobGcService: Pick<BlobGcService, "collectPurgedBlobs">,
 	) {}
+
+	listEntryStates(
+		session: SocketSession,
+		message: ListEntryStatesMessage,
+	): EntryStatesListedMessage {
+		const effectiveLimit = Math.min(message.limit, MAX_ENTRY_STATE_BATCH);
+		const currentCursor = this.vaultStateStore.currentCursor();
+		const targetCursor =
+			message.targetCursor === null
+				? currentCursor
+				: message.targetCursor;
+		validateCursorRange(message, targetCursor, currentCursor);
+		const entries = this.entryStore.listEntryStates(
+			message.sinceCursor,
+			targetCursor,
+			message.after,
+			effectiveLimit + 1,
+		);
+		const totalEntries = this.entryStore.countEntryStates(
+			message.sinceCursor,
+			targetCursor,
+		);
+		const hasMore = entries.length > effectiveLimit;
+		const page = hasMore ? entries.slice(0, effectiveLimit) : entries;
+		const last = page.at(-1);
+
+		return {
+			type: "entry_states_listed",
+			requestId: message.requestId,
+			targetCursor,
+			totalEntries,
+			hasMore,
+			nextAfter:
+				hasMore && last
+					? {
+							updatedSeq: last.updated_seq,
+							entryId: last.entry_id,
+						}
+					: null,
+			entries: page.map((entry) => ({
+				entryId: entry.entry_id,
+				revision: entry.revision,
+				blobId: entry.blob_id,
+				encryptedMetadata: entry.encrypted_metadata,
+				deleted: entry.deleted,
+				updatedSeq: entry.updated_seq,
+				updatedAt: entry.updated_at,
+			})),
+		};
+	}
 
 	async listDeletedEntries(
 		session: SocketSession,
@@ -170,7 +226,7 @@ export class EntryHistoryService {
 			});
 		}
 
-		const committed = await this.mutationCommitter.commitMutation(
+		const committed = await this.mutationService.commitMutation(
 			session,
 			{
 				type: "commit_mutation",
@@ -309,7 +365,7 @@ export class EntryHistoryService {
 			};
 		}
 
-		const committed = await this.mutationCommitter.commitMutations(
+		const committed = await this.mutationService.commitMutations(
 			session,
 			{
 				type: "commit_mutations",
@@ -443,7 +499,7 @@ export class EntryHistoryService {
 			results,
 			candidateBlobIds: [...candidateBlobIds],
 		};
-		await this.purgedBlobCollector.collectPurgedBlobs(
+		await this.blobGcService.collectPurgedBlobs(
 			session.vaultId,
 			purged.candidateBlobIds,
 		);
@@ -464,6 +520,47 @@ export class EntryHistoryService {
 }
 
 const DAY_IN_MS = 24 * 60 * 60 * 1000;
+
+function validateCursorRange(
+	message: ListEntryStatesMessage,
+	targetCursor: number,
+	currentCursor: number,
+): void {
+	if (message.sinceCursor > currentCursor) {
+		throw new EntrySyncRequestError(
+			"cursor_ahead_of_server",
+			"Sync was paused because this device's sync history no longer matches the remote vault. To resume syncing, disconnect and reconnect the remote vault in Synch settings.",
+		);
+	}
+
+	if (targetCursor < message.sinceCursor || targetCursor > currentCursor) {
+		throw new EntrySyncRequestError(
+			"invalid_cursor_range",
+			`Entry-state cursor range must satisfy sinceCursor <= targetCursor <= currentCursor (${message.sinceCursor} <= ${targetCursor} <= ${currentCursor}).`,
+		);
+	}
+
+	if (
+		message.after !== null &&
+		(message.after.updatedSeq <= message.sinceCursor ||
+			message.after.updatedSeq > targetCursor)
+	) {
+		throw new EntrySyncRequestError(
+			"invalid_cursor_range",
+			`Entry-state page cursor ${message.after.updatedSeq} must be within (${message.sinceCursor}, ${targetCursor}].`,
+		);
+	}
+}
+
+class EntrySyncRequestError extends Error {
+	constructor(
+		readonly code: "cursor_ahead_of_server" | "invalid_cursor_range",
+		message: string,
+	) {
+		super(message);
+		this.name = "EntrySyncRequestError";
+	}
+}
 
 function rejectedRestore(
 	restore: RestoreEntryVersionsMessage["restores"][number],

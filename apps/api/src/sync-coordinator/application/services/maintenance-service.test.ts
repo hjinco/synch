@@ -1,11 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { HealthSyncService } from "../health/sync-service";
-import { CoordinatorMaintenanceScheduler } from "../../../adapters/outbound/scheduler/maintenance-scheduler";
-import { CoordinatorMaintenanceService } from "./maintenance-service";
-import { ACTIVE_WITHOUT_RECENT_COMMIT_MS } from "../../../domain/health-policy";
-import type { HealthStateStore } from "../../ports/outbound";
-import type { VaultHealthSnapshot } from "../../dto/health";
+import { HealthService } from "./health-service";
+import { CoordinatorMaintenanceScheduler } from "../../adapters/outbound/scheduler/maintenance-scheduler";
+import { MaintenanceService } from "./maintenance-service";
+import { ACTIVE_WITHOUT_RECENT_COMMIT_MS } from "../../domain/health-policy";
+import type { HealthStateStore, VaultHealthSnapshot } from "../ports/outbound";
 
 type TestJob = {
 	key: string;
@@ -16,7 +15,7 @@ type TestJob = {
 	updatedAt: number;
 };
 
-describe("CoordinatorMaintenanceService health flush drain", () => {
+describe("MaintenanceService health flush drain", () => {
 	afterEach(() => {
 		vi.restoreAllMocks();
 	});
@@ -36,7 +35,7 @@ describe("CoordinatorMaintenanceService health flush drain", () => {
 		const ctx = createTestDurableObjectState(job);
 		const scheduler = new CoordinatorMaintenanceScheduler(ctx);
 		const deferSpy = vi.spyOn(scheduler, "defer");
-		const healthSyncService = new HealthSyncService(
+		const healthService = new HealthService(
 			createStateRepository({
 				readHealthSnapshot: vi.fn(() => createSnapshot({ lastCommitAt })),
 			}),
@@ -44,10 +43,10 @@ describe("CoordinatorMaintenanceService health flush drain", () => {
 			30 * 24 * 60 * 60 * 1000,
 			scheduler,
 		);
-		const maintenanceService = new CoordinatorMaintenanceService(
+		const maintenanceService = new MaintenanceService(
 			scheduler,
 			{ runGc: vi.fn(async () => null) },
-			healthSyncService,
+			healthService,
 			{ isPurged: () => false },
 		);
 
@@ -82,7 +81,7 @@ describe("CoordinatorMaintenanceService health flush drain", () => {
 		};
 		const ctx = createTestDurableObjectState(job);
 		const scheduler = new CoordinatorMaintenanceScheduler(ctx);
-		const healthSyncService = new HealthSyncService(
+		const healthService = new HealthService(
 			createStateRepository({
 				readHealthSnapshot: vi.fn(() => createSnapshot({ lastCommitAt })),
 			}),
@@ -90,10 +89,10 @@ describe("CoordinatorMaintenanceService health flush drain", () => {
 			30 * 24 * 60 * 60 * 1000,
 			scheduler,
 		);
-		const maintenanceService = new CoordinatorMaintenanceService(
+		const maintenanceService = new MaintenanceService(
 			scheduler,
 			{ runGc: vi.fn(async () => null) },
-			healthSyncService,
+			healthService,
 			{ isPurged: () => false },
 		);
 

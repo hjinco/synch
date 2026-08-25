@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { BlobGarbageCollectionService } from "./blob-garbage-collection-service";
+import { BlobGcService } from "./blob-gc-service";
 
 function candidate(blobId: string) {
 	return {
@@ -36,33 +36,29 @@ function createFixture(overrides: Partial<Fixture> = {}) {
 			blobObjectKey: (vaultId: string, blobId: string) => `${vaultId}/${blobId}`,
 			blobObjectKeyPrefix: (vaultId: string) => `${vaultId}/`,
 		},
-		blobGcScheduler: {
-			scheduleAt: vi.fn(async (dueAt: number) => {
-				events.push(`schedule:${dueAt}`);
-			}),
-			scheduleNext: vi.fn(async () => null),
-			scheduleNow: vi.fn(async () => {}),
-		},
 		healthStore: { recordGcCompleted: vi.fn() },
-		maintenanceScheduler: { defer: vi.fn(async () => {}) },
-		healthSummaryScheduler: { scheduleSummaryFlush: vi.fn(async () => {}) },
-		storageStatusNotifier: {
+		maintenanceScheduler: {
+			defer: vi.fn(async (key: string, dueAt: number) => {
+				if (key === "blob_gc") {
+					events.push(`schedule:${dueAt}`);
+				}
+			}),
+		},
+		healthService: {
+			scheduleSummaryFlush: vi.fn(async () => {}),
 			notifyStorageStatusChanged: vi.fn(),
-			dispose: vi.fn(),
 		},
 		...overrides,
 	};
 
-	const useCase = new BlobGarbageCollectionService(
+	const useCase = new BlobGcService(
 		fixture.vaultStateStore,
 		fixture.blobGcStore,
 		fixture.blobStorage,
 		fixture.objectKeyBuilder,
-		fixture.blobGcScheduler,
 		fixture.healthStore,
 		fixture.maintenanceScheduler,
-		fixture.healthSummaryScheduler,
-		fixture.storageStatusNotifier,
+		fixture.healthService,
 	);
 
 	return { fixture, useCase, events };
@@ -89,28 +85,20 @@ type Fixture = {
 		blobObjectKey: (vaultId: string, blobId: string) => string;
 		blobObjectKeyPrefix: (vaultId: string) => string;
 	};
-	blobGcScheduler: {
-		scheduleAt: MockFn<(dueAt: number, now?: number) => Promise<void>>;
-		scheduleNext: MockFn<(now?: number) => Promise<number | null>>;
-		scheduleNow: MockFn<(now?: number) => Promise<void>>;
-	};
 	healthStore: { recordGcCompleted: MockFn<(now?: number) => void> };
 	maintenanceScheduler: {
 		defer: MockFn<(key: string, dueAt: number, now?: number) => Promise<void>>;
 	};
-	healthSummaryScheduler: {
+	healthService: {
 		scheduleSummaryFlush: MockFn<(now?: number) => Promise<void>>;
-	};
-	storageStatusNotifier: {
 		notifyStorageStatusChanged: MockFn<() => void>;
-		dispose: MockFn<() => void>;
 	};
 };
 
 type MockFn<T extends (...args: any[]) => any> = ReturnType<typeof vi.fn<T>>;
 type Candidate = ReturnType<typeof candidate>;
 
-describe("BlobGarbageCollectionService scheduled GC", () => {
+describe("BlobGcService scheduled GC", () => {
 	it("deletes collectible objects before metadata and schedules the next deadline", async () => {
 		const { fixture, useCase, events } = createFixture();
 		fixture.blobGcStore.deleteBlobIfCollectible.mockImplementation(() => {
@@ -138,7 +126,7 @@ describe("BlobGarbageCollectionService scheduled GC", () => {
 			2,
 			2,
 		);
-		expect(fixture.storageStatusNotifier.notifyStorageStatusChanged).toHaveBeenCalledOnce();
+		expect(fixture.healthService.notifyStorageStatusChanged).toHaveBeenCalledOnce();
 	});
 
 	it("does not record completion when object deletion fails", async () => {

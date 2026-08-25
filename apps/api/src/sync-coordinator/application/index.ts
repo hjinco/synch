@@ -5,5 +5,9 @@ export type {
 	CommitMutationsMessage,
 	SocketSession,
 } from "./dto/types";
-export type { SyncPauseState, SyncRepairIssue, SyncRepairResult } from "./dto/sync-repair";
+export type {
+	SyncPauseState,
+	SyncRepairIssue,
+	SyncRepairResult,
+} from "./dto/sync-repair";
 export { SyncCoordinatorApplicationError } from "./errors/coordinator-errors";

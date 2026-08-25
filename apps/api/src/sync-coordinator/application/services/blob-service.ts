@@ -1,25 +1,24 @@
-import { SyncCoordinatorApplicationError } from "../../errors/coordinator-errors";
+import { SyncCoordinatorApplicationError } from "../errors/coordinator-errors";
 import {
 	decideBlobStage,
 	type BlobStageDecision,
-} from "../../../domain/blob-policy";
-import { STAGED_BLOB_STALE_MS } from "../../../domain/health-policy";
+} from "../../domain/blob-policy";
+import { STAGED_BLOB_STALE_MS } from "../../domain/health-policy";
 import type {
-	BlobGcScheduler,
 	BlobObjectKeyBuilder,
 	BlobObjectRepository,
 	BlobStateStore,
-	HealthSummaryScheduler,
 	SocketGateway,
-	StorageStatusNotifier,
 	SyncTokenVerifier,
-} from "../../ports/outbound";
+} from "../ports/outbound";
+import type { BlobGcService } from "./blob-gc-service";
+import type { HealthService } from "./health-service";
 
-export class BlobTransferService {
+export class BlobService {
 	constructor(
 		private readonly syncTokenService: SyncTokenVerifier,
 		private readonly blobStore: BlobStateStore,
-		private readonly blobGcScheduler: BlobGcScheduler,
+		private readonly blobGcService: Pick<BlobGcService, "scheduleAt">,
 		private readonly socketService: Pick<
 			SocketGateway,
 			"closeAllSockets"
@@ -27,13 +26,11 @@ export class BlobTransferService {
 		private readonly blobRepository: BlobObjectRepository,
 		private readonly objectKeyBuilder: BlobObjectKeyBuilder,
 		private readonly blobGracePeriodMs: number,
-		private readonly healthSummaryScheduler: HealthSummaryScheduler,
-		private readonly storageStatusNotifier: StorageStatusNotifier,
+		private readonly healthService: Pick<
+			HealthService,
+			"scheduleSummaryFlush" | "notifyStorageStatusChanged"
+		>,
 	) {}
-
-	dispose(): void {
-		this.storageStatusNotifier.dispose();
-	}
 
 	async stageBlob(
 		token: string | null | undefined,
@@ -75,11 +72,11 @@ export class BlobTransferService {
 			throw syncPausedError();
 		}
 
-		await this.blobGcScheduler.scheduleAt(
+		await this.blobGcService.scheduleAt(
 			now + this.blobGracePeriodMs,
 			now,
 		);
-		this.storageStatusNotifier.notifyStorageStatusChanged();
+		this.healthService.notifyStorageStatusChanged();
 	}
 
 	async abortStagedBlob(
@@ -89,8 +86,8 @@ export class BlobTransferService {
 	): Promise<void> {
 		await this.syncTokenService.verifySyncToken(token, vaultId);
 		this.blobStore.abortStagedBlob(blobId, Date.now());
-		await this.healthSummaryScheduler.scheduleSummaryFlush();
-		this.storageStatusNotifier.notifyStorageStatusChanged();
+		await this.healthService.scheduleSummaryFlush();
+		this.healthService.notifyStorageStatusChanged();
 	}
 
 	async deleteBlob(token: string | null | undefined, vaultId: string, blobId: string): Promise<void> {
@@ -103,8 +100,8 @@ export class BlobTransferService {
 		await this.blobRepository.delete(this.objectKeyBuilder.blobObjectKey(vaultId, blobId));
 		if (blob) {
 			this.blobStore.deleteBlobRecord(blobId);
-			await this.healthSummaryScheduler.scheduleSummaryFlush();
-			this.storageStatusNotifier.notifyStorageStatusChanged();
+			await this.healthService.scheduleSummaryFlush();
+			this.healthService.notifyStorageStatusChanged();
 		}
 	}
 }

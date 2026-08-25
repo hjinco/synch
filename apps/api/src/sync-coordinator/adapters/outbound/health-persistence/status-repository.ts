@@ -1,9 +1,12 @@
 import { sql } from "drizzle-orm";
 
 import type { AppDb } from "../../../../db/client";
-import type { VaultSyncStatusSummary } from "../../../application/dto/health";
+import type {
+	VaultSyncStatusSummary,
+	VaultSyncStatusWriter,
+} from "../../../application/ports/outbound";
 
-export class VaultSyncStatusRepository {
+export class VaultSyncStatusRepository implements VaultSyncStatusWriter {
 	constructor(private readonly db: AppDb) {}
 
 	async upsert(summary: VaultSyncStatusSummary, flushedAt: number): Promise<void> {

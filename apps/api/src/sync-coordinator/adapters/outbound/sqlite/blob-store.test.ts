@@ -114,8 +114,6 @@ describe("sqlite backend: blob staging", () => {
 					},
 				],
 			},
-			30 * 60 * 1000,
-			24 * 60 * 60 * 1000,
 		);
 
 		expect(blobStore.readBlob("blob-1")?.state).toBe("live");
@@ -203,8 +201,6 @@ describe("sqlite backend: blob staging", () => {
 					},
 				],
 			},
-			30 * 60 * 1000,
-			24 * 60 * 60 * 1000,
 		);
 		expect(blobStore.readBlob("blob-1")?.state).toBe("live");
 
@@ -224,8 +220,6 @@ describe("sqlite backend: blob staging", () => {
 					},
 				],
 			},
-			30 * 60 * 1000,
-			24 * 60 * 60 * 1000,
 		);
 
 		expect(blobStore.readBlob("blob-1")?.state).toBe("pending_delete");

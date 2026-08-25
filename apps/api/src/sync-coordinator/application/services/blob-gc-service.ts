@@ -1,16 +1,13 @@
-import { decideBlobCollection } from "../../../domain/blob-gc-policy";
+import { decideBlobCollection } from "../../domain/blob-gc-policy";
 import type {
-	BlobGcScheduler,
 	BlobGcStore,
 	BlobObjectKeyBuilder,
 	BlobObjectRepository,
 	HealthStateStore,
-	HealthSummaryScheduler,
 	MaintenanceScheduler,
-	PurgedBlobCollector,
-	StorageStatusNotifier,
 	VaultStateStore,
-} from "../../ports/outbound";
+} from "../ports/outbound";
+import type { HealthService } from "./health-service";
 
 const GC_BATCH_SIZE = 64;
 
@@ -21,18 +18,35 @@ export type RunBlobGcOptions = {
 };
 
 /** Application service for all blob garbage-collection triggers. */
-export class BlobGarbageCollectionService implements PurgedBlobCollector {
+export class BlobGcService {
 	constructor(
 		private readonly vaultStateStore: Pick<VaultStateStore, "readVaultId">,
 		private readonly blobGcStore: BlobGcStore,
 		private readonly blobStorage: BlobObjectRepository,
 		private readonly objectKeyBuilder: BlobObjectKeyBuilder,
-		private readonly blobGcScheduler: BlobGcScheduler,
 		private readonly healthStore: Pick<HealthStateStore, "recordGcCompleted">,
 		private readonly maintenanceScheduler: MaintenanceScheduler,
-		private readonly healthSummaryScheduler: HealthSummaryScheduler,
-		private readonly storageStatusNotifier: StorageStatusNotifier,
+		private readonly healthService: Pick<
+			HealthService,
+			"scheduleSummaryFlush" | "notifyStorageStatusChanged"
+		>,
 	) {}
+
+	async scheduleAt(dueAt: number, now = Date.now()): Promise<void> {
+		await this.maintenanceScheduler.defer("blob_gc", dueAt, now);
+	}
+
+	async scheduleNext(now = Date.now()): Promise<number | null> {
+		const nextGcAt = this.blobGcStore.nextGcAt(now);
+		if (nextGcAt !== null) {
+			await this.scheduleAt(nextGcAt, now);
+		}
+		return nextGcAt;
+	}
+
+	async scheduleNow(now = Date.now()): Promise<void> {
+		await this.scheduleAt(now, now);
+	}
 
 	async runGc(
 		vaultId?: string,
@@ -59,14 +73,14 @@ export class BlobGarbageCollectionService implements PurgedBlobCollector {
 
 		const nextGcAt = this.blobGcStore.nextGcAt(now);
 		if ((options.scheduleNextGc ?? true) && nextGcAt !== null) {
-			await this.blobGcScheduler.scheduleAt(nextGcAt, now);
+			await this.scheduleAt(nextGcAt, now);
 		}
 		this.healthStore.recordGcCompleted(now);
 		if (options.scheduleHealthFlush ?? true) {
 			await this.maintenanceScheduler.defer("health_summary_flush", now, now);
 		}
 		if (due.length > 0) {
-			this.storageStatusNotifier.notifyStorageStatusChanged();
+			this.healthService.notifyStorageStatusChanged();
 		}
 		return nextGcAt;
 	}
@@ -106,10 +120,10 @@ export class BlobGarbageCollectionService implements PurgedBlobCollector {
 			}
 		}
 
-		await this.blobGcScheduler.scheduleNext(now);
-		await this.healthSummaryScheduler.scheduleSummaryFlush(now);
+		await this.scheduleNext(now);
+		await this.healthService.scheduleSummaryFlush(now);
 		if (deletedCount > 0) {
-			this.storageStatusNotifier.notifyStorageStatusChanged();
+			this.healthService.notifyStorageStatusChanged();
 		}
 	}
 

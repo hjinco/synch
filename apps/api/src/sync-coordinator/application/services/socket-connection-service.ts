@@ -1,18 +1,16 @@
-import type {
-	HealthSummaryScheduler,
-	SyncTokenVerifier,
-} from "../../ports/outbound";
-import type { SocketSession } from "../../dto/types";
+import type { SyncTokenVerifier } from "../ports/outbound";
+import type { SocketSession } from "../dto/types";
+import type { HealthService } from "./health-service";
 
 export interface VaultInitializer {
 	ensureVaultState(vaultId: string): Promise<void>;
 }
 
-export class CoordinatorSocketConnectionService {
+export class SocketConnectionService {
 	constructor(
 		private readonly syncTokenService: SyncTokenVerifier,
 		private readonly vaultInitializer: VaultInitializer,
-		private readonly healthSummaryScheduler: HealthSummaryScheduler,
+		private readonly healthService: Pick<HealthService, "scheduleSummaryFlush">,
 	) {}
 
 	/**
@@ -21,7 +19,7 @@ export class CoordinatorSocketConnectionService {
 	 * health summary observes the new connection.
 	 */
 	async completeSocketOpen(): Promise<void> {
-		await this.healthSummaryScheduler.scheduleSummaryFlush();
+		await this.healthService.scheduleSummaryFlush();
 	}
 
 	/**

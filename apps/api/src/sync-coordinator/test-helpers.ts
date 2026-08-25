@@ -4,19 +4,16 @@ import { SyncCoordinatorApplicationError } from "./application/errors/coordinato
 import { decideBlobStage } from "./domain/blob-policy";
 import { STAGED_BLOB_STALE_MS } from "./domain/health-policy";
 import type { CoordinatorBlobStore } from "./adapters/outbound/sqlite/blob-store";
-import { BlobTransferService } from "./application/use-cases/blob/sync-service";
-import { CoalescedStorageStatusNotifier } from "./application/use-cases/blob/storage-status-notifier";
-import { BlobGcSchedulingService } from "./application/use-cases/blob-gc/blob-gc-scheduler";
-import { BlobGarbageCollectionService } from "./application/use-cases/blob-gc/blob-garbage-collection-service";
-import { EntryHistoryService } from "./application/use-cases/entry/history-service";
-import { EntrySyncService } from "./application/use-cases/entry/sync-service";
-import { HealthSyncService } from "./application/use-cases/health/sync-service";
-import { CoordinatorMaintenanceService } from "./application/use-cases/maintenance/maintenance-service";
+import { BlobService } from "./application/services/blob-service";
+import { BlobGcService } from "./application/services/blob-gc-service";
+import { EntryService } from "./application/services/entry-service";
+import { HealthService } from "./application/services/health-service";
+import { MaintenanceService } from "./application/services/maintenance-service";
 import type {
 	MaintenanceRunner,
 	MaintenanceScheduler,
 } from "./application/ports/outbound";
-import { MutationCommitService } from "./application/use-cases/mutation/commit-service";
+import { MutationService } from "./application/services/mutation-service";
 import type {
 	BlobObjectRepository,
 	BlobStageTransaction,
@@ -35,11 +32,13 @@ import type {
 	SyncTokenVerifier,
 	VaultStateStore,
 } from "./application/ports/outbound";
-import { CoordinatorService } from "./application/use-cases/coordinator-service";
-import { CoordinatorSyncRepairService } from "./application/use-cases/repair/repair-service";
+import {
+	bindCoordinatorApi,
+	type CoordinatorApi,
+} from "./application/services/bind-coordinator-api";
 import { CoordinatorControlMessageHandler } from "./adapters/inbound/websocket/control-message-handler";
-import { CoordinatorSocketConnectionService } from "./application/use-cases/socket/connection-service";
-import { VaultLifecycleService } from "./application/use-cases/vault/lifecycle-service";
+import { SocketConnectionService } from "./application/services/socket-connection-service";
+import { VaultService } from "./application/services/vault-service";
 import type { SocketSession } from "./application/dto/types";
 import { parseClientControlMessage } from "./adapters/inbound/websocket/protocol";
 
@@ -229,67 +228,50 @@ export function createCoordinatorService({
 	maintenanceScheduler?: MaintenanceScheduler & MaintenanceRunner;
 	storageStatusBroadcastDelayMs?: number;
 } = {}): TestCoordinatorService {
-	const healthSyncService = new HealthSyncService(
+	const healthService = new HealthService(
 		stateRepository,
 		null,
 		30 * 24 * 60 * 60 * 1000,
 		maintenanceScheduler,
-	);
-	const blobGcScheduler = new BlobGcSchedulingService(
-		stateRepository,
-		maintenanceScheduler,
-	);
-	const storageStatusNotifier = new CoalescedStorageStatusNotifier(
-		stateRepository,
 		socketService,
 		storageStatusBroadcastDelayMs,
 	);
-	const blobTransferService = new BlobTransferService(
+	const blobGcService = new BlobGcService(
+		stateRepository,
+		stateRepository,
+		blobRepository,
+		objectKeyBuilder,
+		stateRepository,
+		maintenanceScheduler,
+		healthService,
+	);
+	const blobService = new BlobService(
 		syncTokenService,
 		stateRepository,
-		blobGcScheduler,
+		blobGcService,
 		socketService,
 		blobRepository,
 		objectKeyBuilder,
 		30 * 60 * 1000,
-		healthSyncService,
-		storageStatusNotifier,
+		healthService,
 	);
-	const blobGarbageCollectionService = new BlobGarbageCollectionService(
+	const mutationService = new MutationService(
 		stateRepository,
-		stateRepository,
-		blobRepository,
-		objectKeyBuilder,
-		blobGcScheduler,
-		stateRepository,
-		maintenanceScheduler,
-		healthSyncService,
-		storageStatusNotifier,
-	);
-	const mutationCommitService = new MutationCommitService(
-		stateRepository,
-		blobGcScheduler,
+		blobGcService,
 		stateRepository,
 		blobRepository,
 		objectKeyBuilder,
 		30 * 60 * 1000,
-		healthSyncService,
+		healthService,
 	);
-	let coordinatorService: CoordinatorService;
-	const entrySyncService = new EntrySyncService(stateRepository, stateRepository);
-	const entryHistoryService = new EntryHistoryService(
+	const entryService = new EntryService(
 		stateRepository,
 		stateRepository,
 		stateRepository,
-		{
-			commitMutation: async (session, message, options) =>
-				await coordinatorService.commitMutation(session, message, options),
-			commitMutations: async (session, message, options) =>
-				await coordinatorService.commitMutations(session, message, options),
-		},
-		blobGarbageCollectionService,
+		mutationService,
+		blobGcService,
 	);
-	const vaultLifecycleService = new VaultLifecycleService(
+	const vaultService = new VaultService(
 		stateRepository,
 		stateRepository,
 		stateRepository,
@@ -301,48 +283,42 @@ export function createCoordinatorService({
 				throw new Error("initial vault limit reader is not configured");
 			},
 		},
-		healthSyncService,
+		healthService,
+		stateRepository,
+		stateRepository,
+		blobGcService,
 	);
-	const socketConnectionService = new CoordinatorSocketConnectionService(
+	const socketConnectionService = new SocketConnectionService(
 		syncTokenService,
-		vaultLifecycleService,
-		healthSyncService,
+		vaultService,
+		healthService,
 	);
-	const maintenanceService = new CoordinatorMaintenanceService(
+	const maintenanceService = new MaintenanceService(
 		maintenanceScheduler,
-		blobGarbageCollectionService,
-		healthSyncService,
-		vaultLifecycleService,
+		blobGcService,
+		healthService,
+		vaultService,
 	);
-	const syncRepairService = new CoordinatorSyncRepairService(
-		stateRepository,
-		stateRepository,
-		stateRepository,
-		blobRepository,
-		objectKeyBuilder,
-		blobGcScheduler,
-	);
-	coordinatorService = new CoordinatorService({
-		blobTransferService,
-		blobGarbageCollection: blobGarbageCollectionService,
-		entryHistoryService,
-		entrySyncService,
-		healthSyncService,
+	const useCases = bindCoordinatorApi({
+		blobService,
+		blobGcService,
+		entryService,
+		healthService,
 		maintenanceService,
-		mutationCommitService,
+		mutationService,
 		socketConnectionService,
-		syncRepairService,
-		vaultLifecycleService,
+		vaultService,
 	});
 	const socketMessageHandler = new CoordinatorControlMessageHandler(
 		socketService,
 		stateRepository,
 		stateRepository,
-		coordinatorService,
-		healthSyncService,
+		useCases,
+		healthService,
 	);
-	return Object.assign(coordinatorService, {
-		dispose: () => storageStatusNotifier.dispose(),
+	return Object.assign(useCases, {
+		mutationService,
+		dispose: () => healthService.dispose(),
 		handleSocketMessage: async (_ws: WebSocket, message: string | ArrayBuffer) => {
 			if (typeof message !== "string") return;
 			const parsed = parseClientControlMessage(JSON.parse(message));
@@ -351,7 +327,8 @@ export function createCoordinatorService({
 	});
 }
 
-export type TestCoordinatorService = CoordinatorService & {
+export type TestCoordinatorService = CoordinatorApi & {
+	mutationService: MutationService;
 	dispose(): void;
 	handleSocketMessage(ws: WebSocket, message: string | ArrayBuffer): Promise<void>;
 };

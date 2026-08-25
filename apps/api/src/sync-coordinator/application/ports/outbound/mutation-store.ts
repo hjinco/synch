@@ -1,6 +1,3 @@
-import type {
-	SocketSession,
-} from "../../dto/types";
 import type { BlobState } from "./storage-models";
 import type { EntryVersionReason } from "./storage-models";
 
@@ -54,17 +51,4 @@ export interface MutationTransaction {
 
 export interface MutationStore {
 	withTransaction<T>(operation: (transaction: MutationTransaction) => T): T;
-}
-
-export interface MutationCommitter {
-	commitMutation(
-		session: SocketSession,
-		message: import("../../dto/types").CommitMutationMessage,
-		options?: { forcedHistoryBefore?: "before_restore" | null },
-	): Promise<import("../../dto/types").CommitMutationResult>;
-	commitMutations(
-		session: SocketSession,
-		message: import("../../dto/types").CommitMutationsMessage,
-		options?: { forcedHistoryBefore?: "before_restore" | null },
-	): Promise<import("../../dto/types").CommitMutationsResult>;
 }

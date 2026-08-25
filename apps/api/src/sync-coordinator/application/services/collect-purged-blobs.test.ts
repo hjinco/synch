@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { BlobGarbageCollectionService } from "./blob-garbage-collection-service";
+import { BlobGcService } from "./blob-gc-service";
 
 function blob(blobId: string) {
 	return {
@@ -37,48 +37,41 @@ function createFixture() {
 			blobObjectKey: (vaultId: string, blobId: string) => `${vaultId}/${blobId}`,
 			blobObjectKeyPrefix: (vaultId: string) => `${vaultId}/`,
 		},
-		blobGcScheduler: {
-			scheduleAt: vi.fn(async () => {}),
-			scheduleNext: vi.fn(async () => null),
-			scheduleNow: vi.fn(async () => {}),
-		},
 		healthStore: { recordGcCompleted: vi.fn() },
 		maintenanceScheduler: { defer: vi.fn(async () => {}) },
-		healthSummaryScheduler: { scheduleSummaryFlush: vi.fn(async () => {}) },
-		storageStatusNotifier: {
+		healthService: {
+			scheduleSummaryFlush: vi.fn(async () => {}),
 			notifyStorageStatusChanged: vi.fn(),
-			dispose: vi.fn(),
 		},
 	};
-	const useCase = new BlobGarbageCollectionService(
+	const useCase = new BlobGcService(
 		fixture.vaultStateStore,
 		fixture.blobGcStore,
 		fixture.blobStorage,
 		fixture.objectKeyBuilder,
-		fixture.blobGcScheduler,
 		fixture.healthStore,
 		fixture.maintenanceScheduler,
-		fixture.healthSummaryScheduler,
-		fixture.storageStatusNotifier,
+		fixture.healthService,
 	);
 	return { fixture, useCase };
 }
 
-describe("BlobGarbageCollectionService purged blob collection", () => {
+describe("BlobGcService purged blob collection", () => {
 	it("deduplicates candidates and continues after an individual deletion failure", async () => {
 		vi.useFakeTimers();
 		vi.setSystemTime(2);
 		try {
 			const { fixture, useCase } = createFixture();
+			const scheduleNext = vi.spyOn(useCase, "scheduleNext");
 
 			await useCase.collectPurgedBlobs("vault-1", ["blob-1", "blob-1", "blob-2"]);
 
 			expect(fixture.blobGcStore.markBlobPendingDeleteIfUnpinned).toHaveBeenCalledTimes(2);
 			expect(fixture.blobStorage.delete).toHaveBeenCalledTimes(2);
 			expect(fixture.blobGcStore.deleteBlobIfCollectible).toHaveBeenCalledTimes(1);
-			expect(fixture.blobGcScheduler.scheduleNext).toHaveBeenCalledWith(2);
-			expect(fixture.healthSummaryScheduler.scheduleSummaryFlush).toHaveBeenCalledWith(2);
-			expect(fixture.storageStatusNotifier.notifyStorageStatusChanged).toHaveBeenCalledOnce();
+			expect(scheduleNext).toHaveBeenCalledWith(2);
+			expect(fixture.healthService.scheduleSummaryFlush).toHaveBeenCalledWith(2);
+			expect(fixture.healthService.notifyStorageStatusChanged).toHaveBeenCalledOnce();
 		} finally {
 			vi.useRealTimers();
 		}
@@ -86,12 +79,13 @@ describe("BlobGarbageCollectionService purged blob collection", () => {
 
 	it("does nothing for an empty candidate list", async () => {
 		const { fixture, useCase } = createFixture();
+		const scheduleNext = vi.spyOn(useCase, "scheduleNext");
 
 		await useCase.collectPurgedBlobs("vault-1", []);
 
 		expect(fixture.blobGcStore.expireEntryVersions).not.toHaveBeenCalled();
-		expect(fixture.blobGcScheduler.scheduleNext).not.toHaveBeenCalled();
-		expect(fixture.healthSummaryScheduler.scheduleSummaryFlush).not.toHaveBeenCalled();
+		expect(scheduleNext).not.toHaveBeenCalled();
+		expect(fixture.healthService.scheduleSummaryFlush).not.toHaveBeenCalled();
 	});
 
 	it("skips candidates that are not collectible", async () => {
@@ -105,6 +99,6 @@ describe("BlobGarbageCollectionService purged blob collection", () => {
 			expect.any(Number),
 		);
 		expect(fixture.blobStorage.delete).not.toHaveBeenCalled();
-		expect(fixture.storageStatusNotifier.notifyStorageStatusChanged).not.toHaveBeenCalled();
+		expect(fixture.healthService.notifyStorageStatusChanged).not.toHaveBeenCalled();
 	});
 });

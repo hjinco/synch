@@ -1,5 +1,5 @@
 import type { StorageStatusSnapshot } from "../../../application/dto/types";
-import type { VaultHealthSnapshot } from "../../../application/dto/health";
+import type { VaultHealthSnapshot } from "../../../application/ports/outbound";
 import { COLLECTIBLE_PENDING_DELETE_SQL } from "./blob-collectability";
 import type { CoordinatorStorageHandle } from "./storage-handle";
 

@@ -18,7 +18,6 @@ import type {
 } from "../../../application/dto/types";
 import type {
 	HealthStateStore,
-	HealthSummaryScheduler,
 	SocketGateway,
 	VaultStateStore,
 } from "../../../application/ports/outbound";
@@ -74,7 +73,9 @@ export class CoordinatorControlMessageHandler
 		>,
 		private readonly healthStore: Pick<HealthStateStore, "readStorageStatus">,
 		private readonly useCases: CoordinatorControlMessageUseCases,
-		private readonly healthSummaryScheduler: HealthSummaryScheduler,
+		private readonly healthSummaryScheduler: {
+			scheduleSummaryFlush(now?: number): Promise<void>;
+		},
 	) {}
 
 	async handle(connectionId: string, parsed: ClientControlMessage): Promise<void> {

@@ -2,9 +2,6 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { closeAllTestSqliteCoordinators, createSqliteCoordinator, testSession } from "./test-helpers";
 
-const STAGE_GRACE_PERIOD_MS = 30 * 60 * 1000;
-const VERSION_HISTORY_RETENTION_MS = 24 * 60 * 60 * 1000;
-
 afterEach(() => {
 	closeAllTestSqliteCoordinators();
 });
@@ -30,8 +27,6 @@ describe("sqlite backend: mutation commits", () => {
 					},
 				],
 			},
-			STAGE_GRACE_PERIOD_MS,
-			VERSION_HISTORY_RETENTION_MS,
 		);
 
 		expect(result.message.results).toMatchObject([
@@ -73,8 +68,6 @@ describe("sqlite backend: mutation commits", () => {
 					},
 				],
 			},
-			STAGE_GRACE_PERIOD_MS,
-			VERSION_HISTORY_RETENTION_MS,
 		);
 
 		expect(result.message.results).toMatchObject([
@@ -103,8 +96,6 @@ describe("sqlite backend: mutation commits", () => {
 						},
 					],
 				},
-				STAGE_GRACE_PERIOD_MS,
-				VERSION_HISTORY_RETENTION_MS,
 			);
 
 		await commit("mutation-1", 0);
@@ -139,18 +130,8 @@ describe("sqlite backend: mutation commits", () => {
 			],
 		};
 
-		const first = await mutationStore.commitMutations(
-			session,
-			message,
-			STAGE_GRACE_PERIOD_MS,
-			VERSION_HISTORY_RETENTION_MS,
-		);
-		const replay = await mutationStore.commitMutations(
-			session,
-			message,
-			STAGE_GRACE_PERIOD_MS,
-			VERSION_HISTORY_RETENTION_MS,
-		);
+		const first = await mutationStore.commitMutations(session, message);
+		const replay = await mutationStore.commitMutations(session, message);
 
 		expect(replay.message.results).toEqual(first.message.results);
 	});
@@ -183,8 +164,6 @@ describe("sqlite backend: mutation commits", () => {
 					},
 				],
 			},
-			STAGE_GRACE_PERIOD_MS,
-			VERSION_HISTORY_RETENTION_MS,
 		);
 
 		expect(result.message.results).toMatchObject([
@@ -224,8 +203,6 @@ describe("sqlite backend: mutation commits", () => {
 							},
 						],
 					},
-					STAGE_GRACE_PERIOD_MS,
-					VERSION_HISTORY_RETENTION_MS,
 				),
 			),
 		);
@@ -240,5 +217,51 @@ describe("sqlite backend: mutation commits", () => {
 		).toBe(true);
 		expect(entryStore.readEntry("entry-1")).toMatchObject({ revision: 1 });
 		expect(cursorStore.currentCursor()).toBe(1);
+	});
+
+	it("captures before_restore history when commit options request it", async () => {
+		const { mutationStore, historyStore } = await createSqliteCoordinator();
+		const session = testSession();
+
+		await mutationStore.commitMutations(session, {
+			type: "commit_mutations",
+			requestId: "req-1",
+			mutations: [
+				{
+					mutationId: "m1",
+					entryId: "entry-1",
+					op: "upsert",
+					baseRevision: 0,
+					blobId: null,
+					encryptedMetadata: "ciphertext-v1",
+				},
+			],
+		});
+		await mutationStore.commitMutations(
+			session,
+			{
+				type: "commit_mutations",
+				requestId: "req-2",
+				mutations: [
+					{
+						mutationId: "m2",
+						entryId: "entry-1",
+						op: "upsert",
+						baseRevision: 1,
+						blobId: null,
+						encryptedMetadata: "ciphertext-v2",
+					},
+				],
+			},
+			{ forcedHistoryBefore: "before_restore" },
+		);
+
+		const versions = historyStore.listEntryVersions("entry-1", null, 0, 10);
+		expect(versions.map((version) => version.reason)).toEqual(["before_restore"]);
+		expect(versions[0]).toMatchObject({
+			entry_id: "entry-1",
+			source_revision: 1,
+			encrypted_metadata: "ciphertext-v1",
+		});
 	});
 });
