@@ -1,5 +1,4 @@
 import type { BlobObjectStorage } from "../../application/ports/outbound/blob-object-storage";
-import { limitBodySize } from "./body-size";
 
 const R2_LIST_BATCH_SIZE = 1000;
 
@@ -11,30 +10,38 @@ export class R2BlobObjectStorage implements BlobObjectStorage {
 		body: ReadableStream<Uint8Array>,
 		declaredSizeBytes: number,
 	): Promise<{ size: number; sizeMismatch: boolean }> {
-		const limited = limitBodySize(body, declaredSizeBytes);
-		let object: R2Object | null = null;
-		let uploadError: unknown;
-		try {
-			object = await this.bucket.put(key, limited.readable);
-		} catch (error) {
-			uploadError = error;
+		const fixed = new FixedLengthStream(declaredSizeBytes);
+		const [uploadResult, pipeResult] = await Promise.allSettled([
+			this.bucket.put(key, fixed.readable),
+			body.pipeTo(fixed.writable),
+		]);
+		if (
+			pipeResult.status === "rejected" &&
+			!isFixedLengthStreamError(pipeResult.reason)
+		) {
+			throw pipeResult.reason;
 		}
-		const sizeMismatch = await limited.sizeMismatch;
-		// R2 rejects an aborted FixedLengthStream when the request body is short
-		// or oversized. The old route treated that signal as the authoritative
-		// declared-size result before considering other upload failures.
-		if (sizeMismatch) {
-			return { size: object?.size ?? 0, sizeMismatch: true };
+		if (uploadResult.status === "rejected") {
+			// A short fixed-length stream is reported by R2 while it reads the
+			// stream, whereas an oversized stream usually rejects pipeTo().
+			if (isFixedLengthStreamError(uploadResult.reason)) {
+				return { size: 0, sizeMismatch: true };
+			}
+			throw uploadResult.reason;
 		}
-		if (uploadError) {
-			throw uploadError;
+		if (pipeResult.status === "rejected") {
+			return {
+				size: uploadResult.value?.size ?? 0,
+				sizeMismatch: true,
+			};
 		}
+		const object = uploadResult.value;
 		if (!object) {
 			throw new Error("blob upload did not return an R2 object");
 		}
 		return {
 			size: object.size,
-			sizeMismatch: sizeMismatch || object.size !== declaredSizeBytes,
+			sizeMismatch: object.size !== declaredSizeBytes,
 		};
 	}
 
@@ -88,4 +95,12 @@ export class R2BlobObjectStorage implements BlobObjectStorage {
 	async exists(key: string): Promise<boolean> {
 		return (await this.bucket.head(key)) !== null;
 	}
+}
+
+function isFixedLengthStreamError(error: unknown): boolean {
+	return (
+		error instanceof Error &&
+		error.name === "TypeError" &&
+		error.message.includes("FixedLengthStream")
+	);
 }

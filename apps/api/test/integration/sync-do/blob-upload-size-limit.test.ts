@@ -9,14 +9,14 @@ import {
 } from "../../helpers/api";
 
 describe("blob upload: declared-size enforcement", () => {
-	it("rejects a body larger than its declared X-Blob-Size instead of buffering the whole thing", async () => {
+	it("rejects an oversized body without consuming the whole stream", async () => {
 		const primary = await signUpAndCreateVault();
 		const token = await issueSyncToken(primary.sessionCookie, primary.vaultId, "local-vault-oversize");
 		await initializeCoordinatorState(primary.vaultId);
 		const blobId = uniqueId("oversize-blob");
 
-		// Declares 1 byte, but streams far more - R2's put() must be cut off at
-		// the declared length rather than absorbing the whole thing first.
+		// Declares 1 byte, but streams far more. The native fixed-length stream
+		// should stop the source shortly after the declared length.
 		let bytesProduced = 0;
 		const oversizedBody = new ReadableStream<Uint8Array>({
 			pull(controller) {
@@ -41,9 +41,7 @@ describe("blob upload: declared-size enforcement", () => {
 			duplex: "half",
 		});
 
-		expect(uploaded.status).toBeGreaterThanOrEqual(400);
-		// The point of the fix: the server must have stopped well short of
-		// consuming the full 10 MiB body.
+		expect(uploaded.status).toBe(400);
 		expect(bytesProduced).toBeLessThan(1024 * 1024);
 	});
 
