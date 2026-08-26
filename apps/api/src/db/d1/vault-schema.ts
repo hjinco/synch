@@ -11,6 +11,8 @@ import {
 import { organization, user } from "./auth-schema";
 import type { VaultKeyEnvelope } from "../../vault/domain/types";
 
+const sqliteEpochMsNow = sql`(cast((julianday('now') - 2440587.5)*86400000 as integer))`;
+
 export const vault = sqliteTable("vault", {
 	id: text("id").primaryKey(),
 	organizationId: text("organization_id")
@@ -19,7 +21,7 @@ export const vault = sqliteTable("vault", {
 	name: text("name").notNull(),
 	activeKeyVersion: integer("active_key_version").notNull(),
 	createdAt: integer("created_at", { mode: "timestamp_ms" })
-		.defaultNow()
+		.default(sqliteEpochMsNow)
 		.notNull(),
 	deletedAt: integer("deleted_at", { mode: "timestamp_ms" }),
 	purgeStatus: text("purge_status"),
@@ -44,7 +46,7 @@ export const vaultMembership = sqliteTable(
 		role: text("role").notNull(),
 		status: text("status").notNull(),
 		joinedAt: integer("joined_at", { mode: "timestamp_ms" })
-			.defaultNow()
+			.default(sqliteEpochMsNow)
 			.notNull(),
 		revokedAt: integer("revoked_at", { mode: "timestamp_ms" }),
 	},
@@ -67,7 +69,7 @@ export const vaultKeyWrapper = sqliteTable(
 		userId: text("user_id").references(() => user.id, { onDelete: "cascade" }),
 		envelopeJson: text("envelope_json", { mode: "json" }).$type<VaultKeyEnvelope>().notNull(),
 		createdAt: integer("created_at", { mode: "timestamp_ms" })
-			.defaultNow()
+			.default(sqliteEpochMsNow)
 			.notNull(),
 		revokedAt: integer("revoked_at", { mode: "timestamp_ms" }),
 	},
