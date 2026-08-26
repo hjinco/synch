@@ -40,5 +40,23 @@
 			"./worker-configuration.d.ts",
 			"node"
 		]
-	}
+	},
+	"include": [
+		"src/**/*.ts",
+		"src/**/*.d.ts",
+		"test/**/*.ts",
+		"test/**/*.d.ts",
+		"scripts/**/*.mjs",
+		"drizzle.config.ts",
+		"drizzle-do.config.ts",
+		"vitest.config.mts",
+		"vitest.unit.config.mts",
+		"worker-configuration.d.ts"
+	],
+	"exclude": [
+		"public",
+		"dist",
+		".wrangler",
+		"node_modules"
+	]
 }

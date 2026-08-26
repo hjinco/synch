@@ -106,7 +106,7 @@ export function createNodeWebSocketUpgradeHandler(runtime: NodeRuntime, publicUr
 						});
 						return;
 					}
-					const result = parseClientControlMessage(JSON.parse(message));
+					const result = parseClientControlMessage(JSON.parse(message) as unknown);
 					if (!result.success) {
 						coordinator.socketGateway.sendSocketMessage(connectionId, {
 							type: "session_error",

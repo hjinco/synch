@@ -35,7 +35,7 @@ export class CoordinatorSocketService implements SocketGateway {
 	connectionIdFor(socket: WebSocket): string {
 		const existing = this.connectionIds.get(socket);
 		if (existing) return existing;
-		const attachment = socket.deserializeAttachment();
+		const attachment = readSerializedAttachment(socket);
 		if (
 			attachment &&
 			typeof attachment === "object" &&
@@ -121,7 +121,7 @@ export class CoordinatorSocketService implements SocketGateway {
 		socket: WebSocket,
 		connectionId: string,
 	): SocketSession | null {
-		const attachment = socket.deserializeAttachment();
+		const attachment = readSerializedAttachment(socket);
 		if (!attachment || typeof attachment !== "object") return null;
 		const maybeSession = attachment as Partial<SocketAttachment>;
 		if (
@@ -164,6 +164,10 @@ export class CoordinatorSocketService implements SocketGateway {
 			if (!isClosedWebSocketCloseError(error)) throw error;
 		}
 	}
+}
+
+function readSerializedAttachment(socket: WebSocket): unknown {
+	return socket.deserializeAttachment() as unknown;
 }
 
 function selectSyncWebSocketProtocol(request: Request): string | null {

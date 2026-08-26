@@ -1,13 +1,15 @@
 import { readPolarProductIdsByPlanId } from "../billing/adapters/outbound/product-ids";
-import { readCloudflareProfile } from "../config/cloudflare";
+import {
+	readCloudflareProfile,
+	type CloudflareRuntimeEnv,
+} from "../config/cloudflare";
 import { isCommunityEdition } from "../config/deployment-profile";
 import { createSubscriptionFeature } from "../composition/features/create-subscription-feature";
 import { createVaultRetentionFeature } from "../composition/features/create-vault-feature";
 import { createDb } from "../db/client";
-import type { VaultPurgeMessage } from "../vault/application";
 
 export async function runVaultRetentionSchedule(
-	env: Env,
+	env: CloudflareRuntimeEnv,
 	now = Date.now(),
 ): Promise<void> {
 	const profile = readCloudflareProfile(env);
@@ -26,7 +28,7 @@ export async function runVaultRetentionSchedule(
 	const retention = createVaultRetentionFeature({
 		db,
 		policyReader: subscriptionFeature.policyReader,
-		vaultPurgeQueue: env.VAULT_PURGE_QUEUE as Queue<VaultPurgeMessage>,
+		vaultPurgeQueue: env.VAULT_PURGE_QUEUE,
 	});
 	await retention.run(now);
 }

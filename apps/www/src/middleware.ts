@@ -1,4 +1,5 @@
-import { defineMiddleware } from "astro:middleware";
+import { defineMiddleware } from "astro/middleware";
+import type { MiddlewareHandler } from "astro";
 
 const canonicalHost = "synch.run";
 
@@ -11,7 +12,7 @@ const localeRedirects = [
 	{ path: "/zh-cn/", matches: ["zh", "zh-cn", "zh-sg", "zh-my", "zh-hans"] },
 ] as const;
 
-export const onRequest = defineMiddleware(async (context, next) => {
+export const onRequest: MiddlewareHandler = defineMiddleware(async (context, next) => {
 	const canonicalUrl = canonicalRedirectUrl(context.url);
 	if (canonicalUrl) {
 		return context.redirect(canonicalUrl.toString(), 301);

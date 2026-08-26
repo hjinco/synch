@@ -66,7 +66,7 @@ export class SyncCoordinator extends DurableObject {
 			return;
 		}
 		try {
-			const result = parseClientControlMessage(JSON.parse(message));
+			const result = parseClientControlMessage(JSON.parse(message) as unknown);
 			if (!result.success) {
 				this.socketGateway.sendSocketMessage(connectionId, {
 					type: "session_error",

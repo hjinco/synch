@@ -12,6 +12,10 @@
 (() => {
 	const SUPPORTED_LOCALES = ["en", "ko", "ja", "zh-cn", "zh-tw", "de"];
 
+	/**
+	 * @param {string | null | undefined} candidate
+	 * @returns {string}
+	 */
 	function normalizeLocale(candidate) {
 		const locale = candidate?.toLowerCase() || "";
 		if (SUPPORTED_LOCALES.includes(locale)) return locale;
@@ -24,6 +28,7 @@
 		return "";
 	}
 
+	/** @returns {string} */
 	function getLocale() {
 		const params = new URLSearchParams(window.location.search);
 		const candidates = [params.get("lang"), navigator.language];
@@ -35,13 +40,26 @@
 	const locale = getLocale();
 
 	/**
+	 * @typedef {Record<string, string>} MessageCatalog
+	 */
+
+	/**
 	 * Returns `t` bound to the inline English catalog, plus a `ready` promise
 	 * that resolves once the locale catalog has been fetched (or immediately
 	 * for English). Callers re-apply translations when `ready` resolves.
+	 *
+	 * @param {string} page
+	 * @param {MessageCatalog} englishMessages
 	 */
 	function createTranslator(page, englishMessages) {
+		/** @type {MessageCatalog} */
 		let messages = englishMessages;
 
+		/**
+		 * @param {string} key
+		 * @param {Record<string, string | number>} [params]
+		 * @returns {string}
+		 */
 		function t(key, params = {}) {
 			const template = messages[key] || englishMessages[key] || key;
 			return Object.entries(params).reduce(
@@ -55,8 +73,10 @@
 			try {
 				const response = await fetch(`/i18n/${locale}.json`);
 				if (!response.ok) return;
-				const catalog = await response.json();
-				if (catalog?.[page]) messages = catalog[page];
+				const catalog = /** @type {unknown} */ (await response.json());
+				if (!isRecord(catalog)) return;
+				const pageMessages = catalog[page];
+				if (isStringRecord(pageMessages)) messages = pageMessages;
 			} catch {
 				// Keep the inline English fallback when the catalog cannot load.
 			}
@@ -72,5 +92,33 @@
 		return { t, ready: Promise.race([loadCatalog(), timeout]) };
 	}
 
-	window.synchI18n = { locale, createTranslator };
+	/**
+	 * @param {unknown} value
+	 * @returns {value is Record<string, unknown>}
+	 */
+	function isRecord(value) {
+		return typeof value === "object" && value !== null && !Array.isArray(value);
+	}
+
+	/**
+	 * @param {unknown} value
+	 * @returns {value is MessageCatalog}
+	 */
+	function isStringRecord(value) {
+		return (
+			isRecord(value) &&
+			Object.values(value).every((entry) => typeof entry === "string")
+		);
+	}
+
+	/**
+	 * @typedef {{
+	 *   locale: string,
+	 *   createTranslator: typeof createTranslator
+	 * }} SynchI18n
+	 */
+
+	/** @type {Window & { synchI18n: SynchI18n }} */
+	const root = window;
+	root.synchI18n = { locale, createTranslator };
 })();

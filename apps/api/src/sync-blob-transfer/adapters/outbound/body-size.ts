@@ -12,10 +12,7 @@ export function limitBodySize(
 	body: ReadableStream<Uint8Array>,
 	maxBytes: number,
 ): SizeLimitedBody {
-	const { readable, writable } =
-		typeof FixedLengthStream !== "undefined"
-			? new FixedLengthStream(maxBytes)
-			: new TransformStream<Uint8Array, Uint8Array>();
+	const { readable, writable } = createLimitedStream(maxBytes);
 	const writer = writable.getWriter();
 	const reader = body.getReader();
 
@@ -49,4 +46,11 @@ export function limitBodySize(
 	})();
 
 	return { readable, sizeMismatch };
+}
+
+function createLimitedStream(maxBytes: number): TransformStream<Uint8Array, Uint8Array> {
+	if (typeof FixedLengthStream === "undefined") {
+		return new TransformStream<Uint8Array, Uint8Array>();
+	}
+	return new FixedLengthStream(maxBytes);
 }

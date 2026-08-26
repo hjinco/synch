@@ -1,5 +1,8 @@
 import { readPolarProductIdsByPlanId } from "../billing/adapters/outbound/product-ids";
-import { readCloudflareProfile } from "../config/cloudflare";
+import {
+	readCloudflareProfile,
+	type CloudflareRuntimeEnv,
+} from "../config/cloudflare";
 import { isCommunityEdition } from "../config/deployment-profile";
 import {
 	createSubscriptionFeature,
@@ -23,7 +26,7 @@ export type QueueMessage =
 	| SubscriptionPolicyRefreshMessage
 	| VaultRetentionEmailMessage;
 
-export function createQueueConsumer(env: Env): QueueConsumer {
+export function createQueueConsumer(env: CloudflareRuntimeEnv): QueueConsumer {
 	const profile = readCloudflareProfile(env);
 	const db = createDb(env.DB);
 	const coordinatorProxyRepository = new CoordinatorProxyRepository(env.SYNC_COORDINATOR);
@@ -35,9 +38,7 @@ export function createQueueConsumer(env: Env): QueueConsumer {
 		db,
 		policyReader: subscriptionFeature.policyReader,
 		coordinatorPurgeTransport: coordinatorProxyRepository,
-		retentionEmailQueue: env.RETENTION_NOTIFICATION_QUEUE as
-			| Queue<VaultRetentionEmailMessage>
-			| undefined,
+		retentionEmailQueue: env.RETENTION_NOTIFICATION_QUEUE,
 		email: env.EMAIL,
 		emailFrom: env.AUTH_EMAIL_FROM,
 	});
@@ -64,29 +65,29 @@ export class QueueConsumer {
 
 	async handleBatch(batch: MessageBatch<QueueMessage>): Promise<void> {
 		for (const message of batch.messages) {
-			const type = message.body?.type;
-			if (type === "vault_purge") {
-				await this.vaultPurgeConsumer.handleMessage(
-					message as Message<VaultPurgeMessage>,
-				);
+			if (isQueueMessage(message, "vault_purge")) {
+				await this.vaultPurgeConsumer.handleMessage(message);
 				continue;
 			}
-			if (type === "subscription_policy_refresh") {
-				await this.policyRefreshConsumer.handleMessage(
-					message as Message<SubscriptionPolicyRefreshMessage>,
-				);
+			if (isQueueMessage(message, "subscription_policy_refresh")) {
+				await this.policyRefreshConsumer.handleMessage(message);
 				continue;
 			}
-			if (type === "vault_retention_email") {
-				await this.retentionEmailConsumer.handleMessage(
-					message as Message<VaultRetentionEmailMessage>,
-				);
+			if (isQueueMessage(message, "vault_retention_email")) {
+				await this.retentionEmailConsumer.handleMessage(message);
 				continue;
 			}
 
 			message.ack();
 		}
 	}
+}
+
+function isQueueMessage<T extends QueueMessage["type"]>(
+	message: Message<QueueMessage>,
+	type: T,
+): message is Message<Extract<QueueMessage, { type: T }>> {
+	return message.body?.type === type;
 }
 
 export type {

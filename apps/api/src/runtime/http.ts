@@ -7,6 +7,8 @@ import {
 import { createSubscriptionPolicyRefreshQueue } from "../composition/features/create-subscription-feature";
 import { createDb } from "../db/client";
 import { R2BlobObjectStorage } from "../sync-blob-transfer/adapters/outbound/r2-object-storage";
+import type { SubscriptionPolicyRefreshMessage } from "../subscription/application";
+import type { VaultPurgeMessage } from "../vault/application";
 
 export function createRuntimeApp(env: CloudflareRuntimeEnv, request: Request) {
 	const config = parseCloudflareHttpConfig(env, request);
@@ -18,7 +20,10 @@ export function createRuntimeApp(env: CloudflareRuntimeEnv, request: Request) {
 			coordinatorNamespace: env.SYNC_COORDINATOR,
 			vaultPurgeQueue:
 				config.capabilities.backgroundJobs === "cloudflare-queue"
-					? requireBinding(env.VAULT_PURGE_QUEUE, "VAULT_PURGE_QUEUE")
+					? requireBinding<Queue<VaultPurgeMessage>>(
+							env.VAULT_PURGE_QUEUE,
+							"VAULT_PURGE_QUEUE",
+						)
 					: undefined,
 		},
 		{
@@ -53,7 +58,10 @@ export function createRuntimeApp(env: CloudflareRuntimeEnv, request: Request) {
 				wwwBaseUrl: config.corsOrigin,
 				onSubscriptionUpsert: async (organizationId) => {
 					const queue = createSubscriptionPolicyRefreshQueue(
-						requireBinding(env.POLICY_REFRESH_QUEUE, "POLICY_REFRESH_QUEUE"),
+						requireBinding<Queue<SubscriptionPolicyRefreshMessage>>(
+							env.POLICY_REFRESH_QUEUE,
+							"POLICY_REFRESH_QUEUE",
+						),
 					);
 					await queue.enqueueOrganizationPolicyRefresh(organizationId);
 				},

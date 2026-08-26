@@ -80,9 +80,8 @@ export class R2BlobObjectStorage implements BlobObjectStorage {
 				cursor,
 				limit: R2_LIST_BATCH_SIZE,
 			});
-			const { failedKeys } = await this.deleteMany(
-				listed.objects.map((object) => object.key),
-			);
+			const keys = listed.objects.map((object) => object.key);
+			const { failedKeys } = await this.deleteMany(keys);
 			if (failedKeys.length > 0) {
 				throw new Error(
 					`r2 batch delete failed for ${failedKeys.length} key(s)`,
