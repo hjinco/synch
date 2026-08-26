@@ -502,10 +502,10 @@ function createPlugin(): TestPlugin {
       dir: ".obsidian/plugins/synch",
     },
     app: {
-      loadLocalStorage(key: string): unknown | null {
+      loadLocalStorage(key: string): unknown {
         return localStorageValues.get(key) ?? null;
       },
-      saveLocalStorage(key: string, value: unknown | null): void {
+      saveLocalStorage(key: string, value: unknown): void {
         if (value === null) {
           localStorageValues.delete(key);
           return;

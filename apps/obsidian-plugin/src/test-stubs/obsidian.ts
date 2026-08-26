@@ -46,9 +46,21 @@ class MockElement {
     this.record?.classes.push(value);
   }
 
-  createEl(_tag: string, options?: { text?: string; cls?: string }): MockElement {
+  createEl(tag: string, options?: { text?: string; cls?: string }): MockElement {
+    return this.createChild(tag, options);
+  }
+
+  createSpan(options?: { text?: string; cls?: string }): MockElement {
+    return this.createChild("span", options);
+  }
+
+  createDiv(options?: { text?: string; cls?: string }): MockElement {
+    return this.createChild("div", options);
+  }
+
+  private createChild(tag: string, options?: { text?: string; cls?: string }): MockElement {
     const record: StoredElementRecord = {
-      tag: _tag,
+      tag,
       text: options?.text ?? "",
       classes: [],
       attributes: {},
@@ -64,14 +76,6 @@ class MockElement {
       createdElementTexts.push(options.text);
     }
     return element;
-  }
-
-  createSpan(options?: { text?: string; cls?: string }): MockElement {
-    return this.createEl("span", options);
-  }
-
-  createDiv(options?: { text?: string; cls?: string }): MockElement {
-    return this.createEl("div", options);
   }
 
   setText(value: string): void {
@@ -287,11 +291,11 @@ export class App {
     },
   };
 
-  loadLocalStorage(key: string): unknown | null {
+  loadLocalStorage(key: string): unknown {
     return this.localStorage.get(key) ?? null;
   }
 
-  saveLocalStorage(key: string, data: unknown | null): void {
+  saveLocalStorage(key: string, data: unknown): void {
     if (data === null) {
       this.localStorage.delete(key);
       return;
@@ -396,7 +400,7 @@ export class PluginSettingTab {
   hide(): void {}
 }
 
-export interface WorkspaceLeaf {}
+export class WorkspaceLeaf {}
 
 export class ItemView {
   contentEl = new MockElement();

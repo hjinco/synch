@@ -20,10 +20,10 @@ export function createTestPlugin(
       dir: pluginDir,
     },
     app: {
-      loadLocalStorage(key: string): unknown | null {
+      loadLocalStorage(key: string): unknown {
         return localStorage.get(key) ?? null;
       },
-      saveLocalStorage(key: string, value: unknown | null): void {
+      saveLocalStorage(key: string, value: unknown): void {
         if (value === null) {
           localStorage.delete(key);
           return;
