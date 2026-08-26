@@ -91,6 +91,27 @@ export class SyncAutoLoop {
     this.realtimeSession = null;
   }
 
+  flushDebouncedPush(): void {
+    if (!this.isActive() || !this.timers.has("push")) {
+      return;
+    }
+
+    this.timers.clear("push");
+    this.requestPush();
+    this.deps.onSyncScheduled?.();
+  }
+
+  async waitForInFlightDrain(): Promise<void> {
+    await this.drain();
+    while (this.drainPromise) {
+      await this.drainPromise;
+    }
+  }
+
+  hasInFlightWork(): boolean {
+    return this.drainPromise !== null || this.timers.has("push");
+  }
+
   notifyLocalChange(): void {
     if (!this.isActive()) {
       return;
@@ -390,22 +411,34 @@ export class SyncAutoLoop {
   }
 
   private async drain(force = false): Promise<void> {
-    if (!this.isActive() || (!force && this.shouldDeferSyncWork()) || this.drainPromise) {
+    if (!this.isActive() || (!force && this.shouldDeferSyncWork())) {
       return await (this.drainPromise ?? Promise.resolve());
     }
-    this.drainPromise = this.runDrainLoop();
+    if (this.drainPromise) {
+      return await this.drainPromise;
+    }
+    if (!this.hasPendingWork()) {
+      return;
+    }
+
+    const running = this.drainUntilIdle();
+    this.drainPromise = running;
     try {
-      await this.drainPromise;
+      await running;
     } finally {
-      this.drainPromise = null;
-      if (
-        this.isActive() &&
-        this.hasPendingWork() &&
-        !this.timers.has("reconnect") &&
-        !this.timers.has("syncRetry")
-      ) {
+      if (this.drainPromise === running) {
+        this.drainPromise = null;
+      }
+      if (this.shouldContinueDrain()) {
         void this.drain();
       }
+    }
+  }
+
+  private async drainUntilIdle(): Promise<void> {
+    await this.runDrainLoop();
+    while (this.shouldContinueDrain()) {
+      await this.runDrainLoop();
     }
 
     if (
@@ -417,6 +450,16 @@ export class SyncAutoLoop {
       this.state.set("live");
       this.deps.onIdle?.();
     }
+  }
+
+  private shouldContinueDrain(): boolean {
+    return (
+      this.isActive() &&
+      this.hasPendingWork() &&
+      !this.timers.has("reconnect") &&
+      !this.timers.has("syncRetry") &&
+      !this.shouldDeferSyncWork()
+    );
   }
 
   private async runDrainLoop(): Promise<void> {

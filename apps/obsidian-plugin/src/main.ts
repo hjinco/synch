@@ -12,6 +12,8 @@ import {
 } from "./ui/version-history/version-history-view";
 import { SynchSettingTab } from "./ui/settings/settings-tab";
 
+const QUIT_IN_FLIGHT_SYNC_GRACE_MS = 3_000;
+
 export default class SynchPlugin extends Plugin {
   private controller: SynchPluginController | null = null;
   private fileSizeBlockedDecorator: SynchFileSizeBlockedDecorator | null = null;
@@ -51,6 +53,7 @@ export default class SynchPlugin extends Plugin {
     this.addSettingTab(this.settingsTab);
     registerSynchCommands(this, controller);
     this.registerConnectivityEvents(controller);
+    this.registerQuitGrace(controller);
 
     this.refreshUi();
 
@@ -64,6 +67,18 @@ export default class SynchPlugin extends Plugin {
 
   onunload(): void {
     void this.controller?.stop();
+  }
+
+  private registerQuitGrace(controller: SynchPluginController): void {
+    if (!Platform.isDesktop) {
+      return;
+    }
+
+    this.registerEvent(
+      this.app.workspace.on("quit", (tasks) => {
+        controller.queueQuitInFlightSyncWait(tasks, QUIT_IN_FLIGHT_SYNC_GRACE_MS);
+      }),
+    );
   }
 
   private registerConnectivityEvents(controller: SynchPluginController): void {

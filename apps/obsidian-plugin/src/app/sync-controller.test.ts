@@ -296,6 +296,116 @@ describe("SyncController", () => {
     expect(controller.getSyncState()).toBe("attention_needed");
   });
 
+  it("does not enqueue a quit wait when nothing is in flight", () => {
+    const addPromise = vi.fn();
+    const controller = new SyncController(createDeps());
+
+    expect(controller.hasInFlightSync()).toBe(false);
+    controller.queueQuitInFlightSyncWait({ addPromise }, 3_000);
+
+    expect(addPromise).not.toHaveBeenCalled();
+  });
+
+  it("enqueues a quit wait while a periodic sync is in flight", async () => {
+    vi.spyOn(SyncEngine.prototype, "reconcileOnce").mockResolvedValue({
+      filesScanned: 1,
+      filesQueuedForUpsert: 0,
+      filesQueuedForDelete: 0,
+    });
+    vi.spyOn(SyncEngine.prototype, "startAutoSync").mockResolvedValue(true);
+    vi.spyOn(SyncEngine.prototype, "setStorageStatusWatching").mockImplementation(
+      () => {},
+    );
+    const flush = vi
+      .spyOn(SyncEngine.prototype, "flushDebouncedPushAndWaitForInFlight")
+      .mockResolvedValue();
+    let releaseSync!: (value: boolean) => void;
+    vi.spyOn(SyncEngine.prototype, "syncNow").mockImplementation(
+      async () =>
+        await new Promise<boolean>((resolve) => {
+          releaseSync = resolve;
+        }),
+    );
+    const stopAutoSync = vi
+      .spyOn(SyncEngine.prototype, "stopAutoSync")
+      .mockImplementation(() => {});
+    const closeStore = vi
+      .spyOn(SyncEngine.prototype, "closeStore")
+      .mockResolvedValue();
+    const controller = new SyncController(
+      createDeps({ getSyncIntervalMs: () => 180_000 }),
+    );
+
+    const started = controller.ensureAutoSyncState();
+    await vi.waitFor(() => {
+      expect(SyncEngine.prototype.syncNow).toHaveBeenCalledTimes(1);
+    });
+    expect(controller.hasInFlightSync()).toBe(true);
+
+    const addPromise = vi.fn();
+    controller.queueQuitInFlightSyncWait({ addPromise }, 5_000);
+    expect(addPromise).toHaveBeenCalledTimes(1);
+
+    const queued = addPromise.mock.calls[0]?.[0] as Promise<unknown>;
+    let settled = false;
+    void queued.then(() => {
+      settled = true;
+    });
+    await Promise.resolve();
+    expect(settled).toBe(false);
+    expect(flush).toHaveBeenCalledTimes(1);
+    expect(stopAutoSync).not.toHaveBeenCalled();
+    expect(closeStore).not.toHaveBeenCalled();
+
+    releaseSync(true);
+    await expect(queued).resolves.toBeUndefined();
+    expect(settled).toBe(true);
+    await started;
+    expect(stopAutoSync).not.toHaveBeenCalled();
+    expect(closeStore).not.toHaveBeenCalled();
+  });
+
+  it("enqueues a quit wait when the engine has in-flight local work", () => {
+    vi.spyOn(SyncEngine.prototype, "hasInFlightSyncWork").mockReturnValue(true);
+    const addPromise = vi.fn();
+    const controller = new SyncController(createDeps());
+
+    expect(controller.hasInFlightSync()).toBe(true);
+    controller.queueQuitInFlightSyncWait({ addPromise }, 3_000);
+
+    expect(addPromise).toHaveBeenCalledTimes(1);
+  });
+
+  it("resolves in-flight wait when the grace timeout elapses without stopping", async () => {
+    vi.useFakeTimers();
+    vi.spyOn(SyncEngine.prototype, "flushDebouncedPushAndWaitForInFlight").mockImplementation(
+      async () => await new Promise<void>(() => {}),
+    );
+    const stopAutoSync = vi
+      .spyOn(SyncEngine.prototype, "stopAutoSync")
+      .mockImplementation(() => {});
+    const closeStore = vi
+      .spyOn(SyncEngine.prototype, "closeStore")
+      .mockResolvedValue();
+    const controller = new SyncController(createDeps());
+
+    let settled = false;
+    const wait = controller.waitForInFlightSync(2_000).then(() => {
+      settled = true;
+    });
+    await Promise.resolve();
+    expect(settled).toBe(false);
+
+    await vi.advanceTimersByTimeAsync(1_999);
+    expect(settled).toBe(false);
+
+    await vi.advanceTimersByTimeAsync(1);
+    await expect(wait).resolves.toBeUndefined();
+    expect(settled).toBe(true);
+    expect(stopAutoSync).not.toHaveBeenCalled();
+    expect(closeStore).not.toHaveBeenCalled();
+  });
+
   it("returns no file-size blocked files without an active authenticated remote vault session", async () => {
     const listFileSizeBlockedFiles = vi
       .spyOn(SyncEngine.prototype, "listFileSizeBlockedFiles")

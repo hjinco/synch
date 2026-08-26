@@ -161,6 +161,38 @@ export class SyncController {
     await this.syncEngine.closeStore();
   }
 
+  hasInFlightSync(): boolean {
+    return this.periodicSyncPromise !== null || this.syncEngine.hasInFlightSyncWork();
+  }
+
+  queueQuitInFlightSyncWait(
+    tasks: { addPromise: (promise: Promise<unknown>) => void },
+    timeoutMs: number,
+  ): void {
+    if (!this.hasInFlightSync()) {
+      return;
+    }
+
+    tasks.addPromise(this.waitForInFlightSync(timeoutMs));
+  }
+
+  async waitForInFlightSync(timeoutMs: number): Promise<void> {
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await Promise.race([
+        Promise.all([
+          this.syncEngine.flushDebouncedPushAndWaitForInFlight(),
+          this.periodicSyncPromise ?? Promise.resolve(),
+        ]).catch(() => undefined),
+        new Promise<void>((resolve) => {
+          timeout = setTimeout(() => resolve(), timeoutMs);
+        }),
+      ]);
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
   async readLocalVaultId(): Promise<string> {
     return await this.syncEngine.readLocalVaultId();
   }

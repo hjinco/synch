@@ -10,6 +10,7 @@ import { DEFAULT_VAULT_CONFIG_SYNC_RULES } from "../core/vault-config-rules";
 import { queueLocalUpsertMutation } from "../core/mutation-queue";
 import { InMemorySyncDiagnostics } from "../diagnostics/in-memory";
 import type { SyncTokenResponse } from "../remote/client";
+import { SyncAutoLoop } from "../engine/auto-sync";
 import type { SyncChangeSource, SyncChangeSourceContext } from "./change-source";
 import { SyncEngine, type SyncEngineDeps } from "./sync-engine";
 
@@ -77,6 +78,54 @@ describe("SyncEngine", () => {
     const { engine } = createTestEngine(vault);
 
     await expect(engine.listFileSizeBlockedFiles()).resolves.toEqual([]);
+  });
+
+  it("flushes a local change only after in-flight mutation work finishes", async () => {
+    const firstRead = createDeferred<Uint8Array>();
+    const vault = new InMemoryVaultAdapter();
+    vault.seedText("note.md", "seed");
+    vault.readBytes = async () => await firstRead.promise;
+    const store = createTestSyncStore();
+    const { engine, changeSource } = createTestEngine(vault);
+    engine.setStore(store);
+    engine.registerVaultEvents();
+    const context = changeSource.requireContext();
+    const flush = vi.spyOn(SyncAutoLoop.prototype, "flushDebouncedPush");
+    const waitDrain = vi
+      .spyOn(SyncAutoLoop.prototype, "waitForInFlightDrain")
+      .mockResolvedValue();
+
+    try {
+      void context.runLocalMutationWork(async () => {
+        const changed = await context.eventRecorder.recordUpsert(
+          "note.md",
+          await vault.readBytes("note.md"),
+        );
+        if (changed) {
+          context.notifyLocalChange();
+        }
+      });
+      await nextTask();
+      expect(engine.hasInFlightSyncWork()).toBe(true);
+
+      const wait = engine.flushDebouncedPushAndWaitForInFlight();
+      await nextTask();
+      expect(flush).not.toHaveBeenCalled();
+      expect(waitDrain).not.toHaveBeenCalled();
+
+      firstRead.resolve(encodeUtf8("seed"));
+      await wait;
+      expect(engine.hasInFlightSyncWork()).toBe(false);
+      expect(flush).toHaveBeenCalledTimes(1);
+      expect(waitDrain).toHaveBeenCalledTimes(1);
+      expect(flush.mock.invocationCallOrder[0]).toBeLessThan(
+        waitDrain.mock.invocationCallOrder[0] ?? Number.POSITIVE_INFINITY,
+      );
+    } finally {
+      flush.mockRestore();
+      waitDrain.mockRestore();
+      await store.close();
+    }
   });
 
   it("does not let baseline progress overwrite an active pull", async () => {

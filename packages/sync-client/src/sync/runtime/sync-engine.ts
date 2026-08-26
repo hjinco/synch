@@ -112,6 +112,7 @@ export interface SyncEngineDeps {
 export class SyncEngine {
   private syncStore: SyncStore | null = null;
   private localMutationQueue: Promise<void> = Promise.resolve();
+  private localMutationWorkCount = 0;
   private readonly activities = new SyncActivityTracker();
   private hiddenFolderReconcileTimer: ReturnType<typeof setInterval> | null = null;
   private hiddenFolderReconcilePromise: Promise<void> | null = null;
@@ -432,6 +433,16 @@ export class SyncEngine {
     return await this.syncAutoLoop.syncNow();
   }
 
+  async flushDebouncedPushAndWaitForInFlight(): Promise<void> {
+    await this.waitForLocalMutationWork();
+    this.syncAutoLoop.flushDebouncedPush();
+    await this.syncAutoLoop.waitForInFlightDrain();
+  }
+
+  hasInFlightSyncWork(): boolean {
+    return this.localMutationWorkCount > 0 || this.syncAutoLoop.hasInFlightWork();
+  }
+
   setStorageStatusWatching(enabled: boolean): void {
     this.syncAutoLoop.setStorageStatusWatching(enabled);
   }
@@ -625,13 +636,18 @@ export class SyncEngine {
   }
 
   private runLocalMutationWork<T>(work: () => Promise<T>): Promise<T> {
+    this.localMutationWorkCount += 1;
     const run = this.localMutationQueue.then(
       () => this.withSyncActivity("local", work),
       () => this.withSyncActivity("local", work),
     );
     this.localMutationQueue = run.then(
-      () => undefined,
-      () => undefined,
+      () => {
+        this.localMutationWorkCount -= 1;
+      },
+      () => {
+        this.localMutationWorkCount -= 1;
+      },
     );
     return run;
   }

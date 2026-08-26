@@ -262,6 +262,13 @@ export class SynchPluginController implements SynchSettingsController {
     await this.syncController.stop();
   }
 
+  queueQuitInFlightSyncWait(
+    tasks: { addPromise: (promise: Promise<unknown>) => void },
+    timeoutMs: number,
+  ): void {
+    this.syncController.queueQuitInFlightSyncWait(tasks, timeoutMs);
+  }
+
   registerVaultEvents(): void {
     if (this.updateService.isPluginUpdateRequired()) {
       return;

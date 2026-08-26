@@ -401,3 +401,274 @@ describe("SyncAutoLoop local changes", () => {
     await store.close();
   });
 });
+
+describe("SyncAutoLoop in-flight drain", () => {
+  it("resolves immediately when nothing is draining", async () => {
+    const store = createTestSyncStore();
+    const pushPendingMutations = vi.fn(async () => createPushResult());
+    const onIdle = vi.fn();
+    const autoLoop = new SyncAutoLoop({
+      getApiBaseUrl: () => "http://127.0.0.1:8787",
+      getSyncToken: async () => createToken(),
+      getSyncStore: () => store,
+      pullOnce: vi.fn(async () => {}),
+      pushPendingMutations,
+      realtimeClient: createRealtimeClient(),
+      onIdle,
+    });
+
+    await autoLoop.start();
+    onIdle.mockClear();
+    await autoLoop.waitForInFlightDrain();
+
+    expect(autoLoop.hasInFlightWork()).toBe(false);
+    expect(pushPendingMutations).not.toHaveBeenCalled();
+    expect(onIdle).not.toHaveBeenCalled();
+    autoLoop.stop();
+    await store.close();
+  });
+
+  it("reports in-flight work while a push is debounced", async () => {
+    vi.useFakeTimers();
+    const store = createTestSyncStore();
+    const autoLoop = new SyncAutoLoop({
+      getApiBaseUrl: () => "http://127.0.0.1:8787",
+      getSyncToken: async () => createToken(),
+      getSyncStore: () => store,
+      pullOnce: vi.fn(async () => {}),
+      pushPendingMutations: vi.fn(async () => createPushResult()),
+      realtimeClient: createRealtimeClient(),
+      pushDebounceMs: 1_000,
+    });
+
+    await autoLoop.start();
+    expect(autoLoop.hasInFlightWork()).toBe(false);
+    autoLoop.notifyLocalChange();
+
+    expect(autoLoop.hasInFlightWork()).toBe(true);
+    autoLoop.stop();
+    await store.close();
+  });
+
+  it("waits until the current drain finishes", async () => {
+    let resolvePush!: (value: ReturnType<typeof createPushResult>) => void;
+    const store = createTestSyncStore();
+    const pushPendingMutations = vi.fn(
+      async () =>
+        await new Promise<ReturnType<typeof createPushResult>>((resolve) => {
+          resolvePush = resolve;
+        }),
+    );
+    const autoLoop = new SyncAutoLoop({
+      getApiBaseUrl: () => "http://127.0.0.1:8787",
+      getSyncToken: async () => createToken(),
+      getSyncStore: () => store,
+      pullOnce: vi.fn(async () => {}),
+      pushPendingMutations,
+      realtimeClient: createRealtimeClient(),
+      pushDebounceMs: 0,
+    });
+
+    await autoLoop.start();
+    autoLoop.notifyLocalChange();
+    await vi.waitFor(() => {
+      expect(pushPendingMutations).toHaveBeenCalledTimes(1);
+    });
+    expect(autoLoop.hasInFlightWork()).toBe(true);
+
+    let settled = false;
+    const wait = autoLoop.waitForInFlightDrain().then(() => {
+      settled = true;
+    });
+    await Promise.resolve();
+    expect(settled).toBe(false);
+
+    resolvePush(createPushResult());
+    await wait;
+    expect(settled).toBe(true);
+    expect(autoLoop.hasInFlightWork()).toBe(false);
+    autoLoop.stop();
+    await store.close();
+  });
+
+  it("waits for follow-up push batches before resolving an in-flight drain wait", async () => {
+    let resolveFirst!: (value: ReturnType<typeof createPushResult>) => void;
+    let resolveSecond!: (value: ReturnType<typeof createPushResult>) => void;
+    let pushCalls = 0;
+    const store = createTestSyncStore();
+    const pushPendingMutations = vi.fn(async () => {
+      pushCalls += 1;
+      if (pushCalls === 1) {
+        return await new Promise<ReturnType<typeof createPushResult>>((resolve) => {
+          resolveFirst = resolve;
+        });
+      }
+      return await new Promise<ReturnType<typeof createPushResult>>((resolve) => {
+        resolveSecond = resolve;
+      });
+    });
+    const autoLoop = new SyncAutoLoop({
+      getApiBaseUrl: () => "http://127.0.0.1:8787",
+      getSyncToken: async () => createToken(),
+      getSyncStore: () => store,
+      pullOnce: vi.fn(async () => {}),
+      pushPendingMutations,
+      realtimeClient: createRealtimeClient(),
+      pushDebounceMs: 0,
+    });
+
+    await autoLoop.start();
+    autoLoop.notifyLocalChange();
+    await vi.waitFor(() => {
+      expect(pushPendingMutations).toHaveBeenCalledTimes(1);
+    });
+
+    let settled = false;
+    const wait = autoLoop.waitForInFlightDrain().then(() => {
+      settled = true;
+    });
+    resolveFirst(createPushResult({ hasMore: true }));
+    await vi.waitFor(() => {
+      expect(pushPendingMutations).toHaveBeenCalledTimes(2);
+    });
+    await Promise.resolve();
+    expect(settled).toBe(false);
+
+    resolveSecond(createPushResult());
+    await wait;
+    expect(settled).toBe(true);
+    autoLoop.stop();
+    await store.close();
+  });
+
+  it("flushes a debounced push without waiting for the debounce timer", async () => {
+    vi.useFakeTimers();
+    const store = createTestSyncStore();
+    const pushPendingMutations = vi.fn(async () => createPushResult());
+    const autoLoop = new SyncAutoLoop({
+      getApiBaseUrl: () => "http://127.0.0.1:8787",
+      getSyncToken: async () => createToken(),
+      getSyncStore: () => store,
+      pullOnce: vi.fn(async () => {}),
+      pushPendingMutations,
+      realtimeClient: createRealtimeClient(),
+      pushDebounceMs: 1_000,
+    });
+
+    await autoLoop.start();
+    autoLoop.notifyLocalChange();
+    autoLoop.flushDebouncedPush();
+    await autoLoop.waitForInFlightDrain();
+
+    expect(pushPendingMutations).toHaveBeenCalledTimes(1);
+    autoLoop.stop();
+    await store.close();
+  });
+
+  it("does not stop auto sync when an in-flight wait times out", async () => {
+    vi.useFakeTimers();
+    const store = createTestSyncStore();
+    const closedSessions: SyncRealtimeSession[] = [];
+    const pushPendingMutations = vi.fn(
+      async () =>
+        await new Promise<ReturnType<typeof createPushResult>>(() => {}),
+    );
+    const autoLoop = new SyncAutoLoop({
+      getApiBaseUrl: () => "http://127.0.0.1:8787",
+      getSyncToken: async () => createToken(),
+      getSyncStore: () => store,
+      pullOnce: vi.fn(async () => {}),
+      pushPendingMutations,
+      realtimeClient: createRealtimeClient(undefined, (session) => {
+        const close = session.close.bind(session);
+        session.close = () => {
+          closedSessions.push(session);
+          close();
+        };
+      }),
+      pushDebounceMs: 0,
+    });
+
+    await autoLoop.start();
+    autoLoop.notifyLocalChange();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(pushPendingMutations).toHaveBeenCalledTimes(1);
+
+    const wait = autoLoop.waitForInFlightDrain();
+    const timedOut = Promise.race([
+      wait.then(() => "completed" as const),
+      new Promise<"timeout">((resolve) => {
+        setTimeout(() => resolve("timeout"), 2_000);
+      }),
+    ]);
+    await vi.advanceTimersByTimeAsync(2_000);
+
+    await expect(timedOut).resolves.toBe("timeout");
+    expect(closedSessions).toHaveLength(0);
+    autoLoop.stop();
+    expect(closedSessions).toHaveLength(1);
+    await store.close();
+  });
+
+  it("does not start a deferred drain while waiting for in-flight work", async () => {
+    const store = createTestSyncStore();
+    const pushPendingMutations = vi.fn(async () => createPushResult());
+    const autoLoop = new SyncAutoLoop({
+      getApiBaseUrl: () => "http://127.0.0.1:8787",
+      getSyncToken: async () => createToken(),
+      getSyncStore: () => store,
+      pullOnce: vi.fn(async () => {}),
+      pushPendingMutations,
+      realtimeClient: createRealtimeClient(),
+      shouldDeferSyncWork: () => true,
+    });
+
+    await autoLoop.start();
+    autoLoop.notifyLocalChange();
+    expect(autoLoop.hasInFlightWork()).toBe(false);
+    autoLoop.flushDebouncedPush();
+    await autoLoop.waitForInFlightDrain();
+
+    expect(autoLoop.hasInFlightWork()).toBe(false);
+    expect(pushPendingMutations).not.toHaveBeenCalled();
+    autoLoop.stop();
+    await store.close();
+  });
+
+  it("waits for an already running deferred drain without starting another", async () => {
+    let resolvePush!: (value: ReturnType<typeof createPushResult>) => void;
+    const store = createTestSyncStore();
+    const pushPendingMutations = vi.fn(
+      async () =>
+        await new Promise<ReturnType<typeof createPushResult>>((resolve) => {
+          resolvePush = resolve;
+        }),
+    );
+    const autoLoop = new SyncAutoLoop({
+      getApiBaseUrl: () => "http://127.0.0.1:8787",
+      getSyncToken: async () => createToken(),
+      getSyncStore: () => store,
+      pullOnce: vi.fn(async () => {}),
+      pushPendingMutations,
+      realtimeClient: createRealtimeClient(),
+      shouldDeferSyncWork: () => true,
+    });
+
+    await autoLoop.start();
+    const syncNow = autoLoop.syncNow();
+    await vi.waitFor(() => {
+      expect(pushPendingMutations).toHaveBeenCalledTimes(1);
+    });
+
+    const wait = autoLoop.waitForInFlightDrain();
+    await Promise.resolve();
+    expect(pushPendingMutations).toHaveBeenCalledTimes(1);
+
+    resolvePush(createPushResult());
+    await wait;
+    await syncNow;
+    expect(pushPendingMutations).toHaveBeenCalledTimes(1);
+    autoLoop.stop();
+    await store.close();
+  });
+});
