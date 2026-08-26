@@ -56,7 +56,7 @@ export function getStatusBarIcon(state: SynchSyncState): string {
       return "clock";
     case "syncing":
     case "reconnecting":
-      return "loader-circle";
+      return "loader";
     case "offline":
       return "wifi-off";
     case "up_to_date":
@@ -112,10 +112,6 @@ export class SynchStatusBar {
     }
     this.statusBar.addClass(getStatusBarStateClass(state));
     this.statusBar.toggleClass("synch-status-storage-warning", hasStorageWarning);
-    this.statusBar.toggleClass(
-      "synch-status-active",
-      !hasStorageWarning && (state === "syncing" || state === "reconnecting"),
-    );
     if (this.icon) {
       setIcon(this.icon, hasStorageWarning ? "triangle-alert" : getStatusBarIcon(state));
     }

@@ -157,7 +157,6 @@ describe("SynchStatusBar", () => {
     expect(item.children[0].classes).toContain("synch-status-bar-icon");
     expect(item.children[0].attributes.get("aria-hidden")).toBe("true");
     expectElementState(item, "syncing", 37);
-    expect(item.classes).toContain("synch-status-active");
   });
 
   it("does not require the native Obsidian sync status bar item", () => {
@@ -181,26 +180,24 @@ describe("SynchStatusBar", () => {
   });
 
   it.each([
-    ["not_ready", 0, false],
-    ["paused", 0, false],
-    ["pending", 100, false],
-    ["syncing", 37, true],
-    ["offline", 0, false],
-    ["reconnecting", 0, true],
-    ["up_to_date", 100, false],
-    ["attention_needed", 0, false],
-  ] satisfies Array<[SynchSyncState, number, boolean]>)(
+    ["not_ready", 0],
+    ["paused", 0],
+    ["pending", 100],
+    ["syncing", 37],
+    ["offline", 0],
+    ["reconnecting", 0],
+    ["up_to_date", 100],
+    ["attention_needed", 0],
+  ] satisfies Array<[SynchSyncState, number]>)(
     "maps %s to status bar attributes and classes",
-    (syncState, percent, active) => {
+    (syncState, percent) => {
       const plugin = createPlugin();
 
       const statusBar = new SynchStatusBar(plugin, createState(syncState, percent));
 
       statusBar.initialize();
 
-      const item = plugin.addedStatusBarItems[0];
-      expectElementState(item, syncState, percent);
-      expect(item.classes.has("synch-status-active")).toBe(active);
+      expectElementState(plugin.addedStatusBarItems[0], syncState, percent);
     },
   );
 
@@ -219,7 +216,6 @@ describe("SynchStatusBar", () => {
     const item = plugin.addedStatusBarItems[0];
     expect(item.classes).toContain("synch-status-up-to-date");
     expect(item.classes).toContain("synch-status-storage-warning");
-    expect(item.classes.has("synch-status-active")).toBe(false);
     expect(item.attributes.get("aria-label")).toBe(
       "Synch storage is almost full. Open Synch settings",
     );
@@ -236,7 +232,6 @@ describe("SynchStatusBar", () => {
 
     const item = plugin.addedStatusBarItems[0];
     expect(item.classes).toContain("synch-status-update-required");
-    expect(item.classes.has("synch-status-active")).toBe(false);
     expect(item.attributes.get("aria-label")).toBe(
       "Synch plugin update required. Open Synch settings",
     );

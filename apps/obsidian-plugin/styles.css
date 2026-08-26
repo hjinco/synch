@@ -52,10 +52,6 @@
   min-width: 1.4em;
 }
 
-.synch-status-bar.synch-status-active .synch-status-bar-icon {
-  animation: synch-spin 0.9s linear infinite;
-}
-
 .synch-status-bar.synch-status-up-to-date {
   color: var(--text-success);
 }
@@ -179,7 +175,6 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .synch-status-bar.synch-status-active .synch-status-bar-icon,
   .synch-sync-spinner {
     animation: none;
   }
