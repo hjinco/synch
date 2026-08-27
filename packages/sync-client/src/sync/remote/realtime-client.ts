@@ -33,6 +33,7 @@ export type {
   RestoreEntryVersionPayload,
   PurgeDeletedEntryBatchResult,
   PurgeDeletedEntryPayload,
+  PresenceUpdatedPush,
   SyncPolicy,
   SyncRealtimeCallbacks,
   SyncRealtimeClientOptions,

@@ -2,6 +2,9 @@ import type { WebSocket as WsWebSocket } from "ws";
 
 import type {
 	PolicyUpdatedMessage,
+	PresenceAvailabilityMessage,
+	PresenceClearedMessage,
+	PresenceUpdatedMessage,
 	ServerControlMessage,
 	SocketSession,
 	StorageStatusUpdatedMessage,
@@ -71,6 +74,39 @@ export class NodeSocketGateway implements SocketGateway {
 	broadcastPolicyUpdated(message: PolicyUpdatedMessage): void {
 		const encoded = JSON.stringify(message);
 		for (const socket of this.sockets.keys()) this.trySend(socket, encoded);
+	}
+
+	broadcastPresenceToWatchers(
+		entryId: string,
+		excludedConnectionId: string,
+		message: PresenceUpdatedMessage | PresenceClearedMessage,
+	): void {
+		const encoded = JSON.stringify(message);
+		for (const [socket, record] of this.sockets) {
+			if (record.id === excludedConnectionId) continue;
+			if (
+				record.session.wantsPresence &&
+				record.session.presenceWatchEntryIds.includes(entryId)
+			) {
+				this.trySend(socket, encoded);
+			}
+		}
+	}
+
+	broadcastPresenceAvailability(excludedConnectionId?: string): boolean {
+		const watchers = [...this.sockets].filter(
+			([, record]) =>
+				record.id !== excludedConnectionId && record.session.wantsPresence,
+		);
+		const enabled = watchers.length > 1;
+		const encoded = JSON.stringify({
+			type: "presence_availability",
+			enabled,
+		} satisfies PresenceAvailabilityMessage);
+		for (const [socket] of watchers) {
+			this.trySend(socket, encoded);
+		}
+		return enabled;
 	}
 
 	broadcastExcept(excludedConnectionId: string, message: ServerControlMessage): void {

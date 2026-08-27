@@ -3,14 +3,26 @@ import type {
   EntryStatePageCursor,
   ListEntryStatesResponse,
 } from "./changes";
+import type { PresenceSelection } from "../core/presence";
 
 export interface SyncRealtimeCallbacks {
   onCursorAdvanced(cursor: number): void;
   onStorageStatusUpdated(status: SyncStorageStatus): void;
   onPolicyUpdated(policy: SyncPolicy, storageStatus: SyncStorageStatus): void;
+  onPresenceUpdated(update: PresenceUpdatedPush): void;
+  onPresenceCleared(presenceId: string): void;
+  onPresenceAvailabilityChanged(enabled: boolean): void;
   onClose(event: { code: number; reason: string }): void;
   onError(error: Error): void;
 }
+
+export type PresenceUpdatedPush = {
+  presenceId: string;
+  entryId: string;
+  userId: string;
+  displayName: string;
+  selection: PresenceSelection;
+};
 
 export interface SyncStorageStatus {
   storageUsedBytes: number;
@@ -76,8 +88,14 @@ export interface SyncRealtimeSession {
   storageUsedBytes: number;
   storageLimitBytes: number;
   maxFileSizeBytes: number;
+  /** Whether the server advertised support for ephemeral presence messages. */
+  presenceSupported?: boolean;
   watchStorageStatus(): void;
   unwatchStorageStatus(): void;
+  watchPresence(entryIds: string[]): void;
+  unwatchPresence(): void;
+  updatePresence(entryId: string, selection: PresenceSelection): void;
+  clearPresence(): void;
   listEntryStates(input: {
     sinceCursor: number;
     targetCursor: number | null;
@@ -233,6 +251,8 @@ export type ServerMessage =
       cursor: number;
       policy: SyncPolicy;
       storageStatus: SyncStorageStatus;
+      /** Optional so clients can connect to pre-presence servers. */
+      presenceSupported?: boolean;
     }
   | {
       type: "cursor_advanced";
@@ -246,6 +266,22 @@ export type ServerMessage =
       type: "policy_updated";
       policy: SyncPolicy;
       storageStatus: SyncStorageStatus;
+    }
+  | {
+      type: "presence_updated";
+      presenceId: string;
+      entryId: string;
+      userId: string;
+      displayName: string;
+      selection: PresenceSelection;
+    }
+  | {
+      type: "presence_cleared";
+      presenceId: string;
+    }
+  | {
+      type: "presence_availability";
+      enabled: boolean;
     }
   | {
       type: "commit_accepted";

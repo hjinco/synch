@@ -18,7 +18,11 @@ describe("SocketConnectionService", () => {
 			userId: "user-1",
 			localVaultId: "local-vault-1",
 			vaultId: "vault-1",
+			displayName: "User",
 			wantsStorageStatus: false,
+			wantsPresence: false,
+			presenceEntryId: null,
+			presenceWatchEntryIds: [],
 		});
 		await service.completeSocketOpen();
 		expect(syncTokenVerifier.verifySyncToken).toHaveBeenCalledWith("token", "vault-1");
@@ -62,6 +66,7 @@ function createSyncTokenVerifier(): SyncTokenVerifier {
 			sub: "user-1",
 			vaultId,
 			localVaultId: "local-vault-1",
+			displayName: "User",
 			scope: "vault:sync" as const,
 			iat: 1,
 			exp: 2,

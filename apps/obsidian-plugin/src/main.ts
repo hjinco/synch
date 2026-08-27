@@ -2,6 +2,7 @@ import { Platform, Plugin } from "obsidian";
 
 import { registerSynchCommands } from "./ui/commands";
 import { SynchFileSizeBlockedDecorator } from "./ui/file-size/file-size-blocked-decorator";
+import { SynchOpenFilePresence } from "./ui/presence/open-file-presence";
 import { SynchMobileStatusIndicator } from "./ui/status/mobile-status-indicator";
 import { SynchPluginController } from "./app/plugin-controller";
 import { SynchStatusBar } from "./ui/status/status-bar";
@@ -17,6 +18,7 @@ const QUIT_IN_FLIGHT_SYNC_GRACE_MS = 3_000;
 export default class SynchPlugin extends Plugin {
   private controller: SynchPluginController | null = null;
   private fileSizeBlockedDecorator: SynchFileSizeBlockedDecorator | null = null;
+  private openFilePresence: SynchOpenFilePresence | null = null;
   private mobileStatusIndicator: SynchMobileStatusIndicator | null = null;
   private statusBar: SynchStatusBar | null = null;
   private settingsTab: SynchSettingTab | null = null;
@@ -44,6 +46,8 @@ export default class SynchPlugin extends Plugin {
     }
     this.fileSizeBlockedDecorator = new SynchFileSizeBlockedDecorator(this, controller);
     this.fileSizeBlockedDecorator.initialize();
+    this.openFilePresence = new SynchOpenFilePresence(this, controller);
+    this.openFilePresence.initialize();
 
     this.registerView(
       SYNCH_VERSION_HISTORY_VIEW_TYPE,
@@ -62,6 +66,7 @@ export default class SynchPlugin extends Plugin {
       void controller.ensureAutoSyncState();
       void controller.ensureVersionHistoryPane();
       void this.fileSizeBlockedDecorator?.refresh();
+      void this.openFilePresence?.syncSession();
     });
   }
 
@@ -113,6 +118,9 @@ export default class SynchPlugin extends Plugin {
 
     if (event.type === "file-size-blocked-changed") {
       this.fileSizeBlockedDecorator?.queueRefresh();
+    }
+    if (event.type === "sync-status-changed") {
+      void this.openFilePresence?.syncSession();
     }
   }
 }

@@ -20,6 +20,7 @@ import type {
 import { SyncRealtimeError } from "./realtime-types";
 import type { EntryStatePageCursor, ListEntryStatesResponse } from "./changes";
 import type { SyncRealtimeSocketSession } from "./realtime-socket-session";
+import type { PresenceSelection } from "../core/presence";
 
 export function applySessionStorageLimit(
   status: SyncStorageStatus,
@@ -33,6 +34,7 @@ export function applySessionStorageLimit(
 
 export class SyncRealtimeApiSession implements SyncRealtimeSession {
   readonly serverCursor: number;
+  readonly presenceSupported: boolean;
 
   constructor(
     private readonly transport: SyncRealtimeSocketSession,
@@ -40,6 +42,7 @@ export class SyncRealtimeApiSession implements SyncRealtimeSession {
     private readonly state: RealtimeSessionState,
   ) {
     this.serverCursor = hello.cursor;
+    this.presenceSupported = hello.presenceSupported === true;
   }
 
   get storageUsedBytes(): number {
@@ -73,6 +76,48 @@ export class SyncRealtimeApiSession implements SyncRealtimeSession {
   unwatchStorageStatus(): void {
     this.transport.send({
       type: "unwatch_storage_status",
+    });
+  }
+
+  watchPresence(entryIds: string[]): void {
+    if (!this.presenceSupported) {
+      return;
+    }
+    const normalizedEntryIds = [
+      ...new Set(entryIds.map((entryId) => entryId.trim()).filter(Boolean)),
+    ].slice(0, 100);
+    this.transport.send({
+      type: "watch_presence",
+      entryIds: normalizedEntryIds,
+    });
+  }
+
+  unwatchPresence(): void {
+    if (!this.presenceSupported) {
+      return;
+    }
+    this.transport.send({
+      type: "unwatch_presence",
+    });
+  }
+
+  updatePresence(entryId: string, selection: PresenceSelection): void {
+    if (!this.presenceSupported) {
+      return;
+    }
+    this.transport.send({
+      type: "presence_update",
+      entryId,
+      selection,
+    });
+  }
+
+  clearPresence(): void {
+    if (!this.presenceSupported) {
+      return;
+    }
+    this.transport.send({
+      type: "presence_clear",
     });
   }
 

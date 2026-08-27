@@ -33,6 +33,7 @@ describe("IssueSyncTokenUseCase", () => {
 				userId: "user-1",
 				vaultId: "vault-1",
 				localVaultId: "local-vault-1",
+				displayName: "Ada",
 			}),
 		).resolves.toMatchObject({
 			token: "token",
@@ -40,6 +41,15 @@ describe("IssueSyncTokenUseCase", () => {
 			localVaultId: "local-vault-1",
 			syncFormatVersion: 2,
 		});
+		expect(signer.signSyncToken).toHaveBeenCalledWith(
+			expect.objectContaining({
+				sub: "user-1",
+				vaultId: "vault-1",
+				localVaultId: "local-vault-1",
+				displayName: "Ada",
+				scope: "vault:sync",
+			}),
+		);
 	});
 
 	it("rejects issuing a token for a vault the caller cannot access", async () => {
@@ -55,6 +65,7 @@ describe("IssueSyncTokenUseCase", () => {
 				userId: "user-1",
 				vaultId: "vault-foreign",
 				localVaultId: "local-vault-1",
+				displayName: "Ada",
 			}),
 		).rejects.toMatchObject({ code: "vault_access_denied" });
 		expect(signer.signSyncToken).not.toHaveBeenCalled();
@@ -78,6 +89,7 @@ describe("IssueSyncTokenUseCase", () => {
 				userId: "user-1",
 				vaultId: "vault-1",
 				localVaultId: "local-vault-1",
+				displayName: "Ada",
 			}),
 		).rejects.toMatchObject({ code: "sync_paused" });
 		expect(signer.signSyncToken).not.toHaveBeenCalled();

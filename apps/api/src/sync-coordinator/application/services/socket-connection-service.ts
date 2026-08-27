@@ -39,7 +39,11 @@ export class SocketConnectionService {
 			userId: claims.sub,
 			localVaultId: claims.localVaultId,
 			vaultId: claims.vaultId,
+			displayName: claims.displayName,
 			wantsStorageStatus: false,
+			wantsPresence: false,
+			presenceEntryId: null,
+			presenceWatchEntryIds: [],
 		};
 		return session;
 	}

@@ -20,6 +20,7 @@ export class JoseSyncTokenCodec implements SyncTokenCodec {
 		return await new SignJWT({
 			vaultId: claims.vaultId,
 			localVaultId: claims.localVaultId,
+			displayName: claims.displayName,
 			scope: claims.scope,
 		})
 			.setProtectedHeader({

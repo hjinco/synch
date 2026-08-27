@@ -74,6 +74,10 @@ export function createRealtimeClient(
         maxFileSizeBytes: 3_000_000,
         watchStorageStatus() {},
         unwatchStorageStatus() {},
+        watchPresence() {},
+        unwatchPresence() {},
+        updatePresence() {},
+        clearPresence() {},
         async listEntryStates() {
           return {
             targetCursor: 0,

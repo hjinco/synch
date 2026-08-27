@@ -29,6 +29,7 @@ export async function openRealtimeSession(input: {
     storageUsedBytes: number;
     storageLimitBytes: number;
   };
+  helloPresenceSupported?: boolean | "omitted";
 } = {}): Promise<{
   socket: MockWebSocket;
   session: SyncRealtimeSession;
@@ -57,6 +58,10 @@ export async function openRealtimeSession(input: {
       onCursorAdvanced: input.callbacks?.onCursorAdvanced ?? (() => {}),
       onStorageStatusUpdated: input.callbacks?.onStorageStatusUpdated ?? (() => {}),
       onPolicyUpdated: input.callbacks?.onPolicyUpdated ?? (() => {}),
+      onPresenceUpdated: input.callbacks?.onPresenceUpdated ?? (() => {}),
+      onPresenceCleared: input.callbacks?.onPresenceCleared ?? (() => {}),
+      onPresenceAvailabilityChanged:
+        input.callbacks?.onPresenceAvailabilityChanged ?? (() => {}),
       onClose: input.callbacks?.onClose ?? (() => {}),
       onError:
         input.callbacks?.onError ??
@@ -81,6 +86,9 @@ export async function openRealtimeSession(input: {
       storageUsedBytes: 24_300_000,
       storageLimitBytes: 100_000_000,
     },
+    ...(input.helloPresenceSupported === "omitted"
+      ? {}
+      : { presenceSupported: input.helloPresenceSupported ?? true }),
   });
 
   return {

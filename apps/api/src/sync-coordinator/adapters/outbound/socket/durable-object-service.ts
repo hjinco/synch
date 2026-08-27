@@ -1,6 +1,9 @@
 import { SYNC_WEBSOCKET_PROTOCOL } from "../../../../sync-access/application";
 import type {
 	PolicyUpdatedMessage,
+	PresenceAvailabilityMessage,
+	PresenceClearedMessage,
+	PresenceUpdatedMessage,
 	ServerControlMessage,
 	SocketSession,
 	StorageStatusUpdatedMessage,
@@ -78,6 +81,41 @@ export class CoordinatorSocketService implements SocketGateway {
 		for (const socket of this.ctx.getWebSockets()) this.trySend(socket, encoded);
 	}
 
+	broadcastPresenceToWatchers(
+		entryId: string,
+		excludedConnectionId: string,
+		message: PresenceUpdatedMessage | PresenceClearedMessage,
+	): void {
+		const encoded = JSON.stringify(message);
+		for (const socket of this.ctx.getWebSockets()) {
+			const connectionId = this.connectionIdFor(socket);
+			if (connectionId === excludedConnectionId) continue;
+			const session = connectionId
+				? this.readSocketSession(connectionId)
+				: null;
+			if (session?.wantsPresence && session.presenceWatchEntryIds.includes(entryId)) {
+				this.trySend(socket, encoded);
+			}
+		}
+	}
+
+	broadcastPresenceAvailability(excludedConnectionId?: string): boolean {
+		const watchers: WebSocket[] = [];
+		for (const socket of this.ctx.getWebSockets()) {
+			const connectionId = this.connectionIdFor(socket);
+			if (connectionId === excludedConnectionId || !connectionId) continue;
+			const session = this.readSocketSession(connectionId);
+			if (session?.wantsPresence) watchers.push(socket);
+		}
+		const enabled = watchers.length > 1;
+		const encoded = JSON.stringify({
+			type: "presence_availability",
+			enabled,
+		} satisfies PresenceAvailabilityMessage);
+		for (const socket of watchers) this.trySend(socket, encoded);
+		return enabled;
+	}
+
 	broadcastExcept(excludedConnectionId: string, message: ServerControlMessage): void {
 		const encoded = JSON.stringify(message);
 		for (const socket of this.ctx.getWebSockets()) {
@@ -130,13 +168,25 @@ export class CoordinatorSocketService implements SocketGateway {
 			typeof maybeSession.localVaultId !== "string" ||
 			typeof maybeSession.vaultId !== "string"
 		) return null;
-		return {
-			userId: maybeSession.userId,
-			localVaultId: maybeSession.localVaultId,
-			vaultId: maybeSession.vaultId,
-			wantsStorageStatus: maybeSession.wantsStorageStatus === true,
-		};
-	}
+			return {
+				userId: maybeSession.userId,
+				localVaultId: maybeSession.localVaultId,
+				vaultId: maybeSession.vaultId,
+				displayName: typeof maybeSession.displayName === "string" ? maybeSession.displayName : "",
+				wantsStorageStatus: maybeSession.wantsStorageStatus === true,
+				wantsPresence: maybeSession.wantsPresence === true,
+				presenceEntryId:
+					typeof maybeSession.presenceEntryId === "string"
+						? maybeSession.presenceEntryId
+						: null,
+				presenceWatchEntryIds: Array.isArray(maybeSession.presenceWatchEntryIds)
+					? maybeSession.presenceWatchEntryIds.filter(
+							(entryId): entryId is string =>
+								typeof entryId === "string" && entryId.trim().length > 0,
+						)
+					: [],
+			};
+		}
 
 	private findSocket(connectionId: string): WebSocket | null {
 		for (const socket of this.ctx.getWebSockets()) {

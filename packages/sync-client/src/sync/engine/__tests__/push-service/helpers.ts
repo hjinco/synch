@@ -33,6 +33,10 @@ export function createPushSession(
     maxFileSizeBytes: 3_000_000,
     watchStorageStatus() {},
     unwatchStorageStatus() {},
+    watchPresence() {},
+    unwatchPresence() {},
+    updatePresence() {},
+    clearPresence() {},
     async listEntryStates() {
       throw new Error("push tests should not list entry states");
     },

@@ -6,6 +6,7 @@ export type SyncTokenIssueInput = {
 	userId: string;
 	vaultId: string;
 	localVaultId: string;
+	displayName: string;
 };
 
 export type SyncTokenIssueResponse = {

@@ -121,7 +121,11 @@ export function testSession(overrides: Partial<SocketSession> = {}): SocketSessi
 		userId: "user-1",
 		vaultId: "vault-1",
 		localVaultId: "local-vault-1",
+		displayName: "User",
 		wantsStorageStatus: false,
+		wantsPresence: false,
+		presenceEntryId: null,
+		presenceWatchEntryIds: [],
 		...overrides,
 	};
 }

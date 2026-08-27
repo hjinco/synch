@@ -98,6 +98,10 @@ export function createNodeCoordinatorRuntime(
 				vaultLock.run(vaultId, () =>
 					application.socketMessageHandler.handle(connectionId, message),
 				),
+			handleDisconnect: (connectionId: string) =>
+				vaultLock.run(vaultId, () => {
+					application.socketMessageHandler.handleDisconnect(connectionId);
+				}),
 		},
 		socketConnectionService: {
 			prepareSocketSession: (token: string | null, id: string) =>

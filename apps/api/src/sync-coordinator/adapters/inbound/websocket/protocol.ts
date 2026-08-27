@@ -140,6 +140,35 @@ export const unwatchStorageStatusMessageSchema = z.object({
 	type: z.literal("unwatch_storage_status"),
 });
 
+export const watchPresenceMessageSchema = z.object({
+	type: z.literal("watch_presence"),
+	entryIds: z.array(nonEmptyString).max(100),
+});
+
+export const unwatchPresenceMessageSchema = z.object({
+	type: z.literal("unwatch_presence"),
+});
+
+const presencePositionSchema = z.object({
+	line: nonNegativeInteger,
+	ch: nonNegativeInteger,
+});
+
+const presenceSelectionSchema = z.object({
+	anchor: presencePositionSchema,
+	head: presencePositionSchema,
+});
+
+export const presenceUpdateMessageSchema = z.object({
+	type: z.literal("presence_update"),
+	entryId: nonEmptyString,
+	selection: presenceSelectionSchema,
+});
+
+export const presenceClearMessageSchema = z.object({
+	type: z.literal("presence_clear"),
+});
+
 export const clientControlMessageSchema = z.discriminatedUnion("type", [
 	helloMessageSchema,
 	commitMutationsMessageSchema,
@@ -153,6 +182,10 @@ export const clientControlMessageSchema = z.discriminatedUnion("type", [
 	heartbeatMessageSchema,
 	watchStorageStatusMessageSchema,
 	unwatchStorageStatusMessageSchema,
+	watchPresenceMessageSchema,
+	unwatchPresenceMessageSchema,
+	presenceUpdateMessageSchema,
+	presenceClearMessageSchema,
 ]);
 
 export type {
@@ -167,9 +200,15 @@ export type {
 	ListEntryStatesMessage,
 	ListEntryVersionsMessage,
 	PurgeDeletedEntriesMessage,
+	PresenceClearMessage,
+	PresencePosition,
+	PresenceSelection,
 	RestoreEntryVersionMessage,
 	RestoreEntryVersionsMessage,
+	UnwatchPresenceMessage,
 	UnwatchStorageStatusMessage,
+	PresenceUpdateMessage,
+	WatchPresenceMessage,
 	WatchStorageStatusMessage,
 } from "../../../application/dto/protocol-types";
 

@@ -772,6 +772,10 @@ function createRealtimeSession(
     maxFileSizeBytes: 3_000_000,
     watchStorageStatus: vi.fn(),
     unwatchStorageStatus: vi.fn(),
+    watchPresence: vi.fn(),
+    unwatchPresence: vi.fn(),
+    updatePresence: vi.fn(),
+    clearPresence: vi.fn(),
     listEntryStates: vi.fn(async () => ({
       targetCursor: 0,
       totalEntries: 0,

@@ -333,7 +333,21 @@ export class Plugin {
   }
 
   async saveData(_value: unknown): Promise<void> {}
+
+  register(_callback: () => unknown): void {}
+
+  registerEvent(ref: unknown): unknown {
+    return ref;
+  }
+
+  registerInterval(id: number): number {
+    return id;
+  }
+
+  registerEditorExtension(_extension: unknown): void {}
 }
+
+export const editorInfoField = {};
 
 export class Modal {
   containerEl = new MockElement();

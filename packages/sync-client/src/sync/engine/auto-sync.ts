@@ -1,4 +1,5 @@
 import type { SyncTokenResponse } from "../remote/client";
+import type { PresenceSelection } from "../core/presence";
 import {
   isRemoteVaultUnavailableError,
   remoteVaultUnavailableFromWebSocketClose,
@@ -11,6 +12,7 @@ import {
   SyncRealtimeError,
   type SyncRealtimeSession,
   type SyncStorageStatus,
+  type PresenceUpdatedPush,
 } from "../remote/realtime-client";
 import type { SyncCursorStore } from "../store/ports";
 import { SyncAutoLoopState, type SyncConnectionState } from "./auto-sync-state";
@@ -43,6 +45,10 @@ export interface SyncAutoLoopDeps {
   shouldDeferSyncWork?: () => boolean;
   onConnectionStateChange?: (state: SyncConnectionState) => void;
   onStorageStatusChange?: (status: SyncStorageStatus | null) => void;
+  onPresenceUpdated?: (update: PresenceUpdatedPush) => void;
+  onPresenceCleared?: (presenceId: string) => void;
+  onPresenceAvailabilityChanged?: (enabled: boolean) => void;
+  onPresenceSessionReset?: () => void;
   onSyncScheduled?: () => void;
   onSyncDeferred?: () => void;
   onIdle?: () => void;
@@ -66,6 +72,11 @@ export class SyncAutoLoop {
   private syncRetryAttempt = 0;
   private readonly state: SyncAutoLoopState;
   private storageStatusWatching = false;
+  private presenceWatching = false;
+  private presenceWatchEntryIds: string[] = [];
+  private presenceWatchSent = false;
+  private presenceAvailable = false;
+  private presenceSupported = true;
   private readonly pendingWork = new PendingSyncWorkQueue();
 
   constructor(private readonly deps: SyncAutoLoopDeps) {
@@ -87,6 +98,9 @@ export class SyncAutoLoop {
     this.state.set("stopped");
     this.pendingWork.clear();
     this.timers.clearAll();
+    this.presenceWatchSent = false;
+    this.setPresenceAvailability(false);
+    this.deps.onPresenceSessionReset?.();
     this.realtimeSession?.close();
     this.realtimeSession = null;
   }
@@ -174,6 +188,70 @@ export class SyncAutoLoop {
     this.applyStorageStatusWatch();
   }
 
+  setPresenceWatching(enabled: boolean): void {
+    if (this.presenceWatching === enabled) {
+      if (enabled && this.realtimeSession && this.presenceSupported && !this.presenceWatchSent) {
+        this.applyPresenceWatch();
+      }
+      return;
+    }
+
+    this.presenceWatching = enabled;
+    if (!enabled) {
+      this.presenceWatchEntryIds = [];
+      this.setPresenceAvailability(false);
+      this.deps.onPresenceSessionReset?.();
+    }
+    this.applyPresenceWatch();
+  }
+
+  setPresenceWatchEntryIds(entryIds: string[]): void {
+    const normalizedEntryIds = normalizePresenceEntryIds(entryIds);
+    if (samePresenceEntryIds(this.presenceWatchEntryIds, normalizedEntryIds)) {
+      return;
+    }
+
+    this.presenceWatchEntryIds = normalizedEntryIds;
+    this.presenceWatchSent = false;
+    if (this.presenceWatching) {
+      this.applyPresenceWatch();
+    }
+  }
+
+  updatePresence(entryId: string, selection: PresenceSelection): void {
+    if (!this.presenceWatching || !this.presenceSupported || !this.presenceAvailable) {
+      return;
+    }
+    const session = this.realtimeSession;
+    if (!session) {
+      return;
+    }
+    try {
+      session.updatePresence(entryId, selection);
+    } catch (error) {
+      if (!isRealtimeConnectionError(error)) {
+        this.handleError(error);
+      }
+    }
+  }
+
+  clearPresence(): void {
+    if (!this.presenceWatching || !this.presenceSupported || !this.presenceAvailable) {
+      return;
+    }
+    const session = this.realtimeSession;
+    if (!session) {
+      return;
+    }
+    try {
+      session.clearPresence();
+    } catch (error) {
+      if (!isRealtimeConnectionError(error)) {
+        this.handleError(error);
+      }
+    }
+  }
+
   async ensureRealtimeSession(): Promise<void> {
     if (!this.isActive() || this.realtimeSession || this.connectPromise) {
       return await (this.connectPromise ?? Promise.resolve());
@@ -246,6 +324,15 @@ export class SyncAutoLoop {
           onPolicyUpdated: (_policy, storageStatus) => {
             void this.handlePolicyUpdated(storageStatus);
           },
+          onPresenceUpdated: (update) => {
+            this.deps.onPresenceUpdated?.(update);
+          },
+          onPresenceCleared: (presenceId) => {
+            this.deps.onPresenceCleared?.(presenceId);
+          },
+          onPresenceAvailabilityChanged: (enabled) => {
+            this.setPresenceAvailability(enabled);
+          },
           onClose: (event) => {
             const unavailable = remoteVaultUnavailableFromWebSocketClose(
               event,
@@ -282,8 +369,14 @@ export class SyncAutoLoop {
           );
         }
         this.reconnectAttempt = 0;
+        this.presenceSupported = session.presenceSupported !== false;
+        this.presenceWatchSent = false;
+        this.setPresenceAvailability(false);
         if (this.storageStatusWatching) {
           this.applyStorageStatusWatch();
+        }
+        if (this.presenceWatching && this.presenceSupported) {
+          this.applyPresenceWatch();
         }
         const unblockedFileSizeMutations =
           (await this.deps.unblockFileSizeBlockedMutations?.(session)) ?? 0;
@@ -349,11 +442,22 @@ export class SyncAutoLoop {
 
     const session = this.realtimeSession;
     this.realtimeSession = null;
+    this.presenceWatchSent = false;
     this.deps.onStorageStatusChange?.(null);
+    this.setPresenceAvailability(false);
+    this.deps.onPresenceSessionReset?.();
     session?.close();
     if (scheduleReconnect) {
       this.scheduleReconnect();
     }
+  }
+
+  private setPresenceAvailability(enabled: boolean): void {
+    if (this.presenceAvailable === enabled) {
+      return;
+    }
+    this.presenceAvailable = enabled;
+    this.deps.onPresenceAvailabilityChanged?.(enabled);
   }
 
   private async handlePolicyUpdated(storageStatus: SyncStorageStatus): Promise<void> {
@@ -402,6 +506,33 @@ export class SyncAutoLoop {
         });
       } else {
         session.unwatchStorageStatus();
+      }
+    } catch (error) {
+      if (!isRealtimeConnectionError(error)) {
+        this.handleError(error);
+      }
+    }
+  }
+
+  private applyPresenceWatch(): void {
+    const session = this.realtimeSession;
+    if (!session || !this.presenceSupported) {
+      return;
+    }
+
+    try {
+      if (this.presenceWatching) {
+        if (this.presenceWatchSent) {
+          return;
+        }
+        session.watchPresence(this.presenceWatchEntryIds);
+        this.presenceWatchSent = true;
+      } else {
+        if (!this.presenceWatchSent) {
+          return;
+        }
+        session.unwatchPresence();
+        this.presenceWatchSent = false;
       }
     } catch (error) {
       if (!isRealtimeConnectionError(error)) {
@@ -635,4 +766,17 @@ function isCursorAheadOfServerError(error: unknown): boolean {
   return (
     error instanceof SyncRealtimeError && error.code === "cursor_ahead_of_server"
   );
+}
+
+function normalizePresenceEntryIds(entryIds: string[]): string[] {
+  return [...new Set(entryIds.map((entryId) => entryId.trim()).filter(Boolean))].slice(0, 100);
+}
+
+function samePresenceEntryIds(left: string[], right: string[]): boolean {
+  if (left.length !== right.length) {
+    return false;
+  }
+
+  const rightSet = new Set(right);
+  return left.every((entryId) => rightSet.has(entryId));
 }

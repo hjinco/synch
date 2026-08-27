@@ -80,6 +80,25 @@ export type DetachLocalVaultMessage = {
 export type HeartbeatMessage = { type: "heartbeat"; requestId: string };
 export type WatchStorageStatusMessage = { type: "watch_storage_status" };
 export type UnwatchStorageStatusMessage = { type: "unwatch_storage_status" };
+export type WatchPresenceMessage = {
+	type: "watch_presence";
+	entryIds: string[];
+};
+export type UnwatchPresenceMessage = { type: "unwatch_presence" };
+export type PresencePosition = {
+	line: number;
+	ch: number;
+};
+export type PresenceSelection = {
+	anchor: PresencePosition;
+	head: PresencePosition;
+};
+export type PresenceUpdateMessage = {
+	type: "presence_update";
+	entryId: string;
+	selection: PresenceSelection;
+};
+export type PresenceClearMessage = { type: "presence_clear" };
 
 export type ClientControlMessage =
 	| HelloMessage
@@ -94,4 +113,8 @@ export type ClientControlMessage =
 	| DetachLocalVaultMessage
 	| HeartbeatMessage
 	| WatchStorageStatusMessage
-	| UnwatchStorageStatusMessage;
+	| UnwatchStorageStatusMessage
+	| WatchPresenceMessage
+	| UnwatchPresenceMessage
+	| PresenceUpdateMessage
+	| PresenceClearMessage;

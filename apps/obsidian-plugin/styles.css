@@ -523,3 +523,32 @@
   flex-wrap: wrap;
   gap: 0.5rem;
 }
+
+.synch-presence-caret {
+  border-left: 2px solid currentColor;
+  display: inline-block;
+  height: 1.15em;
+  margin-left: -1px;
+  pointer-events: none;
+  position: relative;
+}
+
+.synch-presence-caret-label {
+  border-radius: 3px;
+  color: var(--text-on-accent);
+  font-size: 10px;
+  left: 0;
+  line-height: 1.3;
+  opacity: 1;
+  padding: 0 0.3rem;
+  pointer-events: none;
+  position: absolute;
+  top: -1.25em;
+  white-space: nowrap;
+}
+
+.synch-presence-selection {
+  border-radius: 2px;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}

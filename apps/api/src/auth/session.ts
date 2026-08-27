@@ -3,6 +3,7 @@ import type { BetterAuth } from "./better-auth";
 export type AuthenticatedUser = {
 	id: string;
 	email: string;
+	name: string;
 };
 
 export type AuthenticatedSession = {
@@ -71,9 +72,15 @@ function toAuthenticatedSession(
 		user: {
 			id: data.user.id,
 			email: data.user.email,
+			name: typeof data.user.name === "string" ? data.user.name : "",
 		},
 		session: {
 			activeOrganizationId: data.session?.activeOrganizationId ?? null,
 		},
 	};
+}
+
+export function displayNameFromAuthenticatedUser(user: AuthenticatedUser): string {
+	const name = user.name.trim();
+	return name || user.email.trim();
 }

@@ -230,6 +230,10 @@ export function createRealtimeSession(input: {
     maxFileSizeBytes: 3_000_000,
     watchStorageStatus() {},
     unwatchStorageStatus() {},
+    watchPresence() {},
+    unwatchPresence() {},
+    updatePresence() {},
+    clearPresence() {},
     async listEntryStates(): Promise<ListEntryStatesResponse> {
       const page = input.pages[pageIndex];
       pageIndex += 1;

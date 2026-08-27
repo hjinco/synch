@@ -1,8 +1,8 @@
-/** Runtime-neutral claims accepted by the sync token boundary. */
 export type SyncTokenClaimValues = {
 	sub: string;
 	vaultId: string;
 	localVaultId: string;
+	displayName: string;
 	scope: "vault:sync";
 	iat: number;
 	exp: number;
@@ -43,6 +43,7 @@ export function parseSyncTokenClaimValues(value: unknown): SyncTokenClaimValues 
 		sub,
 		vaultId,
 		localVaultId,
+		displayName: typeof claims.displayName === "string" ? claims.displayName.trim() : "",
 		scope: "vault:sync",
 		iat: claims.iat,
 		exp: claims.exp,

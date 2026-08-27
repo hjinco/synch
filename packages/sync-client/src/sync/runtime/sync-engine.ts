@@ -13,6 +13,7 @@ import type { SyncTokenResponse } from "../remote/client";
 import { SyncEventGate } from "../engine/event-gate";
 import { SyncEventRecorder } from "../engine/event-recorder";
 import type { SyncFileRules } from "../core/file-rules";
+import type { PresenceSelection } from "../core/presence";
 import type { VaultConfigSyncRules } from "../core/vault-config-rules";
 import {
   decideVaultPathSync,
@@ -36,6 +37,7 @@ import {
   type EntryVersionPageCursor,
   type SyncRealtimeSession,
   type SyncStorageStatus,
+  type PresenceUpdatedPush,
   SyncRealtimeClient,
 } from "../remote/realtime-client";
 import type { WebSocketFactory } from "../remote/realtime-types";
@@ -100,6 +102,10 @@ export interface SyncEngineDeps {
   setSyncProgress: (progress: UserVisibleSyncProgress | null) => void;
   setSyncStatus: (status: UserVisibleSyncState) => void;
   setStorageStatus: (status: SyncStorageStatus | null) => void;
+  onPresenceUpdated?: (update: PresenceUpdatedPush) => void;
+  onPresenceCleared?: (presenceId: string) => void;
+  onPresenceAvailabilityChanged?: (enabled: boolean) => void;
+  onPresenceSessionReset?: () => void;
   onFileSizeBlockedFilesChange?: () => void;
   onLocalChangeQueued?: () => void;
   onStorageQuotaExceeded?: () => void | Promise<void>;
@@ -244,6 +250,18 @@ export class SyncEngine {
       onStorageStatusChange: (status) => {
         this.deps.setStorageStatus(status);
       },
+      onPresenceUpdated: (update) => {
+        this.deps.onPresenceUpdated?.(update);
+      },
+      onPresenceCleared: (presenceId) => {
+        this.deps.onPresenceCleared?.(presenceId);
+      },
+      onPresenceAvailabilityChanged: (enabled) => {
+        this.deps.onPresenceAvailabilityChanged?.(enabled);
+      },
+      onPresenceSessionReset: () => {
+        this.deps.onPresenceSessionReset?.();
+      },
       onSyncScheduled: () => {
         this.deps.diagnostics.record({
           type: "work_scheduled",
@@ -359,6 +377,18 @@ export class SyncEngine {
     return (await readStoredSyncConnection(this.requireStore()))?.localVaultId ?? "";
   }
 
+  async getEntryIdForPath(path: string): Promise<string | null> {
+    return (await this.syncStore?.getEntryByPath(path))?.entryId ?? null;
+  }
+
+  async getPathForEntryId(entryId: string): Promise<string | null> {
+    return (await this.syncStore?.getEntryById(entryId))?.path ?? null;
+  }
+
+  shouldSyncPath(path: string): boolean {
+    return this.decideVaultPathSync(path).kind === "sync";
+  }
+
   async getOrCreateLocalVaultId(remoteVaultId: string): Promise<string> {
     return await getOrCreateStoredLocalVaultId(this.requireStore(), remoteVaultId);
   }
@@ -445,6 +475,22 @@ export class SyncEngine {
 
   setStorageStatusWatching(enabled: boolean): void {
     this.syncAutoLoop.setStorageStatusWatching(enabled);
+  }
+
+  setPresenceWatching(enabled: boolean): void {
+    this.syncAutoLoop.setPresenceWatching(enabled);
+  }
+
+  setPresenceWatchEntryIds(entryIds: string[]): void {
+    this.syncAutoLoop.setPresenceWatchEntryIds(entryIds);
+  }
+
+  updatePresence(entryId: string, selection: PresenceSelection): void {
+    this.syncAutoLoop.updatePresence(entryId, selection);
+  }
+
+  clearPresence(): void {
+    this.syncAutoLoop.clearPresence();
   }
 
   async reconcileOnce(): Promise<ReconcileOnceResult> {

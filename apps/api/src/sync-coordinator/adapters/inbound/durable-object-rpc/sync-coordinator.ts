@@ -194,17 +194,21 @@ export class SyncCoordinator extends DurableObject {
 	}
 
 	async webSocketClose(
-		_ws: WebSocket,
+		ws: WebSocket,
 		_code: number,
 		_reason: string,
 		_wasClean: boolean,
 	): Promise<void> {
 		await this.ready;
+		const connectionId = this.socketGateway.connectionIdFor(ws);
+		if (connectionId) this.socketMessageHandler.handleDisconnect(connectionId);
 		await this.useCases.handleSocketClose();
 	}
 
-	async webSocketError(_ws: WebSocket, _error: unknown): Promise<void> {
+	async webSocketError(ws: WebSocket, _error: unknown): Promise<void> {
 		await this.ready;
+		const connectionId = this.socketGateway.connectionIdFor(ws);
+		if (connectionId) this.socketMessageHandler.handleDisconnect(connectionId);
 		await this.useCases.handleSocketClose();
 	}
 

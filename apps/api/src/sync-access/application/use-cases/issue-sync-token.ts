@@ -41,6 +41,7 @@ export class IssueSyncTokenUseCase implements IssueSyncToken {
 			sub: input.userId,
 			vaultId: input.vaultId,
 			localVaultId: input.localVaultId,
+			displayName: input.displayName.trim(),
 			scope: "vault:sync" as const,
 			iat: now,
 			exp: now + this.syncTokenTtlSeconds,

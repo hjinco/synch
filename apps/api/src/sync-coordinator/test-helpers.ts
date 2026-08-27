@@ -52,7 +52,11 @@ export function testSocketSession(
 		userId: "user-1",
 		vaultId: "vault-1",
 		localVaultId: "local-vault-1",
+		displayName: "User",
 		wantsStorageStatus: false,
+		wantsPresence: false,
+		presenceEntryId: null,
+		presenceWatchEntryIds: [],
 		...overrides,
 	};
 }
@@ -256,6 +260,8 @@ export function createMockCoordinatorSocketService(
 		sendSocketMessage: vi.fn(() => true),
 		broadcastStorageStatus: vi.fn(),
 		broadcastPolicyUpdated: vi.fn(),
+		broadcastPresenceToWatchers: vi.fn(),
+		broadcastPresenceAvailability: vi.fn(() => true),
 		broadcastExcept: vi.fn(),
 		closeSocket: vi.fn(),
 		closeAllSockets: vi.fn(),
@@ -370,10 +376,17 @@ export function createCoordinatorService({
 	return Object.assign(useCases, {
 		mutationService,
 		dispose: () => healthService.dispose(),
-		handleSocketMessage: async (_ws: WebSocket, message: string | ArrayBuffer) => {
+		handleSocketMessage: async (
+			_ws: WebSocket,
+			message: string | ArrayBuffer,
+			connectionId = "test",
+		) => {
 			if (typeof message !== "string") return;
 			const parsed = parseClientControlMessage(JSON.parse(message));
-			if (parsed.success) await socketMessageHandler.handle("test", parsed.data);
+			if (parsed.success) await socketMessageHandler.handle(connectionId, parsed.data);
+		},
+		handleSocketDisconnect: (connectionId = "test") => {
+			socketMessageHandler.handleDisconnect(connectionId);
 		},
 	});
 }
@@ -381,7 +394,12 @@ export function createCoordinatorService({
 export type TestCoordinatorService = CoordinatorApi & {
 	mutationService: MutationService;
 	dispose(): void;
-	handleSocketMessage(ws: WebSocket, message: string | ArrayBuffer): Promise<void>;
+	handleSocketMessage(
+		ws: WebSocket,
+		message: string | ArrayBuffer,
+		connectionId?: string,
+	): Promise<void>;
+	handleSocketDisconnect(connectionId?: string): void;
 };
 
 export type TestCoordinatorState = CoordinatorStorageLifecycle &
@@ -400,6 +418,7 @@ function createSyncTokenVerifier(): SyncTokenVerifier {
 			sub: "user-1",
 			vaultId,
 			localVaultId: "local-vault-1",
+			displayName: "User",
 			scope: "vault:sync" as const,
 			iat: 0,
 			exp: Number.MAX_SAFE_INTEGER,
@@ -435,6 +454,8 @@ export function socketServiceMock(session = testSocketSession()) {
 		sendSocketMessage: vi.fn(),
 		broadcastStorageStatus: vi.fn(),
 		broadcastPolicyUpdated: vi.fn(),
+		broadcastPresenceToWatchers: vi.fn(),
+		broadcastPresenceAvailability: vi.fn(() => true),
 		broadcastExcept: vi.fn(),
 		closeAllSockets: vi.fn(),
 	});

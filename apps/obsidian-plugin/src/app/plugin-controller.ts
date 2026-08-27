@@ -50,9 +50,11 @@ import {
 } from "@synch/sync-client/sync/core/file-rules";
 import { isReservedSyncPath } from "@synch/sync-client/sync/core/reserved-paths";
 import type { SyncTokenResponse } from "@synch/sync-client/sync/remote/client";
+import type { PresenceSelection } from "@synch/sync-client/sync/core/presence";
 import { InMemorySyncDiagnostics } from "@synch/sync-client/sync/diagnostics/in-memory";
 import type { SyncFailurePhase } from "@synch/sync-client/sync/diagnostics/types";
 import { SyncController } from "./sync-controller";
+import type { PresenceRelay } from "../ui/presence/presence-relay";
 import { SyncTokenManager } from "@synch/sync-client/sync/remote/token-manager";
 import { formatSyncStatusLabel } from "./status/sync-status-label";
 import { isRemoteVaultUnavailableError } from "@synch/sync-client/remote-vault/unavailable";
@@ -451,6 +453,46 @@ export class SynchPluginController implements SynchSettingsController {
 
   unwatchStorageStatus(): void {
     this.syncController.unwatchStorageStatus();
+  }
+
+  async getPresenceEntryId(path: string): Promise<string | null> {
+    try {
+      if (!this.syncController.shouldSyncPath(path)) {
+        return null;
+      }
+      return await this.syncController.getEntryIdForPath(path);
+    } catch {
+      return null;
+    }
+  }
+
+  async getPresencePath(entryId: string): Promise<string | null> {
+    try {
+      const path = await this.syncController.getPathForEntryId(entryId);
+      return path && this.syncController.shouldSyncPath(path) ? path : null;
+    } catch {
+      return null;
+    }
+  }
+
+  setPresenceRelay(relay: PresenceRelay | null): void {
+    this.syncController.setPresenceRelay(relay);
+  }
+
+  watchPresence(entryIds: string[]): void {
+    this.syncController.watchPresence(entryIds);
+  }
+
+  unwatchPresence(): void {
+    this.syncController.unwatchPresence();
+  }
+
+  updatePresence(entryId: string, selection: PresenceSelection): void {
+    this.syncController.updatePresence(entryId, selection);
+  }
+
+  clearPresence(): void {
+    this.syncController.clearPresence();
   }
 
   getSyncFileRules(): SynchFileRules {

@@ -1,4 +1,8 @@
 import type { EntryStatePageCursor } from "./changes";
+import {
+  isPresenceSelection,
+  type PresenceSelection,
+} from "../core/presence";
 import type {
   CommitMutationPayload,
   DeletedEntryPageCursor,
@@ -71,6 +75,21 @@ type ClientMessage =
     }
   | {
       type: "unwatch_storage_status";
+    }
+  | {
+      type: "watch_presence";
+      entryIds: string[];
+    }
+  | {
+      type: "unwatch_presence";
+    }
+  | {
+      type: "presence_update";
+      entryId: string;
+      selection: PresenceSelection;
+    }
+  | {
+      type: "presence_clear";
     };
 
 type RequestClientMessage = Extract<ClientMessage, { requestId: string }>;
@@ -234,6 +253,38 @@ export class SyncRealtimeSocketSession {
 
     if (parsed.type === "policy_updated") {
       this.callbacks.onPolicyUpdated(parsed.policy, parsed.storageStatus);
+      return;
+    }
+
+    if (parsed.type === "presence_updated") {
+      if (
+        !parsed.entryId ||
+        !parsed.userId ||
+        typeof parsed.displayName !== "string" ||
+        !isPresenceSelection(parsed.selection)
+      ) {
+        return;
+      }
+      this.callbacks.onPresenceUpdated({
+        presenceId: parsed.presenceId,
+        entryId: parsed.entryId,
+        userId: parsed.userId,
+        displayName: parsed.displayName,
+        selection: parsed.selection,
+      });
+      return;
+    }
+
+    if (parsed.type === "presence_cleared") {
+      this.callbacks.onPresenceCleared(parsed.presenceId);
+      return;
+    }
+
+    if (parsed.type === "presence_availability") {
+      if (typeof parsed.enabled !== "boolean") {
+        return;
+      }
+      this.callbacks.onPresenceAvailabilityChanged(parsed.enabled);
       return;
     }
 

@@ -23,6 +23,7 @@ import type {
   SyncStorageStatus,
 } from "@synch/sync-client/sync/remote/realtime-client";
 import type { SyncFileRules } from "@synch/sync-client/sync/core/file-rules";
+import type { PresenceSelection } from "@synch/sync-client/sync/core/presence";
 import type { VaultConfigSyncRules } from "@synch/sync-client/sync/core/vault-config-rules";
 import {
   clearDexieSyncStore,
@@ -39,6 +40,7 @@ import {
   type SyncFileSizeBlockedFile,
 } from "@synch/sync-client/sync/runtime/sync-engine";
 import { createObsidianSyncEngine } from "../adapters/sync-engine";
+import type { PresenceRelay } from "../ui/presence/presence-relay";
 import type { SyncEntryVersionPreview } from "@synch/sync-client/sync/runtime/version-history-service";
 import {
   getUserVisibleSyncDisplayPercent,
@@ -108,6 +110,18 @@ export class SyncController {
     setSyncProgress: (progress) => this.setSyncProgress(progress),
     setSyncStatus: (status) => this.setSyncStatus(status),
     setStorageStatus: (status) => this.setStorageStatus(status),
+    onPresenceUpdated: (update) => {
+      this.presenceRelay?.onUpdated(update);
+    },
+    onPresenceCleared: (presenceId) => {
+      this.presenceRelay?.onCleared(presenceId);
+    },
+    onPresenceAvailabilityChanged: (enabled) => {
+      this.presenceRelay?.onAvailabilityChanged(enabled);
+    },
+    onPresenceSessionReset: () => {
+      this.presenceRelay?.onReset();
+    },
     onFileSizeBlockedFilesChange: () => {
       this.deps.onFileSizeBlockedFilesChange?.();
     },
@@ -129,6 +143,7 @@ export class SyncController {
     isOffline: this.deps.isOffline,
   });
   private storageStatus: SyncStorageStatus | null = null;
+  private presenceRelay: PresenceRelay | null = null;
   private periodicSyncTimer: number | null = null;
   private periodicSyncPromise: Promise<void> | null = null;
   private periodicSyncEnabled = false;
@@ -155,6 +170,7 @@ export class SyncController {
   async stop(): Promise<void> {
     this.stopPeriodicSync();
     this.syncEngine.setStorageStatusWatching(false);
+    this.syncEngine.setPresenceWatching(false);
     this.syncEngine.stopAutoSync();
     this.setStorageStatus(null);
     await this.periodicSyncPromise?.catch(() => {});
@@ -177,7 +193,7 @@ export class SyncController {
   }
 
   async waitForInFlightSync(timeoutMs: number): Promise<void> {
-    let timeout: ReturnType<typeof setTimeout> | undefined;
+    let timeout: number | undefined;
     try {
       await Promise.race([
         Promise.all([
@@ -185,11 +201,11 @@ export class SyncController {
           this.periodicSyncPromise ?? Promise.resolve(),
         ]).catch(() => undefined),
         new Promise<void>((resolve) => {
-          timeout = setTimeout(() => resolve(), timeoutMs);
+          timeout = window.setTimeout(() => resolve(), timeoutMs);
         }),
       ]);
     } finally {
-      clearTimeout(timeout);
+      window.clearTimeout(timeout);
     }
   }
 
@@ -212,6 +228,7 @@ export class SyncController {
   stopAutoSyncAndMarkNotReady(): void {
     this.stopPeriodicSync();
     this.syncEngine.setStorageStatusWatching(false);
+    this.syncEngine.setPresenceWatching(false);
     this.syncEngine.stopAutoSync();
     this.setStorageStatus(null);
     this.setSyncProgress({
@@ -224,6 +241,7 @@ export class SyncController {
   stopAutoSyncAndMarkPaused(): void {
     this.stopPeriodicSync();
     this.syncEngine.setStorageStatusWatching(false);
+    this.syncEngine.setPresenceWatching(false);
     this.syncEngine.stopAutoSync();
     this.setStorageStatus(null);
     this.setSyncStatus("paused");
@@ -232,6 +250,7 @@ export class SyncController {
   async resetLocalSyncState(): Promise<void> {
     this.stopPeriodicSync();
     this.syncEngine.setStorageStatusWatching(false);
+    this.syncEngine.setPresenceWatching(false);
     this.syncEngine.stopAutoSync();
     this.setStorageStatus(null);
     const store = this.syncEngine.detachStore();
@@ -276,10 +295,44 @@ export class SyncController {
     this.syncEngine.setStorageStatusWatching(false);
   }
 
+  setPresenceRelay(relay: PresenceRelay | null): void {
+    this.presenceRelay = relay;
+  }
+
+  watchPresence(entryIds: string[]): void {
+    this.syncEngine.setPresenceWatchEntryIds(entryIds);
+    this.syncEngine.setPresenceWatching(true);
+  }
+
+  unwatchPresence(): void {
+    this.syncEngine.setPresenceWatching(false);
+  }
+
+  async getEntryIdForPath(path: string): Promise<string | null> {
+    return await this.syncEngine.getEntryIdForPath(path);
+  }
+
+  async getPathForEntryId(entryId: string): Promise<string | null> {
+    return await this.syncEngine.getPathForEntryId(entryId);
+  }
+
+  shouldSyncPath(path: string): boolean {
+    return this.syncEngine.shouldSyncPath(path);
+  }
+
+  updatePresence(entryId: string, selection: PresenceSelection): void {
+    this.syncEngine.updatePresence(entryId, selection);
+  }
+
+  clearPresence(): void {
+    this.syncEngine.clearPresence();
+  }
+
   async ensureAutoSyncState(): Promise<void> {
     if (!this.deps.hasActiveRemoteVaultSession() || !this.deps.hasAuthenticatedSession()) {
       this.stopPeriodicSync();
       this.syncEngine.setStorageStatusWatching(false);
+      this.syncEngine.setPresenceWatching(false);
       this.syncEngine.stopAutoSync();
       this.setStorageStatus(null);
       if (this.shouldShowOfflineBeforeReady()) {
@@ -336,6 +389,7 @@ export class SyncController {
       this.recordSyncCompleted("startup");
     } catch (error) {
       this.syncEngine.setStorageStatusWatching(false);
+      this.syncEngine.setPresenceWatching(false);
       this.setStorageStatus(null);
       await this.handleSyncError(error, "auto_sync_initialization");
     }

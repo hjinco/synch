@@ -297,6 +297,7 @@ describe("coordinator websocket control messages", () => {
 			type: "hello_ack",
 			requestId: "request-hello",
 			cursor: 11,
+			presenceSupported: true,
 			policy: {
 				storageLimitBytes: 100_000_000,
 				maxFileSizeBytes: 10_000_000,
@@ -427,6 +428,311 @@ describe("coordinator websocket control messages", () => {
 			wantsStorageStatus: false,
 		});
 		expect(socketService.sendSocketMessage).not.toHaveBeenCalled();
+	});
+
+	it("enables presence updates only after a socket watches them", async () => {
+		const session = testSocketSession();
+		const sender = testWebSocket();
+		const socketService = socketServiceMock(session);
+		const service = createCoordinatorService({
+			stateRepository: socketStateRepository(session),
+			socketService,
+		});
+
+		await service.handleSocketMessage(
+			sender,
+			JSON.stringify({
+				type: "watch_presence",
+				entryIds: ["entry-1", "entry-2"],
+			}),
+		);
+
+		expect(socketService.attachSocketSession).toHaveBeenCalledWith("test", {
+			...session,
+			presenceWatchEntryIds: ["entry-1", "entry-2"],
+			wantsPresence: true,
+		});
+	});
+
+	it("replays only matching presence payloads after a watcher publishes its entry", async () => {
+		const session = testSocketSession({ wantsPresence: true });
+		const sender = testWebSocket();
+		const socketService = socketServiceMock(session);
+		const service = createCoordinatorService({
+			stateRepository: socketStateRepository(session),
+			socketService,
+		});
+
+		await service.handleSocketMessage(
+			sender,
+			JSON.stringify({
+				type: "presence_update",
+				entryId: "entry-1",
+				selection: presenceSelection(1, 2),
+			}),
+			"peer",
+		);
+		await service.handleSocketMessage(
+			sender,
+			JSON.stringify({
+				type: "watch_presence",
+				entryIds: ["entry-1"],
+			}),
+			"watcher",
+		);
+		await service.handleSocketMessage(
+			sender,
+			JSON.stringify({
+				type: "presence_update",
+				entryId: "entry-2",
+				selection: presenceSelection(3, 4),
+			}),
+			"other",
+		);
+		await service.handleSocketMessage(
+			sender,
+			JSON.stringify({
+				type: "presence_update",
+				entryId: "entry-1",
+				selection: presenceSelection(5, 6),
+			}),
+			"watcher",
+		);
+
+		expect(socketService.sendSocketMessage).toHaveBeenCalledWith("watcher", {
+			type: "presence_updated",
+			presenceId: "peer",
+			entryId: "entry-1",
+			userId: "user-1",
+			displayName: "User",
+			selection: presenceSelection(1, 2),
+		});
+		expect(socketService.sendSocketMessage).not.toHaveBeenCalledWith("watcher", {
+			type: "presence_updated",
+			presenceId: "other",
+			entryId: "entry-2",
+			userId: "user-1",
+			displayName: "User",
+			selection: presenceSelection(3, 4),
+		});
+	});
+
+	it("replays existing payloads for every newly watched entry", async () => {
+		const sender = testWebSocket();
+		const sessions = {
+			peer: testSocketSession({
+				userId: "ada",
+				localVaultId: "phone",
+				wantsPresence: true,
+			}),
+			watcher: testSocketSession({
+				userId: "bob",
+				localVaultId: "laptop",
+				wantsPresence: true,
+			}),
+		};
+		const socketService = createMockCoordinatorSocketService({
+			readSocketSession: vi.fn(
+				(connectionId: string) => sessions[connectionId as keyof typeof sessions] ?? null,
+			),
+		});
+		const service = createCoordinatorService({
+			stateRepository: socketStateRepository(),
+			socketService,
+		});
+
+		await service.handleSocketMessage(
+			sender,
+			JSON.stringify({
+				type: "presence_update",
+				entryId: "entry-2",
+				selection: presenceSelection(1, 2),
+			}),
+			"peer",
+		);
+		await service.handleSocketMessage(
+			sender,
+			JSON.stringify({
+				type: "watch_presence",
+				entryIds: ["entry-1", "entry-2"],
+			}),
+			"watcher",
+		);
+
+		expect(socketService.sendSocketMessage).toHaveBeenCalledWith("watcher", {
+			type: "presence_updated",
+			presenceId: "peer",
+			entryId: "entry-2",
+			userId: "ada",
+			displayName: "User",
+			selection: presenceSelection(1, 2),
+		});
+	});
+
+	it("stamps presence updates with the sender socket session identity", async () => {
+		const sender = testWebSocket();
+		const sessions: Record<string, ReturnType<typeof testSocketSession>> = {
+			peer: testSocketSession({
+				userId: "ada",
+				localVaultId: "phone",
+				displayName: "Ada",
+				wantsPresence: true,
+			}),
+			watcher: testSocketSession({
+				userId: "bob",
+				localVaultId: "laptop",
+				wantsPresence: true,
+			}),
+		};
+		const socketService = createMockCoordinatorSocketService({
+			readSocketSession: vi.fn((connectionId: string) => sessions[connectionId] ?? null),
+		});
+		const service = createCoordinatorService({
+			stateRepository: socketStateRepository(),
+			socketService,
+		});
+
+		await service.handleSocketMessage(
+			sender,
+			JSON.stringify({
+				type: "presence_update",
+				entryId: "entry-1",
+				selection: presenceSelection(1, 2),
+			}),
+			"peer",
+		);
+		await service.handleSocketMessage(
+			sender,
+			JSON.stringify({
+				type: "watch_presence",
+				entryIds: ["entry-1"],
+			}),
+			"watcher",
+		);
+		await service.handleSocketMessage(
+			sender,
+			JSON.stringify({
+				type: "presence_update",
+				entryId: "entry-1",
+				selection: presenceSelection(3, 4),
+			}),
+			"watcher",
+		);
+
+		expect(socketService.broadcastPresenceToWatchers).toHaveBeenCalledWith("entry-1", "peer", {
+			type: "presence_updated",
+			presenceId: "peer",
+			entryId: "entry-1",
+			userId: "ada",
+			displayName: "Ada",
+			selection: presenceSelection(1, 2),
+		});
+		expect(socketService.sendSocketMessage).toHaveBeenCalledWith("watcher", {
+			type: "presence_updated",
+			presenceId: "peer",
+			entryId: "entry-1",
+			userId: "ada",
+			displayName: "Ada",
+			selection: presenceSelection(1, 2),
+		});
+	});
+
+	it("broadcasts presence updates only to watchers", async () => {
+		const session = testSocketSession({ wantsPresence: true });
+		const sender = testWebSocket();
+		const socketService = socketServiceMock(session);
+		const service = createCoordinatorService({
+			stateRepository: socketStateRepository(session),
+			socketService,
+		});
+
+		await service.handleSocketMessage(
+			sender,
+			JSON.stringify({
+				type: "presence_update",
+				entryId: "entry-1",
+				selection: presenceSelection(1, 2),
+			}),
+		);
+
+		expect(socketService.broadcastPresenceToWatchers).toHaveBeenCalledWith("entry-1", "test", {
+			type: "presence_updated",
+			presenceId: "test",
+			entryId: "entry-1",
+			userId: "user-1",
+			displayName: "User",
+			selection: presenceSelection(1, 2),
+		});
+	});
+
+	it("broadcasts a clear when a client clears its presence", async () => {
+		const session = testSocketSession({ wantsPresence: true });
+		const sender = testWebSocket();
+		const socketService = socketServiceMock(session);
+		const service = createCoordinatorService({
+			stateRepository: socketStateRepository(session),
+			socketService,
+		});
+
+		await service.handleSocketMessage(
+			sender,
+			JSON.stringify({
+				type: "presence_update",
+				entryId: "entry-1",
+				selection: presenceSelection(1, 2),
+			}),
+		);
+		await service.handleSocketMessage(
+			sender,
+			JSON.stringify({ type: "presence_clear" }),
+		);
+
+		expect(socketService.broadcastPresenceToWatchers).toHaveBeenCalledWith(
+			"entry-1",
+			"test",
+			{
+				type: "presence_cleared",
+				presenceId: "test",
+			},
+		);
+	});
+
+	it("clears presence when a socket disconnects after publishing", async () => {
+		const session = testSocketSession({ wantsPresence: true });
+		const sender = testWebSocket();
+		const socketService = socketServiceMock(session);
+		const service = createCoordinatorService({
+			stateRepository: socketStateRepository(session),
+			socketService,
+		});
+
+		await service.handleSocketMessage(
+			sender,
+			JSON.stringify({
+				type: "presence_update",
+				entryId: "entry-1",
+				selection: presenceSelection(1, 2),
+			}),
+		);
+		service.handleSocketDisconnect();
+
+		expect(socketService.broadcastPresenceToWatchers).toHaveBeenCalledWith("entry-1", "test", {
+			type: "presence_cleared",
+			presenceId: "test",
+		});
+	});
+
+	it("does not broadcast a presence clear when the socket never published", () => {
+		const session = testSocketSession();
+		const socketService = socketServiceMock(session);
+		const service = createCoordinatorService({
+			stateRepository: socketStateRepository(session),
+			socketService,
+		});
+
+		service.handleSocketDisconnect();
+
+		expect(socketService.broadcastPresenceToWatchers).not.toHaveBeenCalled();
 	});
 
 	it("broadcasts storage status after staging a blob", async () => {
@@ -711,3 +1017,10 @@ describe("coordinator websocket control messages", () => {
 		expect(maintenanceScheduler.drain).not.toHaveBeenCalled();
 	});
 });
+
+function presenceSelection(line: number, ch: number) {
+	return {
+		anchor: { line, ch },
+		head: { line, ch },
+	};
+}

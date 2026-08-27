@@ -15,13 +15,16 @@ import type {
 	RestoreEntryVersionsMessage,
 	RestoreEntryVersionsResult,
 	SocketSession,
+	PresenceUpdatedMessage,
 } from "../../../application/dto/types";
+import type { PresenceSelection } from "../../../application/dto/protocol-types";
 import type {
 	HealthStateStore,
 	SocketGateway,
 	VaultStateStore,
 } from "../../../application/ports/outbound";
 import type { CoordinatorSocketMessageHandler } from "./socket-message-handler";
+import { PresenceStore } from "../../outbound/socket/presence-store";
 
 export type CoordinatorControlMessageUseCases = {
 	detachLocalVault(session: SocketSession): Promise<void>;
@@ -66,6 +69,8 @@ export class CoordinatorControlMessageHandler
 			| "sendSocketMessage"
 			| "closeSocket"
 			| "broadcastExcept"
+			| "broadcastPresenceToWatchers"
+			| "broadcastPresenceAvailability"
 		>,
 		private readonly vaultStateStore: Pick<
 			VaultStateStore,
@@ -76,6 +81,7 @@ export class CoordinatorControlMessageHandler
 		private readonly healthSummaryScheduler: {
 			scheduleSummaryFlush(now?: number): Promise<void>;
 		},
+		private readonly presenceStore = new PresenceStore(),
 	) {}
 
 	async handle(connectionId: string, parsed: ClientControlMessage): Promise<void> {
@@ -112,6 +118,7 @@ export class CoordinatorControlMessageHandler
 					type: "hello_ack",
 					requestId: parsed.requestId,
 					cursor: this.vaultStateStore.currentCursor(),
+					presenceSupported: true,
 					policy: {
 						storageLimitBytes: limits.storageLimitBytes,
 						maxFileSizeBytes: limits.maxFileSizeBytes,
@@ -333,11 +340,165 @@ export class CoordinatorControlMessageHandler
 			return;
 		}
 
+		if (parsed.type === "watch_presence") {
+			const presenceWatchEntryIds = uniquePresenceEntryIds(parsed.entryIds);
+			const newlyWatchedEntryIds = presenceWatchEntryIds.filter(
+				(entryId) => !session.presenceWatchEntryIds.includes(entryId),
+			);
+			const previous = this.presenceStore.get(connectionId);
+			const shouldClearPrevious =
+				(previous && !presenceWatchEntryIds.includes(previous.entryId)) ||
+				(session.presenceEntryId !== null &&
+					!presenceWatchEntryIds.includes(session.presenceEntryId));
+			this.socketService.attachSocketSession(connectionId, {
+				...session,
+				presenceEntryId: shouldClearPrevious ? null : session.presenceEntryId,
+				presenceWatchEntryIds,
+				wantsPresence: true,
+			});
+			if (shouldClearPrevious) {
+				const cleared = this.presenceStore.clear(connectionId);
+				if (cleared) {
+					this.broadcastPresenceCleared(cleared.entryId, connectionId);
+				}
+			}
+			if (!this.socketService.broadcastPresenceAvailability()) {
+				this.presenceStore.clearAll();
+				return;
+			}
+			for (const entryId of newlyWatchedEntryIds) {
+				for (const snapshot of this.presenceStore.listByEntryId(
+					entryId,
+					connectionId,
+				)) {
+					this.pushPresenceUpdated(
+						snapshot.presenceId,
+						snapshot.entryId,
+						snapshot.selection,
+						connectionId,
+					);
+				}
+			}
+			return;
+		}
+
+		if (parsed.type === "unwatch_presence") {
+			const previous = this.presenceStore.clear(connectionId);
+			this.socketService.attachSocketSession(connectionId, {
+				...session,
+				presenceEntryId: null,
+				presenceWatchEntryIds: [],
+				wantsPresence: false,
+			});
+			if (previous) {
+				this.broadcastPresenceCleared(previous.entryId, connectionId);
+			}
+			if (!this.socketService.broadcastPresenceAvailability()) {
+				this.presenceStore.clearAll();
+			}
+			return;
+		}
+
+		if (parsed.type === "presence_clear") {
+			if (!session.wantsPresence) {
+				return;
+			}
+			const previous = this.presenceStore.clear(connectionId);
+			this.socketService.attachSocketSession(connectionId, {
+				...session,
+				presenceEntryId: null,
+			});
+			if (previous) {
+				this.broadcastPresenceCleared(previous.entryId, connectionId);
+			}
+			return;
+		}
+
+		if (parsed.type === "presence_update") {
+			if (!session.wantsPresence) {
+				return;
+			}
+
+			const previous = this.presenceStore.get(connectionId);
+			const decision = this.presenceStore.tryStore(
+				connectionId,
+				parsed.entryId,
+				parsed.selection,
+			);
+			if (decision !== "ok") {
+				return;
+			}
+			this.socketService.attachSocketSession(connectionId, {
+				...session,
+				presenceEntryId: parsed.entryId,
+			});
+			if (previous && previous.entryId !== parsed.entryId) {
+				this.broadcastPresenceCleared(previous.entryId, connectionId);
+			}
+			this.pushPresenceUpdated(connectionId, parsed.entryId, parsed.selection);
+			if (!previous || previous.entryId !== parsed.entryId) {
+				for (const snapshot of this.presenceStore.listByEntryId(
+					parsed.entryId,
+					connectionId,
+				)) {
+					this.pushPresenceUpdated(
+						snapshot.presenceId,
+						snapshot.entryId,
+						snapshot.selection,
+						connectionId,
+					);
+				}
+			}
+			return;
+		}
+
 		this.socketService.sendSocketMessage(connectionId, {
 			type: "session_error",
 			code: "unsupported_message",
 			message: "unsupported websocket message type",
 		});
+	}
+
+	handleDisconnect(connectionId: string): void {
+		const previous = this.presenceStore.clear(connectionId);
+		if (previous) {
+			this.broadcastPresenceCleared(previous.entryId, connectionId);
+		}
+		if (!this.socketService.broadcastPresenceAvailability(connectionId)) {
+			this.presenceStore.clearAll();
+		}
+	}
+
+	private broadcastPresenceCleared(entryId: string, presenceId: string): void {
+		this.socketService.broadcastPresenceToWatchers(entryId, presenceId, {
+			type: "presence_cleared",
+			presenceId,
+		});
+	}
+
+	private pushPresenceUpdated(
+		presenceId: string,
+		entryId: string,
+		selection: PresenceSelection,
+		toConnectionId?: string,
+	): void {
+		const session = this.socketService.readSocketSession(presenceId);
+		if (!session) {
+			return;
+		}
+		const message: PresenceUpdatedMessage = {
+			type: "presence_updated",
+			presenceId,
+			entryId,
+			userId: session.userId,
+			displayName: session.displayName,
+			selection,
+		};
+		if (toConnectionId) {
+			this.socketService.sendSocketMessage(toConnectionId, message);
+			return;
+		}
+		this.socketService.broadcastPresenceToWatchers(entryId, presenceId, message);
 	}
 
 	private broadcastCursorExcept(connectionId: string, cursor: number): void {
@@ -352,6 +513,10 @@ export class CoordinatorControlMessageHandler
 			});
 		}
 	}
+}
+
+function uniquePresenceEntryIds(entryIds: string[]): string[] {
+	return [...new Set(entryIds)];
 }
 
 function websocketRequestError(

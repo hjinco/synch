@@ -1,5 +1,7 @@
 import type {
 	PolicyUpdatedMessage,
+	PresenceClearedMessage,
+	PresenceUpdatedMessage,
 	ServerControlMessage,
 	SocketSession,
 	StorageStatusUpdatedMessage,
@@ -11,6 +13,12 @@ export interface SocketGateway {
 	sendSocketMessage(connectionId: string, message: ServerControlMessage): boolean;
 	broadcastStorageStatus(message: StorageStatusUpdatedMessage): void;
 	broadcastPolicyUpdated(message: PolicyUpdatedMessage): void;
+	broadcastPresenceToWatchers(
+		entryId: string,
+		excludedConnectionId: string,
+		message: PresenceUpdatedMessage | PresenceClearedMessage,
+	): void;
+	broadcastPresenceAvailability(excludedConnectionId?: string): boolean;
 	broadcastExcept(excludedConnectionId: string, message: ServerControlMessage): void;
 	closeSocket(connectionId: string, code: number, reason: string): void;
 	closeAllSockets(code: number, reason: string): void;

@@ -1,4 +1,5 @@
 import type { EntryVersionCaptureReason } from "../../domain/entry-policy";
+import type { PresenceSelection } from "./protocol-types";
 
 export type {
 	ClientControlMessage,
@@ -12,9 +13,15 @@ export type {
 	ListEntryStatesMessage,
 	ListEntryVersionsMessage,
 	PurgeDeletedEntriesMessage,
+	PresencePosition,
+	PresenceSelection,
 	RestoreEntryVersionMessage,
 	RestoreEntryVersionsMessage,
+	UnwatchPresenceMessage,
 	UnwatchStorageStatusMessage,
+	PresenceUpdateMessage,
+	PresenceClearMessage,
+	WatchPresenceMessage,
 	WatchStorageStatusMessage,
 } from "./protocol-types";
 
@@ -24,6 +31,7 @@ export type HelloAckMessage = {
 	cursor: number;
 	policy: VaultPolicySnapshot;
 	storageStatus: StorageStatusSnapshot;
+	presenceSupported: true;
 };
 
 export type VaultPolicySnapshot = {
@@ -50,6 +58,25 @@ export type PolicyUpdatedMessage = {
 	type: "policy_updated";
 	policy: VaultPolicySnapshot;
 	storageStatus: StorageStatusSnapshot;
+};
+
+export type PresenceUpdatedMessage = {
+	type: "presence_updated";
+	presenceId: string;
+	entryId: string;
+	userId: string;
+	displayName: string;
+	selection: PresenceSelection;
+};
+
+export type PresenceClearedMessage = {
+	type: "presence_cleared";
+	presenceId: string;
+};
+
+export type PresenceAvailabilityMessage = {
+	type: "presence_availability";
+	enabled: boolean;
 };
 
 export type CommitAcceptedMessage = {
@@ -301,13 +328,20 @@ export type ServerControlMessage =
 	| DeletedEntriesPurgedMessage
 	| DeletedEntriesPurgeFailedMessage
 	| EntryRestoreFailedMessage
-	| SessionErrorMessage;
+	| SessionErrorMessage
+	| PresenceUpdatedMessage
+	| PresenceClearedMessage
+	| PresenceAvailabilityMessage;
 
 export type SocketSession = {
 	userId: string;
 	localVaultId: string;
 	vaultId: string;
+	displayName: string;
 	wantsStorageStatus: boolean;
+	wantsPresence: boolean;
+	presenceEntryId: string | null;
+	presenceWatchEntryIds: string[];
 };
 
 export type VaultStateLimits = {

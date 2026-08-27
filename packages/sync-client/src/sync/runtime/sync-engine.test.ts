@@ -80,6 +80,19 @@ describe("SyncEngine", () => {
     await expect(engine.listFileSizeBlockedFiles()).resolves.toEqual([]);
   });
 
+  it("uses the configured path policy for presence lookups", () => {
+    const vault = new InMemoryVaultAdapter();
+    const { engine } = createTestEngine(vault, {
+      getSyncFileRules: () => ({
+        ...DEFAULT_SYNC_FILE_RULES,
+        excludedFolders: ["Private"],
+      }),
+    });
+
+    expect(engine.shouldSyncPath("Private/note.md")).toBe(false);
+    expect(engine.shouldSyncPath("Public/note.md")).toBe(true);
+  });
+
   it("flushes a local change only after in-flight mutation work finishes", async () => {
     const firstRead = createDeferred<Uint8Array>();
     const vault = new InMemoryVaultAdapter();

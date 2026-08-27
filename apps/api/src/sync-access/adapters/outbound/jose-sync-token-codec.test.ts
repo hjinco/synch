@@ -13,6 +13,7 @@ function claims(overrides: Partial<Awaited<ReturnType<JoseSyncTokenCodec["verify
 		sub: "user-1",
 		vaultId: "vault-1",
 		localVaultId: "local-vault-1",
+		displayName: "User",
 		scope: "vault:sync" as const,
 		iat: now,
 		exp: now + 60,
@@ -33,6 +34,29 @@ describe("JoseSyncTokenCodec", () => {
 		await expect(codec.verifySyncToken(token)).resolves.toMatchObject({
 			vaultId: "vault-1",
 			localVaultId: "local-vault-1",
+			displayName: "User",
+		});
+	});
+
+	it("defaults displayName for tokens issued without that claim", async () => {
+		const codec = new JoseSyncTokenCodec(SECRET);
+		const now = Math.floor(Date.now() / 1000);
+		const token = await rawJwt({
+			sub: "user-1",
+			vaultId: "vault-1",
+			localVaultId: "local-vault-1",
+			scope: "vault:sync",
+			iat: now,
+			exp: now + 60,
+			iss: ISSUER,
+			aud: AUDIENCE,
+		});
+
+		await expect(codec.verifySyncToken(token)).resolves.toMatchObject({
+			sub: "user-1",
+			vaultId: "vault-1",
+			localVaultId: "local-vault-1",
+			displayName: "",
 		});
 	});
 
