@@ -49,24 +49,43 @@ export class SyncCoordinator extends DurableObject {
 	}
 
 	async fetch(request: Request): Promise<Response> {
-		await this.ready;
-		return await this.app.fetch(request);
+		try {
+			await this.ready;
+			return await this.app.fetch(request);
+		} catch (error) {
+			this.logError("fetch", error, request);
+			return internalErrorResponse();
+		}
 	}
 
 	async webSocketMessage(ws: WebSocket, message: string | ArrayBuffer): Promise<void> {
-		await this.ready;
-		const connectionId = this.socketGateway.connectionIdFor(ws);
-		if (!connectionId) return;
-		if (typeof message !== "string") {
-			this.socketGateway.sendSocketMessage(connectionId, {
-				type: "session_error",
-				code: "invalid_message",
-				message: "binary websocket messages are not supported",
-			});
-			return;
-		}
+		let connectionId: string | null = null;
 		try {
-			const result = parseClientControlMessage(JSON.parse(message) as unknown);
+			connectionId = this.socketGateway.connectionIdFor(ws);
+			await this.ready;
+			if (!connectionId) return;
+			if (typeof message !== "string") {
+				this.socketGateway.sendSocketMessage(connectionId, {
+					type: "session_error",
+					code: "invalid_message",
+					message: "binary websocket messages are not supported",
+				});
+				return;
+			}
+
+			let parsedMessage: unknown;
+			try {
+				parsedMessage = JSON.parse(message) as unknown;
+			} catch {
+				this.socketGateway.sendSocketMessage(connectionId, {
+					type: "session_error",
+					code: "invalid_json",
+					message: "websocket message must be valid json",
+				});
+				return;
+			}
+
+			const result = parseClientControlMessage(parsedMessage);
 			if (!result.success) {
 				this.socketGateway.sendSocketMessage(connectionId, {
 					type: "session_error",
@@ -76,12 +95,9 @@ export class SyncCoordinator extends DurableObject {
 				return;
 			}
 			await this.socketMessageHandler.handle(connectionId, result.data);
-		} catch {
-			this.socketGateway.sendSocketMessage(connectionId, {
-				type: "session_error",
-				code: "invalid_json",
-				message: "websocket message must be valid json",
-			});
+		} catch (error) {
+			this.logError("webSocketMessage", error);
+			if (connectionId) this.sendInternalSocketError(connectionId);
 		}
 	}
 
@@ -89,81 +105,90 @@ export class SyncCoordinator extends DurableObject {
 		session: SocketSession,
 		message: CommitMutationsMessage,
 	): Promise<CommitMutationsResult> {
-		await this.ready;
-		return await this.withRpcError(() => this.useCases.commitMutations(session, message));
+		return await this.withRpcError("commitMutations", () =>
+			this.useCases.commitMutations(session, message),
+		);
 	}
 
 	async commitMutation(
 		session: SocketSession,
 		message: CommitMutationMessage,
 	): Promise<CommitMutationResult> {
-		await this.ready;
-		return await this.withRpcError(() => this.useCases.commitMutation(session, message));
+		return await this.withRpcError("commitMutation", () =>
+			this.useCases.commitMutation(session, message),
+		);
 	}
 
 	async listEntryStates(
 		session: SocketSession,
 		message: ListEntryStatesMessage,
 	): Promise<EntryStatesListedMessage> {
-		await this.ready;
-		return await this.withRpcError(async () => this.useCases.listEntryStates(session, message));
+		return await this.withRpcError("listEntryStates", async () =>
+			this.useCases.listEntryStates(session, message),
+		);
 	}
 
 	async listEntryVersions(
 		session: SocketSession,
 		message: ListEntryVersionsMessage,
 	): Promise<EntryVersionsListedMessage> {
-		await this.ready;
-		return await this.withRpcError(() => this.useCases.listEntryVersions(session, message));
+		return await this.withRpcError("listEntryVersions", () =>
+			this.useCases.listEntryVersions(session, message),
+		);
 	}
 
 	async listDeletedEntries(
 		session: SocketSession,
 		message: ListDeletedEntriesMessage,
 	): Promise<DeletedEntriesListedMessage> {
-		await this.ready;
-		return await this.withRpcError(() => this.useCases.listDeletedEntries(session, message));
+		return await this.withRpcError("listDeletedEntries", () =>
+			this.useCases.listDeletedEntries(session, message),
+		);
 	}
 
 	async restoreEntryVersion(
 		session: SocketSession,
 		message: RestoreEntryVersionMessage,
 	): Promise<RestoreEntryVersionResult> {
-		await this.ready;
-		return await this.withRpcError(() => this.useCases.restoreEntryVersion(session, message));
+		return await this.withRpcError("restoreEntryVersion", () =>
+			this.useCases.restoreEntryVersion(session, message),
+		);
 	}
 
 	async restoreEntryVersions(
 		session: SocketSession,
 		message: RestoreEntryVersionsMessage,
 	): Promise<RestoreEntryVersionsResult> {
-		await this.ready;
-		return await this.withRpcError(() => this.useCases.restoreEntryVersions(session, message));
+		return await this.withRpcError("restoreEntryVersions", () =>
+			this.useCases.restoreEntryVersions(session, message),
+		);
 	}
 
 	async purgeDeletedEntries(
 		session: SocketSession,
 		message: PurgeDeletedEntriesMessage,
 	): Promise<DeletedEntriesPurgeResult> {
-		await this.ready;
-		return await this.withRpcError(() => this.useCases.purgeDeletedEntries(session, message));
+		return await this.withRpcError("purgeDeletedEntries", () =>
+			this.useCases.purgeDeletedEntries(session, message),
+		);
 	}
 
 	async runGc(): Promise<void> {
-		await this.ready;
-		await this.withRpcError(() => this.useCases.runGc());
+		await this.withRpcError("runGc", () => this.useCases.runGc());
 	}
 
 	async repairSyncState(
 		vaultId: string,
 	): Promise<SyncRepairResult> {
-		await this.ready;
-		return await this.withRpcError(() => this.useCases.repairSyncState(vaultId));
+		return await this.withRpcError("repairSyncState", () =>
+			this.useCases.repairSyncState(vaultId),
+		);
 	}
 
 	async flushHealthSummary(): Promise<void> {
-		await this.ready;
-		await this.withRpcError(() => this.useCases.flushHealthSummary());
+		await this.withRpcError("flushHealthSummary", () =>
+			this.useCases.flushHealthSummary(),
+		);
 	}
 
 	async alarm(alarmInfo?: AlarmInvocationInfo): Promise<void> {
@@ -199,26 +224,99 @@ export class SyncCoordinator extends DurableObject {
 		_reason: string,
 		_wasClean: boolean,
 	): Promise<void> {
-		await this.ready;
-		const connectionId = this.socketGateway.connectionIdFor(ws);
-		if (connectionId) this.socketMessageHandler.handleDisconnect(connectionId);
-		await this.useCases.handleSocketClose();
+		await this.handleWebSocketTermination(ws, "webSocketClose");
 	}
 
 	async webSocketError(ws: WebSocket, _error: unknown): Promise<void> {
-		await this.ready;
-		const connectionId = this.socketGateway.connectionIdFor(ws);
-		if (connectionId) this.socketMessageHandler.handleDisconnect(connectionId);
-		await this.useCases.handleSocketClose();
+		await this.handleWebSocketTermination(ws, "webSocketError");
 	}
 
-	private async withRpcError<T>(operation: () => Promise<T>): Promise<T> {
+	private async withRpcError<T>(
+		operationName: string,
+		operation: () => Promise<T>,
+	): Promise<T> {
 		try {
+			await this.ready;
 			return await operation();
 		} catch (error) {
-			throw mapCoordinatorRpcError(error);
+			const mappedError = mapCoordinatorRpcError(error);
+			if (mappedError === error) {
+				this.logError("rpc:" + operationName, error);
+			}
+			throw mappedError;
 		}
 	}
+
+	private async handleWebSocketTermination(
+		ws: WebSocket,
+		operationName: "webSocketClose" | "webSocketError",
+	): Promise<void> {
+		let connectionId: string | null = null;
+		try {
+			connectionId = this.socketGateway.connectionIdFor(ws);
+		} catch (error) {
+			this.logError(operationName + ":connection", error);
+		}
+
+		try {
+			await this.ready;
+		} catch (error) {
+			this.logError(operationName + ":ready", error);
+			return;
+		}
+
+		if (connectionId) {
+			try {
+				this.socketMessageHandler.handleDisconnect(connectionId);
+			} catch (error) {
+				this.logError(operationName + ":disconnect", error);
+			}
+		}
+
+		try {
+			await this.useCases.handleSocketClose();
+		} catch (error) {
+			this.logError(operationName + ":cleanup", error);
+		}
+	}
+
+	private sendInternalSocketError(connectionId: string): void {
+		try {
+			this.socketGateway.sendSocketMessage(connectionId, {
+				type: "session_error",
+				code: "internal_error",
+				message: "unexpected server error",
+			});
+		} catch (error) {
+			this.logError("webSocketMessage:error-response", error);
+		}
+	}
+
+	private logError(source: string, error: unknown, request?: Request): void {
+		console.error("[sync-coordinator] " + source + " failed", {
+			objectId: this.ctx.id.toString(),
+			request: request ? formatRequestForLog(request) : undefined,
+			error: formatLogError(error),
+		});
+	}
+}
+
+function internalErrorResponse(): Response {
+	return Response.json(
+		{
+			error: "internal_error",
+			message: "unexpected server error",
+		},
+		{ status: 500 },
+	);
+}
+
+function formatRequestForLog(request: Request): { method: string; path: string } {
+	const url = new URL(request.url);
+	return {
+		method: request.method,
+		path: url.pathname,
+	};
 }
 
 function mapCoordinatorRpcError(error: unknown): unknown {
