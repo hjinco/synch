@@ -7,6 +7,7 @@
 ## Changed
 
 - Syncing and reconnecting now show a static loader icon in the status bar, without a spinning animation. The settings spinner is unchanged.
+- The status bar and sync settings now use the same sync status wording.
 
 ## Fixed
 

@@ -57,7 +57,6 @@ import type { SyncFailurePhase } from "@synch/sync-client/sync/diagnostics/types
 import { SyncController } from "./sync-controller";
 import type { PresenceRelay } from "../ui/presence/presence-relay";
 import { SyncTokenManager } from "@synch/sync-client/sync/remote/token-manager";
-import { formatSyncStatusLabel } from "./status/sync-status-label";
 import { isRemoteVaultUnavailableError } from "@synch/sync-client/remote-vault/unavailable";
 import { RemoteVaultManager } from "@synch/sync-client/remote-vault/manager";
 import { getStorageDisplayState as resolveStorageDisplayState } from "../adapters/storage-warning";
@@ -360,17 +359,6 @@ export class SynchPluginController implements SynchSettingsController {
 
   hasConnectedRemoteVault(): boolean {
     return this.remoteVaultManager.hasConnectedRemoteVault();
-  }
-
-  getSyncStatusLabel(): string {
-    if (this.updateService.isPluginUpdateRequired()) {
-      return t("plugin.updateRequiredStatus");
-    }
-
-    return formatSyncStatusLabel(
-      this.syncController.getSyncState(),
-      this.syncController.getSyncProgress(),
-    );
   }
 
   getSyncState(): SynchSyncState {

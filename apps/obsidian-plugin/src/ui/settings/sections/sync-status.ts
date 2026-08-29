@@ -43,7 +43,8 @@ export function populateSyncStatusSetting(
 ): SyncRowSettingControls {
   const getSyncDescription = (): string =>
     formatSyncDescription(
-      controller.getSyncStatusLabel(),
+      controller.getSyncState(),
+      controller.getSyncPercent(),
       controller.getSyncProgress(),
     );
   const initialSyncDescription = getSyncDescription();

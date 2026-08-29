@@ -109,7 +109,6 @@ describe("SynchPluginController sync enabled setting", () => {
     await controller.initialize();
 
     expect(controller.getSyncState()).toBe("update_required");
-    expect(controller.getSyncStatusLabel()).toBe(t("plugin.updateRequiredStatus"));
     expect(getNotices()).toContainEqual({
       message: t("plugin.latestAvailable"),
       timeout: 0,

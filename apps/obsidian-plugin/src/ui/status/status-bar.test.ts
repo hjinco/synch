@@ -143,12 +143,29 @@ function expectElementState(
   expect(item.classes).toContain("synch-status-bar");
   expect(item.classes).toContain(getStatusBarStateClass(syncState));
   expect(item.attributes.has("title")).toBe(false);
-  expect(item.attributes.get("aria-label")).toBe("Open Synch settings");
+  expect(item.attributes.get("aria-label")).toBe(
+    expectedSyncStatusLabel(syncState, percent),
+  );
   expect(item.attributes.get("data-synch-sync-state")).toBe(syncState);
   expect(item.attributes.get("data-synch-sync-percent")).toBe(String(percent));
   expect(item.attributes.get("data-synch-storage-warning")).toBe("false");
   expect(item.attributes.get("data-synch-storage-state")).toBe("normal");
   expect(item.children[0].attributes.get("data-icon")).toBe(getStatusBarIcon(syncState));
+}
+
+function expectedSyncStatusLabel(syncState: SynchSyncState, percent: number): string {
+  if (syncState === "update_required") {
+    return t("plugin.updateRequiredStatus");
+  }
+
+  if (syncState === "paused") {
+    return t("sync.state.paused");
+  }
+
+  return t("sync.status", {
+    label: t(`sync.state.${syncState}`),
+    percent,
+  });
 }
 
 describe("SynchStatusBar", () => {
@@ -225,9 +242,7 @@ describe("SynchStatusBar", () => {
     const item = plugin.addedStatusBarItems[0];
     expect(item.classes).toContain("synch-status-up-to-date");
     expect(item.classes).toContain("synch-status-storage-warning");
-    expect(item.attributes.get("aria-label")).toBe(
-      "Synch storage is almost full. Open Synch settings",
-    );
+    expect(item.attributes.get("aria-label")).toBe(t("status.storageAlmostFull"));
     expect(item.attributes.get("data-synch-sync-state")).toBe("up_to_date");
     expect(item.attributes.get("data-synch-storage-warning")).toBe("true");
     expect(item.children[0].attributes.get("data-icon")).toBe("triangle-alert");
@@ -268,9 +283,7 @@ describe("SynchStatusBar", () => {
 
     const item = plugin.addedStatusBarItems[0];
     expect(item.classes).toContain("synch-status-update-required");
-    expect(item.attributes.get("aria-label")).toBe(
-      "Synch plugin update required. Open Synch settings",
-    );
+    expect(item.attributes.get("aria-label")).toBe(t("plugin.updateRequiredStatus"));
     expect(item.attributes.get("data-synch-sync-state")).toBe("update_required");
     expect(item.children[0].attributes.get("data-icon")).toBe("triangle-alert");
   });

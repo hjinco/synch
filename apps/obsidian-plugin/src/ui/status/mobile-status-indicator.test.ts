@@ -132,7 +132,10 @@ describe("SynchMobileStatusIndicator", () => {
     expect(item.classes).toContain("synch-status-attention-needed");
     expect(item.classes.has("synch-mobile-status-indicator-hidden")).toBe(false);
     expect(item.attributes.get("aria-label")).toBe(
-      "Synch needs attention. Open Synch settings",
+      t("sync.status", {
+        label: t("sync.state.attention_needed"),
+        percent: 0,
+      }),
     );
     expect(item.attributes.get("data-synch-sync-state")).toBe("attention_needed");
     expect(item.attributes.get("data-synch-storage-warning")).toBe("false");
@@ -158,7 +161,7 @@ describe("SynchMobileStatusIndicator", () => {
     expect(item.classes).toContain("synch-status-storage-warning");
     expect(item.classes.has("synch-mobile-status-indicator-hidden")).toBe(false);
     expect(item.attributes.get("aria-label")).toBe(
-      "Synch storage is almost full. Open Synch settings",
+      t("status.storageAlmostFull"),
     );
     expect(item.attributes.get("data-synch-sync-state")).toBe("up_to_date");
     expect(item.attributes.get("data-synch-storage-warning")).toBe("true");
@@ -207,9 +210,7 @@ describe("SynchMobileStatusIndicator", () => {
     const item = rootEl.children[0];
     expect(item.classes).toContain("synch-status-update-required");
     expect(item.classes.has("synch-mobile-status-indicator-hidden")).toBe(false);
-    expect(item.attributes.get("aria-label")).toBe(
-      "Synch plugin update required. Open Synch settings",
-    );
+    expect(item.attributes.get("aria-label")).toBe(t("plugin.updateRequiredStatus"));
     expect(item.attributes.get("data-synch-sync-state")).toBe("update_required");
     expect(item.children[0].attributes.get("data-icon")).toBe("triangle-alert");
   });

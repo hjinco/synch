@@ -5,7 +5,6 @@ import { DEFAULT_SYNC_FILE_RULES } from "@synch/sync-client/sync/core/file-rules
 import { DEFAULT_VAULT_CONFIG_SYNC_RULES } from "@synch/sync-client/sync/core/vault-config-rules";
 import { createTestPlugin } from "../test-support/test-plugin";
 import { t } from "../i18n";
-import { formatSyncStatusLabel } from "./status/sync-status-label";
 import { SyncController } from "./sync-controller";
 import { SyncEngine } from "@synch/sync-client/sync/runtime/sync-engine";
 import { InMemorySyncDiagnostics } from "@synch/sync-client/sync/diagnostics/in-memory";
@@ -177,12 +176,7 @@ describe("SyncController", () => {
     expect(setStorageStatusWatching).toHaveBeenCalledWith(false);
     expect(stopAutoSync).toHaveBeenCalledTimes(1);
     expect(controller.getSyncState()).toBe("paused");
-    expect(
-      formatSyncStatusLabel(
-        controller.getSyncState(),
-        controller.getSyncProgress(),
-      ),
-    ).toBe(t("sync.status", { label: t("sync.state.paused"), percent: 0 }));
+    expect(controller.getSyncPercent()).toBe(0);
   });
 
   it("watches storage status while auto sync starts for a connected vault", async () => {
@@ -256,12 +250,7 @@ describe("SyncController", () => {
     await controller.ensureAutoSyncState();
 
     expect(controller.getSyncState()).toBe("offline");
-    expect(
-      formatSyncStatusLabel(
-        controller.getSyncState(),
-        controller.getSyncProgress(),
-      ),
-    ).toBe(t("sync.status", { label: t("sync.state.offline"), percent: 0 }));
+    expect(controller.getSyncPercent()).toBe(0);
     expect(notifyError).not.toHaveBeenCalled();
   });
 

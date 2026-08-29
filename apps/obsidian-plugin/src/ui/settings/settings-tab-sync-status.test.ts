@@ -27,7 +27,6 @@ describe("SynchSettingTab sync status", () => {
     const tab = createSettingsTab({
       hasAuthenticatedSession: () => true,
       hasConnectedRemoteVault: () => true,
-      getSyncStatusLabel: () => "Sync: not ready 0%",
       getSyncPercent: () => 0,
       getSyncProgress: () => ({
         completedEntries: 0,
@@ -45,7 +44,6 @@ describe("SynchSettingTab sync status", () => {
       hasAuthenticatedSession: () => true,
       hasConnectedRemoteVault: () => false,
       getSyncState: () => "syncing",
-      getSyncStatusLabel: () => "Sync: syncing 37%",
       getSyncPercent: () => 37,
       getSyncProgress: () => ({
         completedEntries: 42,
@@ -138,7 +136,6 @@ describe("SynchSettingTab sync status", () => {
       hasAuthenticatedSession: () => true,
       hasConnectedRemoteVault: () => true,
       getSyncState: () => "syncing",
-      getSyncStatusLabel: () => "Sync: syncing 37%",
       getSyncPercent: () => 37,
       getSyncProgress: () => ({
         completedEntries: 42,
@@ -167,7 +164,6 @@ describe("SynchSettingTab sync status", () => {
       hasAuthenticatedSession: () => true,
       hasConnectedRemoteVault: () => true,
       getSyncState: () => "reconnecting",
-      getSyncStatusLabel: () => "Sync: reconnecting 0%",
     });
 
     tab.open();
@@ -183,7 +179,6 @@ describe("SynchSettingTab sync status", () => {
       hasAuthenticatedSession: () => true,
       hasConnectedRemoteVault: () => true,
       getSyncState: () => syncState,
-      getSyncStatusLabel: () => `Sync: syncing ${completedEntries}%`,
       getSyncProgress: () => ({
         completedEntries,
         totalEntries: 100,
@@ -243,7 +238,6 @@ describe("SynchSettingTab sync status", () => {
       hasAuthenticatedSession: () => true,
       hasConnectedRemoteVault: () => true,
       getSyncState: () => "syncing",
-      getSyncStatusLabel: () => "Sync: syncing 37%",
       setSyncEnabled,
     });
 
@@ -376,7 +370,7 @@ describe("SynchSettingTab sync status", () => {
       hasAuthenticatedSession: () => true,
       hasConnectedRemoteVault: () => true,
       getSyncState: () => "up_to_date",
-      getSyncStatusLabel: () => "Sync: up to date 99%",
+      getSyncPercent: () => 99,
       getSyncProgress: () => ({
         completedEntries: 4000,
         totalEntries: 4001,
@@ -420,7 +414,6 @@ describe("SynchSettingTab sync status", () => {
       hasAuthenticatedSession: () => true,
       hasConnectedRemoteVault: () => true,
       getSyncState: () => "up_to_date",
-      getSyncStatusLabel: () => "Sync: up to date 99%",
       listFileSizeBlockedFiles: vi.fn(async () => blockedFiles),
     });
 
@@ -469,7 +462,6 @@ describe("SynchSettingTab sync status", () => {
       hasAuthenticatedSession: () => true,
       hasConnectedRemoteVault: () => true,
       getSyncState: () => "paused",
-      getSyncStatusLabel: () => "Sync: paused 37%",
       getSyncProgress: () => ({
         completedEntries: 12,
         totalEntries: 12,
@@ -494,7 +486,6 @@ describe("SynchSettingTab sync status", () => {
       hasAuthenticatedSession: () => true,
       hasConnectedRemoteVault: () => true,
       getSyncState: () => "offline",
-      getSyncStatusLabel: () => "Sync: offline 0%",
     });
 
     tab.open();
@@ -507,7 +498,7 @@ describe("SynchSettingTab sync status", () => {
     const tab = createSettingsTab({
       hasAuthenticatedSession: () => true,
       hasConnectedRemoteVault: () => true,
-      getSyncStatusLabel: () => "Sync: synced 100%",
+      getSyncState: () => "up_to_date",
       getSyncPercent: () => 100,
       getSyncProgress: () => ({
         completedEntries: 12,
@@ -523,7 +514,7 @@ describe("SynchSettingTab sync status", () => {
 
     expect(getSettingNames().slice(0, 2)).toEqual([t("sync.label"), t("storage.label")]);
     expect(getSettingDescriptions()[0]).toBe(
-      "synced 100% - 12 / 12",
+      `${t("sync.state.up_to_date")} 100% - 12 / 12`,
     );
     expect(getSettingDescriptions()[1]).toBe("24.3 MB / 50 MB (49%)");
     expect(getProgressBarComponents().map(({ value }) => value)).toEqual([
@@ -536,7 +527,8 @@ describe("SynchSettingTab sync status", () => {
     const tab = createSettingsTab({
       hasAuthenticatedSession: () => true,
       hasConnectedRemoteVault: () => true,
-      getSyncStatusLabel: () => "Sync: synced 100%",
+      getSyncState: () => "up_to_date",
+      getSyncPercent: () => 100,
       getSyncProgress: () => ({
         completedEntries: 12,
         totalEntries: 12,
@@ -558,7 +550,8 @@ describe("SynchSettingTab sync status", () => {
     const tab = createSettingsTab({
       hasAuthenticatedSession: () => true,
       hasConnectedRemoteVault: () => true,
-      getSyncStatusLabel: () => "Sync: synced 100%",
+      getSyncState: () => "up_to_date",
+      getSyncPercent: () => 100,
       getSyncProgress: () => ({
         completedEntries: 12,
         totalEntries: 12,
@@ -584,7 +577,8 @@ describe("SynchSettingTab sync status", () => {
     const tab = createSettingsTab({
       hasAuthenticatedSession: () => true,
       hasConnectedRemoteVault: () => true,
-      getSyncStatusLabel: () => "Sync: synced 100%",
+      getSyncState: () => "up_to_date",
+      getSyncPercent: () => 100,
       getSyncProgress: () => ({
         completedEntries: 12,
         totalEntries: 12,
@@ -608,7 +602,6 @@ describe("SynchSettingTab sync status", () => {
     const tab = createSettingsTab({
       hasAuthenticatedSession: () => true,
       hasConnectedRemoteVault: () => true,
-      getSyncStatusLabel: () => "Sync: paused 0%",
       getStorageStatus: () => null,
       getStorageDisplayState: () => "needs_more_storage",
     });
@@ -625,7 +618,8 @@ describe("SynchSettingTab sync status", () => {
     const tab = createSettingsTab({
       hasAuthenticatedSession: () => true,
       hasConnectedRemoteVault: () => true,
-      getSyncStatusLabel: () => "Sync: synced 100%",
+      getSyncState: () => "up_to_date",
+      getSyncPercent: () => 100,
       getSyncProgress: () => ({
         completedEntries: 12,
         totalEntries: 12,
@@ -640,7 +634,7 @@ describe("SynchSettingTab sync status", () => {
 
     expect(getSettingNames().slice(0, 2)).toEqual([t("sync.label"), t("storage.label")]);
     expect(getSettingDescriptions()[0]).toBe(
-      "synced 100% - 12 / 12",
+      `${t("sync.state.up_to_date")} 100% - 12 / 12`,
     );
     expect(getSettingDescriptions()[1]).toBe("24.3 MB");
     expect(getProgressBarComponents()[0]?.value).toBe(0);
@@ -651,7 +645,8 @@ describe("SynchSettingTab sync status", () => {
     const tab = createSettingsTab({
       hasAuthenticatedSession: () => true,
       hasConnectedRemoteVault: () => true,
-      getSyncStatusLabel: () => "Sync: synced 100%",
+      getSyncState: () => "up_to_date",
+      getSyncPercent: () => 100,
       getSyncProgress: () => ({
         completedEntries: 12,
         totalEntries: 12,
@@ -662,7 +657,9 @@ describe("SynchSettingTab sync status", () => {
     tab.open();
 
     expect(getSettingNames().slice(0, 2)).toEqual([t("sync.label"), t("storage.label")]);
-    expect(getSettingDescriptions()[0]).toBe("synced 100% - 12 / 12");
+    expect(getSettingDescriptions()[0]).toBe(
+      `${t("sync.state.up_to_date")} 100% - 12 / 12`,
+    );
     expect(getSettingDescriptions()[1]).toBe(t("storage.checking"));
     expect(getProgressBarComponents().map(({ value }) => value)).toEqual([
       0,

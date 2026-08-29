@@ -1,6 +1,7 @@
 import { setIcon, type Plugin } from "obsidian";
 
 import { t } from "../../i18n";
+import { formatSyncStatusLabel } from "../../i18n/sync-status";
 import {
   getStatusBarStateClass,
   openSynchSettings,
@@ -31,7 +32,6 @@ export class SynchMobileStatusIndicator {
     });
     this.indicator.setAttribute("type", "button");
     this.indicator.setAttribute("role", "button");
-    this.indicator.setAttribute("aria-label", t("status.openSettings"));
     this.icon = this.indicator.createSpan({
       cls: "synch-mobile-status-indicator-icon",
     });
@@ -53,6 +53,7 @@ export class SynchMobileStatusIndicator {
     }
 
     const state = this.state.getSyncState();
+    const syncStatusLabel = formatSyncStatusLabel(state, this.state.getSyncPercent());
     const storageState = this.state.getStorageDisplayState();
     const hasStorageWarning = storageState !== "normal";
     const needsMoreStorage = storageState === "needs_more_storage";
@@ -81,9 +82,7 @@ export class SynchMobileStatusIndicator {
         ? t("storage.needsMore")
         : hasStorageWarning
           ? t("status.storageAlmostFull")
-        : state === "update_required"
-          ? t("status.pluginUpdateRequired")
-        : t("status.attention"),
+        : syncStatusLabel,
     );
     this.indicator.setAttribute("data-synch-sync-state", state);
     this.indicator.setAttribute("data-synch-sync-percent", String(this.state.getSyncPercent()));

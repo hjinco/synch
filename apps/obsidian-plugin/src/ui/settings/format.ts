@@ -1,4 +1,5 @@
 import { t } from "../../i18n";
+import { formatSyncStatusLabel } from "../../i18n/sync-status";
 import type {
   SynchStorageDisplayState,
   SynchStorageStatus,
@@ -12,10 +13,11 @@ export function shouldShowSyncSpinner(state: SynchSyncState): boolean {
 }
 
 export function formatSyncDescription(
-  statusLabel: string,
+  state: SynchSyncState,
+  percent: number,
   syncProgress: SynchSyncProgress,
 ): string {
-  const label = formatSyncStatusLabel(statusLabel);
+  const label = formatSyncStatusLabel(state, percent);
   return `${label} - ${syncProgress.completedEntries} / ${syncProgress.totalEntries}`;
 }
 
@@ -37,24 +39,6 @@ export function formatStorageDescription(
   }
 
   return usage;
-}
-
-function formatSyncStatusLabel(statusLabel: string): string {
-  const label = statusLabel
-    .replace(/^(Sync|동기화|同期|同步):\s*/, "")
-    .replace(/^paused \d+%$/, "paused")
-    .replace(/^일시 중지됨 \d+%$/, t("sync.state.paused"));
-
-  const translated = label
-    .replace(/^not ready/, t("sync.state.not_ready"))
-    .replace(/^paused/, t("sync.state.paused"))
-    .replace(/^waiting to sync/, t("sync.state.pending"))
-    .replace(/^syncing/, t("sync.state.syncing"))
-    .replace(/^offline/, t("sync.state.offline"))
-    .replace(/^reconnecting/, t("sync.state.reconnecting"))
-    .replace(/^up to date/, t("sync.state.up_to_date"))
-    .replace(/^attention needed/, t("sync.state.attention_needed"));
-  return translated;
 }
 
 function formatStorageUsage(

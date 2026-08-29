@@ -119,7 +119,6 @@ export function createSettingsTab(
     getAuthReadiness: () => ({ state: "anonymous" }),
     getAuthStatusLabel: () => "Not signed in.",
     getSyncState: () => "not_ready",
-    getSyncStatusLabel: () => "Sync: not ready 0%",
     getSyncPercent: () => 0,
     getSyncProgress: () => ({
       completedEntries: 0,

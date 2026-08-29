@@ -32,7 +32,6 @@ export interface SynchSettingsController {
   getAuthReadiness(): AuthReadiness;
   getAuthStatusLabel(): string;
   getSyncState(): SynchSyncState;
-  getSyncStatusLabel(): string;
   getSyncPercent(): number;
   getSyncProgress(): SynchSyncProgress;
   getSyncLogs(): SynchSyncLogs;
