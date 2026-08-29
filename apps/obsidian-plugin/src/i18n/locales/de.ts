@@ -138,8 +138,8 @@ export const de = {
     "status.pluginUpdateRequired": "Synch-Plugin-Update erforderlich. Synch-Einstellungen öffnen",
     "status.storageAlmostFull": "Synch-Speicher ist fast voll. Synch-Einstellungen öffnen",
     "storage.checking": "Speichernutzung wird geprüft...",
-    "storage.full": ({ usage }: { usage: string }) => `Speicher voll: ${usage}`,
     "storage.label": "Speicher",
+    "storage.needsMore": "Für die Synchronisierung wird mehr Speicher benötigt.",
     "storage.warning": ({ usage }: { usage: string }) => `Speicher fast voll: ${usage}`,
     "storage.quotaExceeded": "Speicherkontingent überschritten. Die Synchronisierung wurde pausiert.",
     "subscription.canceling": ({ plan, periodEnd }: { plan: string; periodEnd: string }) =>

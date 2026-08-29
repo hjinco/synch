@@ -1,13 +1,19 @@
 import { describe, expect, it } from "vitest";
 import type { Plugin } from "obsidian";
 
+import { getStorageDisplayState as resolveStorageDisplayState } from "../../adapters/storage-warning";
+import { t } from "../../i18n";
 import {
   getStatusBarIcon,
   getStatusBarStateClass,
   SynchStatusBar,
   type SynchStatusBarState,
 } from "./status-bar";
-import type { SynchStorageStatus, SynchSyncState } from "../contracts";
+import type {
+  SynchStorageDisplayState,
+  SynchStorageStatus,
+  SynchSyncState,
+} from "../contracts";
 
 class FakeStatusBarElement {
   text = "";
@@ -119,11 +125,13 @@ function createState(
   syncState: SynchSyncState,
   percent = 37,
   storageStatus: SynchStorageStatus | null = null,
+  storageDisplayState?: SynchStorageDisplayState,
 ): SynchStatusBarState {
   return {
     getSyncState: () => syncState,
     getSyncPercent: () => percent,
-    getStorageStatus: () => storageStatus,
+    getStorageDisplayState: () =>
+      storageDisplayState ?? resolveStorageDisplayState(storageStatus, false),
   };
 }
 
@@ -139,6 +147,7 @@ function expectElementState(
   expect(item.attributes.get("data-synch-sync-state")).toBe(syncState);
   expect(item.attributes.get("data-synch-sync-percent")).toBe(String(percent));
   expect(item.attributes.get("data-synch-storage-warning")).toBe("false");
+  expect(item.attributes.get("data-synch-storage-state")).toBe("normal");
   expect(item.children[0].attributes.get("data-icon")).toBe(getStatusBarIcon(syncState));
 }
 
@@ -221,6 +230,33 @@ describe("SynchStatusBar", () => {
     );
     expect(item.attributes.get("data-synch-sync-state")).toBe("up_to_date");
     expect(item.attributes.get("data-synch-storage-warning")).toBe("true");
+    expect(item.children[0].attributes.get("data-icon")).toBe("triangle-alert");
+  });
+
+  it("shows when more storage is needed after the quota is exceeded", () => {
+    const plugin = createPlugin();
+    const statusBar = new SynchStatusBar(
+      plugin,
+      createState(
+        "paused",
+        0,
+        {
+          storageUsedBytes: 101,
+          storageLimitBytes: 100,
+        },
+        "needs_more_storage",
+      ),
+    );
+
+    statusBar.initialize();
+
+    const item = plugin.addedStatusBarItems[0];
+    expect(item.classes).toContain("synch-status-paused");
+    expect(item.classes).toContain("synch-status-storage-needs-more");
+    expect(item.classes).not.toContain("synch-status-storage-warning");
+    expect(item.attributes.get("aria-label")).toBe(t("storage.needsMore"));
+    expect(item.attributes.get("data-synch-storage-warning")).toBe("true");
+    expect(item.attributes.get("data-synch-storage-state")).toBe("needs_more_storage");
     expect(item.children[0].attributes.get("data-icon")).toBe("triangle-alert");
   });
 

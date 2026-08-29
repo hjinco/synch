@@ -48,6 +48,11 @@ export interface SynchStorageStatus {
   storageLimitBytes: number;
 }
 
+export type SynchStorageDisplayState =
+  | "normal"
+  | "near_limit"
+  | "needs_more_storage";
+
 export interface SynchFileSizeBlockedFile {
   path: string;
   encryptedSizeBytes: number | null;

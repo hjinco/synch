@@ -1,7 +1,7 @@
 import { setIcon, setTooltip, Setting } from "obsidian";
 import { t } from "../../../i18n";
-import { isStorageWarningStatus } from "../../../adapters/storage-warning";
 import type { SynchSettingsController } from "../controller";
+import type { SynchStorageDisplayState } from "../../contracts";
 import { formatStorageDescription, formatSyncDescription, getStoragePercent, shouldShowSyncSpinner } from "../format";
 import {
   FileSizeBlockedWarningControls,
@@ -109,35 +109,44 @@ export function populateStorageStatusSetting(
   controller: SynchSettingsController,
 ): StorageRowSettingControls {
   const storageStatus = controller.getStorageStatus();
+  const storageDisplayState = controller.getStorageDisplayState();
   let storageProgressBar: ProgressBarControl | null = null;
   storageSetting
     .setName(t("storage.label"))
-    .setDesc(storageStatus ? formatStorageDescription(storageStatus) : t("storage.checking"))
+    .setDesc(formatStorageDescription(storageStatus, storageDisplayState))
     .addProgressBar((progressBar) => {
       storageProgressBar = progressBar;
       progressBar.setValue(storageStatus ? getStoragePercent(storageStatus) : 0);
     });
-  if (isStorageWarningStatus(storageStatus)) {
-    storageSetting.settingEl.addClass("synch-storage-warning");
-  }
+  applyStorageDisplayState(storageSetting, storageDisplayState);
 
   return {
     refreshStorageStatus(): void {
       const nextStorageStatus = controller.getStorageStatus();
+      const nextStorageDisplayState = controller.getStorageDisplayState();
       storageSetting.setDesc(
-        nextStorageStatus
-          ? formatStorageDescription(nextStorageStatus)
-          : t("storage.checking"),
+        formatStorageDescription(nextStorageStatus, nextStorageDisplayState),
       );
       storageProgressBar?.setValue(
         nextStorageStatus ? getStoragePercent(nextStorageStatus) : 0,
       );
-      storageSetting.settingEl.toggleClass(
-        "synch-storage-warning",
-        isStorageWarningStatus(nextStorageStatus),
-      );
+      applyStorageDisplayState(storageSetting, nextStorageDisplayState);
     },
   };
+}
+
+function applyStorageDisplayState(
+  storageSetting: Setting,
+  storageDisplayState: SynchStorageDisplayState,
+): void {
+  storageSetting.settingEl.toggleClass(
+    "synch-storage-warning",
+    storageDisplayState === "near_limit",
+  );
+  storageSetting.settingEl.toggleClass(
+    "synch-storage-needs-more",
+    storageDisplayState === "needs_more_storage",
+  );
 }
 
 

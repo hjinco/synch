@@ -5,6 +5,20 @@ export interface StorageWarningStatus {
 
 export const STORAGE_WARNING_RATIO = 0.95;
 
+export function getStorageDisplayState(
+  status: StorageWarningStatus | null,
+  needsMoreStorage = false,
+): "normal" | "near_limit" | "needs_more_storage" {
+  if (
+    needsMoreStorage ||
+    (status !== null && isStorageFullStatus(status))
+  ) {
+    return "needs_more_storage";
+  }
+
+  return isStorageWarningStatus(status) ? "near_limit" : "normal";
+}
+
 export function getStorageUsageRatio(status: StorageWarningStatus): number | null {
   if (status.storageLimitBytes <= 0) {
     return null;

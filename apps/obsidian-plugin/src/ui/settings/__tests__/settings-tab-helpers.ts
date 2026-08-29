@@ -1,6 +1,7 @@
 import { App, Plugin, Setting } from "obsidian";
 import { vi } from "vitest";
 
+import { getStorageDisplayState as resolveStorageDisplayState } from "../../../adapters/storage-warning";
 import type { SynchDeletedFile } from "../../contracts";
 import { DEFAULT_SYNC_FILE_RULES } from "@synch/sync-client/sync/core/file-rules";
 import { DEFAULT_VAULT_CONFIG_SYNC_RULES } from "@synch/sync-client/sync/core/vault-config-rules";
@@ -150,6 +151,11 @@ export function createSettingsTab(
     openBillingManagementPage: vi.fn(() => {}),
     openPricingPage: vi.fn(() => {}),
     getStorageStatus: () => null,
+    getStorageDisplayState: () =>
+      resolveStorageDisplayState(
+        (overrides.getStorageStatus ?? (() => null))(),
+        false,
+      ),
     watchStorageStatus: vi.fn(),
     unwatchStorageStatus: vi.fn(),
     getRemoteVaultStatusLabel: () => "No vault connected.",

@@ -135,8 +135,8 @@ export const en = {
     "status.pluginUpdateRequired": "Synch plugin update required. Open Synch settings",
     "status.storageAlmostFull": "Synch storage is almost full. Open Synch settings",
     "storage.checking": "Checking storage usage...",
-    "storage.full": ({ usage }: { usage: string }) => `Storage full: ${usage}`,
     "storage.label": "Storage",
+    "storage.needsMore": "More storage is needed to sync.",
     "storage.warning": ({ usage }: { usage: string }) => `Storage almost full: ${usage}`,
     "storage.quotaExceeded": "Storage quota exceeded. Sync has been paused.",
     "subscription.canceling": ({ plan, periodEnd }: { plan: string; periodEnd: string }) =>

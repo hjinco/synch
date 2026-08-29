@@ -263,9 +263,10 @@ describe("SynchPluginController sync enabled setting", () => {
       fileRules: DEFAULT_SYNC_FILE_RULES,
       syncEnabled: true,
     });
-    const stopAutoSyncAndMarkPaused = vi
-      .spyOn(SyncController.prototype, "stopAutoSyncAndMarkPaused")
-      .mockImplementation(() => {});
+    const stopAutoSyncAndMarkPaused = vi.spyOn(
+      SyncController.prototype,
+      "stopAutoSyncAndMarkPaused",
+    );
     const refreshUi = vi.fn();
     const controller = new SynchPluginController({
       plugin,
@@ -273,20 +274,59 @@ describe("SynchPluginController sync enabled setting", () => {
     });
     await controller.initialize();
 
-    const { syncController } = controller as unknown as {
+    const { syncEngine } = (controller as unknown as {
       syncController: {
-        deps: {
-          onStorageQuotaExceeded: () => Promise<void>;
+        syncEngine: {
+          deps: {
+            onStorageQuotaExceeded: () => Promise<void>;
+          };
         };
       };
-    };
-    await syncController.deps.onStorageQuotaExceeded();
+    }).syncController;
+    await syncEngine.deps.onStorageQuotaExceeded();
 
     expect(stopAutoSyncAndMarkPaused).toHaveBeenCalledTimes(1);
     expect(refreshUi).toHaveBeenCalled();
     expect(plugin.savedData?.[SYNCH_SETTINGS_KEY]).toMatchObject({
       syncEnabled: false,
     });
+    expect(plugin.savedData?.storageIssue).toBeUndefined();
+    expect(controller.getStorageDisplayState()).toBe("needs_more_storage");
+    expect(getNotices().map((notice) => notice.message)).toContain(
+      t("storage.quotaExceeded"),
+    );
+  });
+
+  it("clears the storage issue after sync reaches up to date", async () => {
+    const plugin = createPluginWithSettings({
+      apiBaseUrl: "http://127.0.0.1:8787",
+      fileRules: DEFAULT_SYNC_FILE_RULES,
+      syncEnabled: true,
+    });
+    const controller = new SynchPluginController({
+      plugin,
+      refreshUi: vi.fn(),
+    });
+    await controller.initialize();
+
+    const syncController = (controller as unknown as {
+      syncController: {
+        syncEngine: {
+          deps: {
+            onStorageQuotaExceeded: () => Promise<void>;
+          };
+        };
+        setSyncStatus: (status: "up_to_date") => void;
+      };
+    }).syncController;
+    await syncController.syncEngine.deps.onStorageQuotaExceeded();
+
+    expect(plugin.savedData?.storageIssue).toBeUndefined();
+    expect(controller.getStorageDisplayState()).toBe("needs_more_storage");
+
+    syncController.setSyncStatus("up_to_date");
+
+    expect(controller.getStorageDisplayState()).toBe("normal");
   });
 
   it("routes sync runtime updates through granular UI events", async () => {

@@ -1,7 +1,6 @@
 import { setIcon, type Plugin } from "obsidian";
 
 import { t } from "../../i18n";
-import { isStorageWarningStatus } from "../../adapters/storage-warning";
 import {
   getStatusBarStateClass,
   openSynchSettings,
@@ -12,6 +11,7 @@ const MOBILE_STATUS_INDICATOR_STATE_CLASSES = [
   "synch-status-attention-needed",
   "synch-status-update-required",
   "synch-status-storage-warning",
+  "synch-status-storage-needs-more",
 ];
 
 export class SynchMobileStatusIndicator {
@@ -53,7 +53,9 @@ export class SynchMobileStatusIndicator {
     }
 
     const state = this.state.getSyncState();
-    const hasStorageWarning = isStorageWarningStatus(this.state.getStorageStatus());
+    const storageState = this.state.getStorageDisplayState();
+    const hasStorageWarning = storageState !== "normal";
+    const needsMoreStorage = storageState === "needs_more_storage";
     const shouldShow =
       hasStorageWarning || state === "attention_needed" || state === "update_required";
 
@@ -62,14 +64,23 @@ export class SynchMobileStatusIndicator {
     }
     this.indicator.addClass("synch-mobile-status-indicator");
     this.indicator.toggleClass("synch-mobile-status-indicator-hidden", !shouldShow);
-    this.indicator.toggleClass("synch-status-storage-warning", hasStorageWarning);
+    this.indicator.toggleClass(
+      "synch-status-storage-warning",
+      storageState === "near_limit",
+    );
+    this.indicator.toggleClass(
+      "synch-status-storage-needs-more",
+      needsMoreStorage,
+    );
     if (!hasStorageWarning && (state === "attention_needed" || state === "update_required")) {
       this.indicator.addClass(getStatusBarStateClass(state));
     }
     this.indicator.setAttribute(
       "aria-label",
-      hasStorageWarning
-        ? t("status.storageAlmostFull")
+      needsMoreStorage
+        ? t("storage.needsMore")
+        : hasStorageWarning
+          ? t("status.storageAlmostFull")
         : state === "update_required"
           ? t("status.pluginUpdateRequired")
         : t("status.attention"),
@@ -80,6 +91,7 @@ export class SynchMobileStatusIndicator {
       "data-synch-storage-warning",
       hasStorageWarning ? "true" : "false",
     );
+    this.indicator.setAttribute("data-synch-storage-state", storageState);
     if (this.icon) {
       setIcon(this.icon, "triangle-alert");
     }

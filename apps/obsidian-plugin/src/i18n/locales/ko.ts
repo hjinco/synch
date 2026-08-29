@@ -124,8 +124,8 @@ export const ko = {
     "status.pluginUpdateRequired": "Synch 플러그인 업데이트가 필요합니다. Synch 설정 열기",
     "status.storageAlmostFull": "Synch 저장 공간이 거의 가득 찼습니다. Synch 설정 열기",
     "storage.checking": "저장 공간 사용량 확인 중...",
-    "storage.full": ({ usage }: { usage: string }) => `저장 공간 가득 참: ${usage}`,
     "storage.label": "저장 공간",
+    "storage.needsMore": "동기화하려면 저장 용량이 더 필요합니다.",
     "storage.warning": ({ usage }: { usage: string }) => `저장 공간 거의 가득 참: ${usage}`,
     "subscription.canceling": ({ plan, periodEnd }: { plan: string; periodEnd: string }) =>
       `${plan}. 현재 결제 기간은 ${periodEnd}에 종료됩니다.`,

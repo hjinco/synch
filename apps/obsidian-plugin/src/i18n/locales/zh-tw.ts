@@ -127,8 +127,8 @@ export const zhTw = {
     "status.pluginUpdateRequired": "需要更新 Synch 外掛程式。開啟 Synch 設定",
     "status.storageAlmostFull": "Synch 儲存空間即將用盡。開啟 Synch 設定",
     "storage.checking": "正在檢查儲存使用量...",
-    "storage.full": ({ usage }: { usage: string }) => `儲存空間已滿：${usage}`,
     "storage.label": "儲存空間",
+    "storage.needsMore": "同步需要更多儲存空間。",
     "storage.warning": ({ usage }: { usage: string }) => `儲存空間即將用盡：${usage}`,
     "subscription.canceling": ({ plan, periodEnd }: { plan: string; periodEnd: string }) =>
       `${plan}。目前週期將於 ${periodEnd} 結束。`,

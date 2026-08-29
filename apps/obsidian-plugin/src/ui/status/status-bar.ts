@@ -1,13 +1,16 @@
 import { setIcon, type Plugin } from "obsidian";
 
 import { t } from "../../i18n";
-import { isStorageWarningStatus } from "../../adapters/storage-warning";
-import type { AppWithSettings, SynchStorageStatus, SynchSyncState } from "../contracts";
+import type {
+  AppWithSettings,
+  SynchStorageDisplayState,
+  SynchSyncState,
+} from "../contracts";
 
 export interface SynchStatusBarState {
   getSyncState(): SynchSyncState;
   getSyncPercent(): number;
-  getStorageStatus(): SynchStorageStatus | null;
+  getStorageDisplayState(): SynchStorageDisplayState;
 }
 
 const STATUS_BAR_STATE_CLASSES = [
@@ -21,6 +24,7 @@ const STATUS_BAR_STATE_CLASSES = [
   "synch-status-attention-needed",
   "synch-status-update-required",
   "synch-status-storage-warning",
+  "synch-status-storage-needs-more",
 ];
 
 export function getStatusBarStateClass(state: SynchSyncState): string {
@@ -104,22 +108,33 @@ export class SynchStatusBar {
     }
 
     const state = this.state.getSyncState();
-    const hasStorageWarning = isStorageWarningStatus(this.state.getStorageStatus());
+    const storageState = this.state.getStorageDisplayState();
+    const hasStorageWarning = storageState !== "normal";
+    const needsMoreStorage = storageState === "needs_more_storage";
 
     this.statusBar.addClass("synch-status-bar");
     for (const className of STATUS_BAR_STATE_CLASSES) {
       this.statusBar.removeClass(className);
     }
     this.statusBar.addClass(getStatusBarStateClass(state));
-    this.statusBar.toggleClass("synch-status-storage-warning", hasStorageWarning);
+    this.statusBar.toggleClass(
+      "synch-status-storage-warning",
+      storageState === "near_limit",
+    );
+    this.statusBar.toggleClass(
+      "synch-status-storage-needs-more",
+      needsMoreStorage,
+    );
     if (this.icon) {
       setIcon(this.icon, hasStorageWarning ? "triangle-alert" : getStatusBarIcon(state));
     }
     this.statusBar.removeAttribute("title");
     this.statusBar.setAttribute(
       "aria-label",
-      hasStorageWarning
-        ? t("status.storageAlmostFull")
+      needsMoreStorage
+        ? t("storage.needsMore")
+        : hasStorageWarning
+          ? t("status.storageAlmostFull")
         : state === "update_required"
           ? t("status.pluginUpdateRequired")
         : t("status.openSettings"),
@@ -130,5 +145,6 @@ export class SynchStatusBar {
       "data-synch-storage-warning",
       hasStorageWarning ? "true" : "false",
     );
+    this.statusBar.setAttribute("data-synch-storage-state", storageState);
   }
 }

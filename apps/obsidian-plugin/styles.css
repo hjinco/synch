@@ -43,6 +43,10 @@
   color: var(--text-warning);
 }
 
+.synch-storage-needs-more .setting-item-description {
+  color: var(--text-error);
+}
+
 .synch-status-bar {
   align-items: center;
   color: var(--text-muted);
@@ -64,6 +68,10 @@
 
 .synch-status-bar.synch-status-storage-warning {
   color: var(--text-warning);
+}
+
+.synch-status-bar.synch-status-storage-needs-more {
+  color: var(--text-error);
 }
 
 .synch-status-bar-icon {
@@ -106,6 +114,10 @@
 
 .synch-mobile-status-indicator.synch-status-storage-warning {
   color: var(--text-warning);
+}
+
+.synch-mobile-status-indicator.synch-status-storage-needs-more {
+  color: var(--text-error);
 }
 
 .synch-mobile-status-indicator-icon {

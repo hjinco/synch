@@ -127,8 +127,8 @@ export const zhCn = {
     "status.pluginUpdateRequired": "需要更新 Synch 插件。打开 Synch 设置",
     "status.storageAlmostFull": "Synch 存储空间即将用尽。打开 Synch 设置",
     "storage.checking": "正在检查存储使用量...",
-    "storage.full": ({ usage }: { usage: string }) => `存储空间已满：${usage}`,
     "storage.label": "存储",
+    "storage.needsMore": "同步需要更多存储空间。",
     "storage.warning": ({ usage }: { usage: string }) => `存储空间即将用尽：${usage}`,
     "subscription.canceling": ({ plan, periodEnd }: { plan: string; periodEnd: string }) =>
       `${plan}。当前周期将于 ${periodEnd} 结束。`,

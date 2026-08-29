@@ -127,8 +127,8 @@ export const ja = {
     "status.pluginUpdateRequired": "Synchプラグインの更新が必要です。Synch設定を開く",
     "status.storageAlmostFull": "Synchのストレージが残りわずかです。Synch設定を開く",
     "storage.checking": "ストレージ使用量を確認中...",
-    "storage.full": ({ usage }: { usage: string }) => `ストレージがいっぱいです: ${usage}`,
     "storage.label": "ストレージ",
+    "storage.needsMore": "同期するにはストレージ容量がさらに必要です。",
     "storage.warning": ({ usage }: { usage: string }) => `ストレージが残りわずかです: ${usage}`,
     "subscription.canceling": ({ plan, periodEnd }: { plan: string; periodEnd: string }) =>
       `${plan}。現在の期間は${periodEnd}に終了します。`,

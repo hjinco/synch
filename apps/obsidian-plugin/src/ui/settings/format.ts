@@ -1,10 +1,11 @@
 import { t } from "../../i18n";
-import type { SynchSyncProgress, SynchSyncState } from "../contracts";
-import {
-  isStorageFullStatus,
-  isStorageWarningStatus,
-} from "../../adapters/storage-warning";
-import type { SynchSettingsController } from "./controller";
+import type {
+  SynchStorageDisplayState,
+  SynchStorageStatus,
+  SynchSyncProgress,
+  SynchSyncState,
+} from "../contracts";
+import { getStorageDisplayState as resolveStorageDisplayState } from "../../adapters/storage-warning";
 
 export function shouldShowSyncSpinner(state: SynchSyncState): boolean {
   return state === "syncing" || state === "reconnecting";
@@ -19,13 +20,19 @@ export function formatSyncDescription(
 }
 
 export function formatStorageDescription(
-  storageStatus: NonNullable<ReturnType<SynchSettingsController["getStorageStatus"]>>,
+  storageStatus: SynchStorageStatus | null,
+  storageDisplayState: SynchStorageDisplayState = resolveStorageDisplayState(storageStatus),
 ): string {
-  const usage = formatStorageUsage(storageStatus);
-  if (isStorageFullStatus(storageStatus)) {
-    return t("storage.full", { usage });
+  if (storageDisplayState === "needs_more_storage") {
+    return t("storage.needsMore");
   }
-  if (isStorageWarningStatus(storageStatus)) {
+
+  if (!storageStatus) {
+    return t("storage.checking");
+  }
+
+  const usage = formatStorageUsage(storageStatus);
+  if (storageDisplayState === "near_limit") {
     return t("storage.warning", { usage });
   }
 
@@ -51,7 +58,7 @@ function formatSyncStatusLabel(statusLabel: string): string {
 }
 
 function formatStorageUsage(
-  storageStatus: NonNullable<ReturnType<SynchSettingsController["getStorageStatus"]>>,
+  storageStatus: SynchStorageStatus,
 ): string {
   if (storageStatus.storageLimitBytes <= 0) {
     return formatBytes(storageStatus.storageUsedBytes);
@@ -64,7 +71,7 @@ function formatStorageUsage(
 }
 
 export function getStoragePercent(
-  storageStatus: NonNullable<ReturnType<SynchSettingsController["getStorageStatus"]>>,
+  storageStatus: SynchStorageStatus,
 ): number {
   if (storageStatus.storageLimitBytes <= 0) {
     return 0;

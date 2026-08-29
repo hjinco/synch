@@ -580,7 +580,7 @@ describe("SynchSettingTab sync status", () => {
     expect(getSettingClasses()[1]).toContain("synch-storage-warning");
   });
 
-  it("shows a full warning when remote storage reaches the limit", () => {
+  it("shows that more storage is needed when remote storage reaches the limit", () => {
     const tab = createSettingsTab({
       hasAuthenticatedSession: () => true,
       hasConnectedRemoteVault: () => true,
@@ -597,13 +597,28 @@ describe("SynchSettingTab sync status", () => {
 
     tab.open();
 
-    const fullDescription = getSettingDescriptions()[1];
-    expect(fullDescription).toBe(
-      t("storage.full", { usage: "101 B / 100 B (101%)" }),
-    );
-    expect(fullDescription).toContain("101 B / 100 B (101%)");
+    const storageDescription = getSettingDescriptions()[1];
+    expect(storageDescription).toBe(t("storage.needsMore"));
     expect(getProgressBarComponents()[0]?.value).toBe(100);
-    expect(getSettingClasses()[1]).toContain("synch-storage-warning");
+    expect(getSettingClasses()[1]).toContain("synch-storage-needs-more");
+    expect(getSettingClasses()[1]).not.toContain("synch-storage-warning");
+  });
+
+  it("shows that more storage is needed when quota state has no live usage snapshot", () => {
+    const tab = createSettingsTab({
+      hasAuthenticatedSession: () => true,
+      hasConnectedRemoteVault: () => true,
+      getSyncStatusLabel: () => "Sync: paused 0%",
+      getStorageStatus: () => null,
+      getStorageDisplayState: () => "needs_more_storage",
+    });
+
+    tab.open();
+
+    expect(getSettingDescriptions()[1]).toBe(t("storage.needsMore"));
+    expect(getProgressBarComponents()[0]?.value).toBe(0);
+    expect(getSettingClasses()[1]).toContain("synch-storage-needs-more");
+    expect(getSettingClasses()[1]).not.toContain("synch-storage-warning");
   });
 
   it("shows unlimited remote storage usage without a zero-byte limit", () => {

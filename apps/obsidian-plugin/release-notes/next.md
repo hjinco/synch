@@ -9,3 +9,5 @@
 - Syncing and reconnecting now show a static loader icon in the status bar, without a spinning animation. The settings spinner is unchanged.
 
 ## Fixed
+
+- Show a clear “more storage is needed” state in the status bar and sync settings after a vault reaches its storage quota.

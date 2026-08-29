@@ -11,6 +11,7 @@ import type {
   SynchCommunityPluginUpdateStatus,
   SynchServerCompatibilityStatus,
   SynchStorageStatus,
+  SynchStorageDisplayState,
   SynchSyncLogs,
   SynchSubscriptionStatus,
   SynchSyncProgress,
@@ -44,6 +45,7 @@ export interface SynchSettingsController {
   setSyncIntervalMs(value: number): Promise<void>;
   syncNow(): Promise<void>;
   getStorageStatus(): SynchStorageStatus | null;
+  getStorageDisplayState(): SynchStorageDisplayState;
   watchStorageStatus(): void;
   unwatchStorageStatus(): void;
   getRemoteVaultStatusLabel(): string;

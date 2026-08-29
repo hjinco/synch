@@ -35,6 +35,7 @@ import type {
   SynchFileRules,
   SynchCommunityPluginUpdateStatus,
   SynchServerCompatibilityStatus,
+  SynchStorageDisplayState,
   SynchStorageStatus,
   SynchSubscriptionStatus,
   SynchSyncLogs,
@@ -59,6 +60,7 @@ import { SyncTokenManager } from "@synch/sync-client/sync/remote/token-manager";
 import { formatSyncStatusLabel } from "./status/sync-status-label";
 import { isRemoteVaultUnavailableError } from "@synch/sync-client/remote-vault/unavailable";
 import { RemoteVaultManager } from "@synch/sync-client/remote-vault/manager";
+import { getStorageDisplayState as resolveStorageDisplayState } from "../adapters/storage-warning";
 
 export interface SynchPluginControllerDeps {
   plugin: Plugin;
@@ -74,6 +76,7 @@ export class SynchPluginController implements SynchSettingsController {
   private diagnosticsUnsubscribe: (() => void) | null = null;
   private readonly pluginDataStore = new SynchPluginDataStore(this.plugin);
   private readonly settingsStore = new SynchSettingsStore(this.pluginDataStore);
+  private needsMoreStorage = false;
   private readonly sessionStore = new SynchPluginSessionStore({
     plugin: this.plugin,
     refreshUi: () => {
@@ -175,6 +178,9 @@ export class SynchPluginController implements SynchSettingsController {
     formatRollbackDetectedNotice: (event) =>
       t("sync.rollbackDetected", { path: event.path ?? event.entryId }),
     onSyncStatusChange: () => {
+      if (this.syncController.getSyncState() === "up_to_date") {
+        this.clearStorageIssue();
+      }
       this.emitUiEvent({ type: "sync-status-changed" });
     },
     onStorageStatusChange: () => {
@@ -184,10 +190,13 @@ export class SynchPluginController implements SynchSettingsController {
       this.emitUiEvent({ type: "file-size-blocked-changed" });
     },
     onStorageQuotaExceeded: async () => {
+      this.needsMoreStorage = true;
       await this.setSyncEnabled(false);
+      this.emitUiEvent({ type: "storage-status-changed" });
       new Notice(t("storage.quotaExceeded"));
     },
     onRemoteVaultUnavailable: async (error) => {
+      this.clearStorageIssue();
       await this.readinessCoordinator.disconnectUnavailableRemoteVault(error);
     },
   });
@@ -443,6 +452,13 @@ export class SynchPluginController implements SynchSettingsController {
     return this.syncController.getStorageStatus();
   }
 
+  getStorageDisplayState(): SynchStorageDisplayState {
+    return resolveStorageDisplayState(
+      this.syncController.getStorageStatus(),
+      this.needsMoreStorage,
+    );
+  }
+
   getApiBaseUrl(): string {
     return this.settingsStore.getSnapshot().apiBaseUrl;
   }
@@ -612,6 +628,7 @@ export class SynchPluginController implements SynchSettingsController {
       this.remoteVaultManager.clearSession();
       await this.sessionStore.saveStoredRemoteVaultKeySecret(null);
       await this.readinessCoordinator.resetSyncConnection();
+      this.clearStorageIssue();
     }
   }
 
@@ -633,6 +650,7 @@ export class SynchPluginController implements SynchSettingsController {
 
   async disconnectRemoteVault(): Promise<void> {
     await this.remoteVaultController.disconnectRemoteVault();
+    this.clearStorageIssue();
   }
 
   async openVersionHistoryPane(): Promise<void> {
@@ -727,6 +745,15 @@ export class SynchPluginController implements SynchSettingsController {
     } catch (error) {
       this.notifyError(error, "error.pluginSettingsInitialization");
     }
+  }
+
+  private clearStorageIssue(): void {
+    if (!this.needsMoreStorage) {
+      return;
+    }
+
+    this.needsMoreStorage = false;
+    this.emitUiEvent({ type: "storage-status-changed" });
   }
 
   private async updateSyncFileRules(nextRules: SyncFileRules): Promise<void> {
