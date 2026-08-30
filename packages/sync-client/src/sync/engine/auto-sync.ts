@@ -19,7 +19,7 @@ import { SyncAutoLoopState, type SyncConnectionState } from "./auto-sync-state";
 import { AutoSyncTimers } from "./auto-sync-timers";
 import { PendingSyncWorkQueue } from "./auto-sync-work-queue";
 
-const DEFAULT_PUSH_DEBOUNCE_MS = 300;
+const DEFAULT_PUSH_DEBOUNCE_MS = 100;
 const DEFAULT_RECONNECT_DELAY_MS = 3_000;
 const DEFAULT_RECONNECT_MAX_DELAY_MS = 30_000;
 const DEFAULT_SYNC_RETRY_BASE_DELAY_MS = 1_000;
