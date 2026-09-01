@@ -282,6 +282,10 @@ dialog .label {
 	width: 100%;
 }
 
+.approval-panel .btn {
+	white-space: nowrap;
+}
+
 .btn--compact {
 	padding: 0.375rem 1rem;
 }
@@ -352,7 +356,7 @@ dialog .label {
 	justify-content: center;
 	gap: 0.75rem;
 	margin: 0 auto 2rem;
-	max-width: 20rem;
+	max-width: 24rem;
 	width: 100%;
 }
 
