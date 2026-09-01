@@ -235,6 +235,23 @@ describe("SynchSettingTab", () => {
     expect(getNotices()).toContainEqual({ message: t("server.saved") });
   });
 
+  it("saves the self-hosted server URL when Enter is pressed", async () => {
+    const updateApiBaseUrl = vi.fn(async () => {});
+    const tab = createSettingsTab({
+      getApiBaseUrl: () => "https://api.synch.test",
+      updateApiBaseUrl,
+    });
+
+    tab.open();
+
+    const apiBaseUrlInput = getTextComponents()[0];
+    await apiBaseUrlInput?.change("https://custom.synch.test");
+    await apiBaseUrlInput?.pressKey("Enter");
+
+    expect(updateApiBaseUrl).toHaveBeenCalledWith("https://custom.synch.test");
+    expect(getNotices()).toContainEqual({ message: t("server.saved") });
+  });
+
   it("does not show the self-hosted server URL saved notice when saving fails", async () => {
     const updateApiBaseUrl = vi.fn(async () => {
       throw new Error("API base URL must be a valid http:// or https:// URL.");

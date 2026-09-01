@@ -1,5 +1,5 @@
 import { App } from "obsidian";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   getButtonComponents,
@@ -56,6 +56,27 @@ describe("create vault modal", () => {
     await confirmPasswordInput?.change("correct horse battery staple");
     void createButton?.click();
     await Promise.resolve();
+
+    expect(getCreatedElementTexts()).toContain(t("vault.backupHint"));
+    await getButtonComponents()
+      .find((button) => button.text === "I backed up, create vault")
+      ?.click();
+
+    await expect(modalResult).resolves.toEqual({
+      name: "Personal",
+      password: "correct horse battery staple",
+      confirmPassword: "correct horse battery staple",
+    });
+  });
+
+  it("submits when Enter is pressed in a text field", async () => {
+    const modalResult = openCreateRemoteVaultModal(new App(), "Personal");
+
+    const [, passwordInput, confirmPasswordInput] = getTextComponents();
+
+    await passwordInput?.change("correct horse battery staple");
+    await confirmPasswordInput?.change("correct horse battery staple");
+    await confirmPasswordInput?.pressKey("Enter");
 
     expect(getCreatedElementTexts()).toContain(t("vault.backupHint"));
     await getButtonComponents()
@@ -149,6 +170,37 @@ describe("connect vault modal", () => {
 
     await getButtonComponents().find((button) => button.text === "Cancel")?.click();
     await expect(modalResult).resolves.toBe(null);
+  });
+
+  it("submits when Enter is pressed in the password field", async () => {
+    const connect = vi.fn(async () => {});
+    const modalResult = openBootstrapRemoteVaultModal(
+      new App(),
+      [
+        {
+          id: "vault-1",
+          organizationId: "org-1",
+          name: "Personal",
+          activeKeyVersion: 1,
+          createdAt: "2026-05-03T00:00:00.000Z",
+        },
+      ],
+      null,
+      connect,
+    );
+
+    const [passwordInput] = getTextComponents();
+    await passwordInput?.change("vault password");
+    await passwordInput?.pressKey("Enter");
+
+    expect(connect).toHaveBeenCalledWith({
+      vaultId: "vault-1",
+      password: "vault password",
+    });
+    await expect(modalResult).resolves.toEqual({
+      vaultId: "vault-1",
+      password: "vault password",
+    });
   });
 
   it("does not resolve as canceled while the connect request is pending", async () => {

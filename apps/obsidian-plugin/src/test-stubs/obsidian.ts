@@ -142,6 +142,7 @@ export class MockButtonComponent {
 }
 
 export class MockTextComponent {
+  private keydownCallback: ((event: MockKeyboardEvent) => void) | null = null;
   inputEl = {
     type: "text",
     value: "",
@@ -153,6 +154,11 @@ export class MockTextComponent {
     },
     focus(): void {},
     select(): void {},
+    addEventListener: (name: string, callback: (event: MockKeyboardEvent) => void): void => {
+      if (name === "keydown") {
+        this.keydownCallback = callback;
+      }
+    },
   };
   value = "";
   placeholder = "";
@@ -184,6 +190,25 @@ export class MockTextComponent {
     this.value = value;
     await this.changeCallback?.(value);
   }
+
+  async pressKey(key: string, isComposing = false): Promise<void> {
+    if (this.disabled) {
+      return;
+    }
+
+    this.keydownCallback?.({
+      key,
+      isComposing,
+      preventDefault(): void {},
+    });
+    await Promise.resolve();
+  }
+}
+
+interface MockKeyboardEvent {
+  key: string;
+  isComposing: boolean;
+  preventDefault(): void;
 }
 
 class MockTextAreaComponent extends MockTextComponent {}

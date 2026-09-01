@@ -1,6 +1,7 @@
 import { Notice, Setting } from "obsidian";
 import { getServerDeployment } from "../../../config";
 import { t } from "../../../i18n";
+import { submitOnEnter } from "../../keyboard";
 import type { SynchSettingsController } from "../controller";
 
 export interface ApiBaseUrlSettingOptions {
@@ -56,34 +57,36 @@ export function populateServerUrlSetting(
   const visibleApiBaseUrl =
     getServerDeployment(apiBaseUrl) === "official_cloud" ? "" : apiBaseUrl;
   let apiBaseUrlInput = visibleApiBaseUrl;
+  const saveApiBaseUrl = async (): Promise<void> => {
+    try {
+      await controller.updateApiBaseUrl(apiBaseUrlInput);
+      new Notice(t("server.saved"));
+      options.onShowSelfHostedServerUrlChange(
+        getServerDeployment(controller.getApiBaseUrl()) === "self_hosted",
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      new Notice(t("server.saveFailed", { message }));
+    }
+  };
 
   setting
     .setName(t("server.url"))
     .setDesc(t("server.urlDesc"))
-    .addText((text) =>
+    .addText((text) => {
       text
         .setPlaceholder(t("server.placeholder"))
         .setValue(visibleApiBaseUrl)
         .setDisabled(!options.canChangeApiBaseUrl)
         .onChange((value) => {
           apiBaseUrlInput = value;
-        }),
-    )
+        });
+      submitOnEnter(text.inputEl, saveApiBaseUrl);
+    })
     .addButton((button) =>
       button
         .setButtonText(t("save"))
         .setDisabled(!options.canChangeApiBaseUrl)
-        .onClick(async () => {
-          try {
-            await controller.updateApiBaseUrl(apiBaseUrlInput);
-            new Notice(t("server.saved"));
-            options.onShowSelfHostedServerUrlChange(
-              getServerDeployment(controller.getApiBaseUrl()) === "self_hosted",
-            );
-          } catch (error) {
-            const message = error instanceof Error ? error.message : String(error);
-            new Notice(t("server.saveFailed", { message }));
-          }
-        }),
+        .onClick(saveApiBaseUrl),
     );
 }
