@@ -15,3 +15,4 @@
 
 - Store vault credentials separately for each Obsidian vault and automatically migrate existing credentials to vault-scoped storage.
 - Show a clear “more storage is needed” state in the status bar and sync settings after a vault reaches its storage quota.
+- Reduce memory retained while uploading files to improve stability for vaults with large attachments.

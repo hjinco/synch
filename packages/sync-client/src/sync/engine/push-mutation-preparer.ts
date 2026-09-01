@@ -19,6 +19,7 @@ import {
   metadataContextFromMutation,
   toCommitPayload,
 } from "./push-mutation-shared";
+import { isAutoMergeTextPath } from "./text-merge-policy";
 
 export class PushMutationPreparer {
   private readonly blobClient: Pick<SyncBlobClient, "uploadBlob">;
@@ -139,7 +140,10 @@ export class PushMutationPreparer {
       },
       metadata,
       localHash: mutation.hash,
-      encryptedBytes,
+      // Only Markdown needs the encrypted payload after upload so it can be
+      // retained as a remote merge base. Binary payloads have no local
+      // consumer after the server has staged them.
+      encryptedBytes: isAutoMergeTextPath(metadata.path) ? encryptedBytes : null,
       storageBytesAdded,
     };
   }

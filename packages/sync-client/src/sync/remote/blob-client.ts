@@ -1,4 +1,5 @@
 import { extractErrorMessage } from "../../http/request";
+import { toArrayBuffer } from "@synch/vault-crypto";
 import type { SyncAuthorizedRequestClient } from "./request-client";
 
 export class SyncBlobClient {
@@ -50,10 +51,6 @@ export class SyncBlobUploadError extends Error {
     super(message);
     this.name = "SyncBlobUploadError";
   }
-}
-
-function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
-  return bytes.slice().buffer;
 }
 
 function extractErrorCode(value: unknown): string {
