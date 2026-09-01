@@ -3,9 +3,11 @@ import type { Plugin } from "obsidian";
 import type { StoredRemoteVaultKeySecret } from "@synch/sync-client/remote-vault/types";
 import {
   clearStoredRemoteVaultKeySecret,
+  migrateLegacyRemoteVaultKeySecret,
   readStoredRemoteVaultKeySecret,
   writeStoredRemoteVaultKeySecret,
 } from "../adapters/remote-vault-device-storage";
+import { migrateLegacyAuthSessionToken } from "../adapters/auth-session-storage";
 import type { SyncConnection } from "@synch/sync-client/sync/store/store";
 
 export interface SynchPluginSessionStoreDeps {
@@ -19,10 +21,13 @@ export class SynchPluginSessionStore {
 
   constructor(private readonly deps: SynchPluginSessionStoreDeps) {}
 
+  async migrateLegacySecrets(): Promise<void> {
+    await migrateLegacyAuthSessionToken(this.deps.plugin);
+    await migrateLegacyRemoteVaultKeySecret(this.deps.plugin);
+  }
+
   async loadStoredRemoteVaultKeySecret(): Promise<void> {
-    this.storedRemoteVaultKeySecret = await readStoredRemoteVaultKeySecret(
-      this.deps.plugin,
-    );
+    this.storedRemoteVaultKeySecret = await readStoredRemoteVaultKeySecret(this.deps.plugin);
   }
 
   getStoredRemoteVaultKeySecret(): StoredRemoteVaultKeySecret | null {
