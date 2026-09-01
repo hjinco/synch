@@ -257,9 +257,10 @@ export class SynchPluginController implements SynchSettingsController {
 
   async initialize(): Promise<void> {
     await this.pluginDataStore.initialize();
+    await this.sessionStore.migrateLegacySecrets();
+    await this.sessionStore.loadStoredRemoteVaultKeySecret();
     await this.initializeSettings();
     await this.updateService.checkServerCompatibility();
-    await this.sessionStore.loadStoredRemoteVaultKeySecret();
     this.sessionStore.setStoredSyncConnection(
       await this.syncController.readStoredConnection(),
     );

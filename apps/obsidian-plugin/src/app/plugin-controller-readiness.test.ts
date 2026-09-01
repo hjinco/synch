@@ -5,6 +5,8 @@ import {
   resetObsidianMocks,
   setRequestUrlMock,
 } from "../test-stubs/obsidian";
+import { readAuthSessionToken } from "../adapters/auth-session-storage";
+import { readStoredRemoteVaultKeySecret } from "../adapters/remote-vault-device-storage";
 import { t } from "../i18n";
 import { SyncController } from "./sync-controller";
 import { SynchPluginController } from "./plugin-controller";
@@ -22,6 +24,35 @@ describe("SynchPluginController readiness reconciliation", () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
+  });
+
+  it("migrates legacy credentials before authenticating and restoring the vault", async () => {
+    const plugin = await createConnectedPlugin({}, { legacySecrets: true });
+    mockOnlineReadinessRequests();
+    vi.spyOn(SyncController.prototype, "readStoredConnection").mockResolvedValue(
+      storedConnection(),
+    );
+    vi.spyOn(SyncController.prototype, "initializeStore").mockResolvedValue();
+    const controller = new SynchPluginController({
+      plugin,
+      refreshUi: vi.fn(),
+    });
+
+    await controller.initialize();
+
+    await expect(readAuthSessionToken(plugin)).resolves.toBe("stored-token");
+    await expect(readStoredRemoteVaultKeySecret(plugin)).resolves.toEqual({
+      remoteVaultKey: new Uint8Array(32).fill(1),
+    });
+
+    await controller.ensureAutoSyncState();
+
+    expect(controller.getAuthStatusLabel()).toBe(
+      t("auth.signedIn", { name: "user@example.com" }),
+    );
+    expect(controller.getRemoteVaultStatusLabel()).toBe(
+      t("vault.loaded", { label: "Recovered" }),
+    );
   });
 
   it("keeps startup offline as offline instead of treating the stored token as rejected", async () => {
