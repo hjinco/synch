@@ -104,6 +104,7 @@ export function createApiApplication(
 			},
 			{
 				corsOrigin: config.corsOrigin,
+				authBaseUrl: config.auth.baseURL,
 				adminToken: config.adminToken,
 			},
 		),
