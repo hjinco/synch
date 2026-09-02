@@ -41,6 +41,7 @@ export type AppDependencies = {
 
 export type AppConfig = {
 	corsOrigin: string;
+	authBaseUrl: string;
 	adminToken?: string;
 };
 
@@ -57,7 +58,7 @@ export function createApp(deps: AppDependencies, config: AppConfig): Hono {
 		}),
 	);
 
-	registerAuthRoutes(app, deps.authHttpHandler);
+	registerAuthRoutes(app, deps.authHttpHandler, config.authBaseUrl);
 	app.get("/health", (c) =>
 		c.json({
 			ok: true,
