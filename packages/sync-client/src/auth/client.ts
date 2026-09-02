@@ -1,4 +1,9 @@
-import { stripTrailingSlash, type HttpClient } from "../http/request";
+import {
+  extractErrorCode,
+  extractErrorMessage,
+  stripTrailingSlash,
+  type HttpClient,
+} from "../http/request";
 
 export interface DeviceAuthorizationStart {
   deviceCode: string;
@@ -80,7 +85,17 @@ export class AuthClient {
       }),
     });
 
-    const json = response.json as Partial<{
+    if (response.status !== 200) {
+      const detail =
+        extractErrorMessage(response.json) || extractErrorCode(response.json);
+      throw new Error(
+        detail
+          ? `device authorization failed with status ${response.status}: ${detail}`
+          : `device authorization failed with status ${response.status}`,
+      );
+    }
+
+    const json = (response.json ?? {}) as Partial<{
       device_code: string;
       user_code: string;
       verification_uri: string;

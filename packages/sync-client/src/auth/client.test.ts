@@ -33,6 +33,28 @@ describe("AuthClient", () => {
     });
   });
 
+  it("surfaces the server error when device authorization is rejected", async () => {
+    const { client } = createClient({
+      status: 403,
+      json: {
+        code: "INVALID_ORIGIN",
+        message: "Invalid origin",
+      },
+    });
+
+    await expect(
+      client.startDeviceAuthorization("https://api.example.com"),
+    ).rejects.toThrow("device authorization failed with status 403: Invalid origin");
+  });
+
+  it("reports the status when a rejected device authorization has no error body", async () => {
+    const { client } = createClient({ status: 502 });
+
+    await expect(
+      client.startDeviceAuthorization("https://api.example.com"),
+    ).rejects.toThrow("device authorization failed with status 502");
+  });
+
   it("maps pending and approved device token responses", async () => {
     const responses: HttpResponseLike[] = [
       {
