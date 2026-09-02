@@ -158,7 +158,7 @@ export function createSettingsTab(
     watchStorageStatus: vi.fn(),
     unwatchStorageStatus: vi.fn(),
     getRemoteVaultStatusLabel: () => "No vault connected.",
-    getApiBaseUrl: () => "http://127.0.0.1:8787",
+    getApiBaseUrl: () => "https://api.synch.run",
     hasAuthenticatedSession: () => false,
     isDeviceLoginInProgress: () => false,
     hasConnectedRemoteVault: () => false,

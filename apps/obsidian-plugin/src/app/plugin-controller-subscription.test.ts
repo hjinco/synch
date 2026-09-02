@@ -11,7 +11,9 @@ describe("SynchPluginController subscription status", () => {
   });
 
   it("loads billing status for the signed-in account", async () => {
-    const plugin = await createConnectedPlugin();
+    const plugin = await createConnectedPlugin({
+      apiBaseUrl: "https://api.synch.run",
+    });
     const request = vi.fn(async (input: unknown) => {
       const url = String((input as { url?: string }).url ?? "");
       if (url.endsWith("/api/auth/get-session")) {
@@ -64,7 +66,7 @@ describe("SynchPluginController subscription status", () => {
     });
     expect(request).toHaveBeenCalledWith(
       expect.objectContaining({
-        url: "http://127.0.0.1:8787/v1/billing/status",
+        url: "https://api.synch.run/v1/billing/status",
         headers: expect.objectContaining({
           authorization: "Bearer stored-token",
         }),
@@ -73,7 +75,9 @@ describe("SynchPluginController subscription status", () => {
   });
 
   it("stores a failed state for invalid billing status responses", async () => {
-    const plugin = await createConnectedPlugin();
+    const plugin = await createConnectedPlugin({
+      apiBaseUrl: "https://api.synch.run",
+    });
     setRequestUrlMock(
       vi.fn(async (input: unknown) => {
         const url = String((input as { url?: string }).url ?? "");

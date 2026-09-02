@@ -7,11 +7,16 @@ import {
 } from "./config";
 
 describe("getServerDeployment", () => {
-  it("treats the build-time default API URL as official cloud", () => {
-    expect(getServerDeployment(getDefaultApiBaseUrl())).toBe("official_cloud");
+  it("treats official Synch API domains as official cloud", () => {
+    expect(getServerDeployment("https://api.synch.run")).toBe("official_cloud");
+    expect(getServerDeployment("https://preview.api.synch.run")).toBe(
+      "official_cloud",
+    );
   });
 
-  it("treats any other API URL as self-hosted", () => {
+  it("treats the build-time default and other API URLs as self-hosted", () => {
+    expect(getServerDeployment(getDefaultApiBaseUrl())).toBe("self_hosted");
+    expect(getServerDeployment("http://localhost:8787")).toBe("self_hosted");
     expect(getServerDeployment("https://custom.synch.test")).toBe("self_hosted");
     expect(getServerDeployment(`${getDefaultApiBaseUrl()}/v1`)).toBe("self_hosted");
   });

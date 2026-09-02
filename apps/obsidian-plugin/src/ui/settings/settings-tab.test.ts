@@ -4,7 +4,6 @@ import type {
 } from "obsidian";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { getDefaultApiBaseUrl } from "../../config";
 import { t } from "../../i18n";
 import {
   getButtonComponents,
@@ -282,7 +281,7 @@ describe("SynchSettingTab", () => {
   it("does not show the default API base URL before sign-in", async () => {
     const updateApiBaseUrl = vi.fn(async () => {});
     const tab = createSettingsTab({
-      getApiBaseUrl: () => getDefaultApiBaseUrl(),
+      getApiBaseUrl: () => "https://api.synch.run",
       updateApiBaseUrl,
     });
 

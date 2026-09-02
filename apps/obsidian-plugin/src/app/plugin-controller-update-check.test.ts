@@ -28,6 +28,16 @@ function createPluginWithSettings(settings: SynchPluginSettings): Plugin & {
   return plugin;
 }
 
+function createOfficialCloudSettings(): SynchPluginSettings {
+  return {
+    apiBaseUrl: "https://api.synch.run",
+    fileRules: DEFAULT_SYNC_FILE_RULES,
+    vaultConfigSync: DEFAULT_VAULT_CONFIG_SYNC_RULES,
+    syncEnabled: true,
+    syncIntervalMs: 0,
+  };
+}
+
 describe("SynchPluginController community plugin update check", () => {
   beforeEach(() => {
     resetObsidianMocks();
@@ -45,12 +55,12 @@ describe("SynchPluginController community plugin update check", () => {
           resolveRequest = resolve;
         }),
     );
-    setRequestUrlMock(request);
-
     const controller = new SynchPluginController({
-      plugin: new TestPlugin(),
+      plugin: createPluginWithSettings(createOfficialCloudSettings()),
       refreshUi: vi.fn(),
     });
+    await controller.initialize();
+    setRequestUrlMock(request);
 
     const firstCheck = controller.ensureCommunityPluginUpdateCheck();
     const secondCheck = controller.ensureCommunityPluginUpdateCheck();
@@ -76,16 +86,16 @@ describe("SynchPluginController community plugin update check", () => {
   });
 
   it("stores failed update checks for settings rendering", async () => {
-    setRequestUrlMock(
-      vi.fn(async () => ({
-        status: 200,
-        text: "<rss></rss>",
-      })),
-    );
+    const request = vi.fn(async () => ({
+      status: 200,
+      text: "<rss></rss>",
+    }));
     const controller = new SynchPluginController({
-      plugin: new TestPlugin(),
+      plugin: createPluginWithSettings(createOfficialCloudSettings()),
       refreshUi: vi.fn(),
     });
+    await controller.initialize();
+    setRequestUrlMock(request);
 
     await controller.ensureCommunityPluginUpdateCheck();
 
@@ -103,11 +113,12 @@ describe("SynchPluginController community plugin update check", () => {
       status: 200,
       text: '<guid isPermaLink="false">release:plugin:synch:0.0.1</guid>',
     }));
-    setRequestUrlMock(request);
     const controller = new SynchPluginController({
-      plugin: new TestPlugin(),
+      plugin: createPluginWithSettings(createOfficialCloudSettings()),
       refreshUi: vi.fn(),
     });
+    await controller.initialize();
+    setRequestUrlMock(request);
 
     await controller.ensureCommunityPluginUpdateCheck();
     await controller.ensureCommunityPluginUpdateCheck();
