@@ -1,6 +1,7 @@
 import type { Plugin } from "obsidian";
 
 import { getSynchLocale, type SynchErrorContextKey } from "../../i18n";
+import { openExternalUrl } from "../../adapters/external-browser";
 import {
   openBootstrapRemoteVaultModal,
   openConfirmConnectNonEmptyLocalVaultModal,
@@ -89,7 +90,7 @@ export class SynchRemoteVaultController {
   openRemoteVaultManagementPage(): void {
     const url = new URL("/vaults", this.deps.getApiBaseUrl());
     url.searchParams.set("lang", getSynchLocale());
-    window.open(url.toString(), "_blank", "noopener,noreferrer");
+    openExternalUrl(url.toString());
   }
 
   async disconnectRemoteVault(): Promise<void> {

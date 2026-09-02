@@ -3,6 +3,7 @@ import { defaultHttpClient } from "../adapters/http";
 import { buildBillingWebPageUrl } from "./billing-web-url";
 import { getServerDeployment } from "../config";
 import { getSynchLocale } from "../i18n";
+import { openExternalUrl } from "../adapters/external-browser";
 import type { SynchSubscriptionStatus } from "../ui/contracts";
 
 const SUBSCRIPTION_STATUS_CHECK_INTERVAL_MS = 30 * 1000;
@@ -85,7 +86,7 @@ export class SynchSubscriptionService {
       page,
       getSynchLocale(),
     );
-    window.open(url, "_blank", "noopener,noreferrer");
+    openExternalUrl(url);
   }
 
   private async checkSubscriptionStatus(): Promise<void> {

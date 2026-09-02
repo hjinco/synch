@@ -44,7 +44,7 @@ describe("SynchRemoteVaultController", () => {
 
     expect(open).toHaveBeenCalledWith(
       "https://api.synch.run/vaults?lang=ko",
-      "_blank",
+      "_external",
       "noopener,noreferrer",
     );
   });

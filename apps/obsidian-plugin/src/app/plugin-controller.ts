@@ -5,6 +5,7 @@ import { SynchPluginSessionStore } from "./session-store";
 import { SynchSubscriptionService } from "./subscription-service";
 import { SynchPluginUpdateService } from "./update-service";
 import { defaultHttpClient } from "../adapters/http";
+import { openExternalUrl } from "../adapters/external-browser";
 import { AuthClient } from "@synch/sync-client/auth/client";
 import { RemoteVaultClient } from "@synch/sync-client/remote-vault/client";
 import { SyncAccessClient } from "@synch/sync-client/sync/remote/client";
@@ -111,6 +112,7 @@ export class SynchPluginController implements SynchSettingsController {
       this.refreshUi();
     },
     getLocale: () => getSynchLocale(),
+    openExternalUrl,
     notify: (event) => {
       new Notice(
         formatAuthNotice(event, this.authManager.getAuthStatus()),
