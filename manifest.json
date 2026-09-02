@@ -1,7 +1,7 @@
 {
   "id": "synch",
   "name": "Synchrun",
-  "version": "0.4.3",
+  "version": "0.4.4",
   "minAppVersion": "1.13.0",
   "description": "Sync your vault across devices with end-to-end encryption.",
   "author": "Synch",
