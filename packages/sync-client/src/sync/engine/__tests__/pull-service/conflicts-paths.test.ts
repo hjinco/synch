@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { hashBytes } from "../../../core/content";
+import { decryptSyncBlob } from "../../../core/crypto";
 import { SyncPullService } from "../../pull-service";
 import { createTestSyncStore } from "../../../../test-support/in-memory-sync-store";
 import {
@@ -641,11 +642,7 @@ describe("SyncPullService path conflicts", () => {
         },
       ],
     });
-    const client = createPullClient({
-      blobs: {
-        "blob-remote": await encryptTestBlob("blob-remote", new TextEncoder().encode(body)),
-      },
-    });
+    const client = createPullClient({});
 
     const service = new SyncPullService({
       getApiBaseUrl: () => "http://127.0.0.1:8787",
@@ -684,12 +681,105 @@ describe("SyncPullService path conflicts", () => {
       localMtime: 123,
       localSize: body.length,
     });
-    expect(await store.getBlob("blob-remote")).toMatchObject({
+    const cachedRemote = await store.getBlob("blob-remote");
+    expect(cachedRemote).toMatchObject({
       blobId: "blob-remote",
       hash,
     });
+    expect(
+      await decryptSyncBlob(TEST_VAULT_KEY, cachedRemote!.encryptedBytes, {
+        blobId: "blob-remote",
+      }),
+    ).toEqual(new TextEncoder().encode(body));
     expect(await store.listDirtyEntries()).toEqual([]);
     expect(conflicts).toEqual([]);
+
+    await store.close();
+  });
+
+  it("preserves an adopted local entry when its file no longer matches the recorded hash", async () => {
+    const store = createTestSyncStore();
+    const recordedBody = "recorded body";
+    const currentBody = "changed body";
+    const hash = await hashText(recordedBody);
+    const path = "Folder/shared.md";
+    const adapter = createVaultAdapter({ [path]: currentBody });
+    await store.upsertEntry({
+      entryId: "entry-local",
+      path,
+      revision: 0,
+      blobId: "blob-local",
+      hash,
+      deleted: false,
+      updatedAt: 1,
+      localMtime: 123,
+      localSize: recordedBody.length,
+    });
+    await store.markEntryDirty({
+      mutationId: "mutation-local",
+      entryId: "entry-local",
+      op: "upsert",
+      baseRevision: 0,
+      blobId: "blob-local",
+      hash,
+      encryptedMetadata: await encryptPendingMetadata({
+        entryId: "entry-local",
+        baseRevision: 0,
+        op: "upsert",
+        blobId: "blob-local",
+        path,
+        hash,
+      }),
+      createdAt: 2,
+    });
+
+    const session = createRealtimeSession({
+      pages: [
+        {
+          cursor: 2,
+          hasMore: false,
+          commits: [
+            createCommit({
+              cursor: 2,
+              entryId: "entry-remote",
+              revision: 1,
+              blobId: "blob-remote",
+              encryptedMetadata: await encryptRemoteMetadata({
+                entryId: "entry-remote",
+                revision: 1,
+                blobId: "blob-remote",
+                path,
+                hash,
+              }),
+            }),
+          ],
+        },
+      ],
+    });
+    const service = new SyncPullService({
+      getApiBaseUrl: () => "http://127.0.0.1:8787",
+      getSyncToken: async () => createToken(),
+      getSyncStore: () => store,
+      getRemoteVaultKey: () => TEST_VAULT_KEY,
+      vaultAdapter: adapter,
+      pullClient: createPullClient({}),
+      onProgress: ignoreProgress,
+    });
+
+    await expect(service.pullOnce(session)).rejects.toMatchObject({
+      code: "local_snapshot_changed",
+      path,
+    });
+    expect(adapter.text(path)).toBe(currentBody);
+    expect(await store.getEntryById("entry-local")).toMatchObject({
+      entryId: "entry-local",
+      path,
+      revision: 0,
+    });
+    expect(await store.getEntryById("entry-remote")).toBeNull();
+    expect(await store.getBlob("blob-remote")).toBeNull();
+    expect(await store.getCursor()).toBe(0);
+    expect(await store.listDirtyEntries()).toHaveLength(1);
 
     await store.close();
   });

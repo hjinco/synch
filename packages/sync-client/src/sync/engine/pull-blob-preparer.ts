@@ -3,11 +3,12 @@ import {
   type SyncContentRuntime,
   type SyncContentRuntimeDeps,
 } from "../core/content-runtime";
-import { decryptSyncBlob } from "../core/crypto";
+import { createSyncCryptoContext, decryptSyncBlob } from "../core/crypto";
 import type { SyncTokenResponse } from "../remote/client";
 import type { RemoteEntryState } from "../remote/changes";
 import type { SyncPullClient } from "../remote/pull-client";
 import type { SyncBlobStore } from "../store/ports";
+import type { SyncVaultAccess } from "../vault/ports";
 import { isAutoMergeTextPath } from "./text-merge-policy";
 import {
   DEFAULT_PREPARE_CONCURRENCY,
@@ -20,6 +21,7 @@ import {
 interface PullBlobPreparerDeps extends SyncContentRuntimeDeps {
   getApiBaseUrl: () => string;
   getRemoteVaultKey: () => Uint8Array;
+  vaultAdapter: SyncVaultAccess;
   pullClient: Pick<SyncPullClient, "downloadBlob">;
   prepareConcurrency?: number;
 }
@@ -36,7 +38,7 @@ export class PullBlobPreparer {
     token: SyncTokenResponse,
     plans: PlannedEntryState[],
   ): Promise<PreparedEntryBlob[]> {
-    const blobPlans = plans.filter((plan) => {
+    const contentPlans = plans.filter((plan) => {
       if (!plan.finalPath || plan.state.deleted) {
         return false;
       }
@@ -44,24 +46,82 @@ export class PullBlobPreparer {
         return true;
       }
 
-      // Same-path adopted entries already have matching local bytes. For non-text
-      // files, accepted remote metadata relies on the server's staged/live blob
-      // invariant, so a broken invariant would not be caught by client-side
-      // download/decrypt/hash verification here. Text files still download so
-      // merge bases stay cached locally.
-      return plan.adoptedLocalEntry?.hashMatches && isAutoMergeTextPath(plan.finalPath);
+      // The planner only compares recorded hashes. Read adopted local content
+      // here so skipping both the download and vault write is based on the
+      // actual bytes present at apply time.
+      return this.canReuseAdoptedLocalContent(plan);
     });
 
-    return await mapWithConcurrency(
-      blobPlans,
+    const prepared = await mapWithConcurrency(
+      contentPlans,
       this.deps.prepareConcurrency ?? DEFAULT_PREPARE_CONCURRENCY,
-      async (plan) => {
+      async (plan): Promise<PreparedEntryBlob | null> => {
+        if (this.canReuseAdoptedLocalContent(plan)) {
+          await this.prepareAdoptedLocalBase(store, plan);
+          return null;
+        }
+
         return {
           plan,
           bytes: await this.downloadAndVerifyEntryBlob(store, token, plan),
         };
       },
     );
+
+    return prepared.filter((blob): blob is PreparedEntryBlob => blob !== null);
+  }
+
+  private canReuseAdoptedLocalContent(plan: PlannedEntryState): boolean {
+    return (
+      plan.skipVaultWrite &&
+      plan.adoptedLocalEntry?.hashMatches === true &&
+      !!plan.finalPath &&
+      plan.adoptedLocalEntry.entry.path === plan.finalPath
+    );
+  }
+
+  private async prepareAdoptedLocalBase(
+    store: SyncBlobStore,
+    plan: PlannedEntryState,
+  ): Promise<void> {
+    const path = plan.finalPath;
+    const expectedHash = plan.hash;
+    if (!path || !expectedHash) {
+      throw new Error(
+        `Adopted entry ${plan.state.entryId}@${plan.state.revision} is missing local content metadata.`,
+      );
+    }
+
+    if (!(await this.deps.vaultAdapter.exists(path))) {
+      throw new PullLocalSnapshotChangedError(path);
+    }
+
+    const hashed = await this.contentRuntime.readAndHash(
+      await this.deps.vaultAdapter.getFileSize(path),
+      async () => await this.deps.vaultAdapter.readBytes(path),
+    );
+    if (hashed.hash !== expectedHash) {
+      throw new PullLocalSnapshotChangedError(path);
+    }
+
+    if (!isAutoMergeTextPath(path)) {
+      return;
+    }
+
+    const blobId = requireBlobId(plan.state);
+    const syncCrypto = createSyncCryptoContext(this.deps.getRemoteVaultKey());
+    try {
+      await store.putBlob({
+        blobId,
+        hash: expectedHash,
+        encryptedBytes: await syncCrypto.encryptBlob(hashed.bytes, { blobId }),
+        role: "remote",
+        refEntryId: plan.state.entryId,
+        cachedAt: Date.now(),
+      });
+    } finally {
+      syncCrypto.dispose();
+    }
   }
 
   private async downloadEntryBlob(
@@ -112,5 +172,14 @@ export class PullBlobPreparer {
     }
 
     return bytes;
+  }
+}
+
+export class PullLocalSnapshotChangedError extends Error {
+  readonly code = "local_snapshot_changed" as const;
+
+  constructor(readonly path: string) {
+    super(`Local file changed while adopting remote entry: ${path}`);
+    this.name = "PullLocalSnapshotChangedError";
   }
 }
