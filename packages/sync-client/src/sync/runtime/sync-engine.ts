@@ -12,6 +12,10 @@ import { SyncAutoLoop } from "../engine/auto-sync";
 import type { SyncTokenResponse } from "../remote/client";
 import { SyncEventGate } from "../engine/event-gate";
 import { SyncEventRecorder } from "../engine/event-recorder";
+import {
+  SyncContentRuntime,
+  type SyncContentRuntimeDeps,
+} from "../core/content-runtime";
 import type { SyncFileRules } from "../core/file-rules";
 import type { PresenceSelection } from "../core/presence";
 import type { VaultConfigSyncRules } from "../core/vault-config-rules";
@@ -70,7 +74,7 @@ import { reapplyAllowedRemoteVaultConfig } from "../engine/vault-config-reapply"
 
 const HIDDEN_FOLDER_RECONCILE_INTERVAL_MS = 60_000;
 
-export interface SyncEngineDeps {
+export interface SyncEngineDeps extends SyncContentRuntimeDeps {
   vaultAdapter: SyncVaultAdapter;
   vaultConfigSource: SyncVaultConfigSource;
   httpClient: HttpClient;
@@ -125,11 +129,9 @@ export class SyncEngine {
   private readonly syncEventGate = new SyncEventGate();
   private readonly vaultAdapter: SyncVaultAdapter;
   private readonly vaultConfigSource: SyncVaultConfigSource;
-  private readonly syncEventRecorder = new SyncEventRecorder({
-    getSyncStore: () => this.syncStore,
-    getRemoteVaultKey: () => this.deps.getRemoteVaultKey(),
-    eventGate: this.syncEventGate,
-  });
+  private readonly contentRuntime: SyncContentRuntime;
+  private readonly ownsContentRuntime: boolean;
+  private readonly syncEventRecorder: SyncEventRecorder;
   private readonly syncRequestClient: SyncAuthorizedRequestClient;
   private readonly syncPullClient: SyncPullClient;
   private readonly syncPushService: SyncPushService;
@@ -137,10 +139,19 @@ export class SyncEngine {
   private readonly syncAutoLoop: SyncAutoLoop;
   private readonly syncPullService: SyncPullService;
   private readonly syncVersionHistoryService: SyncVersionHistoryService;
+  private disposed = false;
 
   constructor(private readonly deps: SyncEngineDeps) {
+    this.ownsContentRuntime = !deps.contentRuntime;
+    this.contentRuntime = deps.contentRuntime ?? new SyncContentRuntime();
     this.vaultAdapter = deps.vaultAdapter;
     this.vaultConfigSource = deps.vaultConfigSource;
+    this.syncEventRecorder = new SyncEventRecorder({
+      getSyncStore: () => this.syncStore,
+      getRemoteVaultKey: () => this.deps.getRemoteVaultKey(),
+      eventGate: this.syncEventGate,
+      contentRuntime: this.contentRuntime,
+    });
 
     this.syncRequestClient = new SyncAuthorizedRequestClient({
       getApiBaseUrl: () => this.deps.getApiBaseUrl(),
@@ -157,6 +168,7 @@ export class SyncEngine {
       fileReader: this.vaultAdapter,
       conflictFileWriter: this.vaultAdapter,
       blobClient: new SyncBlobClient(this.syncRequestClient),
+      contentRuntime: this.contentRuntime,
       onProgress: async (progress) => {
         this.reportActivityProgress(progress);
       },
@@ -203,6 +215,7 @@ export class SyncEngine {
           return [...byPath.values()];
         },
       },
+      contentRuntime: this.contentRuntime,
     });
     this.syncAutoLoop = new SyncAutoLoop({
       getApiBaseUrl: () => this.deps.getApiBaseUrl(),
@@ -311,6 +324,7 @@ export class SyncEngine {
       eventGate: this.syncEventGate,
       vaultAdapter: this.vaultAdapter,
       pullClient: this.syncPullClient,
+      contentRuntime: this.contentRuntime,
       onProgress: async (progress) => {
         this.reportActivityProgress(progress);
       },
@@ -344,6 +358,7 @@ export class SyncEngine {
       getStore: () => this.requireStore(),
       getRemoteVaultKey: () => this.deps.getRemoteVaultKey(),
       pullClient: this.syncPullClient,
+      contentRuntime: this.contentRuntime,
       withRealtimeSession: async (work) => await this.withRealtimeSession(work),
       runLocalMutationWork: async (work) => await this.runLocalMutationWork(work),
       pullOnce: async (session) => {
@@ -371,6 +386,18 @@ export class SyncEngine {
   async closeStore(): Promise<void> {
     const store = this.detachStore();
     await store?.close();
+  }
+
+  async dispose(): Promise<void> {
+    if (this.disposed) {
+      return;
+    }
+
+    this.disposed = true;
+    this.stopAutoSync();
+    if (this.ownsContentRuntime) {
+      await this.contentRuntime.dispose();
+    }
   }
 
   async readLocalVaultId(): Promise<string> {
@@ -511,6 +538,7 @@ export class SyncEngine {
         getApiBaseUrl: () => this.deps.getApiBaseUrl(),
         getSyncToken: () => this.deps.getSyncToken(),
         getRemoteVaultKey: () => this.deps.getRemoteVaultKey(),
+        contentRuntime: this.contentRuntime,
       });
     });
   }

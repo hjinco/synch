@@ -354,6 +354,14 @@ export function createVaultAdapter(initialFiles: Record<string, string | Uint8Ar
 
       return bytes;
     },
+    async getFileSize(path: string): Promise<number> {
+      const bytes = files.get(path);
+      if (!bytes) {
+        throw new Error(`missing file fixture for ${path}`);
+      }
+
+      return bytes.byteLength;
+    },
     async writeText(path: string, content: string): Promise<void> {
       writes.push(path);
       files.set(path, new TextEncoder().encode(content));

@@ -1,4 +1,5 @@
 import type { SyncTokenResponse } from "../remote/client";
+import type { SyncContentRuntimeDeps } from "../core/content-runtime";
 import type { SyncEventGateLike } from "./event-gate";
 import { SyncPullClient } from "../remote/pull-client";
 import type { SyncRealtimeSession } from "../remote/realtime-client";
@@ -20,7 +21,7 @@ const DEFAULT_PULL_BATCH = 50;
 const DEFAULT_PULL_APPLY_WINDOW = 200;
 const DEFAULT_PULL_PREPARE_CONCURRENCY = 10;
 
-export interface SyncPullServiceDeps {
+export interface SyncPullServiceDeps extends SyncContentRuntimeDeps {
   getApiBaseUrl: () => string;
   getSyncToken: () => Promise<SyncTokenResponse>;
   getSyncStore: () => SyncPullStore | null;
@@ -77,6 +78,7 @@ export class SyncPullService {
       vaultAdapter: this.deps.vaultAdapter,
       eventGate: this.deps.eventGate,
       pullClient: this.pullClient,
+      contentRuntime: this.deps.contentRuntime,
       shouldApplyRemotePath: this.deps.shouldApplyRemotePath,
       shouldUseLatestRemoteVersion: this.deps.shouldUseLatestRemoteVersion,
       prepareConcurrency:

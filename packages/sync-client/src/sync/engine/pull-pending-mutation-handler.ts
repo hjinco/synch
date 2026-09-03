@@ -1,4 +1,7 @@
-import { hashBytes } from "../core/content";
+import {
+  resolveSyncContentRuntime,
+  type SyncContentRuntime,
+} from "../core/content-runtime";
 import { getAvailableConflictCopyPath } from "../core/conflict-file";
 import {
   decryptSyncBlob,
@@ -31,7 +34,11 @@ import { mergeText3 } from "./text-merge";
 import { isAutoMergeTextPath } from "./text-merge-policy";
 
 export class PullPendingMutationHandler {
-  constructor(private readonly deps: PullEntryStateApplierDeps) {}
+  private readonly contentRuntime: SyncContentRuntime;
+
+  constructor(private readonly deps: PullEntryStateApplierDeps) {
+    this.contentRuntime = resolveSyncContentRuntime(deps);
+  }
 
   async prepareConflictingPendingMutation(
     store: PullEntryStateStore,
@@ -55,6 +62,7 @@ export class PullPendingMutationHandler {
         metadata,
         plan,
         this.deps.vaultAdapter,
+        this.contentRuntime,
       )
     ) {
       return {
@@ -97,7 +105,11 @@ export class PullPendingMutationHandler {
     let conflictPath: string | null = null;
     let conflictBytes: Uint8Array | null = null;
     if (pending.op === "upsert" && (await this.deps.vaultAdapter.exists(metadata.path))) {
-      conflictBytes = await this.deps.vaultAdapter.readBytes(metadata.path);
+      conflictBytes = await this.contentRuntime.withReadBytes(
+        await this.deps.vaultAdapter.getFileSize(metadata.path),
+        async () => await this.deps.vaultAdapter.readBytes(metadata.path),
+        async (bytes) => bytes,
+      );
       conflictPath = await getAvailableConflictCopyPath(
         this.deps.vaultAdapter,
         metadata.path,
@@ -195,7 +207,8 @@ export class PullPendingMutationHandler {
       !entryState ||
       plan.state.deleted ||
       !plan.finalPath ||
-      local?.path !== plan.finalPath ||
+      !local?.path ||
+      local.path !== plan.finalPath ||
       !isAutoMergeTextPath(plan.finalPath) ||
       !base?.blobId ||
       !base.hash ||
@@ -204,6 +217,9 @@ export class PullPendingMutationHandler {
     ) {
       return null;
     }
+
+    const finalPath = plan.finalPath;
+    const localPath = local.path;
 
     const cachedBase = await store.getBlob(base.blobId);
     if (!cachedBase || cachedBase.hash !== base.hash) {
@@ -218,46 +234,54 @@ export class PullPendingMutationHandler {
       cachedBase.encryptedBytes,
       { blobId: base.blobId },
     );
-    const localBytes = await this.deps.vaultAdapter.readBytes(local.path);
-    const baseText = decodeUtf8(baseBytes);
-    const localText = decodeUtf8(localBytes);
-    const remoteText = decodeUtf8(remoteBlob.bytes);
-    if (baseText === null || localText === null || remoteText === null) {
-      return null;
-    }
 
-    const merged = mergeText3(baseText, localText, remoteText);
-    if (merged.status !== "clean") {
-      return null;
-    }
+    return await this.contentRuntime.withReadBytes(
+      await this.deps.vaultAdapter.getFileSize(localPath),
+      async () => await this.deps.vaultAdapter.readBytes(localPath),
+      async (localBytes) => {
+        const baseText = decodeUtf8(baseBytes);
+        const localText = decodeUtf8(localBytes);
+        const remoteText = decodeUtf8(remoteBlob.bytes);
+        if (baseText === null || localText === null || remoteText === null) {
+          return null;
+        }
 
-    const mergedBytes = new TextEncoder().encode(merged.text);
-    const mergedHash = await hashBytes(mergedBytes);
-    if (mergedHash === plan.hash) {
-      return { kind: "remote" };
-    }
+        const merged = mergeText3(baseText, localText, remoteText);
+        if (merged.status !== "clean") {
+          return null;
+        }
 
-    const blobId = crypto.randomUUID();
-    return {
-      kind: "local",
-      bytes: mergedBytes,
-      blobId,
-      hash: mergedHash,
-      path: plan.finalPath,
-      encryptedMetadata: await encryptSyncMetadata(
-        this.deps.getRemoteVaultKey(),
-        {
-          path: plan.finalPath,
-          hash: mergedHash,
-        },
-        {
-          entryId: entryState.entryId,
-          revision: plan.state.revision + 1,
-          op: "upsert",
+        let mergedBytes: Uint8Array = new TextEncoder().encode(merged.text);
+        const hashed = await this.contentRuntime.hashAndReturnBytes(mergedBytes);
+        mergedBytes = hashed.bytes;
+        const mergedHash = hashed.hash;
+        if (mergedHash === plan.hash) {
+          return { kind: "remote" };
+        }
+
+        const blobId = crypto.randomUUID();
+        return {
+          kind: "local",
+          bytes: mergedBytes,
           blobId,
-        },
-      ),
-    };
+          hash: mergedHash,
+          path: finalPath,
+          encryptedMetadata: await encryptSyncMetadata(
+            this.deps.getRemoteVaultKey(),
+            {
+              path: finalPath,
+              hash: mergedHash,
+            },
+            {
+              entryId: entryState.entryId,
+              revision: plan.state.revision + 1,
+              op: "upsert",
+              blobId,
+            },
+          ),
+        };
+      },
+    );
   }
 
   private async findConflictingPendingMutation(
@@ -302,6 +326,7 @@ async function isSameEntryPendingMutationAlreadyRemote(
   metadata: { path: string; hash: string | null },
   plan: PlannedEntryState,
   vaultAdapter: PullEntryStateVaultAdapter,
+  contentRuntime: SyncContentRuntime,
 ): Promise<boolean> {
   if (pending.entryId !== plan.state.entryId) {
     return false;
@@ -324,5 +349,10 @@ async function isSameEntryPendingMutationAlreadyRemote(
     return false;
   }
 
-  return (await hashBytes(await vaultAdapter.readBytes(metadata.path))) === metadata.hash;
+  return (
+    await contentRuntime.readAndHash(
+      await vaultAdapter.getFileSize(metadata.path),
+      async () => await vaultAdapter.readBytes(metadata.path),
+    )
+  ).hash === metadata.hash;
 }

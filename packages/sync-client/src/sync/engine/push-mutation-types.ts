@@ -1,5 +1,8 @@
 import type { SyncBlobClient } from "../remote/blob-client";
 import type { ConflictFileWriter } from "../core/conflict-file";
+import type {
+  SyncContentRuntimeDeps,
+} from "../core/content-runtime";
 import type { SyncedEntryMetadata } from "../core/content";
 import type { SyncCryptoContext } from "../core/crypto";
 import type {
@@ -16,7 +19,7 @@ import type {
 } from "../store/ports";
 import type { SyncProgressCounts } from "../store/store";
 
-export interface PushMutationCommitterDeps {
+export interface PushMutationCommitterDeps extends SyncContentRuntimeDeps {
   getApiBaseUrl: () => string;
   getRemoteVaultKey: () => Uint8Array;
   getSyncCryptoContext?: () => SyncCryptoContext;
@@ -30,6 +33,8 @@ export interface PushMutationCommitterDeps {
 
 export interface LocalFileReader {
   readBytes(path: string): Promise<Uint8Array>;
+  /** Optional stat lookup used to reserve memory before readBytes starts. */
+  getFileSize?(path: string): Promise<number>;
 }
 
 export interface PushConflictEvent {

@@ -14,6 +14,7 @@ export interface SyncVaultScanner {
 
 export interface SyncVaultAccess extends ConflictFileWriter, SyncVaultWriter {
   readBytes(path: string): Promise<Uint8Array>;
+  getFileSize(path: string): Promise<number>;
 }
 
 export interface SyncVaultAdapter extends SyncVaultAccess, SyncVaultScanner {}

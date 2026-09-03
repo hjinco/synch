@@ -4,7 +4,10 @@ export interface SyncChangeSourceContext {
   eventRecorder: Pick<
     SyncEventRecorder,
     "recordUpsert" | "recordRename" | "recordDelete"
-  >;
+  > &
+    Partial<
+      Pick<SyncEventRecorder, "recordUpsertFromFile" | "recordRenameFromFile">
+    >;
   notifyLocalChange: () => void;
   runLocalMutationWork: <T>(work: () => Promise<T>) => Promise<T>;
   hasActiveRemoteVaultSession: () => boolean;

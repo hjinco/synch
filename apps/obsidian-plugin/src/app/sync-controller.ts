@@ -175,6 +175,7 @@ export class SyncController {
     this.setStorageStatus(null);
     await this.periodicSyncPromise?.catch(() => {});
     await this.syncEngine.closeStore();
+    await this.syncEngine.dispose();
   }
 
   hasInFlightSync(): boolean {

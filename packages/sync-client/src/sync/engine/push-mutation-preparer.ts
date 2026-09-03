@@ -2,7 +2,10 @@ import {
   SyncBlobUploadError,
   type SyncBlobClient,
 } from "../remote/blob-client";
-import { hashBytes } from "../core/content";
+import {
+  resolveSyncContentRuntime,
+  type SyncContentRuntime,
+} from "../core/content-runtime";
 import {
   createSyncCryptoContext,
   type SyncCryptoContext,
@@ -23,10 +26,12 @@ import { isAutoMergeTextPath } from "./text-merge-policy";
 
 export class PushMutationPreparer {
   private readonly blobClient: Pick<SyncBlobClient, "uploadBlob">;
+  private readonly contentRuntime: SyncContentRuntime;
   private fallbackCryptoContext: SyncCryptoContext | null = null;
 
   constructor(private readonly deps: PushMutationCommitterDeps) {
     this.blobClient = deps.blobClient;
+    this.contentRuntime = resolveSyncContentRuntime(deps);
   }
 
   async prepareMutationForCommit(
@@ -52,7 +57,6 @@ export class PushMutationPreparer {
       };
     }
 
-    const bytes = await this.deps.fileReader.readBytes(metadata.path);
     if (!mutation.blobId) {
       throw new Error(`Upsert mutation ${mutation.mutationId} is missing a blobId.`);
     }
@@ -62,7 +66,13 @@ export class PushMutationPreparer {
     if (metadata.hash !== mutation.hash) {
       throw new Error(`Upsert mutation ${mutation.mutationId} metadata hash does not match.`);
     }
-    const actualHash = await hashBytes(bytes);
+
+    const fileSize = await this.getFileSize(store, mutation, metadata.path);
+    const hashed = await this.contentRuntime.readAndHash(
+      fileSize,
+      async () => await this.deps.fileReader.readBytes(metadata.path),
+    );
+    const { bytes, hash: actualHash } = hashed;
     if (actualHash !== mutation.hash) {
       await this.requeueChangedUpsert(store, mutation, metadata.path, actualHash);
       return null;
@@ -146,6 +156,18 @@ export class PushMutationPreparer {
       encryptedBytes: isAutoMergeTextPath(metadata.path) ? encryptedBytes : null,
       storageBytesAdded,
     };
+  }
+
+  private async getFileSize(
+    store: PushMutationStore,
+    mutation: PendingMutationRow,
+    path: string,
+  ): Promise<number> {
+    if (this.deps.fileReader.getFileSize) {
+      return await this.deps.fileReader.getFileSize(path);
+    }
+
+    return (await store.getEntryById(mutation.entryId))?.localSize ?? 0;
   }
 
   private getSyncCryptoContext(): SyncCryptoContext {

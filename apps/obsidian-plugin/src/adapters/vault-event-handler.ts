@@ -10,7 +10,10 @@ export interface SyncVaultEventHandlerDeps {
   eventRecorder: Pick<
     SyncEventRecorder,
     "recordUpsert" | "recordRename" | "recordDelete"
-  >;
+  > &
+    Partial<
+      Pick<SyncEventRecorder, "recordUpsertFromFile" | "recordRenameFromFile">
+    >;
   autoLoop: Pick<SyncAutoLoop, "notifyLocalChange">;
   runLocalMutationWork: <T>(work: () => Promise<T>) => Promise<T>;
   hasActiveRemoteVaultSession: () => boolean;
@@ -74,12 +77,19 @@ export class SyncVaultEventHandler {
 
         this.run({ operation: "rename", path: nextPath ?? oldPath, oldPath }, async () => {
           if (renamedFromSyncable && renamedToSyncable && syncableFile && nextPath) {
-            const changed = await this.deps.eventRecorder.recordRename(
-              oldPath,
-              nextPath,
-              await this.deps.vaultAdapter.readFile(syncableFile),
-              syncableFile.stat,
-            );
+            const changed = this.deps.eventRecorder.recordRenameFromFile
+              ? await this.deps.eventRecorder.recordRenameFromFile(
+                  oldPath,
+                  nextPath,
+                  async () => await this.deps.vaultAdapter.readFile(syncableFile),
+                  syncableFile.stat,
+                )
+              : await this.deps.eventRecorder.recordRename(
+                  oldPath,
+                  nextPath,
+                  await this.deps.vaultAdapter.readFile(syncableFile),
+                  syncableFile.stat,
+                );
             this.notifyLocalChangeIfNeeded(changed, {
               operation: "rename",
               path: nextPath,
@@ -127,11 +137,17 @@ export class SyncVaultEventHandler {
     file: TFile,
     oldPath?: string,
   ): Promise<void> {
-    const changed = await this.deps.eventRecorder.recordUpsert(
-      path,
-      await this.deps.vaultAdapter.readFile(file),
-      file.stat,
-    );
+    const changed = this.deps.eventRecorder.recordUpsertFromFile
+      ? await this.deps.eventRecorder.recordUpsertFromFile(
+          path,
+          async () => await this.deps.vaultAdapter.readFile(file),
+          file.stat,
+        )
+      : await this.deps.eventRecorder.recordUpsert(
+          path,
+          await this.deps.vaultAdapter.readFile(file),
+          file.stat,
+        );
     this.notifyLocalChangeIfNeeded(changed, { operation, path, oldPath });
   }
 

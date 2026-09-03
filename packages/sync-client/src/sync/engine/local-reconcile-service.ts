@@ -1,4 +1,8 @@
-import { hashBytes } from "../core/content";
+import {
+  resolveSyncContentRuntime,
+  type SyncContentRuntime,
+  type SyncContentRuntimeDeps,
+} from "../core/content-runtime";
 import { createSyncCryptoContext, type SyncCryptoContext } from "../core/crypto";
 import {
   buildLocalDeleteMutation,
@@ -19,7 +23,7 @@ const DEFAULT_RECONCILE_HASH_CONCURRENCY = 8;
 export type LocalSyncFile = SyncVaultFile;
 export type LocalFileScanner = SyncVaultScanner;
 
-export interface SyncLocalReconcileServiceDeps {
+export interface SyncLocalReconcileServiceDeps extends SyncContentRuntimeDeps {
   getSyncStore: () => SyncLocalReconcileStore | null;
   getRemoteVaultKey: () => Uint8Array;
   scanner: LocalFileScanner;
@@ -38,7 +42,11 @@ export interface ReconcileOnceResult {
 }
 
 export class SyncLocalReconcileService {
-  constructor(private readonly deps: SyncLocalReconcileServiceDeps) {}
+  private readonly contentRuntime: SyncContentRuntime;
+
+  constructor(private readonly deps: SyncLocalReconcileServiceDeps) {
+    this.contentRuntime = resolveSyncContentRuntime(deps);
+  }
 
   async reconcileOnce(): Promise<ReconcileOnceResult> {
     const store = this.requireStore();
@@ -114,10 +122,16 @@ export class SyncLocalReconcileService {
     const hashedFiles = await mapWithConcurrency(
       hashInputs,
       this.deps.hashConcurrency ?? DEFAULT_RECONCILE_HASH_CONCURRENCY,
-      async (input) => ({
-        ...input,
-        hash: await hashBytes(await input.file.readBytes()),
-      }),
+      async (input) => {
+        const { hash } = await this.contentRuntime.readAndHash(
+          input.file.size,
+          input.file.readBytes,
+        );
+        return {
+          ...input,
+          hash,
+        };
+      },
     );
 
     for (const {

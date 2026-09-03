@@ -1,4 +1,8 @@
-import { hashBytes } from "../core/content";
+import {
+  resolveSyncContentRuntime,
+  type SyncContentRuntime,
+  type SyncContentRuntimeDeps,
+} from "../core/content-runtime";
 import { decryptSyncBlob } from "../core/crypto";
 import type { SyncTokenResponse } from "../remote/client";
 import type { RemoteEntryState } from "../remote/changes";
@@ -13,7 +17,7 @@ import {
   requireBlobId,
 } from "./pull-entry-state-internal";
 
-interface PullBlobPreparerDeps {
+interface PullBlobPreparerDeps extends SyncContentRuntimeDeps {
   getApiBaseUrl: () => string;
   getRemoteVaultKey: () => Uint8Array;
   pullClient: Pick<SyncPullClient, "downloadBlob">;
@@ -21,7 +25,11 @@ interface PullBlobPreparerDeps {
 }
 
 export class PullBlobPreparer {
-  constructor(private readonly deps: PullBlobPreparerDeps) {}
+  private readonly contentRuntime: SyncContentRuntime;
+
+  constructor(private readonly deps: PullBlobPreparerDeps) {
+    this.contentRuntime = resolveSyncContentRuntime(deps);
+  }
 
   async preparePathBatchBlobs(
     store: SyncBlobStore,
@@ -79,12 +87,14 @@ export class PullBlobPreparer {
   ): Promise<Uint8Array> {
     const blobId = requireBlobId(plan.state);
     const encryptedBytes = await this.downloadEntryBlob(token, plan.state);
-    const bytes = await decryptSyncBlob(
+    let bytes = await decryptSyncBlob(
       this.deps.getRemoteVaultKey(),
       encryptedBytes,
       { blobId },
     );
-    const actualHash = await hashBytes(bytes);
+    const hashed = await this.contentRuntime.hashAndReturnBytes(bytes);
+    bytes = hashed.bytes;
+    const actualHash = hashed.hash;
     if (actualHash !== plan.hash) {
       throw new Error(
         `Entry state ${plan.state.entryId}@${plan.state.revision} hash does not match metadata.`,

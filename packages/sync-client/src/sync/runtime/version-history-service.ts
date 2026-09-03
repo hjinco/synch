@@ -1,4 +1,8 @@
-import { hashBytes } from "../core/content";
+import {
+  resolveSyncContentRuntime,
+  type SyncContentRuntime,
+  type SyncContentRuntimeDeps,
+} from "../core/content-runtime";
 import { decryptSyncBlob, decryptSyncMetadata, encryptSyncMetadata } from "../core/crypto";
 import type { SyncTokenResponse } from "../remote/client";
 import type { SyncPullClient } from "../remote/pull-client";
@@ -18,7 +22,7 @@ import type {
 const VERSION_RESTORE_PAGE_SIZE = 25;
 const VERSION_PREVIEW_UNAVAILABLE_MESSAGE = "This version has no previewable content.";
 
-export interface SyncVersionHistoryServiceDeps {
+export interface SyncVersionHistoryServiceDeps extends SyncContentRuntimeDeps {
   getApiBaseUrl: () => string;
   getSyncToken: () => Promise<SyncTokenResponse>;
   getStore: () => SyncVersionHistoryStore;
@@ -39,7 +43,11 @@ export interface SyncVersionHistoryStore
     Pick<SyncMutationStore, "getDirtyEntryMutation"> {}
 
 export class SyncVersionHistoryService {
-  constructor(private readonly deps: SyncVersionHistoryServiceDeps) {}
+  private readonly contentRuntime: SyncContentRuntime;
+
+  constructor(private readonly deps: SyncVersionHistoryServiceDeps) {
+    this.contentRuntime = resolveSyncContentRuntime(deps);
+  }
 
   async listEntryVersionsForPath(
     path: string,
@@ -354,12 +362,14 @@ export class SyncVersionHistoryService {
       token.vaultId,
       version.blobId,
     );
-    const bytes = await decryptSyncBlob(
+    let bytes = await decryptSyncBlob(
       this.deps.getRemoteVaultKey(),
       encryptedBytes,
       { blobId: version.blobId },
     );
-    const actualHash = await hashBytes(bytes);
+    const hashed = await this.contentRuntime.hashAndReturnBytes(bytes);
+    bytes = hashed.bytes;
+    const actualHash = hashed.hash;
     if (metadata.hash !== actualHash) {
       throw new Error("Version preview hash does not match metadata.");
     }

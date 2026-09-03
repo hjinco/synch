@@ -50,6 +50,15 @@ export class NodeSyncVaultAdapter implements SyncVaultAdapter {
     return new Uint8Array(await fs.readFile(this.absolutePath(vaultRelativePath)));
   }
 
+  async getFileSize(vaultRelativePath: string): Promise<number> {
+    const stat = await fs.stat(this.absolutePath(vaultRelativePath));
+    if (!stat.isFile()) {
+      throw new Error(`Cannot stat vault file: ${vaultRelativePath}`);
+    }
+
+    return stat.size;
+  }
+
   async statFile(
     vaultRelativePath: string,
   ): Promise<{ mtime: number; size: number } | null> {

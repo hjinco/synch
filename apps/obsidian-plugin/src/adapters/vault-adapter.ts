@@ -58,6 +58,15 @@ export class ObsidianSyncVaultAdapter implements SyncVaultAdapter {
     return new Uint8Array(await this.plugin.app.vault.adapter.readBinary(path));
   }
 
+  async getFileSize(path: string): Promise<number> {
+    const stat = await this.plugin.app.vault.adapter.stat(path);
+    if (!stat || stat.type !== "file") {
+      throw new Error(`Cannot stat vault file: ${path}`);
+    }
+
+    return stat.size;
+  }
+
   async exists(path: string): Promise<boolean> {
     return await this.plugin.app.vault.adapter.exists(path);
   }

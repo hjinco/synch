@@ -31,6 +31,15 @@ export class InMemoryVaultAdapter implements SyncVaultAdapter {
     return copyBytes(entry.bytes);
   }
 
+  async getFileSize(path: string): Promise<number> {
+    const entry = this.files.get(path);
+    if (!entry) {
+      throw new Error(`missing test file: ${path}`);
+    }
+
+    return entry.bytes.byteLength;
+  }
+
   async readText(path: string): Promise<string> {
     return new TextDecoder().decode(await this.readBytes(path));
   }

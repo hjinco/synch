@@ -122,5 +122,7 @@ describe("NodeSyncVaultAdapter file operations", () => {
     const stat = await adapter.statFile("stat.md");
     expect(stat?.size).toBe(5);
     expect(await adapter.statFile("missing.md")).toBeNull();
+    expect(await adapter.getFileSize("stat.md")).toBe(5);
+    await expect(adapter.getFileSize("missing.md")).rejects.toThrow();
   });
 });

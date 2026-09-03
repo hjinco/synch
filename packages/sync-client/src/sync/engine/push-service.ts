@@ -1,6 +1,11 @@
 import type { SyncBlobClient } from "../remote/blob-client";
 import type { ConflictFileWriter } from "../core/conflict-file";
 import {
+  resolveSyncContentRuntime,
+  type SyncContentRuntime,
+  type SyncContentRuntimeDeps,
+} from "../core/content-runtime";
+import {
   createSyncCryptoContext,
   type SyncCryptoContext,
 } from "../core/crypto";
@@ -33,7 +38,7 @@ const DEFAULT_PUSH_BATCH = 100;
 const DEFAULT_PUSH_DRAIN_LIMIT = 1_000;
 const DEFAULT_PUSH_PREPARE_CONCURRENCY = 12;
 
-export interface SyncPushServiceDeps {
+export interface SyncPushServiceDeps extends SyncContentRuntimeDeps {
   getApiBaseUrl: () => string;
   getSyncToken: () => Promise<SyncTokenResponse>;
   getSyncStore: () => SyncPushStore | null;
@@ -86,8 +91,11 @@ export interface PushPendingMutationsResult {
 
 export class SyncPushService {
   private readonly remotelyStagedBlobIds = new Set<string>();
+  private readonly contentRuntime: SyncContentRuntime;
 
-  constructor(private readonly deps: SyncPushServiceDeps) {}
+  constructor(private readonly deps: SyncPushServiceDeps) {
+    this.contentRuntime = resolveSyncContentRuntime(deps);
+  }
 
   async pushPendingMutations(
     session: SyncRealtimeSession,
@@ -417,6 +425,7 @@ export class SyncPushService {
       conflictFileWriter: this.deps.conflictFileWriter,
       blobClient: this.deps.blobClient,
       remotelyStagedBlobIds: this.remotelyStagedBlobIds,
+      contentRuntime: this.contentRuntime,
       onConflict: this.deps.onConflict,
       now: this.deps.now,
     });

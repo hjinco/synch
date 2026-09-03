@@ -3,6 +3,26 @@ export interface SyncedEntryMetadata {
   hash: string | null;
 }
 
+export interface HashedBytes {
+  hash: string;
+  bytes: Uint8Array;
+}
+
+/**
+ * Hashing is kept behind a small interface so browser hosts can provide a
+ * worker-backed implementation while non-browser consumers can keep using
+ * the WebCrypto implementation below.
+ */
+export interface SyncContentHasher {
+  hash(bytes: Uint8Array): Promise<string>;
+  /**
+   * Hash bytes while returning the byte ownership to the caller. A worker
+   * implementation can transfer the input buffer instead of copying it.
+   */
+  hashAndReturnBytes(bytes: Uint8Array): Promise<HashedBytes>;
+  dispose?(): void | Promise<void>;
+}
+
 export function serializeSyncedEntryMetadata(metadata: SyncedEntryMetadata): string {
   return JSON.stringify(metadata);
 }
@@ -55,6 +75,16 @@ export async function hashBytes(bytes: Uint8Array): Promise<string> {
   return Array.from(new Uint8Array(digest), (byte) =>
     byte.toString(16).padStart(2, "0"),
   ).join("");
+}
+
+export function createDefaultContentHasher(): SyncContentHasher {
+  return {
+    hash: hashBytes,
+    hashAndReturnBytes: async (bytes) => ({
+      hash: await hashBytes(bytes),
+      bytes,
+    }),
+  };
 }
 
 export function encodeUtf8(value: string): Uint8Array {

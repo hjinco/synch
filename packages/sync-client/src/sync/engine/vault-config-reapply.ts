@@ -1,4 +1,7 @@
-import { hashBytes } from "../core/content";
+import {
+  resolveSyncContentRuntime,
+  type SyncContentRuntimeDeps,
+} from "../core/content-runtime";
 import { decryptSyncBlob } from "../core/crypto";
 import {
   shouldSyncVaultConfigPath,
@@ -14,7 +17,7 @@ import {
   writeVaultBytes,
 } from "../vault/vault-writer";
 
-export interface ReapplyRemoteVaultConfigDeps {
+export interface ReapplyRemoteVaultConfigDeps extends SyncContentRuntimeDeps {
   store: SyncStore;
   rules: VaultConfigSyncRules;
   configDir: string;
@@ -29,6 +32,7 @@ export interface ReapplyRemoteVaultConfigDeps {
 export async function reapplyAllowedRemoteVaultConfig(
   deps: ReapplyRemoteVaultConfigDeps,
 ): Promise<number> {
+  const contentRuntime = resolveSyncContentRuntime(deps);
   const { store, rules } = deps;
   if (!rules.enabled) {
     return 0;
@@ -99,12 +103,14 @@ export async function reapplyAllowedRemoteVaultConfig(
           token.vaultId,
           remote.blobId,
         );
-        const bytes = await decryptSyncBlob(
+        let bytes = await decryptSyncBlob(
           deps.getRemoteVaultKey(),
           encryptedBytes,
           { blobId: remote.blobId },
         );
-        const actualHash = await hashBytes(bytes);
+        const hashed = await contentRuntime.hashAndReturnBytes(bytes);
+        bytes = hashed.bytes;
+        const actualHash = hashed.hash;
         if (actualHash !== remote.hash) {
           throw new Error(
             `Remote vault config ${remote.entryId}@${remote.revision} hash does not match metadata.`,
