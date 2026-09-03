@@ -21,7 +21,3 @@ export function isSyncableVaultPath(
   const normalized = normalizeVaultPath(path);
   return !!normalized && shouldSyncPath(normalized, rules, configDir);
 }
-
-export function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
-  return bytes.slice().buffer;
-}

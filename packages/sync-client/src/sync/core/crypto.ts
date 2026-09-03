@@ -304,7 +304,11 @@ async function decryptAesGcm(
       additionalData: toArrayBuffer(additionalData),
     },
     key,
-    toArrayBuffer(ciphertext),
+    // WebCrypto accepts a typed-array view without requiring an ArrayBuffer
+    // copy. The runtime input is an ArrayBuffer-backed view, while the
+    // TypeScript lib types this API more narrowly than Uint8Array's generic
+    // ArrayBufferLike parameter.
+    ciphertext as unknown as BufferSource,
   );
   return new Uint8Array(plaintext);
 }
@@ -368,8 +372,8 @@ function parseBinaryBlobEnvelope(value: Uint8Array): {
     );
   }
   return {
-    nonce: value.slice(SYNC_BLOB_NONCE_OFFSET, SYNC_BLOB_CIPHERTEXT_OFFSET),
-    ciphertext: value.slice(SYNC_BLOB_CIPHERTEXT_OFFSET),
+    nonce: value.subarray(SYNC_BLOB_NONCE_OFFSET, SYNC_BLOB_CIPHERTEXT_OFFSET),
+    ciphertext: value.subarray(SYNC_BLOB_CIPHERTEXT_OFFSET),
   };
 }
 

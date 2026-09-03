@@ -1,12 +1,13 @@
 import type { Plugin, TAbstractFile, TFile } from "obsidian";
 
+import { toArrayBuffer } from "@synch/vault-crypto";
 import type { SyncFileRules } from "@synch/sync-client/sync/core/file-rules";
 import { isForbiddenVaultPath } from "@synch/sync-client/sync/core/vault-path-policy";
 import type {
   SyncVaultAdapter,
   SyncVaultFile,
 } from "@synch/sync-client/sync/vault/ports";
-import { asSyncableFile, isSyncableVaultPath, toArrayBuffer } from "./vault-files";
+import { asSyncableFile, isSyncableVaultPath } from "./vault-files";
 
 export class ObsidianSyncVaultAdapter implements SyncVaultAdapter {
   constructor(
