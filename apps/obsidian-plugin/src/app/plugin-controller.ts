@@ -116,7 +116,8 @@ export class SynchPluginController implements SynchSettingsController {
     },
     getLocale: () => getSynchLocale(),
     deviceLoginReturnUri: SYNCH_DEVICE_LOGIN_RETURN_URI,
-    openExternalUrl,
+    openExternalUrl: (url) =>
+      openExternalUrl(url, { redirectLocalhost: true }),
     notify: (event) => {
       new Notice(
         formatAuthNotice(event, this.authManager.getAuthStatus()),
