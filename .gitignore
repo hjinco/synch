@@ -8,6 +8,7 @@ Cargo.lock
 *.tsbuildinfo
 apps/obsidian-plugin/main.js
 apps/api/worker-configuration.d.ts
+packages/sync-client/benchmarks/fixtures/
 
 .omx
 .env

@@ -9,12 +9,14 @@
   },
   "scripts": {
     "test": "vitest --config vitest.config.mts",
+    "bench": "vitest bench --config vitest.bench.config.mts",
     "typecheck": "tsgo --noEmit --skipLibCheck"
   },
   "dependencies": {
     "@synch/vault-crypto": "workspace:*"
   },
   "devDependencies": {
+    "@types/node": "^25.6.0",
     "vitest": "^4.1.4"
   }
 }

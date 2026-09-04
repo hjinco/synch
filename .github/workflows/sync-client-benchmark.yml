@@ -1,0 +1,136 @@
+name: Sync Client Benchmark
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+
+jobs:
+  benchmark:
+    if: >-
+      github.event.issue.pull_request &&
+      github.event.issue.state == 'open' &&
+      contains(github.event.comment.body, '@synch bench') &&
+      (
+        github.event.comment.author_association == 'OWNER' ||
+        github.event.comment.author_association == 'MEMBER' ||
+        github.event.comment.author_association == 'COLLABORATOR'
+      )
+    # Only authorized benchmark requests participate in cancellation.
+    concurrency:
+      group: sync-client-benchmark-pr-${{ github.event.issue.number }}
+      cancel-in-progress: true
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    outputs:
+      benchmark_status: ${{ steps.run-benchmark.outcome }}
+    permissions:
+      contents: read
+
+    env:
+      # GitHub-hosted runners are ephemeral, so every invocation intentionally
+      # creates a fresh fixture instead of restoring a cache.
+      SYNCH_SYNC_CLIENT_FIXTURE_DIR: ${{ runner.temp }}/synch-sync-client-fixture/1gb
+
+    steps:
+      - name: Checkout PR merge ref
+        uses: actions/checkout@v4
+        with:
+          ref: refs/pull/${{ github.event.issue.number }}/merge
+          fetch-depth: 1
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Run sync-client benchmark
+        id: run-benchmark
+        continue-on-error: true
+        run: >-
+          pnpm -C packages/sync-client exec vitest bench
+          --config vitest.bench.config.mts
+          --outputJson "$RUNNER_TEMP/sync-client-benchmark.json"
+
+      - name: Upload benchmark result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sync-client-benchmark-${{ github.run_id }}
+          path: ${{ runner.temp }}/sync-client-benchmark.json
+          if-no-files-found: ignore
+          retention-days: 1
+
+  publish:
+    if: always() && needs.benchmark.result != 'skipped'
+    needs: benchmark
+    runs-on: ubuntu-latest
+    env:
+      PR_NUMBER: ${{ github.event.issue.number }}
+    permissions:
+      contents: read
+      actions: read
+      issues: write
+
+    steps:
+      - name: Checkout default branch scripts
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Download benchmark result
+        uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: sync-client-benchmark-${{ github.run_id }}
+          path: ${{ runner.temp }}/sync-client-benchmark
+
+      - name: Format benchmark result
+        if: always()
+        env:
+          BENCHMARK_STATUS: ${{ needs.benchmark.outputs.benchmark_status || needs.benchmark.result }}
+          BENCHMARK_REPORT: ${{ runner.temp }}/sync-client-benchmark/sync-client-benchmark.json
+          BENCHMARK_COMMENT: ${{ runner.temp }}/sync-client-benchmark-comment.md
+        run: >-
+          node .github/scripts/format-sync-client-benchmark.mjs
+          "$BENCHMARK_REPORT"
+          "$BENCHMARK_COMMENT"
+
+      - name: Publish benchmark result to PR
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          COMMENT_FILE: ${{ runner.temp }}/sync-client-benchmark-comment.md
+        run: |
+          comment_id="$(gh api \
+            --paginate \
+            "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments?per_page=100" \
+            --jq '.[] | select(.body | contains("<!-- synch-sync-client-benchmark -->")) | .id' \
+            | tail -n 1)"
+          comment_body="$(cat "$COMMENT_FILE")"
+
+          if [ -n "$comment_id" ]; then
+            gh api \
+              --method PATCH \
+              "repos/${GITHUB_REPOSITORY}/issues/comments/${comment_id}" \
+              -f body="$comment_body"
+          else
+            gh api \
+              --method POST \
+              "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" \
+              -f body="$comment_body"
+          fi
+
+      - name: Fail when benchmark failed
+        if: needs.benchmark.outputs.benchmark_status == 'failure' || needs.benchmark.result == 'failure'
+        run: exit 1
