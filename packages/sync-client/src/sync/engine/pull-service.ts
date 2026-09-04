@@ -17,8 +17,8 @@ import {
   type PullRollbackEvent,
 } from "./pull-entry-state-applier";
 
-const DEFAULT_PULL_BATCH = 50;
-const DEFAULT_PULL_APPLY_WINDOW = 200;
+const DEFAULT_PULL_BATCH = 100;
+const DEFAULT_PULL_APPLY_WINDOW = 100;
 const DEFAULT_PULL_PREPARE_CONCURRENCY = 10;
 
 export interface SyncPullServiceDeps extends SyncContentRuntimeDeps {

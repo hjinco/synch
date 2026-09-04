@@ -81,7 +81,7 @@ need a copy.
 The pull path has the same class of risk for large remote changes:
 
 - the normal pull service prepares up to 10 blobs concurrently;
-- a pull window can contain up to 200 entries;
+- a pull window can contain up to 100 entries;
 - blob preparation downloads, decrypts, and hashes complete files;
 - the current application plan prepares all blobs for the window before
   writing the vault paths.
