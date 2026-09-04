@@ -9,6 +9,7 @@ import type { BillingService } from "./billing/application";
 import { mapBillingApplicationError } from "./billing/adapters/inbound/http/error-mapper";
 import { onError } from "./errors";
 import { registerPluginVersionRoutes } from "./plugin-version/routes";
+import { registerRedirectRoutes } from "./redirect/routes";
 import type { SubscriptionPolicyReader } from "./subscription/application";
 import type { IssueSyncToken } from "./sync-access/application";
 import { mapSyncAccessApplicationError } from "./sync-access/adapters/inbound/http/error-mapper";
@@ -66,6 +67,7 @@ export function createApp(deps: AppDependencies, config: AppConfig): Hono {
 		}),
 	);
 	registerPluginVersionRoutes(app);
+	registerRedirectRoutes(app);
 	registerSyncAccessRoutes(app, {
 		syncTokenIssuer: deps.syncTokenIssuer,
 		sessionReader: deps.sessionReader,
