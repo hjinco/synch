@@ -11,6 +11,8 @@
 		"openFromObsidian": "Starten Sie die Anmeldung in Synch innerhalb von Obsidian und verwenden Sie die geöffnete Seite.",
 		"checkingDevice": "Obsidian-Anmeldeanfrage wird geprüft...",
 		"approved": "Die Obsidian-Anmeldung wurde erlaubt. Kehren Sie zu Obsidian zurück, um fortzufahren.",
+		"returnToObsidian": "Zu Obsidian zurückkehren",
+		"returnHint": "Wenn die Schaltfläche nicht funktioniert, öffnen Sie Obsidian manuell.",
 		"denied": "Die Obsidian-Anmeldeanfrage wurde abgebrochen.",
 		"invalidOrConsumed": "Diese Anmeldeanfrage ist ungültig oder wurde bereits verwendet.",
 		"approveToFinish": "Wenn Sie diese Anfrage erlauben, wird das Synch-Plugin in Obsidian angemeldet.",

@@ -5,7 +5,7 @@ import { SynchFileSizeBlockedDecorator } from "./ui/file-size/file-size-blocked-
 import { SynchOpenFilePresence } from "./ui/presence/open-file-presence";
 import { SynchMobileStatusIndicator } from "./ui/status/mobile-status-indicator";
 import { SynchPluginController } from "./app/plugin-controller";
-import { SynchStatusBar } from "./ui/status/status-bar";
+import { openSynchSettings, SynchStatusBar } from "./ui/status/status-bar";
 import type { SynchUiEvent } from "./ui/ui-events";
 import {
   SYNCH_VERSION_HISTORY_VIEW_TYPE,
@@ -36,6 +36,15 @@ export default class SynchPlugin extends Plugin {
     this.controller = controller;
 
     await controller.initialize();
+
+    this.registerObsidianProtocolHandler("synch-device-login", () => {
+      // The device authorization manager remains the source of truth and
+      // receives the session through its existing polling loop. Opening this
+      // URI brings Obsidian back to the foreground, opens Synch settings, and
+      // refreshes the UI.
+      openSynchSettings(this);
+      this.refreshUi();
+    });
 
     if (Platform.isMobile) {
       this.mobileStatusIndicator = new SynchMobileStatusIndicator(this, controller);

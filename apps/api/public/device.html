@@ -28,6 +28,15 @@
 					<span data-i18n="deny">Cancel request</span>
 				</button>
 			</div>
+
+			<div id="return-panel" class="return-panel" hidden>
+				<a id="return-button" class="btn btn--primary btn--block" data-i18n="returnToObsidian">
+					Return to Obsidian
+				</a>
+				<p class="return-hint" data-i18n="returnHint">
+					If the button does not work, open Obsidian manually.
+				</p>
+			</div>
 		</div>
 
 		<script>
@@ -49,6 +58,8 @@
 				denied: "The Obsidian sign-in request was canceled.",
 				invalidOrConsumed: "This sign-in request is invalid or has already been used.",
 				approveToFinish: "Allow this request to sign in the Synch plugin in Obsidian.",
+				returnToObsidian: "Return to Obsidian",
+				returnHint: "If the button does not work, open Obsidian manually.",
 				unableToLoad: "Unable to load the Obsidian sign-in request.",
 				unableToCheckSession: "Unable to check your session.",
 				invalidCode: "This sign-in request is invalid.",
@@ -62,10 +73,13 @@
 			let activeUserCode = normalizeUserCode(params.get("user_code") ?? "");
 
 			const approvalPanel = document.querySelector("#approval-panel");
+			const returnPanel = document.querySelector("#return-panel");
+			const returnButton = document.querySelector("#return-button");
 			const approveButton = document.querySelector("#approve-button");
 			const denyButton = document.querySelector("#deny-button");
 			const identity = document.querySelector("#identity");
 			const status = document.querySelector("#status");
+			const returnUri = getSupportedReturnUri(params.get("return_uri"));
 
 			approveButton?.addEventListener("click", () => {
 				void submitDeviceDecision("approve");
@@ -85,6 +99,7 @@
 
 			async function refreshDevice() {
 				setVisible(approvalPanel, false);
+				setVisible(returnPanel, false);
 				setVisible(identity, false);
 
 				setStatus(t("checkingSession"));
@@ -110,6 +125,7 @@
 
 					if (deviceStatus === "approved") {
 						setStatus(t("approved"), "success");
+						showReturnToObsidian();
 						return;
 					}
 					if (deviceStatus === "denied") {
@@ -178,6 +194,9 @@
 							: t("denied"),
 						decision === "approve" ? "success" : "error",
 					);
+					if (decision === "approve") {
+						showReturnToObsidian();
+					}
 				} catch {
 					setStatus(t("apiUnavailableWithHint"), "error");
 				} finally {
@@ -203,6 +222,19 @@
 					signInUrl.searchParams.set("lang", lang);
 				}
 				window.location.assign(signInUrl.toString());
+			}
+
+			function getSupportedReturnUri(value) {
+				return value === "obsidian://synch-device-login" ? value : "";
+			}
+
+			function showReturnToObsidian() {
+				if (!returnUri || !returnButton) {
+					return;
+				}
+
+				returnButton.setAttribute("href", returnUri);
+				setVisible(returnPanel, true);
 			}
 
 			function applyTranslations() {

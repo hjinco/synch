@@ -11,6 +11,8 @@
 		"openFromObsidian": "Obsidian 内の Synch からサインインを開始し、開かれたページを使用してください。",
 		"checkingDevice": "Obsidian サインインリクエストを確認中...",
 		"approved": "Obsidian サインインが許可されました。完了するには Obsidian に戻ってください。",
+		"returnToObsidian": "Obsidian に戻る",
+		"returnHint": "ボタンが機能しない場合は、Obsidian を手動で開いてください。",
 		"denied": "Obsidian サインインリクエストはキャンセルされました。",
 		"invalidOrConsumed": "このサインインリクエストは無効、またはすでに使用されています。",
 		"approveToFinish": "このリクエストを許可すると、Obsidian の Synch プラグインにサインインします。",

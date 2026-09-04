@@ -407,6 +407,34 @@ describe("AuthManager", () => {
     await login;
   });
 
+  it("advertises the host app return URI when one is configured", async () => {
+    const authorization = createAuthorization();
+    const delay = createDeferred<void>();
+    const openExternalUrl = vi.fn();
+    const manager = createManager({
+      deviceLoginReturnUri: "obsidian://synch-device-login",
+      authClient: {
+        startDeviceAuthorization: vi.fn(async () => authorization),
+        pollDeviceAuthorization: vi.fn(async () => ({
+          status: "expired" as const,
+          message: "expired",
+        })),
+      } as unknown as AuthClient,
+      delay: async () => await delay.promise,
+      openExternalUrl,
+    });
+
+    const login = manager.beginDeviceLogin();
+    await flushPromises();
+
+    expect(openExternalUrl).toHaveBeenCalledWith(
+      "https://example.com/device?user_code=USER-CODE&lang=en&return_uri=obsidian%3A%2F%2Fsynch-device-login",
+    );
+
+    delay.resolve();
+    await login;
+  });
+
   it("clears the active authorization after device login finishes", async () => {
     const firstDelay = createDeferred<void>();
     const secondDelay = createDeferred<void>();
@@ -491,6 +519,7 @@ function createManager(
     delay: (ms: number) => Promise<void>;
     notify: (event: AuthNoticeEvent) => void;
     getLocale: () => string;
+    deviceLoginReturnUri: string;
     openExternalUrl: (url: string) => void;
     refreshUi: () => void;
     isOffline: () => boolean;
@@ -505,6 +534,7 @@ function createManager(
       new AuthClient(createUnusedHttpClient(), "synch-test"),
     notify: overrides.notify ?? vi.fn(),
     getLocale: overrides.getLocale ?? (() => "en"),
+    deviceLoginReturnUri: overrides.deviceLoginReturnUri,
     openExternalUrl: overrides.openExternalUrl ?? vi.fn(),
     delay: overrides.delay,
     isOffline: overrides.isOffline,

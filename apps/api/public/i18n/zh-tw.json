@@ -11,6 +11,8 @@
 		"openFromObsidian": "請先從 Obsidian 內的 Synch 開始登入，然後使用它開啟的頁面。",
 		"checkingDevice": "正在檢查 Obsidian 登入請求...",
 		"approved": "已允許 Obsidian 登入。請返回 Obsidian 完成操作。",
+		"returnToObsidian": "返回 Obsidian",
+		"returnHint": "如果按鈕沒有作用，請手動開啟 Obsidian。",
 		"denied": "Obsidian 登入請求已取消。",
 		"invalidOrConsumed": "此登入請求無效或已被使用。",
 		"approveToFinish": "允許此請求後，Obsidian 中的 Synch 外掛將登入。",

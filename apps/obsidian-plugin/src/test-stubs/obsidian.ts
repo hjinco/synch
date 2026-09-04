@@ -365,6 +365,11 @@ export class Plugin {
 
   register(_callback: () => unknown): void {}
 
+  registerObsidianProtocolHandler(
+    _action: string,
+    _handler: (params: Record<string, string>) => unknown,
+  ): void {}
+
   registerEvent(ref: unknown): unknown {
     return ref;
   }

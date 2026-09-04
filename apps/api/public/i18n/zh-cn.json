@@ -11,6 +11,8 @@
 		"openFromObsidian": "请先从 Obsidian 内的 Synch 开始登录，然后使用它打开的页面。",
 		"checkingDevice": "正在检查 Obsidian 登录请求...",
 		"approved": "已允许 Obsidian 登录。请返回 Obsidian 完成操作。",
+		"returnToObsidian": "返回 Obsidian",
+		"returnHint": "如果按钮不起作用，请手动打开 Obsidian。",
 		"denied": "Obsidian 登录请求已取消。",
 		"invalidOrConsumed": "此登录请求无效或已被使用。",
 		"approveToFinish": "允许此请求后，Obsidian 中的 Synch 插件将登录。",

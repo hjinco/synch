@@ -11,6 +11,8 @@
 		"openFromObsidian": "Obsidian 안의 Synch에서 로그인을 시작한 뒤, 열리는 페이지를 사용하세요.",
 		"checkingDevice": "Obsidian 로그인 요청 확인 중...",
 		"approved": "Obsidian 로그인이 허용되었습니다. 완료하려면 Obsidian으로 돌아가세요.",
+		"returnToObsidian": "Obsidian으로 돌아가기",
+		"returnHint": "버튼이 작동하지 않으면 Obsidian을 직접 여세요.",
 		"denied": "Obsidian 로그인 요청이 취소되었습니다.",
 		"invalidOrConsumed": "이 로그인 요청은 유효하지 않거나 이미 사용되었습니다.",
 		"approveToFinish": "이 요청을 허용하면 Obsidian의 Synch 플러그인에 로그인됩니다.",

@@ -43,6 +43,8 @@ export interface AuthManagerDeps {
   authClient: AuthClient;
   notify: (event: AuthNoticeEvent) => void;
   getLocale: () => string;
+  /** Optional app callback URI advertised by the host application. */
+  deviceLoginReturnUri?: string;
   openExternalUrl?: (url: string) => void;
   delay?: (ms: number) => Promise<void>;
   isOffline?: OfflineDetector;
@@ -319,9 +321,12 @@ export class AuthManager {
   private openDeviceLogin(authorization: DeviceAuthorizationStart): void {
     this.notify({ type: "opening_browser", code: authorization.userCode });
     this.openExternalUrl(
-      withDeviceLoginLocale(
-        authorization.verificationUriComplete,
-        this.deps.getLocale(),
+      withDeviceLoginReturnUri(
+        withDeviceLoginLocale(
+          authorization.verificationUriComplete,
+          this.deps.getLocale(),
+        ),
+        this.deps.deviceLoginReturnUri,
       ),
     );
   }
@@ -411,6 +416,20 @@ function withDeviceLoginLocale(url: string, locale: string): string {
     const localizedUrl = new URL(url);
     localizedUrl.searchParams.set("lang", locale);
     return localizedUrl.toString();
+  } catch {
+    return url;
+  }
+}
+
+function withDeviceLoginReturnUri(url: string, returnUri?: string): string {
+  if (!returnUri) {
+    return url;
+  }
+
+  try {
+    const deviceUrl = new URL(url);
+    deviceUrl.searchParams.set("return_uri", returnUri);
+    return deviceUrl.toString();
   } catch {
     return url;
   }
