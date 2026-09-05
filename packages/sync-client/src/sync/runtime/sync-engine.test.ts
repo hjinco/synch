@@ -141,6 +141,39 @@ describe("SyncEngine", () => {
     }
   });
 
+  it("isolates overlapping remote reports and ignores callbacks after completion", async () => {
+    const { engine } = createTestEngine(new InMemoryVaultAdapter(), { setSyncProgress: report });
+    function report(progress: unknown) { reports.push(progress); }
+    const reports: unknown[] = [];
+    type Progress = { completedEntries: number; totalEntries: number };
+    type Reporter = (progress: Progress) => Promise<void>;
+    const activityEngine = engine as unknown as {
+      withSyncActivity<T>(kind: "pull" | "push", work: (report: Reporter) => Promise<T>): Promise<T>;
+    };
+    const finishPull = createDeferred<void>();
+    const finishPush = createDeferred<void>();
+    let lateReport: Reporter = async () => {};
+    const pull = activityEngine.withSyncActivity("pull", async (report) => {
+      lateReport = report;
+      await report({ completedEntries: 1, totalEntries: 3 });
+      await finishPull.promise;
+    });
+    const push = activityEngine.withSyncActivity("push", async (report) => {
+      await report({ completedEntries: 2, totalEntries: 4 });
+      await finishPush.promise;
+    });
+    await nextTask();
+    expect(reports).toEqual([{ completedEntries: 1, totalEntries: 3 }]);
+    finishPull.resolve();
+    await pull;
+    expect(reports[reports.length - 1]).toEqual({ completedEntries: 2, totalEntries: 4 });
+    const count = reports.length;
+    await lateReport({ completedEntries: 3, totalEntries: 3 });
+    expect(reports).toHaveLength(count);
+    finishPush.resolve();
+    await push;
+  });
+
   it("does not let baseline progress overwrite an active pull", async () => {
     const vault = new InMemoryVaultAdapter();
     vault.seedText("note.md", "body");
@@ -159,21 +192,19 @@ describe("SyncEngine", () => {
     const setSyncProgress = vi.fn();
     const { engine } = createTestEngine(vault, { setSyncProgress });
     engine.setStore(store);
+    let reportPull = async (_progress: { completedEntries: number; totalEntries: number }) => {};
     const activityEngine = engine as unknown as {
-      withSyncActivity<T>(kind: "pull", work: () => Promise<T>): Promise<T>;
-      reportActivityProgress(progress: {
-        completedEntries: number;
-        totalEntries: number;
-      }): void;
+      withSyncActivity<T>(kind: "pull", work: (report: (progress: { completedEntries: number; totalEntries: number }) => Promise<void>) => Promise<T>): Promise<T>;
     };
 
-    await activityEngine.withSyncActivity("pull", async () => {
-      activityEngine.reportActivityProgress({
+    await activityEngine.withSyncActivity("pull", async (report) => {
+      reportPull = report;
+      await reportPull({
         completedEntries: 0,
         totalEntries: 4000,
       });
       await engine.refreshSyncProgress();
-      activityEngine.reportActivityProgress({
+      await reportPull({
         completedEntries: 100,
         totalEntries: 4000,
       });
@@ -214,15 +245,12 @@ describe("SyncEngine", () => {
     const setSyncProgress = vi.fn();
     const { engine } = createTestEngine(vault, { setSyncProgress });
     engine.setStore(store);
+    let reportPull = async (_progress: { completedEntries: number; totalEntries: number }) => {};
     const activityEngine = engine as unknown as {
       withSyncActivity<T>(
         kind: "local" | "pull",
-        work: () => Promise<T>,
+        work: (report: (progress: { completedEntries: number; totalEntries: number }) => Promise<void>) => Promise<T>,
       ): Promise<T>;
-      reportActivityProgress(progress: {
-        completedEntries: number;
-        totalEntries: number;
-      }): void;
     };
     const releaseLocal = createDeferred<void>();
     const releasePull = createDeferred<void>();
@@ -230,8 +258,9 @@ describe("SyncEngine", () => {
     const local = activityEngine.withSyncActivity("local", async () => {
       await releaseLocal.promise;
     });
-    const pull = activityEngine.withSyncActivity("pull", async () => {
-      activityEngine.reportActivityProgress({
+    const pull = activityEngine.withSyncActivity("pull", async (report) => {
+      reportPull = report;
+      await reportPull({
         completedEntries: 0,
         totalEntries: 4000,
       });
@@ -242,7 +271,7 @@ describe("SyncEngine", () => {
     releaseLocal.resolve();
     await local;
     await engine.refreshSyncProgress();
-    activityEngine.reportActivityProgress({
+    await reportPull({
       completedEntries: 100,
       totalEntries: 4000,
     });

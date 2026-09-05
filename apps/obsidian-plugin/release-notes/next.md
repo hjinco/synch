@@ -11,3 +11,4 @@
 ## Fixed
 
 - Reduce memory retained during large remote vault syncs by applying changes in smaller batches.
+- Keep sync progress consistent while files change during sync, and show completed counts until the total is known.

@@ -9,6 +9,7 @@ export interface MetadataRecord {
   id: string;
   remoteVaultId: string | null;
   lastPulledCursor: number;
+  progressSnapshotVersion?: number;
   progressCompletedEntries?: number;
   progressTotalEntries?: number;
 }

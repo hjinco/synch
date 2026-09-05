@@ -88,6 +88,7 @@ export type PreparedPathBatch = {
 };
 
 export type PreparedManifestApplication = {
+  completedStates: Array<{ entryId: string; revision: number }>;
   plans: PlannedEntryState[];
   superseded: PullEntryStateManifestItem[];
   supersededPathsToRemove: string[];

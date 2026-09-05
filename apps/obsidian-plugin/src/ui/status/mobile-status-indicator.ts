@@ -53,7 +53,7 @@ export class SynchMobileStatusIndicator {
     }
 
     const state = this.state.getSyncState();
-    const syncStatusLabel = formatSyncStatusLabel(state, this.state.getSyncPercent());
+    const syncStatusLabel = formatSyncStatusLabel(state, this.state.getSyncPercent(), this.state.getSyncProgress?.());
     const storageState = this.state.getStorageDisplayState();
     const hasStorageWarning = storageState !== "normal";
     const needsMoreStorage = storageState === "needs_more_storage";

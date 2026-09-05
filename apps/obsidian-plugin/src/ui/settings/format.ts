@@ -17,7 +17,8 @@ export function formatSyncDescription(
   percent: number,
   syncProgress: SynchSyncProgress,
 ): string {
-  const label = formatSyncStatusLabel(state, percent);
+  const label = formatSyncStatusLabel(state, percent, syncProgress);
+  if (syncProgress.direction) return label;
   return `${label} - ${syncProgress.completedEntries} / ${syncProgress.totalEntries}`;
 }
 

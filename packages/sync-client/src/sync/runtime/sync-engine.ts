@@ -51,7 +51,11 @@ import {
   readStoredSyncConnection,
 } from "../store/connection";
 import type { UserVisibleSyncState } from "./user-visible-status";
-import type { UserVisibleSyncProgress } from "./user-visible-status";
+import type {
+  SyncOperationProgress,
+  UserVisibleSyncProgress,
+  VaultSyncProgress,
+} from "./user-visible-status";
 import type { SyncChangeSource } from "./change-source";
 import type { SyncVaultConfigSource } from "./vault-config-source";
 import {
@@ -124,6 +128,7 @@ export class SyncEngine {
   private localMutationQueue: Promise<void> = Promise.resolve();
   private localMutationWorkCount = 0;
   private readonly activities = new SyncActivityTracker();
+  private readonly activityProgress = new Map<number, SyncOperationProgress>();
   private hiddenFolderReconcileTimer: ReturnType<typeof setInterval> | null = null;
   private hiddenFolderReconcilePromise: Promise<void> | null = null;
   private readonly syncEventGate = new SyncEventGate();
@@ -169,9 +174,6 @@ export class SyncEngine {
       conflictFileWriter: this.vaultAdapter,
       blobClient: new SyncBlobClient(this.syncRequestClient),
       contentRuntime: this.contentRuntime,
-      onProgress: async (progress) => {
-        this.reportActivityProgress(progress);
-      },
       onConflict: (event) => this.deps.notifySyncConflict(event),
       onFileSizeBlockedFilesChange: () => {
         this.deps.onFileSizeBlockedFilesChange?.();
@@ -228,8 +230,8 @@ export class SyncEngine {
             : new WebSocket(url, protocols),
       }),
       pushPendingMutations: async (session) =>
-        await this.withSyncActivity("push", async () => {
-          return await this.syncPushService.pushPendingMutations(session);
+        await this.withSyncActivity("push", async (report) => {
+          return await this.syncPushService.pushPendingMutations(session, report);
         }),
       unblockFileSizeBlockedMutations: async (session) =>
         await this.withSyncActivity("local", async () => {
@@ -242,8 +244,8 @@ export class SyncEngine {
           return unblocked;
         }),
       pullOnce: async (session) =>
-        await this.withSyncActivity("pull", async () => {
-          return await this.syncPullService.pullOnce(session);
+        await this.withSyncActivity("pull", async (report) => {
+          return await this.syncPullService.pullOnce(session, report);
         }),
       shouldDeferSyncWork: () => this.deps.shouldDeferSyncWork(),
       onConnectionStateChange: (state) => {
@@ -325,9 +327,6 @@ export class SyncEngine {
       vaultAdapter: this.vaultAdapter,
       pullClient: this.syncPullClient,
       contentRuntime: this.contentRuntime,
-      onProgress: async (progress) => {
-        this.reportActivityProgress(progress);
-      },
       onConflict: (event) => this.deps.notifySyncConflict(event),
       onRollbackDetected: (event) => this.deps.notifyRollbackDetected(event),
       onFileSyncStarted: (event) => {
@@ -362,8 +361,8 @@ export class SyncEngine {
       withRealtimeSession: async (work) => await this.withRealtimeSession(work),
       runLocalMutationWork: async (work) => await this.runLocalMutationWork(work),
       pullOnce: async (session) => {
-        await this.withSyncActivity("pull", async () => {
-          await this.syncPullService.pullOnce(session);
+        await this.withSyncActivity("pull", async (report) => {
+          await this.syncPullService.pullOnce(session, report);
         });
       },
     });
@@ -728,26 +727,33 @@ export class SyncEngine {
 
   private async withSyncActivity<T>(
     kind: SyncActivityKind,
-    work: () => Promise<T>,
+    work: (report: (progress: SyncOperationProgress) => Promise<void>) => Promise<T>,
   ): Promise<T> {
     const activity = this.activities.begin(kind);
     try {
-      return await work();
+      return await work(async (progress) => {
+        if (!this.activities.contains(activity)) {
+          return;
+        }
+        this.activityProgress.set(activity.id, progress);
+        if (this.activities.visibleRemoteActivity()?.id === activity.id) {
+          this.deps.setSyncProgress(progress);
+        }
+      });
     } finally {
+      const wasVisible = this.activities.visibleRemoteActivity()?.id === activity.id;
       this.activities.end(activity);
+      this.activityProgress.delete(activity.id);
+      const visible = this.activities.visibleRemoteActivity();
+      const progress = visible && this.activityProgress.get(visible.id);
+      if (wasVisible && progress) {
+        this.deps.setSyncProgress(progress);
+      }
       await this.refreshSyncProgress();
     }
   }
 
-  private reportActivityProgress(progress: UserVisibleSyncProgress): void {
-    if (!this.activities.hasActiveRemoteActivity()) {
-      return;
-    }
-
-    this.deps.setSyncProgress(progress);
-  }
-
-  private reportBaselineProgress(progress: UserVisibleSyncProgress): void {
+  private reportBaselineProgress(progress: VaultSyncProgress): void {
     if (!this.activities.hasActiveActivities()) {
       this.deps.setSyncProgress(progress);
     }

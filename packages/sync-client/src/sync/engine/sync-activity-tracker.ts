@@ -25,6 +25,14 @@ export class SyncActivityTracker {
     );
   }
 
+  contains(activity: ActiveSyncActivity): boolean {
+    return this.activities.some((active) => active.id === activity.id);
+  }
+
+  visibleRemoteActivity(): ActiveSyncActivity | undefined {
+    return this.activities.find((activity) => activity.kind !== "local");
+  }
+
   hasActiveRemoteActivity(): boolean {
     return this.activities.some((activity) => activity.kind !== "local");
   }

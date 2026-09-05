@@ -32,6 +32,15 @@ describe("formatSyncStatusLabel", () => {
     },
   );
 
+  it("shows completed work without a denominator until discovery ends", () => {
+    expect(formatSyncStatusLabel("syncing", 0, {
+      direction: "pull", totalKnown: false, completedEntries: 100, totalEntries: 100,
+    })).toBe(`${t("sync.downloading")} · ${t("sync.completedCount", { count: 100 })}`);
+    expect(formatSyncStatusLabel("syncing", 86, {
+      direction: "pull", totalKnown: true, completedEntries: 200, totalEntries: 232,
+    })).toBe(`${t("sync.status", { label: t("sync.downloading"), percent: 86 })} · ${t("sync.completedTotal", { count: 200, total: 232 })}`);
+  });
+
   it("does not include a stale percent for a paused sync", () => {
     expect(formatSyncStatusLabel("paused", 37)).toBe(t("sync.state.paused"));
   });

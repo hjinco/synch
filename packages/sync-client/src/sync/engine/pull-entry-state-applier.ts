@@ -6,7 +6,7 @@ import {
 import type { SyncTokenResponse } from "../remote/client";
 import type { RemoteEntryState } from "../remote/changes";
 import type { SyncPullClient } from "../remote/pull-client";
-import type { PendingMutationRow, SyncProgressCounts } from "../store/store";
+import type { PendingMutationRow } from "../store/store";
 import type {
   SyncBlobStore,
   SyncEntryStore,
@@ -54,7 +54,6 @@ export interface PullEntryStateApplierDeps extends SyncContentRuntimeDeps {
   shouldApplyRemotePath?: (path: string) => boolean;
   shouldUseLatestRemoteVersion?: (path: string) => boolean;
   prepareConcurrency?: number;
-  onProgress?: (progress: SyncProgressCounts) => Promise<void>;
   onConflict?: (event: PullConflictEvent) => void;
   onRollbackDetected?: (event: PullRollbackEvent) => void;
   onFileSyncStarted?: (event: {
@@ -109,6 +108,7 @@ export interface PullEntryStateStore
     Pick<SyncBlobStore, "getBlob" | "putBlob"> {}
 
 export type PullEntryStateWindowApplyResult = PullEntryStateApplyResult & {
+  completedStates: Array<{ entryId: string; revision: number }>;
   deferred: PullEntryStateManifestItem[];
 };
 
@@ -182,10 +182,6 @@ export class PullEntryStateApplier {
     manifest: PullEntryStateManifestItem[],
     options: {
       finalWindow: boolean;
-      progress?: {
-        completedOffset: number;
-        totalEntries: number;
-      };
     },
   ): Promise<PullEntryStateWindowApplyResult> {
     if (manifest.length === 0) {
@@ -195,6 +191,7 @@ export class PullEntryStateApplier {
         filesDeleted: 0,
         conflictsCreated: 0,
         deferred: [],
+        completedStates: [],
       };
     }
 
@@ -213,11 +210,7 @@ export class PullEntryStateApplier {
       }
       throw error;
     }
-    const filesDeleted = await this.applyPreparedManifest(
-      store,
-      prepared,
-      options.progress,
-    );
+    const filesDeleted = await this.applyPreparedManifest(store, prepared);
 
     return {
       entriesApplied: prepared.plans.length + prepared.superseded.length,
@@ -231,6 +224,7 @@ export class PullEntryStateApplier {
         0,
       ),
       deferred: prepared.deferred,
+      completedStates: prepared.completedStates,
     };
   }
 
@@ -304,6 +298,10 @@ export class PullEntryStateApplier {
     }
 
     return {
+      completedStates: [...allPlans, ...superseded].map(({ state }) => ({
+        entryId: state.entryId,
+        revision: state.revision,
+      })),
       plans,
       superseded,
       supersededPathsToRemove,
@@ -410,12 +408,6 @@ export class PullEntryStateApplier {
   private async applyPreparedManifest(
     store: PullEntryStateStore,
     prepared: PreparedManifestApplication,
-    progress:
-      | {
-          completedOffset: number;
-          totalEntries: number;
-        }
-      | undefined,
   ): Promise<number> {
     const originalEntries = await this.snapshotManifestEntries(store, prepared);
     const originalDirtyEntries = await this.snapshotDirtyEntries(store, prepared);
@@ -434,7 +426,6 @@ export class PullEntryStateApplier {
 
     try {
       let filesDeleted = 0;
-      let entriesApplied = 0;
       filesDeleted = await this.runWithSuppressedPaths(
         [
           ...prepared.supersededPathsToRemove,
@@ -451,15 +442,6 @@ export class PullEntryStateApplier {
             if (await removeVaultPathIfExists(this.deps.vaultAdapter, path)) {
               removedTotal += 1;
             }
-          }
-          entriesApplied += prepared.superseded.length;
-          if (prepared.superseded.length > 0) {
-            await this.deps.onProgress?.({
-              completedEntries: (progress?.completedOffset ?? 0) + entriesApplied,
-              totalEntries:
-                progress?.totalEntries ??
-                prepared.plans.length + prepared.superseded.length,
-            });
           }
           for (const batch of prepared.batches) {
             const batchPendingConflicts = uniquePendingConflicts(
@@ -513,14 +495,6 @@ export class PullEntryStateApplier {
             for (const pendingConflict of batchPendingConflicts) {
               await this.pendingMutations.applyPreparedPendingMerge(store, pendingConflict);
             }
-
-            entriesApplied += batch.plans.length;
-            await this.deps.onProgress?.({
-              completedEntries: (progress?.completedOffset ?? 0) + entriesApplied,
-              totalEntries:
-                progress?.totalEntries ??
-                prepared.plans.length + prepared.superseded.length,
-            });
           }
 
           return removedTotal;

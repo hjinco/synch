@@ -714,20 +714,17 @@ export class SyncController {
       return;
     }
 
-    const normalized =
-      progress.totalEntries > 0
-        ? {
-            completedEntries: Math.max(0, progress.completedEntries),
-            totalEntries: Math.max(0, progress.totalEntries),
-          }
-        : {
-            completedEntries: 0,
-            totalEntries: 0,
-          };
+    const normalized = {
+      ...progress,
+      completedEntries: Math.max(0, progress.completedEntries),
+      totalEntries: Math.max(0, progress.totalEntries),
+    };
 
     if (
       this.syncProgress?.completedEntries === normalized?.completedEntries &&
-      this.syncProgress?.totalEntries === normalized?.totalEntries
+      this.syncProgress?.totalEntries === normalized?.totalEntries &&
+      this.syncProgress?.totalKnown === normalized.totalKnown &&
+      this.syncProgress?.direction === normalized.direction
     ) {
       return;
     }

@@ -2,6 +2,10 @@ import { en } from "./en";
 
 export const de = {
     ...en,
+    "sync.downloading": "Wird heruntergeladen",
+    "sync.uploading": "Wird hochgeladen",
+    "sync.completedCount": ({ count }: { count: number }) => `${count} abgeschlossen`,
+    "sync.completedTotal": ({ count, total }: { count: number; total: number }) => `${count}/${total} abgeschlossen`,
     account: "Konto",
     audio: "Audio",
     authentication: "Authentifizierung",

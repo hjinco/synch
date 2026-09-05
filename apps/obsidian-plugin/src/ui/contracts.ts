@@ -1,3 +1,4 @@
+import type { UserVisibleSyncProgress } from "@synch/sync-client/sync/runtime/user-visible-status";
 import type { SyncFileRules } from "@synch/sync-client/sync/core/file-rules";
 import type { VaultConfigSyncRules } from "@synch/sync-client/sync/core/vault-config-rules";
 
@@ -33,10 +34,7 @@ export type SynchSyncState =
   | "attention_needed"
   | "update_required";
 
-export interface SynchSyncProgress {
-  completedEntries: number;
-  totalEntries: number;
-}
+export type SynchSyncProgress = UserVisibleSyncProgress;
 
 export interface SynchSyncLogs {
   count: number;

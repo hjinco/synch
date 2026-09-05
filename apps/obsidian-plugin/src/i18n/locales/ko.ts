@@ -1,4 +1,8 @@
 export const ko = {
+    "sync.downloading": "다운로드 중",
+    "sync.uploading": "업로드 중",
+    "sync.completedCount": ({ count }: { count: number }) => `${count}개 완료`,
+    "sync.completedTotal": ({ count, total }: { count: number; total: number }) => `${count}/${total}개 완료`,
     account: "계정",
     audio: "오디오",
     authentication: "인증",

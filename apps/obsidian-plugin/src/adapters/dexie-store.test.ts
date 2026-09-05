@@ -1,3 +1,4 @@
+import { SyncDexieDatabase, syncStoreDbName, METADATA_ID } from "./dexie-store/database";
 import { describe, expect, it } from "vitest";
 
 import type { Plugin } from "obsidian";
@@ -317,6 +318,48 @@ describe("DexieSyncStore", () => {
       hash: "hash-existing",
     });
     await store.close();
+  });
+
+  it("preserves entry counters while cursor metadata is updated concurrently", async () => {
+    const store = await createDexieSyncStore(createPlugin());
+    await store.writeSyncConnection({ localVaultId: await store.readLocalVaultId(), remoteVaultId: "remote", lastPulledCursor: 0 });
+    for (let index = 0; index < 10; index += 1) {
+      await Promise.all([
+        store.setCursor(index + 1),
+        store.upsertEntry({
+          entryId: `entry-${index}`, path: `note-${index}.md`, revision: 1,
+          blobId: null, hash: null, deleted: false, updatedAt: 1,
+          localMtime: null, localSize: null,
+        }),
+      ]);
+    }
+    expect(await store.countSyncProgress()).toEqual({ completedEntries: 10, totalEntries: 10 });
+    expect(await store.getCursor()).toBe(10);
+    await store.close();
+  });
+
+  it("repairs legacy cached counters from entries when reopening", async () => {
+    const plugin = createPlugin();
+    const store = await createDexieSyncStore(plugin);
+    const localVaultId = await store.readLocalVaultId();
+    await store.writeSyncConnection({ localVaultId, remoteVaultId: "remote", lastPulledCursor: 7 });
+    await store.upsertEntry({
+      entryId: "entry", path: "note.md", revision: 1, blobId: null,
+      hash: null, deleted: false, updatedAt: 1, localMtime: null, localSize: null,
+    });
+    await store.close();
+    const db = new SyncDexieDatabase(syncStoreDbName(localVaultId));
+    await db.open();
+    await db.metadata.update(METADATA_ID, {
+      progressSnapshotVersion: undefined,
+      progressCompletedEntries: 232, progressTotalEntries: 231,
+    });
+    db.close();
+    const reopened = await createDexieSyncStore(plugin);
+    expect(await reopened.countSyncProgress()).toEqual({ completedEntries: 1, totalEntries: 1 });
+    expect(await reopened.getCursor()).toBe(7);
+    expect((await reopened.readSyncConnection())?.remoteVaultId).toBe("remote");
+    await reopened.close();
   });
 
   it("counts progress without materializing store rows", async () => {

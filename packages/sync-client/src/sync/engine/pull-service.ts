@@ -7,7 +7,8 @@ import type {
   SyncCursorStore,
   SyncStoreLifecycle,
 } from "../store/ports";
-import type { SyncProgressCounts } from "../store/store";
+import type { SyncOperationProgress } from "../runtime/user-visible-status";
+import { SyncWorkProgress } from "./work-progress";
 import {
   type PullConflictEvent,
   PullEntryStateApplier,
@@ -33,7 +34,7 @@ export interface SyncPullServiceDeps extends SyncContentRuntimeDeps {
   pullClient: Pick<SyncPullClient, "downloadBlob">;
   prepareConcurrency?: number;
   applyWindowSize?: number;
-  onProgress: (progress: SyncProgressCounts) => Promise<void>;
+  onProgress?: (progress: SyncOperationProgress) => Promise<void>;
   onConflict?: (event: PullConflictEvent) => void;
   onRollbackDetected?: (event: PullRollbackEvent) => void;
   onFileSyncStarted?: (event: {
@@ -83,9 +84,6 @@ export class SyncPullService {
       shouldUseLatestRemoteVersion: this.deps.shouldUseLatestRemoteVersion,
       prepareConcurrency:
         this.deps.prepareConcurrency ?? DEFAULT_PULL_PREPARE_CONCURRENCY,
-      onProgress: async (progress) => {
-        await this.deps.onProgress(progress);
-      },
       onConflict: this.deps.onConflict,
       onRollbackDetected: this.deps.onRollbackDetected,
       onFileSyncStarted: this.deps.onFileSyncStarted,
@@ -95,7 +93,10 @@ export class SyncPullService {
     });
   }
 
-  async pullOnce(session: SyncRealtimeSession): Promise<PullOnceResult> {
+  async pullOnce(
+    session: SyncRealtimeSession,
+    onProgress = this.deps.onProgress ?? (async (_progress: SyncOperationProgress) => {}),
+  ): Promise<PullOnceResult> {
     const store = this.deps.getSyncStore();
     if (!store) {
       throw new Error("Sync store is not initialized.");
@@ -106,7 +107,9 @@ export class SyncPullService {
     let cursor = requestCursor;
     let hasMore = true;
     let targetCursor: number | null = null;
-    let totalEntries = 0;
+    const progress = new SyncWorkProgress("pull");
+    const received = new Set<string>();
+    await onProgress(progress.snapshot());
     let after: { updatedSeq: number; entryId: string } | null = null;
     let window: PullEntryStateManifestItem[] = [];
     const applyWindowSize = normalizePositiveInteger(
@@ -128,10 +131,19 @@ export class SyncPullService {
         limit: DEFAULT_PULL_BATCH,
       });
       targetCursor = page.targetCursor;
-      totalEntries = page.totalEntries;
-      window.push(...(await this.entryStateApplier.createManifestItems(page.entries)));
+      const entries = page.entries.filter((entry) => {
+        const key = stateKey(entry);
+        if (received.has(key)) return false;
+        received.add(key);
+        return true;
+      });
+      const items = await this.entryStateApplier.createManifestItems(entries);
+      progress.register(items.map(manifestKey));
+      window.push(...items);
       after = page.nextAfter;
       hasMore = page.hasMore;
+      if (!hasMore) progress.seal();
+      await onProgress(progress.snapshot());
 
       if (window.length >= applyWindowSize || !hasMore) {
         const appliedWindow = window;
@@ -141,10 +153,6 @@ export class SyncPullService {
           window,
           {
             finalWindow: !hasMore,
-            progress: {
-              completedOffset: totals.entriesApplied,
-              totalEntries,
-            },
           },
         );
         totals.entriesApplied += applied.entriesApplied;
@@ -160,6 +168,8 @@ export class SyncPullService {
           applied.deferred,
           hasMore ? null : targetCursor,
         );
+        progress.complete(applied.completedStates.map(stateKey));
+        await onProgress(progress.snapshot());
       }
     }
 
@@ -171,10 +181,6 @@ export class SyncPullService {
         window,
         {
           finalWindow: true,
-          progress: {
-            completedOffset: totals.entriesApplied,
-            totalEntries,
-          },
         },
       );
       totals.entriesApplied += applied.entriesApplied;
@@ -189,6 +195,8 @@ export class SyncPullService {
         applied.deferred,
         targetCursor,
       );
+      progress.complete(applied.completedStates.map(stateKey));
+      await onProgress(progress.snapshot());
     }
 
     cursor = targetCursor ?? cursor;
@@ -262,4 +270,12 @@ function getSafeCheckpointCursor(
     ...window.map((item) => item.state.updatedSeq),
   );
   return lastAppliedCursor;
+}
+
+function manifestKey(item: PullEntryStateManifestItem): string {
+  return stateKey(item.state);
+}
+
+function stateKey(state: { entryId: string; revision: number }): string {
+  return JSON.stringify([state.entryId, state.revision]);
 }

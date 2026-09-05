@@ -1,6 +1,6 @@
 import type { CliAppContext } from "../app/context";
 import { describeError } from "../app/context";
-import { formatSyncStatusLabel } from "../app/notices";
+import { formatSyncProgressSuffix, formatSyncStatusLabel } from "../app/notices";
 
 export async function runWatch(ctx: CliAppContext): Promise<number> {
   await ctx.initializeAuth();
@@ -10,9 +10,7 @@ export async function runWatch(ctx: CliAppContext): Promise<number> {
   let lastPrinted = "";
   ctx.onSyncStatusChange = () => {
     const progress =
-      ctx.syncStatus === "syncing" && ctx.syncProgress.totalEntries > 0
-        ? ` (${ctx.syncProgress.completedEntries}/${ctx.syncProgress.totalEntries})`
-        : "";
+      ctx.syncStatus === "syncing" ? formatSyncProgressSuffix(ctx.syncProgress) : "";
     const line = `status: ${formatSyncStatusLabel(ctx.syncStatus)}${progress}`;
     if (line !== lastPrinted) {
       lastPrinted = line;

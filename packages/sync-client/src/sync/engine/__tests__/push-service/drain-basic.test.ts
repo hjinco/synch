@@ -113,7 +113,7 @@ describe("SyncPushService drain: basic queue", () => {
       shouldPullAfterPush: true,
       hasMore: false,
     });
-    expect(progressUpdates).toEqual([{ completedEntries: 1, totalEntries: 1 }]);
+    expect(progressUpdates[progressUpdates.length - 1]).toEqual({ direction: "push", totalKnown: true, completedEntries: 2, totalEntries: 2 });
     expect(committed.map(({ entryId, op, baseRevision }) => ({ entryId, op, baseRevision }))).toEqual(
       [
         {

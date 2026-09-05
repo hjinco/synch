@@ -2,6 +2,10 @@ import { en } from "./en";
 
 export const ja = {
     ...en,
+    "sync.downloading": "ダウンロード中",
+    "sync.uploading": "アップロード中",
+    "sync.completedCount": ({ count }: { count: number }) => `${count}件完了`,
+    "sync.completedTotal": ({ count, total }: { count: number; total: number }) => `${count}/${total}件完了`,
     account: "アカウント",
     audio: "オーディオ",
     authentication: "認証",

@@ -1,4 +1,8 @@
 export const en = {
+    "sync.downloading": "Downloading",
+    "sync.uploading": "Uploading",
+    "sync.completedCount": ({ count }: { count: number }) => `${count} completed`,
+    "sync.completedTotal": ({ count, total }: { count: number; total: number }) => `${count}/${total} completed`,
     account: "Account",
     audio: "Audio",
     authentication: "Authentication",

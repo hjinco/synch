@@ -44,6 +44,8 @@ import { toSyncConnection } from "./mappers";
 import type { BlobRecord, EntryRecord, MetadataRecord } from "./records";
 
 const ACCEPTED_PUSH_BATCH_MAX_RETRIES = 3;
+// Rebuild snapshots written before metadata updates became atomic, once on upgrade.
+const PROGRESS_SNAPSHOT_VERSION = 1;
 
 export class DexieSyncStore implements SyncStore {
   private readonly db: SyncDexieDatabase;
@@ -54,7 +56,9 @@ export class DexieSyncStore implements SyncStore {
 
   async initialize(): Promise<void> {
     await this.db.open();
-    await this.ensureProgressSnapshot();
+    await this.db.transaction("rw", this.db.entries, this.db.metadata, async () => {
+      await this.ensureProgressSnapshot();
+    });
   }
 
   async readLocalVaultId(): Promise<string> {
@@ -247,7 +251,9 @@ export class DexieSyncStore implements SyncStore {
       return toProgressCounts(metadata);
     }
 
-    return await this.ensureProgressSnapshot();
+    return await this.db.transaction("rw", this.db.entries, this.db.metadata,
+      () => this.ensureProgressSnapshot(),
+    );
   }
 
   async getOrCreateEntryId(path: string): Promise<string> {
@@ -630,6 +636,7 @@ export class DexieSyncStore implements SyncStore {
       id: METADATA_ID,
       remoteVaultId: metadata?.remoteVaultId ?? null,
       lastPulledCursor: metadata?.lastPulledCursor ?? 0,
+      progressSnapshotVersion: PROGRESS_SNAPSHOT_VERSION,
       progressCompletedEntries: progress.completedEntries,
       progressTotalEntries: progress.totalEntries,
     });
@@ -648,6 +655,7 @@ export class DexieSyncStore implements SyncStore {
         id: METADATA_ID,
         remoteVaultId: metadata?.remoteVaultId ?? null,
         lastPulledCursor: metadata?.lastPulledCursor ?? 0,
+        progressSnapshotVersion: PROGRESS_SNAPSHOT_VERSION,
         progressCompletedEntries: progress.completedEntries,
         progressTotalEntries: progress.totalEntries,
       });
@@ -659,6 +667,7 @@ export class DexieSyncStore implements SyncStore {
       id: METADATA_ID,
       remoteVaultId: metadata?.remoteVaultId ?? null,
       lastPulledCursor: metadata?.lastPulledCursor ?? 0,
+      progressSnapshotVersion: PROGRESS_SNAPSHOT_VERSION,
       progressCompletedEntries: current.completedEntries + delta.completedEntries,
       progressTotalEntries: current.totalEntries + delta.totalEntries,
     });
@@ -686,16 +695,19 @@ export class DexieSyncStore implements SyncStore {
   private async writeMetadata(
     metadata: Pick<MetadataRecord, "remoteVaultId" | "lastPulledCursor">,
   ): Promise<void> {
-    const existing = await this.readMetadata();
-    const progress = hasProgressSnapshot(existing)
-      ? toProgressCounts(existing)
-      : await this.ensureProgressSnapshot();
-    await this.db.metadata.put({
-      id: METADATA_ID,
-      remoteVaultId: metadata.remoteVaultId,
-      lastPulledCursor: metadata.lastPulledCursor,
-      progressCompletedEntries: progress.completedEntries,
-      progressTotalEntries: progress.totalEntries,
+    await this.db.transaction("rw", this.db.entries, this.db.metadata, async () => {
+      const existing = await this.readMetadata();
+      const progress = hasProgressSnapshot(existing)
+        ? toProgressCounts(existing)
+        : await this.ensureProgressSnapshot();
+      await this.db.metadata.put({
+        id: METADATA_ID,
+        remoteVaultId: metadata.remoteVaultId,
+        lastPulledCursor: metadata.lastPulledCursor,
+        progressSnapshotVersion: PROGRESS_SNAPSHOT_VERSION,
+        progressCompletedEntries: progress.completedEntries,
+        progressTotalEntries: progress.totalEntries,
+      });
     });
   }
 }
@@ -712,6 +724,7 @@ function hasProgressSnapshot(
 ): metadata is MetadataRecord &
   Required<Pick<MetadataRecord, "progressCompletedEntries" | "progressTotalEntries">> {
   return (
+    metadata?.progressSnapshotVersion === PROGRESS_SNAPSHOT_VERSION &&
     typeof metadata?.progressCompletedEntries === "number" &&
     Number.isFinite(metadata.progressCompletedEntries) &&
     typeof metadata.progressTotalEntries === "number" &&

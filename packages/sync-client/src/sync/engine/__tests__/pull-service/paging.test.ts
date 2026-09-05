@@ -1,3 +1,4 @@
+import type { UserVisibleSyncProgress } from "../../../runtime/user-visible-status";
 import { describe, expect, it } from "vitest";
 
 import { hashBytes } from "../../../core/content";
@@ -22,7 +23,7 @@ describe("SyncPullService paging", () => {
     const store = createTestSyncStore();
     const adapter = createVaultAdapter();
     const suppressionCalls: string[][] = [];
-    const progressUpdates: Array<{ completedEntries: number; totalEntries: number }> = [];
+    const progressUpdates: UserVisibleSyncProgress[] = [];
     const fileSyncEvents: string[] = [];
     const session = createRealtimeSession({
       pages: [
@@ -106,7 +107,7 @@ describe("SyncPullService paging", () => {
     expect(await store.getCursor()).toBe(2);
     expect((await store.getEntryById("entry-1"))?.path).toBe("Folder/note-a.md");
     expect((await store.getEntryById("entry-2"))?.blobId).toBe("blob-2");
-    expect(progressUpdates).toEqual([{ completedEntries: 2, totalEntries: 2 }]);
+    expect(progressUpdates[progressUpdates.length - 1]).toEqual({ direction: "pull", totalKnown: true, completedEntries: 2, totalEntries: 2 });
     expect(fileSyncEvents).toEqual([
       "started:upsert:Folder/note-a.md",
       "started:upsert:Folder/note-b.md",
@@ -190,7 +191,7 @@ describe("SyncPullService paging", () => {
     await store.close();
   });
 
-  it("reports remote pull progress across pages instead of capping totals at apply windows", async () => {
+  it.each(["stable", "shrinking", "duplicate", "removed", "flush_failure"])("counts received work across pages: %s", async (scenario) => {
     const store = createTestSyncStore();
     const adapter = createVaultAdapter();
     const commits = await Promise.all(
@@ -220,7 +221,7 @@ describe("SyncPullService paging", () => {
         new TextEncoder().encode(`body-${index}`),
       );
     }
-    const progressUpdates: Array<{ completedEntries: number; totalEntries: number }> = [];
+    const progressUpdates: UserVisibleSyncProgress[] = [];
     const session = createRealtimeSession({
       pages: [
         { cursor: 5, hasMore: true, commits: commits.slice(0, 2) },
@@ -228,6 +229,25 @@ describe("SyncPullService paging", () => {
         { cursor: 5, hasMore: false, commits: commits.slice(4) },
       ],
     });
+    const listEntryStates = session.listEntryStates.bind(session);
+    let pageNumber = 0;
+    session.listEntryStates = async (request) => {
+      const page = await listEntryStates(request);
+      pageNumber += 1;
+      if (scenario === "removed" && pageNumber === 3) {
+        return { ...page, totalEntries: 4, entries: [] };
+      }
+      if (scenario === "duplicate" && pageNumber === 2) {
+        // Replay a received revision; it must not be applied or counted twice.
+        const first = commits[0];
+        page.entries.unshift({
+          entryId: first.entryId, revision: first.revision, blobId: first.blobId,
+          encryptedMetadata: first.encryptedMetadata, deleted: false,
+          updatedSeq: first.cursor, updatedAt: first.committedAt,
+        });
+      }
+      return { ...page, totalEntries: scenario === "shrinking" && pageNumber > 1 ? 4 : 5 };
+    };
     const client = createPullClient({ blobs });
 
     const service = new SyncPullService({
@@ -243,15 +263,30 @@ describe("SyncPullService paging", () => {
       },
     });
 
+    if (scenario === "flush_failure") {
+      const flush = store.flush.bind(store);
+      let flushes = 0;
+      store.flush = async () => {
+        flushes += 1;
+        if (flushes === 2) throw new Error("injected storage failure");
+        await flush();
+      };
+      await expect(service.pullOnce(session)).rejects.toThrow();
+      expect(progressUpdates[progressUpdates.length - 1].completedEntries).toBe(2);
+      await store.close();
+      return;
+    }
+    const expectedCount = scenario === "removed" ? commits.length - 1 : commits.length;
     await expect(service.pullOnce(session)).resolves.toMatchObject({
       cursor: 5,
-      entriesApplied: 5,
+      entriesApplied: expectedCount,
     });
-    expect(progressUpdates).toEqual([
-      { completedEntries: 2, totalEntries: 5 },
-      { completedEntries: 4, totalEntries: 5 },
-      { completedEntries: 5, totalEntries: 5 },
-    ]);
+    expect(progressUpdates).toContainEqual({ direction: "pull", totalKnown: false, completedEntries: 2, totalEntries: 2 });
+    expect(progressUpdates[progressUpdates.length - 1]).toEqual({ direction: "pull", totalKnown: true, completedEntries: expectedCount, totalEntries: expectedCount });
+    for (const progress of progressUpdates) {
+      expect(progress.completedEntries).toBeLessThanOrEqual(progress.totalEntries);
+      if (progress.totalKnown) expect(progress.totalEntries).toBe(expectedCount);
+    }
     await store.close();
   });
 

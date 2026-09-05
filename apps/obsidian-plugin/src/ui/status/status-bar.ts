@@ -6,11 +6,13 @@ import type {
   AppWithSettings,
   SynchStorageDisplayState,
   SynchSyncState,
+  SynchSyncProgress,
 } from "../contracts";
 
 export interface SynchStatusBarState {
   getSyncState(): SynchSyncState;
   getSyncPercent(): number;
+  getSyncProgress?(): SynchSyncProgress;
   getStorageDisplayState(): SynchStorageDisplayState;
 }
 
@@ -108,7 +110,7 @@ export class SynchStatusBar {
     }
 
     const state = this.state.getSyncState();
-    const syncStatusLabel = formatSyncStatusLabel(state, this.state.getSyncPercent());
+    const syncStatusLabel = formatSyncStatusLabel(state, this.state.getSyncPercent(), this.state.getSyncProgress?.());
     const storageState = this.state.getStorageDisplayState();
     const hasStorageWarning = storageState !== "normal";
     const needsMoreStorage = storageState === "needs_more_storage";

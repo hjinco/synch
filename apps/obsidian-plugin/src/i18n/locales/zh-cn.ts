@@ -2,6 +2,10 @@ import { en } from "./en";
 
 export const zhCn = {
     ...en,
+    "sync.downloading": "正在下载",
+    "sync.uploading": "正在上传",
+    "sync.completedCount": ({ count }: { count: number }) => `已完成 ${count} 项`,
+    "sync.completedTotal": ({ count, total }: { count: number; total: number }) => `已完成 ${count}/${total} 项`,
     account: "账户",
     audio: "音频",
     authentication: "认证",

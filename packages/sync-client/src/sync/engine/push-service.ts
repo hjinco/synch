@@ -1,3 +1,5 @@
+import { SyncWorkProgress } from "./work-progress";
+import type { SyncOperationProgress } from "../runtime/user-visible-status";
 import type { SyncBlobClient } from "../remote/blob-client";
 import type { ConflictFileWriter } from "../core/conflict-file";
 import {
@@ -17,11 +19,9 @@ import type {
 import type {
   AcceptedPushMutationRow,
   PendingMutationRow,
-  SyncProgressCounts,
 } from "../store/store";
 import type {
   SyncCursorStore,
-  SyncEntryStore,
   SyncMutationStore,
   SyncStoreLifecycle,
 } from "../store/ports";
@@ -47,7 +47,7 @@ export interface SyncPushServiceDeps extends SyncContentRuntimeDeps {
   conflictFileWriter?: ConflictFileWriter;
   blobClient: Pick<SyncBlobClient, "uploadBlob">;
   prepareConcurrency?: number;
-  onProgress: (progress: SyncProgressCounts) => Promise<void>;
+  onProgress?: (progress: SyncOperationProgress) => Promise<void>;
   onConflict?: (event: PushConflictEvent) => void;
   onFileSizeBlockedFilesChange?: () => void;
   onFileSyncStarted?: (event: {
@@ -69,7 +69,6 @@ export interface SyncPushServiceDeps extends SyncContentRuntimeDeps {
 
 export interface SyncPushStore
   extends SyncCursorStore,
-    Pick<SyncEntryStore, "countSyncProgress">,
     Pick<
       SyncMutationStore,
       "listBlockedDirtyEntriesByReason" | "listDirtyEntries" | "updateDirtyEntry"
@@ -99,12 +98,15 @@ export class SyncPushService {
 
   async pushPendingMutations(
     session: SyncRealtimeSession,
+    onProgress = this.deps.onProgress ?? (async (_progress: SyncOperationProgress) => {}),
   ): Promise<PushPendingMutationsResult> {
     const store = this.deps.getSyncStore();
     if (!store) {
       throw new Error("Sync store is not initialized.");
     }
 
+    const progress = new SyncWorkProgress("push");
+    await onProgress(progress.snapshot());
     const token = await this.deps.getSyncToken();
     const startingCursor = await store.getCursor();
     let cursor = startingCursor;
@@ -139,6 +141,7 @@ export class SyncPushService {
           break;
         }
 
+        progress.register(pending.map((mutation) => mutation.mutationId));
         const preparedMutations = await this.preparePendingMutations(
           mutationCommitter,
           syncCryptoContext,
@@ -187,7 +190,8 @@ export class SyncPushService {
         }
 
         if (committable.length === 0) {
-          await this.reportProgress(store);
+          await store.flush();
+          await onProgress(progress.snapshot());
           if (stopAfterCurrentBatch) {
             break;
           }
@@ -273,6 +277,8 @@ export class SyncPushService {
           }
           throw error;
         }
+        await store.flush();
+        progress.complete(acceptedPushMutations.map(({ mutation }) => mutation.mutationId));
         for (const accepted of acceptedFiles) {
           this.deps.onFileSyncCompleted?.(accepted);
         }
@@ -334,7 +340,8 @@ export class SyncPushService {
             continue;
           }
         }
-        await this.reportProgress(store);
+        await store.flush();
+        await onProgress(progress.snapshot());
         if (stopAfterCurrentBatch) {
           break;
         }
@@ -355,6 +362,9 @@ export class SyncPushService {
       syncCryptoContext.dispose();
       await store.flush();
     }
+
+    progress.seal();
+    await onProgress(progress.snapshot());
 
     // TODO: Refresh file-size-blocked decorations when existing blocked files become syncable.
     if (fileSizeBlocked > 0) {
@@ -402,15 +412,6 @@ export class SyncPushService {
     }
 
     return unblocked;
-  }
-
-  private async reportProgress(store: SyncPushStore): Promise<void> {
-    const progress = await store.countSyncProgress();
-    if (progress.totalEntries <= 0) {
-      return;
-    }
-
-    await this.deps.onProgress(progress);
   }
 
   private createMutationCommitter(

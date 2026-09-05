@@ -2,6 +2,10 @@ import { en } from "./en";
 
 export const zhTw = {
     ...en,
+    "sync.downloading": "正在下載",
+    "sync.uploading": "正在上傳",
+    "sync.completedCount": ({ count }: { count: number }) => `已完成 ${count} 項`,
+    "sync.completedTotal": ({ count, total }: { count: number; total: number }) => `已完成 ${count}/${total} 項`,
     account: "帳戶",
     audio: "音訊",
     authentication: "認證",

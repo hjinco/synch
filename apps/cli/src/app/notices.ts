@@ -1,6 +1,9 @@
 import type { AuthNoticeEvent } from "@synch/sync-client/auth/manager";
 import type { RemoteVaultNoticeEvent } from "@synch/sync-client/remote-vault/manager";
-import type { UserVisibleSyncState } from "@synch/sync-client/sync/runtime/user-visible-status";
+import type {
+  UserVisibleSyncProgress,
+  UserVisibleSyncState,
+} from "@synch/sync-client/sync/runtime/user-visible-status";
 
 export interface Logger {
   log(message: string): void;
@@ -84,4 +87,16 @@ export function formatSyncStatusLabel(state: UserVisibleSyncState): string {
     case "attention_needed":
       return "attention needed";
   }
+}
+
+export function formatSyncProgressSuffix(progress: UserVisibleSyncProgress): string {
+  if (progress.totalKnown === false) {
+    return ` (${progress.completedEntries} completed)`;
+  }
+
+  if (progress.totalEntries <= 0) {
+    return "";
+  }
+
+  return ` (${progress.completedEntries}/${progress.totalEntries})`;
 }
