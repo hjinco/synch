@@ -349,13 +349,16 @@ export class DexieSyncStore implements SyncStore {
     return row ? toPendingMutationRow(row) : null;
   }
 
-  async listDirtyEntries(limit?: number): Promise<PendingMutationRow[]> {
+  async listDirtyEntries(limit?: number, excludedEntryIds?: ReadonlySet<string>): Promise<PendingMutationRow[]> {
     let collection = this.db.entries
       .where("[pendingStatus+pendingCreatedAt+entryId]")
       .between(
         ["pending", MIN_PENDING_CREATED_AT, ""],
         ["pending", [], []],
       );
+    if (excludedEntryIds?.size) {
+      collection = collection.filter((row) => !excludedEntryIds.has(row.entryId));
+    }
     if (limit !== undefined) {
       collection = collection.limit(limit);
     }

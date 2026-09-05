@@ -1,76 +1,104 @@
 export const PUSH_BATCH_SIZE = 100;
-// Coalesce completions during slower uploads; flush immediately once the
-// selection is fully prepared so fast local transports pay no timer delay.
 const COMMIT_COALESCE_MS = 100;
 
-/**
- * Prepare one bounded selection of dirty entries while the consumer commits
- * completed batches. The caller must finish this selection before reading the
- * next one, so a newer mutation for the same entry cannot overtake its commit.
- */
-export async function* preparePushBatches<T, U>(
-  items: T[],
+/** Own entries until the consumer finishes committing and applying the batch. */
+export async function* preparePushBatches<T extends { entryId: string }, U>(
+  load: (limit: number, excluded: ReadonlySet<string>) => Promise<T[]>,
   concurrency: number,
   prepare: (item: T) => Promise<U>,
+  shouldYield: () => boolean,
 ): AsyncGenerator<U[]> {
-  const ready: Array<{ index: number; value: U }> = [];
+  const owned = new Set<string>();
+  const waiting: Array<{ item: T; index: number }> = [];
+  const ready: Array<{ item: T; index: number; value: U }> = [];
+  const jobs = new Set<Promise<void>>();
   const normalized = Number.isFinite(concurrency) ? Math.floor(concurrency) : 1;
-  const workerCount = Math.max(0, Math.min(Math.max(1, normalized), items.length));
+  const workerCount = Math.min(PUSH_BATCH_SIZE, Math.max(1, normalized));
   let nextIndex = 0;
-  let activeWorkers = workerCount;
   let stopped = false;
+  let yielding = false;
+  let sourceEmpty = false;
   let failure: { error: unknown } | undefined;
   let wake: (() => void) | undefined;
   let timer: ReturnType<typeof setTimeout> | undefined;
   let flushReady = false;
 
-  const workers = Promise.all(Array.from({ length: workerCount }, async () => {
-    try {
-      while (!stopped && nextIndex < items.length) {
-        const index = nextIndex++;
-        const value = await prepare(items[index]!);
-        if (stopped) break;
-        ready.push({ index, value });
-        if (timer === undefined) {
-          timer = setTimeout(() => {
-            flushReady = true;
-            wake?.();
-          }, COMMIT_COALESCE_MS);
-        }
+  function throwIfFailed(): void {
+    if (failure) throw failure.error;
+  }
+
+  function updateAndCheckSupplyStop(): boolean {
+    // Once requested, yielding remains active for the rest of this drain.
+    yielding ||= shouldYield();
+    return stopped || yielding;
+  }
+
+  function pump(): void {
+    while (!updateAndCheckSupplyStop() && jobs.size < workerCount && waiting.length > 0) {
+      const work = waiting.shift()!;
+      const job = Promise.resolve().then(() => prepare(work.item)).then(
+        (value) => {
+          ready.push({ ...work, value });
+          if (timer === undefined && !stopped) {
+            timer = setTimeout(() => {
+              flushReady = true;
+              wake?.();
+            }, COMMIT_COALESCE_MS);
+          }
+        },
+        (error: unknown) => {
+          failure ??= { error };
+          stopped = true;
+        },
+      ).finally(() => {
+        jobs.delete(job);
+        pump();
         wake?.();
-      }
-    } catch (error) {
-      failure ??= { error };
-      stopped = true;
-    } finally {
-      activeWorkers -= 1;
-      wake?.();
+      });
+      jobs.add(job);
     }
-  }));
+  }
 
   try {
     while (true) {
-      if (failure) throw failure.error;
+      throwIfFailed();
+      if (!updateAndCheckSupplyStop() && !sourceEmpty && owned.size < PUSH_BATCH_SIZE) {
+        const items = await load(PUSH_BATCH_SIZE - owned.size, owned);
+        // A pull can arrive during the store read. Do not start its results.
+        if (!updateAndCheckSupplyStop()) {
+          sourceEmpty = items.length === 0;
+          for (const item of items) {
+            owned.add(item.entryId);
+            waiting.push({ item, index: nextIndex++ });
+          }
+          pump();
+        }
+      }
+      throwIfFailed();
+      const preparationFinished = jobs.size === 0 && (yielding || waiting.length === 0);
       if (ready.length > 0 &&
-          (flushReady || ready.length >= PUSH_BATCH_SIZE || activeWorkers === 0)) {
+          (flushReady || ready.length >= PUSH_BATCH_SIZE || preparationFinished)) {
         clearTimeout(timer);
         timer = undefined;
         flushReady = false;
-        // Preserve queue order among ready entries without waiting for slow ones.
         ready.sort((left, right) => left.index - right.index);
-        yield ready.splice(0, PUSH_BATCH_SIZE).map(({ value }) => value);
+        const batch = ready.splice(0, PUSH_BATCH_SIZE);
+        yield batch.map(({ value }) => value);
+        for (const { item } of batch) owned.delete(item.entryId);
+        sourceEmpty = false;
         continue;
       }
-      if (activeWorkers === 0) break;
-      await new Promise<void>((resolve) => { wake = resolve; });
+      if (preparationFinished && (yielding || sourceEmpty)) break;
+      await new Promise<void>((resolve) => {
+        wake = resolve;
+      });
       wake = undefined;
     }
   } finally {
     stopped = true;
     clearTimeout(timer);
-    // Uploads cannot be cancelled through the blob client. Join them before the
-    // caller flushes the store or disposes the shared crypto context, including
-    // when a commit fails or the consumer stops on a rejected mutation.
-    await workers;
+    // No cancellation is available on the blob client. Join started operations
+    // before the caller disposes crypto or allows pull to mutate the store.
+    await Promise.all(jobs);
   }
 }
