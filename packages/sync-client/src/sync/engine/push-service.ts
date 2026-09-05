@@ -122,9 +122,9 @@ export class SyncPushService {
     // Allow one immediate retry after requeueing; repeated churn must use the
     // auto loop's retry backoff instead of keeping an unbounded drain alive.
     const requeuedEntries = new Set<string>();
-    let noProgress = false;
+    let requeueLimitReached = false;
     const recordRequeue = (entryId: string) => {
-      if (requeuedEntries.has(entryId)) noProgress = true;
+      if (requeuedEntries.has(entryId)) requeueLimitReached = true;
       requeuedEntries.add(entryId);
     };
     let hasMore = false;
@@ -145,7 +145,7 @@ export class SyncPushService {
         token,
         session,
         progress,
-        () => shouldYield() || shouldPullAfterPush || noProgress,
+        () => shouldYield() || shouldPullAfterPush || requeueLimitReached,
       )) {
         const committable: Array<{
           mutation: (typeof preparedMutations)[number]["mutation"];
@@ -221,6 +221,7 @@ export class SyncPushService {
         const rejectedPushMutations: Array<{
           mutation: (typeof committable)[number]["mutation"];
           result: Extract<CommitMutationBatchResult, { status: "rejected" }>;
+          path: string;
         }> = [];
         for (const { mutation, prepared, path } of committable) {
           const batchResult = resultsByMutationId.get(mutation.mutationId);
@@ -256,7 +257,7 @@ export class SyncPushService {
             continue;
           }
 
-          rejectedPushMutations.push({ mutation, result: batchResult });
+          rejectedPushMutations.push({ mutation, result: batchResult, path });
         }
 
         try {
@@ -286,10 +287,7 @@ export class SyncPushService {
           })),
         );
 
-        for (const { mutation, result: batchResult } of rejectedPushMutations) {
-          const path = committable.find(
-            (item) => item.mutation.mutationId === mutation.mutationId,
-          )?.path ?? "<unavailable>";
+        for (const { mutation, result: batchResult, path } of rejectedPushMutations) {
           let result;
           try {
             result = await mutationCommitter.handleRejectedPreparedMutation(
@@ -361,7 +359,7 @@ export class SyncPushService {
       await store.flush();
     }
 
-    if (noProgress && !shouldYield() && !shouldPullAfterPush) {
+    if (requeueLimitReached && !shouldYield() && !shouldPullAfterPush) {
       throw new PushNoProgressError();
     }
 

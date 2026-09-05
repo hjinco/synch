@@ -27,22 +27,29 @@ export async function* preparePushBatches<T extends { entryId: string }, U>(
     if (failure) throw failure.error;
   }
 
-  function shouldStopSupply(): boolean {
+  function updateAndCheckSupplyStop(): boolean {
+    // Once requested, yielding remains active for the rest of this drain.
     yielding ||= shouldYield();
     return stopped || yielding;
   }
 
   function pump(): void {
-    while (!shouldStopSupply() && jobs.size < workerCount && waiting.length > 0) {
+    while (!updateAndCheckSupplyStop() && jobs.size < workerCount && waiting.length > 0) {
       const work = waiting.shift()!;
       const job = Promise.resolve().then(() => prepare(work.item)).then(
         (value) => {
           ready.push({ ...work, value });
           if (timer === undefined && !stopped) {
-            timer = setTimeout(() => { flushReady = true; wake?.(); }, COMMIT_COALESCE_MS);
+            timer = setTimeout(() => {
+              flushReady = true;
+              wake?.();
+            }, COMMIT_COALESCE_MS);
           }
         },
-        (error: unknown) => { failure ??= { error }; stopped = true; },
+        (error: unknown) => {
+          failure ??= { error };
+          stopped = true;
+        },
       ).finally(() => {
         jobs.delete(job);
         pump();
@@ -55,10 +62,10 @@ export async function* preparePushBatches<T extends { entryId: string }, U>(
   try {
     while (true) {
       throwIfFailed();
-      if (!shouldStopSupply() && !sourceEmpty && owned.size < PUSH_BATCH_SIZE) {
+      if (!updateAndCheckSupplyStop() && !sourceEmpty && owned.size < PUSH_BATCH_SIZE) {
         const items = await load(PUSH_BATCH_SIZE - owned.size, owned);
         // A pull can arrive during the store read. Do not start its results.
-        if (!shouldStopSupply()) {
+        if (!updateAndCheckSupplyStop()) {
           sourceEmpty = items.length === 0;
           for (const item of items) {
             owned.add(item.entryId);
@@ -82,7 +89,9 @@ export async function* preparePushBatches<T extends { entryId: string }, U>(
         continue;
       }
       if (preparationFinished && (yielding || sourceEmpty)) break;
-      await new Promise<void>((resolve) => { wake = resolve; });
+      await new Promise<void>((resolve) => {
+        wake = resolve;
+      });
       wake = undefined;
     }
   } finally {
