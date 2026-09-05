@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { encodeUtf8, hashBytes } from "../../../core/content";
 import {
@@ -83,7 +83,7 @@ describe("SyncPushService drain: batching", () => {
     await store.close();
   });
 
-  it("prepares blob uploads concurrently while committing in queue order", async () => {
+  it("applies ready files before a slow upload while bounding upload concurrency", async () => {
     const store = createTestSyncStore();
     const bodies = ["first body", "second body", "third body"];
     for (let index = 0; index < bodies.length; index += 1) {
@@ -112,8 +112,10 @@ describe("SyncPushService drain: batching", () => {
     const uploadDeferreds = new Map<string, Deferred<void>>();
     let activeUploads = 0;
     let maxActiveUploads = 0;
+    const firstCommit = createDeferred<void>();
     const session = createPushSession(async (mutation) => {
       committed.push(mutation);
+      if (committed.length === 1) await firstCommit.promise;
       return {
         cursor: committed.length,
         entryId: mutation.entryId,
@@ -161,17 +163,98 @@ describe("SyncPushService drain: batching", () => {
 
     uploadDeferreds.get("blob-1")?.resolve();
     await waitFor(() => uploadStarts.length === 3);
-    expect(committed).toEqual([]);
+    await waitFor(() => committed.length === 1);
+    expect(committed[0]?.blobId).toBe("blob-1");
+    await waitFor(() => activeUploads === 2);
 
     uploadDeferreds.get("blob-2")?.resolve();
+    await waitFor(() => activeUploads === 1);
+    expect(committed).toHaveLength(1);
+    firstCommit.resolve();
+    await waitFor(() => committed.length === 2);
     uploadDeferreds.get("blob-0")?.resolve();
     await pushPromise;
 
-    expect(committed.map((mutation) => mutation.blobId)).toEqual(["blob-0", "blob-1", "blob-2"]);
+    expect(committed.map((mutation) => mutation.blobId)).toEqual(["blob-1", "blob-2", "blob-0"]);
     expect(maxActiveUploads).toBe(2);
     expect(await store.listDirtyEntries()).toEqual([]);
     await store.close();
   });
+
+  it.each(["prepare", "commit"] as const)(
+    "preserves unfinished mutations and joins uploads after a %s failure",
+    async (failureStage) => {
+      const store = createTestSyncStore();
+      const body = encodeUtf8("body");
+      const hash = await hashBytes(body);
+      for (let index = 0; index < 2; index++) {
+        await store.markEntryDirty({
+          mutationId: `mutation-${index}`,
+          entryId: `entry-${index}`,
+          op: "upsert",
+          baseRevision: 0,
+          blobId: `blob-${index}`,
+          hash,
+          encryptedMetadata: await encryptMutationMetadata({
+            entryId: `entry-${index}`, baseRevision: 0, op: "upsert",
+            blobId: `blob-${index}`, path: `file-${index}.md`, hash,
+          }),
+          createdAt: index,
+        });
+      }
+      const slowUpload = createDeferred<void>();
+      const expectedError = new Error("injected failure");
+      let shouldFail = true;
+      let commitStarted = false;
+      let completed = false;
+      let settled = false;
+      let cursor = 0;
+      const uploads: string[] = [];
+      const session = createPushSession(async (mutation) => {
+        commitStarted = true;
+        if (shouldFail && failureStage === "commit") throw expectedError;
+        return { cursor: ++cursor, entryId: mutation.entryId, revision: 1 };
+      });
+      const service = new SyncPushService({
+        getApiBaseUrl: () => "http://127.0.0.1:8787",
+        getSyncToken: async () => createToken(),
+        getSyncStore: () => store,
+        getRemoteVaultKey: () => TEST_VAULT_KEY,
+        fileReader: { async readBytes() { return body; } },
+        blobClient: {
+          async uploadBlob(_url, _token, _vault, blobId) {
+            uploads.push(blobId);
+            if (blobId === "blob-1" && shouldFail) {
+              await slowUpload.promise;
+              if (failureStage === "prepare") throw expectedError;
+            }
+          },
+        },
+        onFileSyncCompleted: () => { completed = true; },
+      });
+      // Attach the rejection handler before releasing either operation.
+      const push = service.pushPendingMutations(session).then(
+        () => { settled = true; return null; },
+        (error: unknown) => { settled = true; return error; },
+      );
+      await waitFor(() => commitStarted);
+      if (failureStage === "prepare") await waitFor(() => completed);
+      expect(settled).toBe(false);
+      slowUpload.resolve();
+      expect(await push).toBe(expectedError);
+      expect((await store.listDirtyEntries()).map(({ entryId }) => entryId)).toEqual(
+        failureStage === "prepare" ? ["entry-1"] : ["entry-0", "entry-1"],
+      );
+      shouldFail = false;
+      await service.pushPendingMutations(session);
+      expect(await store.listDirtyEntries()).toEqual([]);
+      expect(uploads.filter((id) => id === "blob-0")).toHaveLength(1);
+      expect(uploads.filter((id) => id === "blob-1")).toHaveLength(
+        failureStage === "prepare" ? 2 : 1,
+      );
+      await store.close();
+    },
+  );
 
   it("keeps crypto context scoped to each overlapping push call", async () => {
     const firstStore = createTestSyncStore();
@@ -279,13 +362,5 @@ function createDeferred<T>(): Deferred<T> {
 }
 
 async function waitFor(condition: () => boolean): Promise<void> {
-  for (let attempt = 0; attempt < 50; attempt += 1) {
-    if (condition()) {
-      return;
-    }
-
-    await new Promise((resolve) => setTimeout(resolve, 0));
-  }
-
-  throw new Error("condition was not met");
+  await vi.waitFor(() => expect(condition()).toBe(true), { timeout: 2_000, interval: 5 });
 }

@@ -1,3 +1,4 @@
+import { preparePushBatches, PUSH_BATCH_SIZE } from "./push-preparation-pipeline";
 import { SyncWorkProgress } from "./work-progress";
 import type { SyncOperationProgress } from "../runtime/user-visible-status";
 import type { SyncBlobClient } from "../remote/blob-client";
@@ -34,7 +35,6 @@ import {
 } from "./push-mutation-committer";
 import { metadataContextFromMutation } from "./push-mutation-shared";
 
-const DEFAULT_PUSH_BATCH = 100;
 const DEFAULT_PUSH_DRAIN_LIMIT = 1_000;
 const DEFAULT_PUSH_PREPARE_CONCURRENCY = 12;
 
@@ -134,7 +134,7 @@ export class SyncPushService {
       while (processedMutations < DEFAULT_PUSH_DRAIN_LIMIT) {
         const remainingBudget = DEFAULT_PUSH_DRAIN_LIMIT - processedMutations;
         const pending = await store.listDirtyEntries(
-          Math.min(DEFAULT_PUSH_BATCH, remainingBudget),
+          Math.min(PUSH_BATCH_SIZE, remainingBudget),
         );
         if (pending.length === 0) {
           hasMore = false;
@@ -142,206 +142,209 @@ export class SyncPushService {
         }
 
         progress.register(pending.map((mutation) => mutation.mutationId));
-        const preparedMutations = await this.preparePendingMutations(
+        for await (const preparedMutations of this.preparePendingMutations(
           mutationCommitter,
           syncCryptoContext,
           store,
           token,
           session,
           pending,
-        );
+        )) {
+          const committable: Array<{
+            mutation: (typeof preparedMutations)[number]["mutation"];
+            prepared: PreparedPushMutation;
+            path: string;
+          }> = [];
 
-        const committable: Array<{
-          mutation: (typeof preparedMutations)[number]["mutation"];
-          prepared: PreparedPushMutation;
-          path: string;
-        }> = [];
+          for (const { mutation, prepared, path } of preparedMutations) {
+            processedMutations += 1;
 
-        for (const { mutation, prepared, path } of preparedMutations) {
-          processedMutations += 1;
-
-          if (!prepared) {
-            mutationsRequeued += 1;
-            this.deps.onFileSyncFailed?.({
-              operation: mutation.op,
-              path,
-              reason: "requeued",
-            });
-            continue;
-          }
-          if ("skipped" in prepared) {
-            this.deps.onFileSyncFailed?.({
-              operation: mutation.op,
-              path,
-              reason: prepared.reason,
-            });
-            if (prepared.reason === "file_too_large") {
-              fileSizeBlocked += 1;
+            if (!prepared) {
+              mutationsRequeued += 1;
+              this.deps.onFileSyncFailed?.({
+                operation: mutation.op,
+                path,
+                reason: "requeued",
+              });
+              continue;
             }
-            if (prepared.reason === "storage_quota_exceeded") {
-              stopAfterCurrentBatch = true;
-              stopReason = "storage_quota_exceeded";
+            if ("skipped" in prepared) {
+              this.deps.onFileSyncFailed?.({
+                operation: mutation.op,
+                path,
+                reason: prepared.reason,
+              });
+              if (prepared.reason === "file_too_large") {
+                fileSizeBlocked += 1;
+              }
+              if (prepared.reason === "storage_quota_exceeded") {
+                stopAfterCurrentBatch = true;
+                stopReason = "storage_quota_exceeded";
+                break;
+              }
+              continue;
+            }
+
+            committable.push({ mutation, prepared, path });
+          }
+
+          if (committable.length === 0) {
+            await store.flush();
+            await onProgress(progress.snapshot());
+            if (stopAfterCurrentBatch) {
               break;
             }
             continue;
           }
 
-          committable.push({ mutation, prepared, path });
-        }
+          let committed;
+          try {
+            committed = await session.commitMutations(
+              committable.map(({ prepared }) => prepared.commitPayload),
+            );
+          } catch (error) {
+            for (const { mutation, path } of committable) {
+              this.deps.onFileSyncFailed?.({
+                operation: mutation.op,
+                path,
+                reason: "commit_failed",
+              });
+            }
+            throw error;
+          }
+          const resultsByMutationId = new Map(
+            committed.results.map((result) => [result.mutationId, result]),
+          );
 
-        if (committable.length === 0) {
+          const acceptedPushMutations: AcceptedPushMutationRow[] = [];
+          const acceptedFiles: Array<{
+            operation: "upsert" | "delete";
+            path: string;
+            revision: number;
+          }> = [];
+          const rejectedPushMutations: Array<{
+            mutation: (typeof committable)[number]["mutation"];
+            result: Extract<CommitMutationBatchResult, { status: "rejected" }>;
+          }> = [];
+          for (const { mutation, prepared, path } of committable) {
+            const batchResult = resultsByMutationId.get(mutation.mutationId);
+            if (!batchResult) {
+              throw new Error(`Commit batch did not include ${mutation.mutationId}.`);
+            }
+
+            if (batchResult.status === "accepted") {
+              const acceptedPushMutation =
+                await mutationCommitter.buildAcceptedPushMutation(
+                  mutation,
+                  prepared,
+                  batchResult,
+                );
+              acceptedPushMutations.push(acceptedPushMutation);
+              if (acceptedPushMutation.remoteBlobId) {
+                // The coordinator made this blob live as part of accepting the
+                // mutation. A replay after a local apply failure is idempotent,
+                // and a redundant upload is rejected before reaching storage.
+                this.remotelyStagedBlobIds.delete(acceptedPushMutation.remoteBlobId);
+              }
+              cursor = Math.max(cursor, batchResult.cursor);
+              acceptedCursors.push(batchResult.cursor);
+              acceptedFiles.push({
+                operation: mutation.op,
+                path,
+                revision: batchResult.revision,
+              });
+              filesCreatedOrUpdated += mutation.op === "upsert" ? 1 : 0;
+              filesDeleted += mutation.op === "delete" ? 1 : 0;
+              mutationsPushed += 1;
+              continue;
+            }
+
+            rejectedPushMutations.push({ mutation, result: batchResult });
+          }
+
+          try {
+            await store.applyAcceptedPushBatch(acceptedPushMutations, {
+              remoteVaultKey,
+            });
+          } catch (error) {
+            for (const accepted of acceptedFiles) {
+              this.deps.onFileSyncFailed?.({
+                operation: accepted.operation,
+                path: accepted.path,
+                reason: "local_commit_failed",
+              });
+            }
+            throw error;
+          }
+          await store.flush();
+          progress.complete(acceptedPushMutations.map(({ mutation }) => mutation.mutationId));
+          for (const accepted of acceptedFiles) {
+            this.deps.onFileSyncCompleted?.(accepted);
+          }
+
+          mutationCommitter.forgetRemotelyStagedBlobsIfMissing(
+            rejectedPushMutations.map(({ mutation, result }) => ({
+              blobId: mutation.blobId,
+              error: result,
+            })),
+          );
+
+          for (const { mutation, result: batchResult } of rejectedPushMutations) {
+            const path = committable.find(
+              (item) => item.mutation.mutationId === mutation.mutationId,
+            )?.path ?? "<unavailable>";
+            let result;
+            try {
+              result = await mutationCommitter.handleRejectedPreparedMutation(
+                store,
+                mutation,
+                batchResult,
+              );
+            } catch (error) {
+              this.deps.onFileSyncFailed?.({
+                operation: mutation.op,
+                path,
+                reason: "rejected",
+              });
+              throw error;
+            }
+            conflictsCreated += result.conflictsCreated;
+            shouldPullAfterPush = shouldPullAfterPush || result.shouldPullAfterPush;
+
+            if (result.status === "stale") {
+              this.deps.onFileSyncFailed?.({
+                operation: mutation.op,
+                path,
+                reason: "stale_revision",
+              });
+              mutationsRequeued += 1;
+              stopAfterCurrentBatch = true;
+              continue;
+            }
+            if (result.status === "requeued") {
+              this.deps.onFileSyncFailed?.({
+                operation: mutation.op,
+                path,
+                reason: "requeued",
+              });
+              mutationsRequeued += 1;
+              continue;
+            }
+            if (result.status === "conflict") {
+              this.deps.onFileSyncFailed?.({
+                operation: mutation.op,
+                path,
+                reason: "conflict",
+              });
+              continue;
+            }
+          }
           await store.flush();
           await onProgress(progress.snapshot());
           if (stopAfterCurrentBatch) {
             break;
           }
-          continue;
         }
-
-        let committed;
-        try {
-          committed = await session.commitMutations(
-            committable.map(({ prepared }) => prepared.commitPayload),
-          );
-        } catch (error) {
-          for (const { mutation, path } of committable) {
-            this.deps.onFileSyncFailed?.({
-              operation: mutation.op,
-              path,
-              reason: "commit_failed",
-            });
-          }
-          throw error;
-        }
-        const resultsByMutationId = new Map(
-          committed.results.map((result) => [result.mutationId, result]),
-        );
-
-        const acceptedPushMutations: AcceptedPushMutationRow[] = [];
-        const acceptedFiles: Array<{
-          operation: "upsert" | "delete";
-          path: string;
-          revision: number;
-        }> = [];
-        const rejectedPushMutations: Array<{
-          mutation: (typeof committable)[number]["mutation"];
-          result: Extract<CommitMutationBatchResult, { status: "rejected" }>;
-        }> = [];
-        for (const { mutation, prepared, path } of committable) {
-          const batchResult = resultsByMutationId.get(mutation.mutationId);
-          if (!batchResult) {
-            throw new Error(`Commit batch did not include ${mutation.mutationId}.`);
-          }
-
-          if (batchResult.status === "accepted") {
-            const acceptedPushMutation =
-              await mutationCommitter.buildAcceptedPushMutation(
-                mutation,
-                prepared,
-                batchResult,
-              );
-            acceptedPushMutations.push(acceptedPushMutation);
-            if (acceptedPushMutation.remoteBlobId) {
-              // The coordinator made this blob live as part of accepting the
-              // mutation. A replay after a local apply failure is idempotent,
-              // and a redundant upload is rejected before reaching storage.
-              this.remotelyStagedBlobIds.delete(acceptedPushMutation.remoteBlobId);
-            }
-            cursor = Math.max(cursor, batchResult.cursor);
-            acceptedCursors.push(batchResult.cursor);
-            acceptedFiles.push({
-              operation: mutation.op,
-              path,
-              revision: batchResult.revision,
-            });
-            filesCreatedOrUpdated += mutation.op === "upsert" ? 1 : 0;
-            filesDeleted += mutation.op === "delete" ? 1 : 0;
-            mutationsPushed += 1;
-            continue;
-          }
-
-          rejectedPushMutations.push({ mutation, result: batchResult });
-        }
-
-        try {
-          await store.applyAcceptedPushBatch(acceptedPushMutations, {
-            remoteVaultKey,
-          });
-        } catch (error) {
-          for (const accepted of acceptedFiles) {
-            this.deps.onFileSyncFailed?.({
-              operation: accepted.operation,
-              path: accepted.path,
-              reason: "local_commit_failed",
-            });
-          }
-          throw error;
-        }
-        await store.flush();
-        progress.complete(acceptedPushMutations.map(({ mutation }) => mutation.mutationId));
-        for (const accepted of acceptedFiles) {
-          this.deps.onFileSyncCompleted?.(accepted);
-        }
-
-        mutationCommitter.forgetRemotelyStagedBlobsIfMissing(
-          rejectedPushMutations.map(({ mutation, result }) => ({
-            blobId: mutation.blobId,
-            error: result,
-          })),
-        );
-
-        for (const { mutation, result: batchResult } of rejectedPushMutations) {
-          const path = committable.find(
-            (item) => item.mutation.mutationId === mutation.mutationId,
-          )?.path ?? "<unavailable>";
-          let result;
-          try {
-            result = await mutationCommitter.handleRejectedPreparedMutation(
-              store,
-              mutation,
-              batchResult,
-            );
-          } catch (error) {
-            this.deps.onFileSyncFailed?.({
-              operation: mutation.op,
-              path,
-              reason: "rejected",
-            });
-            throw error;
-          }
-          conflictsCreated += result.conflictsCreated;
-          shouldPullAfterPush = shouldPullAfterPush || result.shouldPullAfterPush;
-
-          if (result.status === "stale") {
-            this.deps.onFileSyncFailed?.({
-              operation: mutation.op,
-              path,
-              reason: "stale_revision",
-            });
-            mutationsRequeued += 1;
-            stopAfterCurrentBatch = true;
-            continue;
-          }
-          if (result.status === "requeued") {
-            this.deps.onFileSyncFailed?.({
-              operation: mutation.op,
-              path,
-              reason: "requeued",
-            });
-            mutationsRequeued += 1;
-            continue;
-          }
-          if (result.status === "conflict") {
-            this.deps.onFileSyncFailed?.({
-              operation: mutation.op,
-              path,
-              reason: "conflict",
-            });
-            continue;
-          }
-        }
-        await store.flush();
-        await onProgress(progress.snapshot());
         if (stopAfterCurrentBatch) {
           break;
         }
@@ -432,21 +435,21 @@ export class SyncPushService {
     });
   }
 
-  private async preparePendingMutations(
+  private preparePendingMutations(
     mutationCommitter: PushMutationCommitter,
     syncCryptoContext: SyncCryptoContext,
     store: SyncPushStore,
     token: SyncTokenResponse,
     session: SyncRealtimeSession,
     pending: PendingMutationRow[],
-  ): Promise<
+  ): AsyncGenerator<
     Array<{
       mutation: (typeof pending)[number];
       prepared: Awaited<ReturnType<PushMutationCommitter["prepareMutationForCommit"]>>;
       path: string;
     }>
   > {
-    return await mapWithConcurrency(
+    return preparePushBatches(
       pending,
       this.deps.prepareConcurrency ?? DEFAULT_PUSH_PREPARE_CONCURRENCY,
       async (mutation) => {
@@ -511,46 +514,4 @@ function shouldUnblockFileSizeMutation(
     typeof encryptedSizeBytes === "number" &&
     encryptedSizeBytes <= maxFileSizeBytes
   );
-}
-
-async function mapWithConcurrency<T, U>(
-  items: T[],
-  concurrency: number,
-  mapper: (item: T) => Promise<U>,
-): Promise<U[]> {
-  if (items.length === 0) {
-    return [];
-  }
-
-  const results = new Array<U>(items.length);
-  let nextIndex = 0;
-  let firstError: unknown = null;
-  const workerCount = normalizeConcurrency(concurrency, items.length);
-
-  await Promise.all(
-    Array.from({ length: workerCount }, async () => {
-      while (nextIndex < items.length && !firstError) {
-        const index = nextIndex;
-        nextIndex += 1;
-        try {
-          results[index] = await mapper(items[index]);
-        } catch (error) {
-          firstError = firstError ?? error;
-        }
-      }
-    }),
-  );
-
-  if (firstError) {
-    throw firstError instanceof Error
-      ? firstError
-      : new Error(typeof firstError === "string" ? firstError : "Concurrent operation failed");
-  }
-
-  return results;
-}
-
-function normalizeConcurrency(concurrency: number, itemCount: number): number {
-  const normalizedConcurrency = Number.isFinite(concurrency) ? Math.floor(concurrency) : 1;
-  return Math.max(1, Math.min(normalizedConcurrency, itemCount));
 }
