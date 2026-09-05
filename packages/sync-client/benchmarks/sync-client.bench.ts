@@ -9,6 +9,7 @@ import {
   DEFAULT_VAULT_CONFIG_SYNC_RULES,
   SyncEngine,
   hashBytes,
+  createSyncCryptoContext,
   type HttpRequestInput,
   type HttpResponseLike,
   type SyncEngineDeps,
@@ -19,6 +20,8 @@ import {
   type BenchmarkFixture,
   type BenchmarkFixtureEntry,
 } from "./benchmark-fixture";
+import { PushMetrics } from "./push-metrics";
+import { createMixedPushFixture, MIXED_PUSH_FIXTURE_SPEC } from "./mixed-push-fixture";
 import { createBenchmarkVault } from "./benchmark-vault";
 import {
   createTestSyncStore,
@@ -63,7 +66,33 @@ type BenchmarkCommitMutation = {
 type BenchmarkRun = {
   run(): Promise<void>;
   verifyAndDispose(): Promise<void>;
+  metrics?: PushMetrics;
 };
+
+type TransportProfile = {
+  uploadDelayMs: number;
+  commitDelayMs: number;
+  attachmentExtraDelayMs: number;
+};
+const NO_DELAY: TransportProfile = {
+  uploadDelayMs: 0,
+  commitDelayMs: 0,
+  attachmentExtraDelayMs: 0,
+};
+const MIXED_PROFILES: Record<string, TransportProfile> = {
+  "push-mixed-no-delay": NO_DELAY,
+  "push-mixed-latency": {
+    uploadDelayMs: 40,
+    commitDelayMs: 40,
+    attachmentExtraDelayMs: 0,
+  },
+  "push-mixed-slow-attachment": {
+    uploadDelayMs: 40,
+    commitDelayMs: 40,
+    attachmentExtraDelayMs: 800,
+  },
+};
+const measurements: Record<string, ReturnType<PushMetrics["snapshot"]>[]> = {};
 
 let fixturePromise: Promise<BenchmarkFixture> | null = null;
 let benchmarkCleanupPromise: Promise<void> = Promise.resolve();
@@ -79,7 +108,12 @@ class BenchmarkServer {
   private uploadDirectoryPromise: Promise<string> | null = null;
   private cursor: number;
 
-  constructor(entries: BenchmarkFixtureEntry[] = [], cursor = 0) {
+  constructor(
+    entries: BenchmarkFixtureEntry[] = [],
+    cursor = 0,
+    private readonly profile: TransportProfile = NO_DELAY,
+    private readonly metrics?: PushMetrics,
+  ) {
     this.cursor = cursor;
     for (const entry of entries) {
       this.entries.set(entry.entryId, toRemoteState(entry));
@@ -111,10 +145,16 @@ class BenchmarkServer {
       if (!(input.body instanceof ArrayBuffer)) {
         return { status: 400 };
       }
+      this.metrics?.uploadStarted(input.body.byteLength);
+      const isAttachment = input.body.byteLength >= MIXED_PUSH_FIXTURE_SPEC.attachmentBytes;
+      const uploadDelayMs = this.profile.uploadDelayMs +
+        (isAttachment ? this.profile.attachmentExtraDelayMs : 0);
+      if (uploadDelayMs > 0) await delay(uploadDelayMs);
       const uploadDirectory = await this.getUploadDirectory();
       const blobPath = join(uploadDirectory, `${blobId}.bin`);
       await writeFile(blobPath, new Uint8Array(input.body));
       this.blobFiles.set(blobId, blobPath);
+      if (isAttachment) this.metrics?.slowUploadCompleted();
       return { status: 200 };
     }
 
@@ -159,6 +199,8 @@ class BenchmarkServer {
         return;
 
       case "commit_mutations":
+        this.metrics?.commitStarted();
+        if (this.profile.commitDelayMs > 0) await delay(this.profile.commitDelayMs);
         socket.receive({
           type: "commit_mutations_committed",
           requestId,
@@ -173,6 +215,26 @@ class BenchmarkServer {
       default:
         // Watch and presence messages are fire-and-forget for this harness.
         return;
+    }
+  }
+
+  async assertUploadedContents(expected: Map<string, { size: number; hash: string }>): Promise<void> {
+    const crypto = createSyncCryptoContext(REMOTE_VAULT_KEY);
+    try {
+      if (this.entries.size !== expected.size) throw new Error("Remote entry count mismatch");
+      for (const [entryId, content] of expected) {
+        const entry = this.entries.get(entryId);
+        const blobPath = entry?.blobId ? this.blobFiles.get(entry.blobId) : null;
+        if (!entry?.blobId || !blobPath) throw new Error("Committed blob is missing");
+        const plaintext = await crypto.decryptBlob(new Uint8Array(await readFile(blobPath)), {
+          blobId: entry.blobId,
+        });
+        if (plaintext.byteLength !== content.size || await hashBytes(plaintext) !== content.hash) {
+          throw new Error("Uploaded content mismatch");
+        }
+      }
+    } finally {
+      crypto.dispose();
     }
   }
 
@@ -266,6 +328,7 @@ class BenchmarkServer {
       });
     }
 
+    if (results.length) this.metrics?.committed();
     return { cursor: this.cursor, results };
   }
 }
@@ -319,17 +382,21 @@ class BenchmarkWebSocket {
 }
 
 describe("sync-client black-box scenarios", () => {
-  registerScenario("initial-pull-1GiB", createInitialPullRun);
-  registerScenario("incremental-pull-64MiB", createIncrementalPullRun);
-  registerScenario("push-1GiB", createPushRun);
+  registerScenario("initial-pull-1GiB", async () => createInitialPullRun(await getFixture()));
+  registerScenario("incremental-pull-64MiB", async () => createIncrementalPullRun(await getFixture()));
+  registerScenario("push-1GiB", async () => createPushRun(await getFixture()));
+  for (const [name, profile] of Object.entries(MIXED_PROFILES)) {
+    registerScenario(name, () => createMixedPushRun(profile));
+  }
 });
 
 function registerScenario(
   name: string,
-  createRun: (fixture: BenchmarkFixture) => Promise<BenchmarkRun>,
+  createRun: () => Promise<BenchmarkRun>,
 ): void {
   let pendingRuns: BenchmarkRun[] = [];
   let completedRuns: BenchmarkRun[] = [];
+  let measured = false;
 
   bench(
     name,
@@ -348,15 +415,19 @@ function registerScenario(
       warmupIterations: WARMUP_ITERATIONS,
       setup: async (_task, mode) => {
         await benchmarkCleanupPromise;
-        const fixture = await getFixture();
+        measured = mode !== "warmup";
         pendingRuns = [];
         completedRuns = [];
         const iterations = mode === "warmup" ? WARMUP_ITERATIONS : BENCHMARK_ITERATIONS;
         for (let index = 0; index < iterations; index += 1) {
-          pendingRuns.push(await createRun(fixture));
+          pendingRuns.push(await createRun());
         }
       },
       teardown: () => {
+        if (measured) {
+          measurements[name] = completedRuns.flatMap((run) =>
+            run.metrics ? [run.metrics.snapshot()] : []);
+        }
         const runs = [...completedRuns, ...pendingRuns];
         pendingRuns = [];
         completedRuns = [];
@@ -373,6 +444,26 @@ function registerScenario(
 
 afterAll(async () => {
   await benchmarkCleanupPromise;
+  const samples = Object.fromEntries(Object.entries(measurements).filter(([, runs]) => runs.length));
+  if (Object.keys(samples).length) {
+    console.log("Push measurements (means of measured iterations; milliseconds):");
+    console.table(Object.fromEntries(Object.entries(samples).map(([name, runs]) => [name, {
+      totalMs: mean(runs.map((run) => run.totalMs)),
+      firstCommitMs: mean(runs.map((run) => run.firstCommitMs!)),
+      noteAppliedP95Ms: mean(runs.map((run) => run.noteAppliedP95Ms!)),
+      notesBeforeAttachment: mean(runs.map((run) => run.notesAppliedBeforeSlowUpload!)),
+    }])));
+    const output = process.env.SYNCH_SYNC_CLIENT_METRICS_PATH;
+    if (output) {
+      await writeFile(output, JSON.stringify({
+        version: 1,
+        environment: { node: process.version, platform: process.platform, arch: process.arch },
+        fixture: MIXED_PUSH_FIXTURE_SPEC,
+        profiles: MIXED_PROFILES,
+        samples,
+      }, null, 2) + "\n");
+    }
+  }
 });
 
 async function getFixture(): Promise<BenchmarkFixture> {
@@ -473,6 +564,55 @@ async function createPushRun(fixture: BenchmarkFixture): Promise<BenchmarkRun> {
   );
 }
 
+async function createMixedPushRun(profile: TransportProfile): Promise<BenchmarkRun> {
+  const metrics = new PushMetrics();
+  const server = new BenchmarkServer([], 0, profile, metrics);
+  const fixture = await createMixedPushFixture();
+  const store = createTestSyncStore(LOCAL_VAULT_ID);
+  const harness = createEngineHarness(server, fixture.adapter, store, metrics);
+  try {
+    await harness.engine.reconcileOnce();
+    const entriesByPath = new Map((await store.listEntries()).map((entry) => [entry.path, entry]));
+    const pending = await store.listDirtyEntries();
+    if (pending.length !== fixture.entries.length) throw new Error("Mixed fixture was not queued");
+    const pendingById = new Map(pending.map((mutation) => [mutation.entryId, mutation]));
+    const expected = new Map<string, { size: number; hash: string }>();
+    // Apply the fixture's queue order independently of generated IDs and
+    // filesystem enumeration. Expected hashes come from the original bytes.
+    for (const [index, content] of fixture.entries.entries()) {
+      const entry = entriesByPath.get(content.path);
+      const mutation = entry ? pendingById.get(entry.entryId) : undefined;
+      if (!mutation) throw new Error(`Mixed fixture file was not queued: ${content.path}`);
+      await store.updateDirtyEntry({ ...mutation, createdAt: index + 1 });
+      expected.set(mutation.entryId, { size: content.size, hash: content.hash });
+    }
+    await harness.engine.startAutoSync();
+    harness.releaseDeferredWork();
+    const run = createRunWithCleanup(harness, fixture.dispose, () => server.dispose(), async () => {
+      await assertStoreIsClean(store, server.serverCursor);
+      await server.assertUploadedContents(expected);
+      if (metrics.snapshot().filesApplied !== expected.size) throw new Error("Missing completion observations");
+    });
+    return {
+      ...run,
+      metrics,
+      run: async () => {
+        metrics.start();
+        try {
+          await run.run();
+        } finally {
+          metrics.stop();
+        }
+      },
+    };
+  } catch (error) {
+    await harness.dispose();
+    await fixture.dispose();
+    await server.dispose();
+    throw error;
+  }
+}
+
 function createRunWithCleanup(
   harness: ReturnType<typeof createEngineHarness>,
   disposeVault: () => Promise<void>,
@@ -505,6 +645,7 @@ function createEngineHarness(
   server: BenchmarkServer,
   vault: SyncVaultAdapter,
   store: InMemorySyncStore,
+  metrics?: PushMetrics,
 ): {
   engine: SyncEngine;
   releaseDeferredWork: () => void;
@@ -537,7 +678,14 @@ function createEngineHarness(
     getVaultConfigSyncRules: () => DEFAULT_VAULT_CONFIG_SYNC_RULES,
     shouldDeferSyncWork: () => deferSyncWork,
     hasActiveRemoteVaultSession: () => true,
-    diagnostics: createNoopDiagnostics(),
+    diagnostics: metrics ? {
+      ...createNoopDiagnostics(),
+      record: (event) => {
+        if (event.type === "file_sync_completed" && event.direction === "upload") {
+          metrics.fileCompleted(event.path);
+        }
+      },
+    } : createNoopDiagnostics(),
     onSyncError: async (error, phase) => {
       throw new Error(`benchmark sync error in ${phase}: ${String(error)}`);
     },
@@ -639,4 +787,12 @@ function asCursor(
   return typeof cursor.entryId === "string"
     ? { updatedSeq: asNumber(cursor.updatedSeq), entryId: cursor.entryId }
     : null;
+}
+
+async function delay(ms: number): Promise<void> {
+  if (ms > 0) await new Promise<void>((resolve) => setTimeout(resolve, ms));
+}
+
+function mean(values: number[]): number {
+  return Number((values.reduce((sum, value) => sum + value, 0) / values.length).toFixed(2));
 }
