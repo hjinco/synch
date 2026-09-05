@@ -24,7 +24,6 @@ import type {
 import type {
   SyncCursorStore,
   SyncMutationStore,
-  SyncStoreLifecycle,
 } from "../store/ports";
 import {
   type LocalFileReader,
@@ -72,7 +71,6 @@ export interface SyncPushStore
       SyncMutationStore,
       "listBlockedDirtyEntriesByReason" | "listDirtyEntries" | "updateDirtyEntry"
     >,
-    Pick<SyncStoreLifecycle, "flush">,
     PushMutationStore {}
 
 export interface PushPendingMutationsResult {
@@ -185,7 +183,6 @@ export class SyncPushService {
         }
 
         if (committable.length === 0) {
-          await store.flush();
           await onProgress(progress.snapshot());
           if (stopAfterCurrentBatch) {
             break;
@@ -275,7 +272,6 @@ export class SyncPushService {
           }
           throw error;
         }
-        await store.flush();
         progress.complete(acceptedPushMutations.map(({ mutation }) => mutation.mutationId));
         for (const accepted of acceptedFiles) {
           this.deps.onFileSyncCompleted?.(accepted);
@@ -327,7 +323,6 @@ export class SyncPushService {
             continue;
           }
         }
-        await store.flush();
         await onProgress(progress.snapshot());
         if (stopAfterCurrentBatch) {
           break;
@@ -347,7 +342,6 @@ export class SyncPushService {
         acceptedCursors.some((acceptedCursor) => acceptedCursor > checkpointCursor);
     } finally {
       syncCryptoContext.dispose();
-      await store.flush();
     }
 
     if (requeueLimitReached && !shouldYield() && !shouldPullAfterPush) {
@@ -396,10 +390,6 @@ export class SyncPushService {
         blockedMaxFileSizeBytes: null,
       });
       unblocked += 1;
-    }
-
-    if (unblocked > 0) {
-      await store.flush();
     }
 
     return unblocked;

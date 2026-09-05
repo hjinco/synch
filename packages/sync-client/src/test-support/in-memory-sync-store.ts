@@ -409,7 +409,6 @@ export class InMemorySyncStore implements SyncStore {
     }
   }
 
-  async flush(): Promise<void> {}
   async close(): Promise<void> {}
 
   private getOrCreateEntry(entryId: string): EntryState {

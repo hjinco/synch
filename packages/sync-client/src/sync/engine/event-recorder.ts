@@ -18,7 +18,6 @@ import type {
   SyncLocalEntryStore,
   SyncMutationStore,
   SyncRemoteEntryStore,
-  SyncStoreLifecycle,
 } from "../store/ports";
 import { isAutoMergeTextPath } from "./text-merge-policy";
 
@@ -44,8 +43,7 @@ export interface SyncEventRecorderStore
       | "listDirtyEntries"
       | "markEntryClean"
       | "replaceDirtyEntry"
-    >,
-    Pick<SyncStoreLifecycle, "flush"> {}
+    > {}
 
 export interface LocalFileStat {
   mtime: number;
@@ -114,7 +112,6 @@ export class SyncEventRecorder {
             localMtime: localStat.mtime,
             localSize: localStat.size,
           });
-          await store.flush();
         }
         return false;
       }
@@ -141,7 +138,6 @@ export class SyncEventRecorder {
     });
 
     await store.applyLocalState(nextEntry);
-    await store.flush();
     return true;
   }
 
@@ -204,7 +200,6 @@ export class SyncEventRecorder {
             localMtime: localStat.mtime,
             localSize: localStat.size,
           });
-          await store.flush();
         }
         return false;
       }
@@ -230,7 +225,6 @@ export class SyncEventRecorder {
         localSize: localStat?.size ?? null,
       }),
     );
-    await store.flush();
     return true;
   }
 
@@ -252,7 +246,6 @@ export class SyncEventRecorder {
 
     if (!remote || remote.revision === 0) {
       await store.deleteEntry(existing.entryId);
-      await store.flush();
       return false;
     }
 
@@ -274,7 +267,6 @@ export class SyncEventRecorder {
       base: remote,
       path,
     });
-    await store.flush();
     return true;
   }
 

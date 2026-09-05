@@ -14,7 +14,7 @@ import type {
   SyncReconcileEntryState,
   SyncReconcileEntryUpdate,
 } from "../store/store";
-import type { SyncReconcileStore, SyncStoreLifecycle } from "../store/ports";
+import type { SyncReconcileStore } from "../store/ports";
 import type { SyncVaultFile, SyncVaultScanner } from "../vault/ports";
 import { isAutoMergeTextPath } from "./text-merge-policy";
 
@@ -31,9 +31,7 @@ export interface SyncLocalReconcileServiceDeps extends SyncContentRuntimeDeps {
   hashConcurrency?: number;
 }
 
-export interface SyncLocalReconcileStore
-  extends SyncReconcileStore,
-    Pick<SyncStoreLifecycle, "flush"> {}
+export type SyncLocalReconcileStore = SyncReconcileStore;
 
 export interface ReconcileOnceResult {
   filesScanned: number;
@@ -247,7 +245,6 @@ export class SyncLocalReconcileService {
     }
 
     await applyReconcileUpdatesInChunks(store, updates);
-    await store.flush();
 
     return {
       filesScanned: localFiles.length,

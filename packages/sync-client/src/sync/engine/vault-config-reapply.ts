@@ -141,6 +141,5 @@ export async function reapplyAllowedRemoteVaultConfig(
       }
     },
   );
-  await store.flush();
   return applied;
 }

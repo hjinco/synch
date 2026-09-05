@@ -597,8 +597,6 @@ export class DexieSyncStore implements SyncStore {
     throw new Error("Accepted push batch changed while applying; retry limit exceeded.");
   }
 
-  async flush(): Promise<void> {}
-
   async close(): Promise<void> {
     this.db.close();
   }

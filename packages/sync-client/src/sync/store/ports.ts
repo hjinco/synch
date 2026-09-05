@@ -92,6 +92,5 @@ export interface SyncPushAcceptanceStore {
 }
 
 export interface SyncStoreLifecycle {
-  flush(): Promise<void>;
   close(): Promise<void>;
 }

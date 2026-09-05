@@ -3,10 +3,7 @@ import type { SyncContentRuntimeDeps } from "../core/content-runtime";
 import type { SyncEventGateLike } from "./event-gate";
 import { SyncPullClient } from "../remote/pull-client";
 import type { SyncRealtimeSession } from "../remote/realtime-client";
-import type {
-  SyncCursorStore,
-  SyncStoreLifecycle,
-} from "../store/ports";
+import type { SyncCursorStore } from "../store/ports";
 import type { SyncOperationProgress } from "../runtime/user-visible-status";
 import { SyncWorkProgress } from "./work-progress";
 import {
@@ -54,10 +51,7 @@ export interface SyncPullServiceDeps extends SyncContentRuntimeDeps {
   now?: () => number;
 }
 
-export interface SyncPullStore
-  extends SyncCursorStore,
-    Pick<SyncStoreLifecycle, "flush">,
-    PullEntryStateStore {}
+export interface SyncPullStore extends SyncCursorStore, PullEntryStateStore {}
 
 export interface PullOnceResult {
   cursor: number;
@@ -227,7 +221,6 @@ export class SyncPullService {
     cursor = targetCursor ?? cursor;
     if (cursor > await store.getCursor()) {
       await store.setCursor(cursor);
-      await store.flush();
     }
 
     return {
@@ -258,7 +251,6 @@ export class SyncPullService {
     }
 
     await store.setCursor(safeCursor);
-    await store.flush();
     return safeCursor;
   }
 }

@@ -605,8 +605,6 @@ export class SqliteSyncStore implements SyncStore {
     );
   }
 
-  async flush(): Promise<void> {}
-
   async close(): Promise<void> {
     this.db.close();
   }

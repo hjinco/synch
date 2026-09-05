@@ -191,7 +191,7 @@ describe("SyncPullService paging", () => {
     await store.close();
   });
 
-  it.each(["stable", "shrinking", "duplicate", "removed", "flush_failure"])("counts received work across pages: %s", async (scenario) => {
+  it.each(["stable", "shrinking", "duplicate", "removed", "checkpoint_failure"])("counts received work across pages: %s", async (scenario) => {
     const store = createTestSyncStore();
     const adapter = createVaultAdapter();
     const commits = await Promise.all(
@@ -263,13 +263,13 @@ describe("SyncPullService paging", () => {
       },
     });
 
-    if (scenario === "flush_failure") {
-      const flush = store.flush.bind(store);
-      let flushes = 0;
-      store.flush = async () => {
-        flushes += 1;
-        if (flushes === 2) throw new Error("injected storage failure");
-        await flush();
+    if (scenario === "checkpoint_failure") {
+      const setCursor = store.setCursor.bind(store);
+      let checkpoints = 0;
+      store.setCursor = async (cursor) => {
+        checkpoints += 1;
+        if (checkpoints === 2) throw new Error("injected storage failure");
+        await setCursor(cursor);
       };
       await expect(service.pullOnce(session)).rejects.toThrow();
       expect(progressUpdates[progressUpdates.length - 1].completedEntries).toBe(2);
