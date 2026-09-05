@@ -110,7 +110,6 @@ export class SyncPullService {
     const progress = new SyncWorkProgress("pull");
     const received = new Set<string>();
     await onProgress(progress.snapshot());
-    let after: { updatedSeq: number; entryId: string } | null = null;
     let window: PullEntryStateManifestItem[] = [];
     const applyWindowSize = normalizePositiveInteger(
       this.deps.applyWindowSize,
@@ -123,14 +122,16 @@ export class SyncPullService {
       conflictsCreated: 0,
     };
 
-    while (hasMore) {
+    const preparePage = async (
+      target: number | null,
+      after: { updatedSeq: number; entryId: string } | null,
+    ) => {
       const page = await session.listEntryStates({
         sinceCursor: requestCursor,
-        targetCursor,
+        targetCursor: target,
         after,
         limit: DEFAULT_PULL_BATCH,
       });
-      targetCursor = page.targetCursor;
       const entries = page.entries.filter((entry) => {
         const key = stateKey(entry);
         if (received.has(key)) return false;
@@ -138,39 +139,63 @@ export class SyncPullService {
         return true;
       });
       const items = await this.entryStateApplier.createManifestItems(entries);
-      progress.register(items.map(manifestKey));
-      window.push(...items);
-      after = page.nextAfter;
-      hasMore = page.hasMore;
-      if (!hasMore) progress.seal();
-      await onProgress(progress.snapshot());
+      return { page, items };
+    };
+    // Observe errors immediately, but propagate them only when consuming the page.
+    const startPage = (
+      target: number | null,
+      after: { updatedSeq: number; entryId: string } | null,
+    ) => preparePage(target, after).then(
+      (value) => ({ ok: true as const, value }),
+      (error: unknown) => ({ ok: false as const, error }),
+    );
+    let pendingPage = startPage(null, null);
 
-      if (window.length >= applyWindowSize || !hasMore) {
-        const appliedWindow = window;
-        const applied = await this.entryStateApplier.applyManifestWindow(
-          store,
-          token,
-          window,
-          {
-            finalWindow: !hasMore,
-          },
-        );
-        totals.entriesApplied += applied.entriesApplied;
-        totals.filesWritten += applied.filesWritten;
-        totals.filesDeleted += applied.filesDeleted;
-        totals.conflictsCreated += applied.conflictsCreated;
-        window = applied.deferred;
-        cursor = await this.checkpointAppliedWindow(
-          store,
-          session,
-          cursor,
-          appliedWindow,
-          applied.deferred,
-          hasMore ? null : targetCursor,
-        );
-        progress.complete(applied.completedStates.map(stateKey));
+    try {
+      while (hasMore) {
+        const result = await pendingPage;
+        if (!result.ok) throw result.error;
+        const { page, items } = result.value;
+        targetCursor = page.targetCursor;
+        hasMore = page.hasMore;
+        // Only metadata is prefetched. Planning, vault writes and checkpoints stay
+        // ordered, and at most one page is prepared ahead of the current window.
+        if (hasMore) pendingPage = startPage(targetCursor, page.nextAfter);
+        progress.register(items.map(manifestKey));
+        window.push(...items);
+        if (!hasMore) progress.seal();
         await onProgress(progress.snapshot());
+
+        if (window.length >= applyWindowSize || !hasMore) {
+          const appliedWindow = window;
+          const applied = await this.entryStateApplier.applyManifestWindow(
+            store,
+            token,
+            window,
+            {
+              finalWindow: !hasMore,
+            },
+          );
+          totals.entriesApplied += applied.entriesApplied;
+          totals.filesWritten += applied.filesWritten;
+          totals.filesDeleted += applied.filesDeleted;
+          totals.conflictsCreated += applied.conflictsCreated;
+          window = applied.deferred;
+          cursor = await this.checkpointAppliedWindow(
+            store,
+            session,
+            cursor,
+            appliedWindow,
+            applied.deferred,
+            hasMore ? null : targetCursor,
+          );
+          progress.complete(applied.completedStates.map(stateKey));
+          await onProgress(progress.snapshot());
+        }
       }
+    } finally {
+      // Do not let background work outlive pullOnce (or its crypto/session).
+      await pendingPage;
     }
 
     if (window.length > 0) {
