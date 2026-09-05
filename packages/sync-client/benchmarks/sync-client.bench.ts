@@ -20,6 +20,7 @@ import {
   type BenchmarkFixture,
   type BenchmarkFixtureEntry,
 } from "./benchmark-fixture";
+import { createPullNotesFixture } from "./pull-notes-fixture";
 import { PushMetrics } from "./push-metrics";
 import { createMixedPushFixture, MIXED_PUSH_FIXTURE_SPEC } from "./mixed-push-fixture";
 import { createBenchmarkVault } from "./benchmark-vault";
@@ -70,6 +71,8 @@ type BenchmarkRun = {
 };
 
 type TransportProfile = {
+  pageDelayMs?: number;
+  downloadDelayMs?: number;
   uploadDelayMs: number;
   commitDelayMs: number;
   attachmentExtraDelayMs: number;
@@ -92,6 +95,12 @@ const MIXED_PROFILES: Record<string, TransportProfile> = {
     attachmentExtraDelayMs: 800,
   },
 };
+const PULL_PROFILES: Record<string, TransportProfile> = {
+  "pull-notes-no-delay": NO_DELAY,
+  "pull-notes-page-40ms": { ...NO_DELAY, pageDelayMs: 40, downloadDelayMs: 5 },
+  "pull-notes-page-120ms": { ...NO_DELAY, pageDelayMs: 120, downloadDelayMs: 5 },
+};
+let pullNotesFixture: ReturnType<typeof createPullNotesFixture> | undefined;
 const measurements: Record<string, ReturnType<PushMetrics["snapshot"]>[]> = {};
 
 let fixturePromise: Promise<BenchmarkFixture> | null = null;
@@ -158,6 +167,7 @@ class BenchmarkServer {
       return { status: 200 };
     }
 
+    await delay(this.profile.downloadDelayMs ?? 0);
     const blobPath = this.blobFiles.get(blobId);
     if (!blobPath) {
       return { status: 404 };
@@ -191,6 +201,7 @@ class BenchmarkServer {
         return;
 
       case "list_entry_states":
+        await delay(this.profile.pageDelayMs ?? 0);
         socket.receive({
           type: "entry_states_listed",
           requestId,
@@ -385,6 +396,12 @@ describe("sync-client black-box scenarios", () => {
   registerScenario("initial-pull-1GiB", async () => createInitialPullRun(await getFixture()));
   registerScenario("incremental-pull-64MiB", async () => createIncrementalPullRun(await getFixture()));
   registerScenario("push-1GiB", async () => createPushRun(await getFixture()));
+  for (const [name, profile] of Object.entries(PULL_PROFILES)) {
+    registerScenario(name, async () => {
+      pullNotesFixture ??= createPullNotesFixture(REMOTE_VAULT_KEY);
+      return createInitialPullRun((await pullNotesFixture).fixture, profile);
+    });
+  }
   for (const [name, profile] of Object.entries(MIXED_PROFILES)) {
     registerScenario(name, () => createMixedPushRun(profile));
   }
@@ -444,6 +461,7 @@ function registerScenario(
 
 afterAll(async () => {
   await benchmarkCleanupPromise;
+  if (pullNotesFixture) await (await pullNotesFixture).dispose();
   const samples = Object.fromEntries(Object.entries(measurements).filter(([, runs]) => runs.length));
   if (Object.keys(samples).length) {
     console.log("Push measurements (means of measured iterations; milliseconds):");
@@ -473,8 +491,9 @@ async function getFixture(): Promise<BenchmarkFixture> {
 
 async function createInitialPullRun(
   fixture: BenchmarkFixture,
+  profile: TransportProfile = NO_DELAY,
 ): Promise<BenchmarkRun> {
-  const server = new BenchmarkServer(fixture.baseline, fixture.baseline.length);
+  const server = new BenchmarkServer(fixture.baseline, fixture.baseline.length, profile);
   const vaultHandle = await createBenchmarkVault(null);
   const store = createTestSyncStore(LOCAL_VAULT_ID);
   const harness = createEngineHarness(server, vaultHandle.adapter, store);

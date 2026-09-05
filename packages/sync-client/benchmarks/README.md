@@ -124,3 +124,39 @@ They do not replace real-server measurements for protocol or server changes,
 nor do they model Obsidian's Dexie persistence or mobile runtime. Push service
 tests separately verify continuous replenishment, bounded outstanding work,
 pull priority, and queue preservation and retry after pipeline failures.
+
+## Pull pagination latency scenarios
+
+Run the lightweight pull scenarios without generating the 1 GiB fixture:
+
+```sh
+pnpm -C packages/sync-client bench --run -t pull-notes \
+  --outputJson /tmp/synch-pull-current.json
+```
+
+The public `SyncEngine.syncNow()` pulls 500 distinct 4 KiB Markdown notes into
+an empty filesystem vault, using the real metadata/blob encryption and client
+verification paths. Fixture generation, engine setup, final file-size/hash
+verification, cursor/queue checks, and cleanup are outside the timed operation.
+Each profile runs one warmup and five measured iterations. The production page
+size and download concurrency are used without overrides.
+
+| Scenario | Delay per metadata page | Delay per blob GET |
+| --- | ---: | ---: |
+| `pull-notes-no-delay` | 0 ms | 0 ms |
+| `pull-notes-page-40ms` | 40 ms | 5 ms |
+| `pull-notes-page-120ms` | 120 ms | 5 ms |
+
+Delays are independent asynchronous waits added to actual local filesystem and
+crypto work. They isolate pagination latency; they do not simulate shared
+bandwidth, real Cloudflare/R2 timings, Obsidian/Dexie, or mobile performance.
+The larger page delay models a metadata endpoint slower than blob downloads.
+No performance threshold is asserted.
+
+For before/after comparisons, run **the same benchmark files** in isolated
+checkouts of both implementations, save a baseline with `--outputJson`, and add
+`--compare /tmp/synch-pull-baseline.json` to the current run. Run sequentially to
+avoid competing for CPU and disk. Compare means and sample variation, and retain
+the raw JSON and base commit alongside the result. These scenarios must be
+copied into older checkouts that predate them; comparing a missing scenario
+against a new scenario is not a performance comparison.

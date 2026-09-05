@@ -6,6 +6,8 @@
 
 ## Changed
 
+- Reduce waiting between batches when downloading large remote vaults.
+
 - Keep uploading queued files while slower attachments finish, and prioritize incoming remote changes after active uploads settle.
 
 - Open self-hosted device sign-in pages through an external browser when they use localhost.

@@ -134,18 +134,32 @@ export class PullEntryStateApplier {
   ): Promise<PullEntryStateManifestItem[]> {
     const remoteVaultKey = this.deps.getRemoteVaultKey();
 
-    return await mapWithConcurrency(
+    // Settle every metadata worker before returning a failed prefetched page.
+    const results = await mapWithConcurrency(
       states,
       this.deps.prepareConcurrency ?? DEFAULT_PREPARE_CONCURRENCY,
-      async (state) => ({
-        state,
-        metadata: await decryptSyncMetadata(
-          remoteVaultKey,
-          state.encryptedMetadata,
-          metadataContextFromRemoteState(state),
-        ),
-      }),
+      async (state) => {
+        try {
+          return {
+            ok: true as const,
+            item: {
+              state,
+              metadata: await decryptSyncMetadata(
+                remoteVaultKey,
+                state.encryptedMetadata,
+                metadataContextFromRemoteState(state),
+              ),
+            },
+          };
+        } catch (error) {
+          return { ok: false as const, error };
+        }
+      },
     );
+    return results.map((result) => {
+      if (!result.ok) throw result.error;
+      return result.item;
+    });
   }
 
   async applyEntryStates(
