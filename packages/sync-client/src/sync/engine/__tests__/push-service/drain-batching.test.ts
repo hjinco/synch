@@ -17,7 +17,7 @@ import {
 } from "./helpers";
 
 describe("SyncPushService drain: batching", () => {
-  it("counts only selected mutations and preserves pending work after the drain limit", async () => {
+  it("drains more than 1000 mutations and reports all completed work", async () => {
     const store = createTestSyncStore();
     const mutationCount = 1_001;
     const body = new TextEncoder().encode("body");
@@ -68,8 +68,8 @@ describe("SyncPushService drain: batching", () => {
 
     const result = await service.pushPendingMutations(session);
 
-    expect(result.mutationsPushed).toBe(1_000);
-    expect(result.hasMore).toBe(true);
+    expect(result.mutationsPushed).toBe(mutationCount);
+    expect(result.hasMore).toBe(false);
     expect(progressUpdates[0]).toEqual({
       direction: "push", totalKnown: false,
       completedEntries: 0,

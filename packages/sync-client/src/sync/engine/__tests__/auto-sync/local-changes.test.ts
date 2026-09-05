@@ -172,7 +172,7 @@ describe("SyncAutoLoop local changes", () => {
     await vi.advanceTimersByTimeAsync(100);
 
     expect(pushPendingMutations).toHaveBeenCalledTimes(1);
-    expect(pushPendingMutations).toHaveBeenCalledWith(session);
+    expect(pushPendingMutations).toHaveBeenCalledWith(session, expect.any(Function));
     expect(pullOnce).toHaveBeenCalledTimes(0);
     autoLoop.stop();
     await store.close();
@@ -226,7 +226,7 @@ describe("SyncAutoLoop local changes", () => {
     await Promise.resolve();
 
     expect(unblockFileSizeBlockedMutations).toHaveBeenCalledWith(session);
-    expect(pushPendingMutations).toHaveBeenCalledWith(session);
+    expect(pushPendingMutations).toHaveBeenCalledWith(session, expect.any(Function));
     expect(pullOnce).toHaveBeenCalledTimes(0);
     autoLoop.stop();
     await store.close();
@@ -271,7 +271,7 @@ describe("SyncAutoLoop local changes", () => {
       },
     );
     await vi.waitFor(() => {
-      expect(pushPendingMutations).toHaveBeenCalledWith(session);
+      expect(pushPendingMutations).toHaveBeenCalledWith(session, expect.any(Function));
     });
 
     expect(unblockFileSizeBlockedMutations).toHaveBeenCalledTimes(2);

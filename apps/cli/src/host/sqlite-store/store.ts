@@ -409,15 +409,13 @@ export class SqliteSyncStore implements SyncStore {
     return row ? toPendingMutationRow(row) : null;
   }
 
-  async listDirtyEntries(limit?: number): Promise<PendingMutationRow[]> {
+  async listDirtyEntries(limit?: number, excludedEntryIds?: ReadonlySet<string>): Promise<PendingMutationRow[]> {
+    const excluded = [...(excludedEntryIds ?? [])];
     const sql = `SELECT * FROM entries
-       WHERE pending_status = 'pending'
+       WHERE pending_status = 'pending'${excluded.length ? ` AND entry_id NOT IN (${excluded.map(() => "?").join(",")})` : ""}
        ORDER BY pending_created_at ASC, entry_id ASC${limit === undefined ? "" : " LIMIT ?"}`;
-    const rows = (
-      limit === undefined
-        ? this.prepare(sql).all()
-        : this.prepare(sql).all(limit)
-    ) as unknown as SqlEntryRow[];
+    const parameters = limit === undefined ? excluded : [...excluded, limit];
+    const rows = this.prepare(sql).all(...parameters) as unknown as SqlEntryRow[];
     return rows
       .map((row) => toPendingMutationRow(fromSqlRow(row)))
       .filter(isPresent);

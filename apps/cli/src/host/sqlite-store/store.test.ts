@@ -177,6 +177,8 @@ describe("SqliteSyncStore basics", () => {
     expect(all.map((mutation) => mutation.entryId)).toEqual(["e1", "e2", "e3"]);
     const limited = await store.listDirtyEntries(2);
     expect(limited.map((mutation) => mutation.entryId)).toEqual(["e1", "e2"]);
+    expect((await store.listDirtyEntries(2, new Set(["e1"])))
+      .map((mutation) => mutation.entryId)).toEqual(["e2", "e3"]);
   });
 
   it("tracks blocked mutations separately and unblocks them", async () => {

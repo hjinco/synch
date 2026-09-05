@@ -229,9 +229,9 @@ export class SyncEngine {
             ? this.deps.createWebSocket(url, protocols)
             : new WebSocket(url, protocols),
       }),
-      pushPendingMutations: async (session) =>
+      pushPendingMutations: async (session, shouldYield) =>
         await this.withSyncActivity("push", async (report) => {
-          return await this.syncPushService.pushPendingMutations(session, report);
+          return await this.syncPushService.pushPendingMutations(session, report, shouldYield);
         }),
       unblockFileSizeBlockedMutations: async (session) =>
         await this.withSyncActivity("local", async () => {

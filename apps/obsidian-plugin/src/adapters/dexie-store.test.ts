@@ -260,6 +260,9 @@ describe("DexieSyncStore", () => {
       "mutation-middle",
     ]);
 
+    expect((await store.listDirtyEntries(2, new Set(["entry-early"])))
+      .map((entry) => entry.entryId)).toEqual(["entry-middle", "entry-late"]);
+
     await store.clearDirtyEntryByMutationId("mutation-middle");
 
     expect((await store.listDirtyEntries()).map((entry) => entry.mutationId)).toEqual([

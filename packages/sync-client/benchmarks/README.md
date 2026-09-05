@@ -122,5 +122,5 @@ per-file service times:
 The new scenarios complement the existing 1 GiB client throughput benchmark.
 They do not replace real-server measurements for protocol or server changes,
 nor do they model Obsidian's Dexie persistence or mobile runtime. Push service
-tests separately verify early completion, bounded upload concurrency, and queue
-preservation and retry after pipeline failures.
+tests separately verify continuous replenishment, bounded outstanding work,
+pull priority, and queue preservation and retry after pipeline failures.

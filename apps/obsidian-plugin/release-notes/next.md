@@ -6,7 +6,7 @@
 
 ## Changed
 
-- Sync uploaded notes sooner while slower attachments are still uploading.
+- Keep uploading queued files while slower attachments finish, and prioritize incoming remote changes after active uploads settle.
 
 - Open self-hosted device sign-in pages through an external browser when they use localhost.
 

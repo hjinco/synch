@@ -249,10 +249,10 @@ export class InMemorySyncStore implements SyncStore {
     return cloneMutation(this.entries.get(entryId)?.dirty ?? null);
   }
 
-  async listDirtyEntries(limit?: number): Promise<PendingMutationRow[]> {
+  async listDirtyEntries(limit?: number, excludedEntryIds?: ReadonlySet<string>): Promise<PendingMutationRow[]> {
     const mutations = [...this.entries.values()]
       .flatMap((state) =>
-        state.dirty && (state.dirty.status ?? "pending") === "pending"
+        !excludedEntryIds?.has(state.entryId) && state.dirty && (state.dirty.status ?? "pending") === "pending"
           ? [cloneMutation(state.dirty)]
           : [],
       )

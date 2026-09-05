@@ -31,6 +31,7 @@ export interface SyncAutoLoopDeps {
   getSyncStore: () => SyncCursorStore | null;
   pushPendingMutations: (
     session: SyncRealtimeSession,
+    shouldYield: () => boolean,
   ) => Promise<PushPendingMutationsResult>;
   unblockFileSizeBlockedMutations?: (
     session: SyncRealtimeSession,
@@ -632,7 +633,9 @@ export class SyncAutoLoop {
           if (!session) {
             throw new Error("Sync realtime session is not connected.");
           }
-          const pushResult = await this.deps.pushPendingMutations(session);
+          const pushResult = await this.deps.pushPendingMutations(session, () =>
+            !this.isActive() || this.pendingWork.pullTargetCursor !== null,
+          );
           pushCompleted = true;
           if (pushResult.stopReason === "storage_quota_exceeded") {
             try {
