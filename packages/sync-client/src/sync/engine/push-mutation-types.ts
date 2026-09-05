@@ -5,10 +5,7 @@ import type {
 } from "../core/content-runtime";
 import type { SyncedEntryMetadata } from "../core/content";
 import type { SyncCryptoContext } from "../core/crypto";
-import type {
-  CommitAcceptedResult,
-  CommitMutationPayload,
-} from "../remote/realtime-client";
+import type { CommitMutationPayload } from "../remote/realtime-client";
 import type {
   SyncBlobStore,
   SyncEntryStore,
@@ -17,7 +14,7 @@ import type {
   SyncPushAcceptanceStore,
   SyncRemoteEntryStore,
 } from "../store/ports";
-import type { SyncProgressCounts } from "../store/store";
+import type { PushBlobRetryCache } from "./push-blob-retry-cache";
 
 export interface PushMutationCommitterDeps extends SyncContentRuntimeDeps {
   getApiBaseUrl: () => string;
@@ -27,6 +24,7 @@ export interface PushMutationCommitterDeps extends SyncContentRuntimeDeps {
   conflictFileWriter?: ConflictFileWriter;
   blobClient: Pick<SyncBlobClient, "uploadBlob">;
   remotelyStagedBlobIds: Set<string>;
+  blobRetryCache?: PushBlobRetryCache;
   onConflict?: (event: PushConflictEvent) => void;
   now?: () => number;
 }
@@ -44,33 +42,14 @@ export interface PushConflictEvent {
   conflictPath: string | null;
 }
 
-export type PushMutationCommitResult =
-  | {
-      status: "accepted";
-      accepted: CommitAcceptedResult;
-      filesCreatedOrUpdated: number;
-      filesDeleted: number;
-      conflictsCreated: 0;
-      shouldPullAfterPush: false;
-    }
-  | {
-      status: "requeued";
-      filesCreatedOrUpdated: 0;
-      filesDeleted: 0;
-      conflictsCreated: 0;
-      shouldPullAfterPush: false;
-    }
+export type PushMutationRejectionResult =
   | {
       status: "conflict";
-      filesCreatedOrUpdated: 0;
-      filesDeleted: 0;
       conflictsCreated: number;
       shouldPullAfterPush: false;
     }
   | {
       status: "stale";
-      filesCreatedOrUpdated: 0;
-      filesDeleted: 0;
       conflictsCreated: 0;
       shouldPullAfterPush: true;
     };
@@ -80,7 +59,6 @@ export interface PreparedPushMutation {
   metadata: SyncedEntryMetadata;
   localHash: string | null;
   encryptedBytes: Uint8Array | null;
-  storageBytesAdded: number;
 }
 
 export interface PushMutationStore
@@ -103,5 +81,3 @@ export interface SkippedPushMutation {
 }
 
 export type PreparePushMutationResult = PreparedPushMutation | SkippedPushMutation | null;
-
-export type PushProgressReporter = (progress: SyncProgressCounts) => Promise<void>;

@@ -10,6 +10,12 @@ const SYNC_BLOB_MAGIC = new Uint8Array([0x53, 0x59, 0x4e, 0x42]);
 const SYNC_BLOB_VERSION_OFFSET = SYNC_BLOB_MAGIC.byteLength;
 const SYNC_BLOB_NONCE_OFFSET = SYNC_BLOB_VERSION_OFFSET + 1;
 const SYNC_BLOB_CIPHERTEXT_OFFSET = SYNC_BLOB_NONCE_OFFSET + AES_GCM_NONCE_BYTES;
+const AES_GCM_TAG_BYTES = 16;
+
+/** Exact size of the current binary envelope, including its authentication tag. */
+export function encryptedSyncBlobSize(plaintextBytes: number): number {
+  return SYNC_BLOB_CIPHERTEXT_OFFSET + plaintextBytes + AES_GCM_TAG_BYTES;
+}
 
 export type SyncCryptoErrorCode = "disposed";
 

@@ -1,3 +1,4 @@
+import type { SyncedEntryMetadata } from "../core/content";
 import { writeConflictCopy } from "../core/conflict-file";
 import {
   createSyncCryptoContext,
@@ -8,7 +9,6 @@ import {
   type CommitAcceptedResult,
   type CommitMutationBatchResult,
   SyncRealtimeError,
-  type SyncRealtimeSession,
 } from "../remote/realtime-client";
 import type {
   AcceptedPushMutationRow,
@@ -18,7 +18,6 @@ import { PushMutationPreparer } from "./push-mutation-preparer";
 import {
   isLocalAheadStaleRevision,
   isPullResolvableStaleRevision,
-  isSkippedPushMutation,
   metadataContextFromMutation,
 } from "./push-mutation-shared";
 import { isAutoMergeTextPath } from "./text-merge-policy";
@@ -26,7 +25,7 @@ import type {
   PreparedPushMutation,
   PreparePushMutationResult,
   PushConflictEvent,
-  PushMutationCommitResult,
+  PushMutationRejectionResult,
   PushMutationCommitterDeps,
   PushMutationStore,
 } from "./push-mutation-types";
@@ -36,7 +35,7 @@ export type {
   PreparedPushMutation,
   PreparePushMutationResult,
   PushConflictEvent,
-  PushMutationCommitResult,
+  PushMutationRejectionResult,
   PushMutationCommitterDeps,
   PushMutationStore,
   SkippedPushMutation,
@@ -50,127 +49,30 @@ export class PushMutationCommitter {
     this.mutationPreparer = new PushMutationPreparer(deps);
   }
 
-  async commitMutation(
-    store: PushMutationStore,
-    token: SyncTokenResponse,
-    session: SyncRealtimeSession,
-    mutation: PendingMutationRow,
-  ): Promise<PushMutationCommitResult> {
-    const prepared = await this.mutationPreparer.prepareMutationForCommit(
-      store,
-      token,
-      mutation,
-      session.maxFileSizeBytes,
-    );
-    if (!prepared || isSkippedPushMutation(prepared)) {
-      return {
-        status: "requeued",
-        filesCreatedOrUpdated: 0,
-        filesDeleted: 0,
-        conflictsCreated: 0,
-        shouldPullAfterPush: false,
-      };
-    }
-
-    return await this.commitPreparedMutation(store, session, mutation, prepared);
-  }
-
   async prepareMutationForCommit(
     store: PushMutationStore,
     token: SyncTokenResponse,
     mutation: PendingMutationRow,
     maxFileSizeBytes: number,
-    storageAvailableBytes: number | null = null,
+    onMetadataReady?: (metadata: SyncedEntryMetadata) => void,
   ): Promise<PreparePushMutationResult> {
     return await this.mutationPreparer.prepareMutationForCommit(
       store,
       token,
       mutation,
       maxFileSizeBytes,
-      storageAvailableBytes,
+      onMetadataReady,
     );
-  }
-
-  async commitPreparedMutation(
-    store: PushMutationStore,
-    session: SyncRealtimeSession,
-    mutation: PendingMutationRow,
-    prepared: PreparedPushMutation,
-  ): Promise<PushMutationCommitResult> {
-    let accepted;
-    try {
-      accepted = await session.commitMutation(prepared.commitPayload);
-    } catch (error) {
-      this.forgetRemotelyStagedBlobIfMissing(error, mutation.blobId);
-      if (isPullResolvableStaleRevision(error)) {
-        return {
-          status: "stale",
-          filesCreatedOrUpdated: 0,
-          filesDeleted: 0,
-          conflictsCreated: 0,
-          shouldPullAfterPush: true,
-        };
-      }
-      const handledConflict = await this.handleLocalAheadConflict(store, mutation, error);
-      if (handledConflict) {
-        return {
-          status: "conflict",
-          filesCreatedOrUpdated: 0,
-          filesDeleted: 0,
-          conflictsCreated: handledConflict.conflictPath ? 1 : 0,
-          shouldPullAfterPush: false,
-        };
-      }
-
-      throw error;
-    }
-
-    await store.applyAcceptedPushBatch(
-      [await this.buildAcceptedPushMutation(mutation, prepared, accepted)],
-      { remoteVaultKey: this.deps.getRemoteVaultKey() },
-    );
-
-    return {
-      status: "accepted",
-      accepted,
-      filesCreatedOrUpdated: mutation.op === "upsert" ? 1 : 0,
-      filesDeleted: mutation.op === "delete" ? 1 : 0,
-      conflictsCreated: 0,
-      shouldPullAfterPush: false,
-    };
-  }
-
-  async applyAcceptedPreparedMutation(
-    store: PushMutationStore,
-    mutation: PendingMutationRow,
-    prepared: PreparedPushMutation,
-    accepted: CommitAcceptedResult,
-  ): Promise<PushMutationCommitResult> {
-    await store.applyAcceptedPushBatch(
-      [await this.buildAcceptedPushMutation(mutation, prepared, accepted)],
-      { remoteVaultKey: this.deps.getRemoteVaultKey() },
-    );
-
-    return {
-      status: "accepted",
-      accepted,
-      filesCreatedOrUpdated: mutation.op === "upsert" ? 1 : 0,
-      filesDeleted: mutation.op === "delete" ? 1 : 0,
-      conflictsCreated: 0,
-      shouldPullAfterPush: false,
-    };
   }
 
   async handleRejectedPreparedMutation(
     store: PushMutationStore,
     mutation: PendingMutationRow,
     rejected: Extract<CommitMutationBatchResult, { status: "rejected" }>,
-  ): Promise<PushMutationCommitResult> {
+  ): Promise<PushMutationRejectionResult> {
     if (isPullResolvableStaleRevision(rejected)) {
       return {
         status: "stale",
-        filesCreatedOrUpdated: 0,
-        filesDeleted: 0,
         conflictsCreated: 0,
         shouldPullAfterPush: true,
       };
@@ -183,8 +85,6 @@ export class PushMutationCommitter {
     if (handledConflict) {
       return {
         status: "conflict",
-        filesCreatedOrUpdated: 0,
-        filesDeleted: 0,
         conflictsCreated: handledConflict.conflictPath ? 1 : 0,
         shouldPullAfterPush: false,
       };
@@ -202,11 +102,11 @@ export class PushMutationCommitter {
     }
   }
 
-  async buildAcceptedPushMutation(
+  buildAcceptedPushMutation(
     mutation: PendingMutationRow,
     prepared: PreparedPushMutation,
     accepted: CommitAcceptedResult,
-  ): Promise<AcceptedPushMutationRow> {
+  ): AcceptedPushMutationRow {
     const metadata = prepared.metadata;
 
     const acceptedAt = Date.now();
@@ -276,6 +176,7 @@ export class PushMutationCommitter {
       return;
     }
     this.deps.remotelyStagedBlobIds.delete(blobId);
+    this.deps.blobRetryCache?.delete(blobId);
   }
 
   private getSyncCryptoContext(): SyncCryptoContext {

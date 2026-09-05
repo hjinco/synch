@@ -1,3 +1,4 @@
+import type { SyncedEntryMetadata } from "../core/content";
 import {
   SyncBlobUploadError,
   type SyncBlobClient,
@@ -8,6 +9,7 @@ import {
 } from "../core/content-runtime";
 import {
   createSyncCryptoContext,
+  encryptedSyncBlobSize,
   type SyncCryptoContext,
 } from "../core/crypto";
 import { queueLocalUpsertMutation } from "../core/mutation-queue";
@@ -39,7 +41,7 @@ export class PushMutationPreparer {
     token: SyncTokenResponse,
     mutation: PendingMutationRow,
     maxFileSizeBytes: number,
-    storageAvailableBytes: number | null = null,
+    onMetadataReady?: (metadata: SyncedEntryMetadata) => void,
   ): Promise<PreparePushMutationResult> {
     const syncCrypto = this.getSyncCryptoContext();
     const metadata = await syncCrypto.decryptMetadata(
@@ -47,13 +49,14 @@ export class PushMutationPreparer {
       metadataContextFromMutation(mutation),
     );
 
+    onMetadataReady?.(metadata);
+
     if (mutation.op === "delete") {
       return {
         commitPayload: toCommitPayload(mutation),
         metadata,
         localHash: null,
         encryptedBytes: null,
-        storageBytesAdded: 0,
       };
     }
 
@@ -78,34 +81,28 @@ export class PushMutationPreparer {
       return null;
     }
     const blobId = mutation.blobId;
-    const encryptedBytes = await syncCrypto.encryptBlob(bytes, { blobId });
-    const storageBytesAdded =
-      mutation.blobId === mutation.baseBlobId && mutation.hash === mutation.baseHash
-        ? 0
-        : encryptedBytes.byteLength;
-    if (maxFileSizeBytes > 0 && encryptedBytes.byteLength > maxFileSizeBytes) {
+    const encryptedSizeBytes = encryptedSyncBlobSize(bytes.byteLength);
+    if (maxFileSizeBytes > 0 && encryptedSizeBytes > maxFileSizeBytes) {
       await this.blockOversizedUpsert(
         store,
         mutation,
-        encryptedBytes.byteLength,
+        encryptedSizeBytes,
         maxFileSizeBytes,
       );
-      return {
-        skipped: true,
-        reason: "file_too_large",
-      };
-    }
-    if (
-      storageAvailableBytes !== null &&
-      storageBytesAdded > storageAvailableBytes
-    ) {
-      return {
-        skipped: true,
-        reason: "storage_quota_exceeded",
-      };
+      return { skipped: true, reason: "file_too_large" };
     }
 
-    if (!this.deps.remotelyStagedBlobIds.has(blobId)) {
+    const staged = this.deps.remotelyStagedBlobIds.has(blobId);
+    const retainEncryptedBytes = isAutoMergeTextPath(metadata.path);
+    // Hash validation above remains mandatory, even when upload can be reused.
+    // Binary payloads have no local consumer after staging; Markdown needs a
+    // merge base, regenerating it only if the bounded retry cache missed.
+    const encryptedBytes = staged && !retainEncryptedBytes
+      ? null
+      : (staged ? this.deps.blobRetryCache?.get(mutation, token.vaultId) : null)
+        ?? await syncCrypto.encryptBlob(bytes, { blobId });
+
+    if (!staged && encryptedBytes) {
       try {
         await this.blobClient.uploadBlob(
           this.deps.getApiBaseUrl(),
@@ -139,22 +136,18 @@ export class PushMutationPreparer {
       this.deps.remotelyStagedBlobIds.add(blobId);
     }
 
+    if (retainEncryptedBytes && encryptedBytes) {
+      this.deps.blobRetryCache?.put(mutation, token.vaultId, encryptedBytes);
+    }
+
     return {
-      commitPayload: {
-        mutationId: mutation.mutationId,
-        entryId: mutation.entryId,
-        op: mutation.op,
-        baseRevision: mutation.baseRevision,
-        blobId,
-        encryptedMetadata: mutation.encryptedMetadata,
-      },
+      commitPayload: toCommitPayload(mutation),
       metadata,
       localHash: mutation.hash,
       // Only Markdown needs the encrypted payload after upload so it can be
       // retained as a remote merge base. Binary payloads have no local
       // consumer after the server has staged them.
-      encryptedBytes: isAutoMergeTextPath(metadata.path) ? encryptedBytes : null,
-      storageBytesAdded,
+      encryptedBytes: retainEncryptedBytes ? encryptedBytes : null,
     };
   }
 

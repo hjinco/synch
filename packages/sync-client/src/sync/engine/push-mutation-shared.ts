@@ -1,11 +1,6 @@
 import type { CommitMutationPayload } from "../remote/realtime-client";
 import { SyncRealtimeError } from "../remote/realtime-client";
 import type { PendingMutationRow } from "../store/store";
-import type {
-  PreparedPushMutation,
-  SkippedPushMutation,
-} from "./push-mutation-types";
-
 export function toCommitPayload(mutation: {
   mutationId: string;
   entryId: string;
@@ -31,12 +26,6 @@ export function metadataContextFromMutation(mutation: PendingMutationRow) {
     op: mutation.op,
     blobId: mutation.blobId,
   };
-}
-
-export function isSkippedPushMutation(
-  value: PreparedPushMutation | SkippedPushMutation,
-): value is SkippedPushMutation {
-  return "skipped" in value;
 }
 
 export interface StaleRevisionLike {

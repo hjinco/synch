@@ -17,6 +17,7 @@ describe("SyncPushService retry uploads", () => {
   it("does not re-upload a blob after a failed commit", async () => {
     const { store, hash, blobId, bytes } = await arrangePendingUpsert();
     const uploadedBlobIds: string[] = [];
+    const uploadedBytes: Uint8Array[] = [];
     let failCommit = true;
     const session = createPushSession(async (mutation) => {
       if (failCommit) {
@@ -33,6 +34,7 @@ describe("SyncPushService retry uploads", () => {
       store,
       { "Folder/note.md": bytes },
       uploadedBlobIds,
+      uploadedBytes,
     );
 
     await expect(service.pushPendingMutations(session)).rejects.toThrow("socket closed");
@@ -44,6 +46,7 @@ describe("SyncPushService retry uploads", () => {
     });
     expect(uploadedBlobIds).toEqual([blobId]);
     expect(await store.listDirtyEntries()).toEqual([]);
+    expect((await store.getBlob(blobId))?.encryptedBytes).toEqual(uploadedBytes[0]);
     expect(await store.getEntryById("entry-note")).toMatchObject({
       blobId,
       hash,
@@ -236,6 +239,7 @@ function createRetryUploadService(
   store: SyncStore,
   files: Record<string, Uint8Array>,
   uploadedBlobIds: string[],
+  uploadedBytes: Uint8Array[] = [],
 ) {
   return new SyncPushService({
     getApiBaseUrl: () => "http://127.0.0.1:8787",
@@ -252,8 +256,9 @@ function createRetryUploadService(
       },
     },
     blobClient: {
-      async uploadBlob(_apiBaseUrl, _syncToken, _vaultId, blobId) {
+      async uploadBlob(_apiBaseUrl, _syncToken, _vaultId, blobId, encryptedBytes) {
         uploadedBlobIds.push(blobId);
+        uploadedBytes.push(encryptedBytes);
       },
     },
     onProgress: ignoreProgress,

@@ -33,7 +33,7 @@ import {
   type PushMutationStore,
   type PreparedPushMutation,
 } from "./push-mutation-committer";
-import { metadataContextFromMutation } from "./push-mutation-shared";
+import { PushBlobRetryCache } from "./push-blob-retry-cache";
 
 const DEFAULT_PUSH_PREPARE_CONCURRENCY = 12;
 
@@ -89,6 +89,7 @@ export interface PushPendingMutationsResult {
 
 export class SyncPushService {
   private readonly remotelyStagedBlobIds = new Set<string>();
+  private readonly blobRetryCache = new PushBlobRetryCache();
   private readonly contentRuntime: SyncContentRuntime;
 
   constructor(private readonly deps: SyncPushServiceDeps) {
@@ -140,7 +141,6 @@ export class SyncPushService {
     try {
       for await (const preparedMutations of this.preparePendingMutations(
         mutationCommitter,
-        syncCryptoContext,
         store,
         token,
         session,
@@ -231,7 +231,7 @@ export class SyncPushService {
 
           if (batchResult.status === "accepted") {
             const acceptedPushMutation =
-              await mutationCommitter.buildAcceptedPushMutation(
+              mutationCommitter.buildAcceptedPushMutation(
                 mutation,
                 prepared,
                 batchResult,
@@ -242,6 +242,7 @@ export class SyncPushService {
               // mutation. A replay after a local apply failure is idempotent,
               // and a redundant upload is rejected before reaching storage.
               this.remotelyStagedBlobIds.delete(acceptedPushMutation.remoteBlobId);
+              this.blobRetryCache.delete(acceptedPushMutation.remoteBlobId);
             }
             cursor = Math.max(cursor, batchResult.cursor);
             acceptedCursors.push(batchResult.cursor);
@@ -315,16 +316,6 @@ export class SyncPushService {
             mutationsRequeued += 1;
             recordRequeue(mutation.entryId);
             stopAfterCurrentBatch = true;
-            continue;
-          }
-          if (result.status === "requeued") {
-            this.deps.onFileSyncFailed?.({
-              operation: mutation.op,
-              path,
-              reason: "requeued",
-            });
-            mutationsRequeued += 1;
-            recordRequeue(mutation.entryId);
             continue;
           }
           if (result.status === "conflict") {
@@ -426,6 +417,7 @@ export class SyncPushService {
       conflictFileWriter: this.deps.conflictFileWriter,
       blobClient: this.deps.blobClient,
       remotelyStagedBlobIds: this.remotelyStagedBlobIds,
+      blobRetryCache: this.blobRetryCache,
       contentRuntime: this.contentRuntime,
       onConflict: this.deps.onConflict,
       now: this.deps.now,
@@ -434,7 +426,6 @@ export class SyncPushService {
 
   private preparePendingMutations(
     mutationCommitter: PushMutationCommitter,
-    syncCryptoContext: SyncCryptoContext,
     store: SyncPushStore,
     token: SyncTokenResponse,
     session: SyncRealtimeSession,
@@ -454,23 +445,17 @@ export class SyncPushService {
         progress.register([mutation.mutationId]);
         let path = "<unavailable>";
         try {
-          path = (
-            await syncCryptoContext.decryptMetadata(
-              mutation.encryptedMetadata,
-              metadataContextFromMutation(mutation),
-            )
-          ).path;
-          this.deps.onFileSyncStarted?.({ operation: mutation.op, path });
-          return {
+          const prepared = await mutationCommitter.prepareMutationForCommit(
+            store,
+            token,
             mutation,
-            path,
-            prepared: await mutationCommitter.prepareMutationForCommit(
-              store,
-              token,
-              mutation,
-              session.maxFileSizeBytes,
-            ),
-          };
+            session.maxFileSizeBytes,
+            (metadata) => {
+              path = metadata.path;
+              this.deps.onFileSyncStarted?.({ operation: mutation.op, path });
+            },
+          );
+          return { mutation, path, prepared };
         } catch (error) {
           this.deps.onFileSyncFailed?.({
             operation: mutation.op,
