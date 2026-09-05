@@ -36,17 +36,17 @@ jobs:
 
     steps:
       - name: Checkout PR merge ref
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           ref: refs/pull/${{ github.event.issue.number }}/merge
           fetch-depth: 1
           persist-credentials: false
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
         with:
           version: 10.33.0
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: 24
 
@@ -62,7 +62,7 @@ jobs:
 
       - name: Upload benchmark result
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: sync-client-benchmark-${{ github.run_id }}
           path: ${{ runner.temp }}/sync-client-benchmark.json
@@ -82,14 +82,14 @@ jobs:
 
     steps:
       - name: Checkout default branch scripts
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 1
           persist-credentials: false
 
       - name: Download benchmark result
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         continue-on-error: true
         with:
           name: sync-client-benchmark-${{ github.run_id }}
