@@ -2,6 +2,7 @@ export type UserVisibleSyncState =
   | "not_ready"
   | "paused"
   | "pending"
+  | "reconciling"
   | "syncing"
   | "offline"
   | "reconnecting"

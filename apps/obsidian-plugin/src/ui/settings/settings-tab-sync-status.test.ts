@@ -172,6 +172,24 @@ describe("SynchSettingTab sync status", () => {
     expect(getSyncSpinnerElements()[0]?.attributes["data-icon"]).toBe("loader-circle");
   });
 
+  it("shows a spinner while checking for changes", () => {
+    const tab = createSettingsTab({
+      hasAuthenticatedSession: () => true,
+      hasConnectedRemoteVault: () => true,
+      getSyncState: () => "reconciling",
+      getSyncPercent: () => 100,
+      getSyncProgress: () => ({
+        completedEntries: 42,
+        totalEntries: 42,
+      }),
+    });
+
+    tab.open();
+
+    expect(getSettingDescriptions()[0]).toBe(t("sync.state.reconciling"));
+    expect(getSyncSpinnerElements()).toHaveLength(1);
+  });
+
   it("refreshes sync progress without rerendering the settings tab", () => {
     let syncState: SynchSyncState = "syncing";
     let completedEntries = 42;

@@ -164,6 +164,7 @@ export const zhCn = {
     "sync.state.offline": "离线",
     "sync.state.paused": "已暂停",
     "sync.state.pending": "等待同步",
+    "sync.state.reconciling": "正在检查更改",
     "sync.state.reconnecting": "重新连接中",
     "sync.state.syncing": "同步中",
     "sync.state.up_to_date": "已是最新",

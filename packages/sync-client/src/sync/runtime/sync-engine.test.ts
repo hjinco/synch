@@ -340,6 +340,20 @@ describe("SyncEngine", () => {
     await store.close();
   });
 
+  it("reports when reconcile status starts and ends", async () => {
+    const vault = new InMemoryVaultAdapter();
+    vault.seedText("note.md", "body");
+    const store = createTestSyncStore();
+    const onReconcileStatusChange = vi.fn();
+    const { engine } = createTestEngine(vault, { onReconcileStatusChange });
+    engine.setStore(store);
+
+    await engine.reconcileOnce();
+
+    expect(onReconcileStatusChange.mock.calls).toEqual([[true], [false]]);
+    await store.close();
+  });
+
   it("reapplies previously skipped remote vault config before reconcile queues local writes", async () => {
     const vault = new InMemoryVaultAdapter();
     const store = createTestSyncStore();

@@ -76,6 +76,8 @@ export function formatSyncStatusLabel(state: UserVisibleSyncState): string {
       return "paused";
     case "pending":
       return "pending changes";
+    case "reconciling":
+      return "checking for changes";
     case "syncing":
       return "syncing";
     case "offline":

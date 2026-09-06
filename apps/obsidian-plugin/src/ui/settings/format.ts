@@ -9,7 +9,7 @@ import type {
 import { getStorageDisplayState as resolveStorageDisplayState } from "../../adapters/storage-warning";
 
 export function shouldShowSyncSpinner(state: SynchSyncState): boolean {
-  return state === "syncing" || state === "reconnecting";
+  return state === "reconciling" || state === "syncing" || state === "reconnecting";
 }
 
 export function formatSyncDescription(
@@ -18,6 +18,7 @@ export function formatSyncDescription(
   syncProgress: SynchSyncProgress,
 ): string {
   const label = formatSyncStatusLabel(state, percent, syncProgress);
+  if (state === "reconciling") return label;
   if (syncProgress.direction) return label;
   return `${label} - ${syncProgress.completedEntries} / ${syncProgress.totalEntries}`;
 }

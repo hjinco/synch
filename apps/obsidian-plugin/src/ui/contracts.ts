@@ -27,6 +27,7 @@ export type SynchSyncState =
   | "not_ready"
   | "paused"
   | "pending"
+  | "reconciling"
   | "syncing"
   | "offline"
   | "reconnecting"

@@ -164,6 +164,7 @@ export const ja = {
     "sync.state.offline": "オフライン",
     "sync.state.paused": "一時停止中",
     "sync.state.pending": "同期待ち",
+    "sync.state.reconciling": "変更を確認中",
     "sync.state.reconnecting": "再接続中",
     "sync.state.syncing": "同期中",
     "sync.state.up_to_date": "最新",

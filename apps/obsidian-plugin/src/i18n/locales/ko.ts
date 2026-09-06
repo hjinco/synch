@@ -161,6 +161,7 @@ export const ko = {
     "sync.state.offline": "오프라인",
     "sync.state.paused": "일시 중지됨",
     "sync.state.pending": "동기화 대기 중",
+    "sync.state.reconciling": "변경 사항 확인 중",
     "sync.state.reconnecting": "다시 연결 중",
     "sync.state.syncing": "동기화 중",
     "sync.state.up_to_date": "최신 상태",

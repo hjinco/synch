@@ -162,6 +162,10 @@ function expectedSyncStatusLabel(syncState: SynchSyncState, percent: number): st
     return t("sync.state.paused");
   }
 
+  if (syncState === "reconciling") {
+    return t("sync.state.reconciling");
+  }
+
   return t("sync.status", {
     label: t(`sync.state.${syncState}`),
     percent,
@@ -209,6 +213,7 @@ describe("SynchStatusBar", () => {
     ["not_ready", 0],
     ["paused", 0],
     ["pending", 100],
+    ["reconciling", 100],
     ["syncing", 37],
     ["offline", 0],
     ["reconnecting", 0],

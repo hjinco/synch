@@ -87,6 +87,7 @@ export interface SyncControllerDeps {
 
 export class SyncController {
   private syncStatus: UserVisibleSyncState = "not_ready";
+  private reconcileCount = 0;
   private syncProgress: UserVisibleSyncProgress = {
     completedEntries: 0,
     totalEntries: 0,
@@ -109,6 +110,7 @@ export class SyncController {
     notifyRollbackDetected: (event) => this.notifyRollbackDetected(event),
     setSyncProgress: (progress) => this.setSyncProgress(progress),
     setSyncStatus: (status) => this.setSyncStatus(status),
+    onReconcileStatusChange: (reconciling) => this.setReconcileStatus(reconciling),
     setStorageStatus: (status) => this.setStorageStatus(status),
     onPresenceUpdated: (update) => {
       this.presenceRelay?.onUpdated(update);
@@ -269,7 +271,7 @@ export class SyncController {
   }
 
   getSyncState(): UserVisibleSyncState {
-    return this.syncStatus;
+    return this.reconcileCount > 0 ? "reconciling" : this.syncStatus;
   }
 
   getSyncPercent(): number {
@@ -581,6 +583,19 @@ export class SyncController {
     }
 
     this.syncStatus = status;
+    this.deps.onSyncStatusChange?.();
+  }
+
+  private setReconcileStatus(reconciling: boolean): void {
+    const previousIsReconciling = this.reconcileCount > 0;
+    this.reconcileCount = Math.max(
+      0,
+      this.reconcileCount + (reconciling ? 1 : -1),
+    );
+    if (previousIsReconciling === (this.reconcileCount > 0)) {
+      return;
+    }
+
     this.deps.onSyncStatusChange?.();
   }
 

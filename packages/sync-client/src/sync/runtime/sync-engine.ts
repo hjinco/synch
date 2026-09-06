@@ -109,6 +109,7 @@ export interface SyncEngineDeps extends SyncContentRuntimeDeps {
   }) => void;
   setSyncProgress: (progress: UserVisibleSyncProgress | null) => void;
   setSyncStatus: (status: UserVisibleSyncState) => void;
+  onReconcileStatusChange?: (reconciling: boolean) => void;
   setStorageStatus: (status: SyncStorageStatus | null) => void;
   onPresenceUpdated?: (update: PresenceUpdatedPush) => void;
   onPresenceCleared?: (presenceId: string) => void;
@@ -520,9 +521,14 @@ export class SyncEngine {
   }
 
   async reconcileOnce(): Promise<ReconcileOnceResult> {
-    return await this.runLocalMutationWork(async () => {
-      return await this.syncLocalReconcileService.reconcileOnce();
-    });
+    this.deps.onReconcileStatusChange?.(true);
+    try {
+      return await this.runLocalMutationWork(async () => {
+        return await this.syncLocalReconcileService.reconcileOnce();
+      });
+    } finally {
+      this.deps.onReconcileStatusChange?.(false);
+    }
   }
 
   async reapplyAllowedRemoteVaultConfig(): Promise<number> {

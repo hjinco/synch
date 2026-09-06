@@ -164,6 +164,7 @@ export const zhTw = {
     "sync.state.offline": "離線",
     "sync.state.paused": "已暫停",
     "sync.state.pending": "等待同步",
+    "sync.state.reconciling": "正在檢查變更",
     "sync.state.reconnecting": "重新連線中",
     "sync.state.syncing": "同步中",
     "sync.state.up_to_date": "已是最新",

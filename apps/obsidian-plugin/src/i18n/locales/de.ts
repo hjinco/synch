@@ -180,6 +180,7 @@ export const de = {
     "sync.state.offline": "offline",
     "sync.state.paused": "pausiert",
     "sync.state.pending": "wartet auf Sync",
+    "sync.state.reconciling": "Änderungen werden geprüft",
     "sync.state.reconnecting": "verbindung wird wiederhergestellt",
     "sync.state.syncing": "synchronisiert",
     "sync.state.up_to_date": "aktuell",

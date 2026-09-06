@@ -177,6 +177,7 @@ export const en = {
     "sync.state.offline": "offline",
     "sync.state.paused": "paused",
     "sync.state.pending": "waiting to sync",
+    "sync.state.reconciling": "checking for changes",
     "sync.state.reconnecting": "reconnecting",
     "sync.state.syncing": "syncing",
     "sync.state.up_to_date": "up to date",

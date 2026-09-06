@@ -12,6 +12,10 @@ export function formatSyncStatusLabel(
   percent: number,
   progress?: UserVisibleSyncProgress,
 ): string {
+  if (state === "reconciling") {
+    return t("sync.state.reconciling");
+  }
+
   if (state === "syncing" && progress?.direction) {
     const label = t(progress.direction === "pull" ? "sync.downloading" : "sync.uploading");
     const count = progress.totalKnown === false

@@ -41,6 +41,12 @@ describe("formatSyncStatusLabel", () => {
     })).toBe(`${t("sync.status", { label: t("sync.downloading"), percent: 86 })} · ${t("sync.completedTotal", { count: 200, total: 232 })}`);
   });
 
+  it("shows the reconcile label without a stale sync percentage", () => {
+    expect(formatSyncStatusLabel("reconciling", 37)).toBe(
+      t("sync.state.reconciling"),
+    );
+  });
+
   it("does not include a stale percent for a paused sync", () => {
     expect(formatSyncStatusLabel("paused", 37)).toBe(t("sync.state.paused"));
   });
