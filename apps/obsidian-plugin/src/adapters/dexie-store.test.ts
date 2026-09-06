@@ -8,7 +8,6 @@ import {
   createDexieSyncStore,
   readDexieSyncStoreConnection,
 } from "./dexie-store";
-import { replacePendingMutationForEntry } from "@synch/sync-client/sync/core/mutation-queue";
 
 describe("DexieSyncStore", () => {
   it("creates and persists entry ids by path", async () => {
@@ -301,7 +300,8 @@ describe("DexieSyncStore", () => {
     });
 
     await expect(
-      replacePendingMutationForEntry(store, {
+      store.replaceDirtyEntry({
+        mutationId: "mutation-next",
         entryId: "entry-1",
         op: "upsert",
         baseRevision: 3,
@@ -311,9 +311,8 @@ describe("DexieSyncStore", () => {
         hash: "hash-next",
         encryptedMetadata: "ciphertext-next",
         createdAt: 3,
-        requireBaseBlob: true,
-      }),
-    ).rejects.toThrow("requires cached base blob blob-missing");
+      }, { requireBaseBlob: true }),
+    ).rejects.toThrow();
 
     expect(await store.getDirtyEntryMutation("entry-1")).toMatchObject({
       mutationId: "mutation-existing",

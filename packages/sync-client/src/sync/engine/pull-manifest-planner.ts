@@ -22,6 +22,11 @@ import {
   type PullRollbackEvent,
 } from "./pull-entry-state-internal";
 
+type ValidatedManifestItem = PullEntryStateManifestItem & (
+  | { kind: "live"; metadata: SyncedEntryMetadata & { hash: string } }
+  | { kind: "deleted"; metadata: SyncedEntryMetadata & { hash: null } }
+);
+
 interface PullManifestPlannerDeps {
   getRemoteVaultKey: () => Uint8Array;
   vaultAdapter: ConflictFileWriter;
@@ -43,14 +48,11 @@ export class PullManifestPlanner {
     deferred: PullEntryStateManifestItem[];
     superseded: PullEntryStateManifestItem[];
   }> {
-    for (const item of manifest) {
-      this.validateManifestItem(item);
-    }
-
-    const latestManagedEntryByPath = this.findLatestManagedEntryByPath(manifest);
-    const activeManifest: PullEntryStateManifestItem[] = [];
+    const validatedManifest = manifest.map((item) => this.validateManifestItem(item));
+    const latestManagedEntryByPath = this.findLatestManagedEntryByPath(validatedManifest);
+    const activeManifest: ValidatedManifestItem[] = [];
     const superseded: PullEntryStateManifestItem[] = [];
-    for (const item of manifest) {
+    for (const item of validatedManifest) {
       const winnerEntryId = latestManagedEntryByPath.get(item.metadata.path);
       if (winnerEntryId && winnerEntryId !== item.state.entryId) {
         const existing = await store.getEntryById(item.state.entryId);
@@ -84,15 +86,9 @@ export class PullManifestPlanner {
             .filter((entryId) => !deferredEntryIds.has(entryId)),
         );
 
-        for (const { state, metadata } of activeManifest) {
-          if (deferredEntryIds.has(state.entryId) || state.deleted) {
+        for (const { state, metadata, kind } of activeManifest) {
+          if (deferredEntryIds.has(state.entryId) || kind === "deleted") {
             continue;
-          }
-          if (!state.blobId) {
-            throw new Error(`Entry state ${state.entryId}@${state.revision} is missing a blob.`);
-          }
-          if (!metadata.hash) {
-            throw new Error(`Entry state ${state.entryId}@${state.revision} is missing a hash.`);
           }
 
           const pathOwner = await store.getEntryByPath(metadata.path);
@@ -133,7 +129,7 @@ export class PullManifestPlanner {
     const deferred: PullEntryStateManifestItem[] = [];
 
     for (const item of activeManifest) {
-      const { state, metadata } = item;
+      const { state, metadata, kind } = item;
       if (isDeferredByCursorThreshold(item, deferredCursorThreshold)) {
         deferred.push(item);
         continue;
@@ -165,13 +161,7 @@ export class PullManifestPlanner {
       let vaultMove: PlannedEntryState["vaultMove"] = null;
       let supersededPathOwner: SyncEntryRow | null = null;
 
-      if (!state.deleted) {
-        if (!state.blobId) {
-          throw new Error(`Entry state ${state.entryId}@${state.revision} is missing a blob.`);
-        }
-        if (!metadata.hash) {
-          throw new Error(`Entry state ${state.entryId}@${state.revision} is missing a hash.`);
-        }
+      if (kind === "live") {
         hash = metadata.hash;
 
         const duplicateEntryId = reservedPaths.get(metadata.path);
@@ -221,10 +211,6 @@ export class PullManifestPlanner {
           adoptedLocalEntry,
         );
         reservedPaths.set(finalPath, state.entryId);
-      } else {
-        if (metadata.hash !== null) {
-          throw new Error(`Deleted entry state ${state.entryId}@${state.revision} has a hash.`);
-        }
       }
 
       plans.push({
@@ -245,7 +231,7 @@ export class PullManifestPlanner {
     return { plans, deferred, superseded };
   }
 
-  private validateManifestItem(item: PullEntryStateManifestItem): void {
+  private validateManifestItem(item: PullEntryStateManifestItem): ValidatedManifestItem {
     const { state, metadata } = item;
     if (!state.deleted) {
       if (!state.blobId) {
@@ -254,12 +240,13 @@ export class PullManifestPlanner {
       if (!metadata.hash) {
         throw new Error(`Entry state ${state.entryId}@${state.revision} is missing a hash.`);
       }
-      return;
+      return { ...item, kind: "live", metadata: { ...metadata, hash: metadata.hash } };
     }
 
     if (metadata.hash !== null) {
       throw new Error(`Deleted entry state ${state.entryId}@${state.revision} has a hash.`);
     }
+    return { ...item, kind: "deleted", metadata: { ...metadata, hash: null } };
   }
 
   private findLatestManagedEntryByPath(

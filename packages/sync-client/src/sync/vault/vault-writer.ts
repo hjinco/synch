@@ -41,19 +41,6 @@ export async function writeVaultBinary(
   await writer.writeBinary(path, bytes);
 }
 
-export async function writeVaultText(
-  writer: Pick<
-    SyncVaultWriter,
-    "exists" | "mkdir" | "writeText" | "isProtectedVaultPath"
-  >,
-  path: string,
-  content: string,
-): Promise<void> {
-  assertWritableVaultPath(writer, path);
-  await ensureParentDirectories(writer, path);
-  await writer.writeText(path, content);
-}
-
 export async function renameVaultPath(
   writer: Pick<
     SyncVaultWriter,

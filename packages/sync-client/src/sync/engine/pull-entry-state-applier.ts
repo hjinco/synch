@@ -283,7 +283,6 @@ export class PullEntryStateApplier {
 
       const pendingConflict = await this.pendingMutations.prepareConflictingPendingMutation(
         store,
-        token,
         plan,
         blobByPlan.get(plan) ?? null,
       );

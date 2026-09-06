@@ -4,7 +4,6 @@ import {
   removeVaultPathIfExists,
   writeVaultBinary,
   writeVaultBytes,
-  writeVaultText,
   type SyncVaultWriter,
 } from "./vault-writer";
 
@@ -30,22 +29,22 @@ describe("vault writer", () => {
     expect(writer.textFiles.has("Assets/image.png")).toBe(false);
   });
 
-  it("supports explicit text, binary, and remove-if-exists operations", async () => {
+  it("supports binary and remove-if-exists operations", async () => {
     const writer = new MemoryVaultWriter();
 
-    await writeVaultText(writer, "Meta/manifest.json", "{}");
+    await writeVaultBytes(writer, "Meta/manifest.json", new TextEncoder().encode("{}"));
     await writeVaultBinary(writer, "Backup/file.bin", new Uint8Array([9]));
 
     expect(await removeVaultPathIfExists(writer, "Meta/manifest.json")).toBe(true);
     expect(await removeVaultPathIfExists(writer, "missing.md")).toBe(false);
-    expect(writer.textFiles.has("Meta/manifest.json")).toBe(false);
+    expect(writer.binaryFiles.has("Meta/manifest.json")).toBe(false);
     expect(writer.binaryFiles.get("Backup/file.bin")).toEqual(new Uint8Array([9]));
   });
 
   it("refuses to modify reserved vault paths", async () => {
     const writer = new MemoryVaultWriter();
 
-    await expect(writeVaultText(writer, ".git/config", "config")).rejects.toThrow();
+    await expect(writeVaultBytes(writer, ".git/config", new TextEncoder().encode("config"))).rejects.toThrow();
     expect(writer.directories.has(".git")).toBe(false);
   });
 
@@ -54,11 +53,11 @@ describe("vault writer", () => {
       (path) => path === ".obsidian/workspace.json",
     );
 
-    await writeVaultText(writer, ".obsidian/app.json", "{}");
-    await expect(writeVaultText(writer, ".obsidian/workspace.json", "{}")).rejects.toThrow();
+    await writeVaultBytes(writer, ".obsidian/app.json", new TextEncoder().encode("{}"));
+    await expect(writeVaultBytes(writer, ".obsidian/workspace.json", new TextEncoder().encode("{}"))).rejects.toThrow();
 
-    expect(writer.textFiles.get(".obsidian/app.json")).toBe("{}");
-    expect(writer.textFiles.has(".obsidian/workspace.json")).toBe(false);
+    expect(writer.binaryFiles.get(".obsidian/app.json")).toEqual(new TextEncoder().encode("{}"));
+    expect(writer.binaryFiles.has(".obsidian/workspace.json")).toBe(false);
   });
 });
 

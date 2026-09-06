@@ -4,42 +4,6 @@ import type { PendingMutationRow } from "../store/store";
 
 export type PendingMutationWriter = Pick<SyncMutationStore, "replaceDirtyEntry">;
 
-export interface ReplacePendingMutationInput {
-  entryId: string;
-  op: "upsert" | "delete";
-  baseRevision: number;
-  baseBlobId: string | null;
-  baseHash: string | null;
-  blobId: string | null;
-  hash: string | null;
-  encryptedMetadata: string;
-  createdAt?: number;
-  requireBaseBlob?: boolean;
-}
-
-export async function replacePendingMutationForEntry(
-  store: PendingMutationWriter,
-  input: ReplacePendingMutationInput,
-): Promise<PendingMutationRow> {
-  const queued: PendingMutationRow = {
-    mutationId: crypto.randomUUID(),
-    entryId: input.entryId,
-    op: input.op,
-    baseRevision: input.baseRevision,
-    baseBlobId: input.baseBlobId,
-    baseHash: input.baseHash,
-    blobId: input.blobId,
-    hash: input.hash,
-    encryptedMetadata: input.encryptedMetadata,
-    createdAt: input.createdAt ?? Date.now(),
-  };
-
-  await store.replaceDirtyEntry(queued, {
-    requireBaseBlob: input.requireBaseBlob,
-  });
-  return queued;
-}
-
 export interface QueueLocalUpsertMutationInput {
   remoteVaultKey: Uint8Array;
   path: string;

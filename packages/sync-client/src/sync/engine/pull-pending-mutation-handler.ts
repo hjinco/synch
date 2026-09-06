@@ -12,7 +12,6 @@ import type {
   PendingMutationRow,
   SyncEntryStateRow,
 } from "../store/store";
-import type { SyncTokenResponse } from "../remote/client";
 import {
   writeVaultBinary,
   writeVaultBytes,
@@ -42,7 +41,6 @@ export class PullPendingMutationHandler {
 
   async prepareConflictingPendingMutation(
     store: PullEntryStateStore,
-    token: SyncTokenResponse,
     plan: PlannedEntryState,
     remoteBlob: PreparedEntryBlob | null,
   ): Promise<PreparedPendingConflict | null> {
@@ -87,7 +85,6 @@ export class PullPendingMutationHandler {
     const entryState = await store.getEntryStateById(pending.entryId);
     const merge = await this.preparePendingTextMerge(
       store,
-      token,
       plan,
       entryState,
       remoteBlob,
@@ -194,7 +191,6 @@ export class PullPendingMutationHandler {
 
   private async preparePendingTextMerge(
     store: PullEntryStateStore,
-    token: SyncTokenResponse,
     plan: PlannedEntryState,
     entryState: SyncEntryStateRow | null,
     remoteBlob: PreparedEntryBlob | null,

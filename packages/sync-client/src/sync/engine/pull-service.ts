@@ -177,7 +177,6 @@ export class SyncPullService {
           window = applied.deferred;
           cursor = await this.checkpointAppliedWindow(
             store,
-            session,
             cursor,
             appliedWindow,
             applied.deferred,
@@ -190,32 +189,6 @@ export class SyncPullService {
     } finally {
       // Do not let background work outlive pullOnce (or its crypto/session).
       await pendingPage;
-    }
-
-    if (window.length > 0) {
-      const appliedWindow = window;
-      const applied = await this.entryStateApplier.applyManifestWindow(
-        store,
-        token,
-        window,
-        {
-          finalWindow: true,
-        },
-      );
-      totals.entriesApplied += applied.entriesApplied;
-      totals.filesWritten += applied.filesWritten;
-      totals.filesDeleted += applied.filesDeleted;
-      totals.conflictsCreated += applied.conflictsCreated;
-      cursor = await this.checkpointAppliedWindow(
-        store,
-        session,
-        cursor,
-        appliedWindow,
-        applied.deferred,
-        targetCursor,
-      );
-      progress.complete(applied.completedStates.map(stateKey));
-      await onProgress(progress.snapshot());
     }
 
     cursor = targetCursor ?? cursor;
@@ -234,7 +207,6 @@ export class SyncPullService {
 
   private async checkpointAppliedWindow(
     store: SyncPullStore,
-    session: SyncRealtimeSession,
     currentCursor: number,
     window: PullEntryStateManifestItem[],
     deferred: PullEntryStateManifestItem[],

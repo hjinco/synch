@@ -7,7 +7,6 @@ import {
   createRealtimeClient,
   createToken,
 } from "./helpers";
-import type { SyncRealtimeSession } from "../../../remote/realtime-client";
 
 describe("SyncAutoLoop presence", () => {
   it("watches presence after the realtime session is live", async () => {

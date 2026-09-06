@@ -1,11 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { hashBytes } from "../../../core/content";
 import { decryptSyncBlob } from "../../../core/crypto";
 import { SyncPullService } from "../../pull-service";
 import { createTestSyncStore } from "../../../../test-support/in-memory-sync-store";
 import {
-  arrangePendingUpsertWithCachedBase,
   createCommit,
   createEventGate,
   createPullClient,
