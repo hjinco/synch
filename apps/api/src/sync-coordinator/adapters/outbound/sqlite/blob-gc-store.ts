@@ -1,4 +1,5 @@
-import { and, eq, ne, sql } from "drizzle-orm";
+import { and, asc, eq, gt, isNotNull, lte, ne, or, sql } from "drizzle-orm";
+import { unionAll } from "drizzle-orm/sqlite-core";
 
 import * as doSchema from "../../../../db/do";
 import type {
@@ -9,8 +10,8 @@ import type {
 } from "../../../application/ports/outbound/blob-gc-store";
 import type { BlobRow, BlobState } from "../../../application/ports/outbound/storage-models";
 import {
-	BLOB_UNREFERENCED_SQL,
-	COLLECTIBLE_BLOB_SQL,
+	blobUnreferenced,
+	collectibleBlob,
 } from "./blob-collectability";
 import { readBlobReferenceFacts } from "./blob-reference-facts";
 import type { CoordinatorDb, CoordinatorStorageHandle } from "./storage-handle";
@@ -21,60 +22,30 @@ export class CoordinatorBlobGcStore implements BlobGcStore {
 	constructor(private readonly handle: CoordinatorStorageHandle) {}
 
 	expireEntryVersions(now: number): void {
-		this.handle.exec(
-			`
-			DELETE FROM entry_versions
-			WHERE expires_at <= ?
-			`,
-			now,
-		);
+		this.handle.db
+			.delete(doSchema.entryVersions)
+			.where(lte(doSchema.entryVersions.expiresAt, now))
+			.run();
 	}
 
 	listCollectibleBlobs(now: number, limit: number): BlobRow[] {
-		return this.handle
-			.exec<BlobSqlRow>(
-				`
-				SELECT
-					blobs.blob_id,
-					blobs.state,
-					blobs.size_bytes,
-					blobs.created_at,
-					blobs.last_uploaded_at,
-					blobs.delete_after
-				FROM blobs
-				WHERE ${COLLECTIBLE_BLOB_SQL}
-				ORDER BY blobs.delete_after ASC, blobs.blob_id ASC
-				LIMIT ?
-				`,
-				now,
-				now,
-				limit,
-			)
-			.toArray()
+		return this.handle.db
+			.select()
+			.from(doSchema.blobs)
+			.where(collectibleBlob(now))
+			.orderBy(asc(doSchema.blobs.deleteAfter), asc(doSchema.blobs.blobId))
+			.limit(limit)
+			.all()
 			.map(toBlobRow);
 	}
 
 	readCollectibleBlob(blobId: string, now: number): BlobRow | null {
-		const row = this.handle
-			.exec<BlobSqlRow>(
-				`
-				SELECT
-					blobs.blob_id,
-					blobs.state,
-					blobs.size_bytes,
-					blobs.created_at,
-					blobs.last_uploaded_at,
-					blobs.delete_after
-				FROM blobs
-				WHERE blobs.blob_id = ?
-					AND ${COLLECTIBLE_BLOB_SQL}
-				LIMIT 1
-				`,
-				blobId,
-				now,
-				now,
-			)
-			.toArray()[0];
+		const row = this.handle.db
+			.select()
+			.from(doSchema.blobs)
+			.where(and(eq(doSchema.blobs.blobId, blobId), collectibleBlob(now)))
+			.limit(1)
+			.get();
 
 		return row ? toBlobRow(row) : null;
 	}
@@ -144,25 +115,23 @@ export class CoordinatorBlobGcStore implements BlobGcStore {
 
 		// One JSON bind keeps this under Durable Object's 100 bound-parameter limit.
 		return this.handle.db.transaction((tx) => {
-			const deleted = this.handle
-				.exec<BlobSqlRow>(
-					`
-					DELETE FROM blobs
-					WHERE blobs.blob_id IN (SELECT value FROM json_each(?))
-						AND ${COLLECTIBLE_BLOB_SQL}
-					RETURNING
-						blobs.blob_id,
-						blobs.state,
-						blobs.size_bytes,
-						blobs.created_at,
-						blobs.last_uploaded_at,
-						blobs.delete_after
-					`,
-					JSON.stringify(blobIds),
-					now,
-					now,
+			const deleted = tx
+				.delete(doSchema.blobs)
+				.where(
+					and(
+						sql`${doSchema.blobs.blobId} IN (SELECT value FROM json_each(${JSON.stringify(blobIds)}))`,
+						collectibleBlob(now),
+					),
 				)
-				.toArray()
+				.returning({
+					blobId: doSchema.blobs.blobId,
+					state: doSchema.blobs.state,
+					sizeBytes: doSchema.blobs.sizeBytes,
+					createdAt: doSchema.blobs.createdAt,
+					lastUploadedAt: doSchema.blobs.lastUploadedAt,
+					deleteAfter: doSchema.blobs.deleteAfter,
+				})
+				.all()
 				.map(toBlobRow);
 			const reclaimedBytes = deleted.reduce(
 				(total, blob) => total + blob.size_bytes,
@@ -180,50 +149,43 @@ export class CoordinatorBlobGcStore implements BlobGcStore {
 	}
 
 	readGcDeadlines(now: number): readonly number[] {
-		const rows = this.handle
-			.exec<{ delete_after: number | null }>(
-				`
-					SELECT blobs.delete_after
-					FROM blobs
-					WHERE blobs.state = 'staged'
-						AND blobs.delete_after IS NOT NULL
-						AND (
-							blobs.delete_after > ?
-							OR ${BLOB_UNREFERENCED_SQL}
-						)
-					UNION ALL
-					SELECT blobs.delete_after
-					FROM blobs
-					WHERE blobs.state = 'pending_delete'
-						AND blobs.delete_after IS NOT NULL
-						AND ${BLOB_UNREFERENCED_SQL}
-					UNION ALL
-					SELECT entry_versions.expires_at AS delete_after
-					FROM entry_versions
-					WHERE entry_versions.expires_at IS NOT NULL
-				ORDER BY delete_after ASC
-				LIMIT 1
-				`,
-				now,
-				now,
-				now,
-			)
-			.toArray();
+		const rows = unionAll(
+			this.handle.db
+				.select({ deadline: doSchema.blobs.deleteAfter })
+				.from(doSchema.blobs)
+				.where(
+					and(
+						eq(doSchema.blobs.state, "staged"),
+						isNotNull(doSchema.blobs.deleteAfter),
+						or(gt(doSchema.blobs.deleteAfter, now), blobUnreferenced(now)),
+					),
+				),
+			this.handle.db
+				.select({ deadline: doSchema.blobs.deleteAfter })
+				.from(doSchema.blobs)
+				.where(
+					and(
+						eq(doSchema.blobs.state, "pending_delete"),
+						isNotNull(doSchema.blobs.deleteAfter),
+						blobUnreferenced(now),
+					),
+				),
+			this.handle.db
+				.select({ deadline: doSchema.entryVersions.expiresAt })
+				.from(doSchema.entryVersions)
+				.where(isNotNull(doSchema.entryVersions.expiresAt)),
+		)
+			.orderBy(asc(doSchema.blobs.deleteAfter))
+			.limit(1)
+			.all();
 
 		return rows.flatMap((row) =>
-			row.delete_after === null ? [] : [Number(row.delete_after)],
+			row.deadline === null ? [] : [Number(row.deadline)],
 		);
 	}
 }
 
-type BlobSqlRow = {
-	blob_id: string;
-	state: string;
-	size_bytes: number;
-	created_at: number;
-	last_uploaded_at: number;
-	delete_after: number | null;
-};
+type BlobSelectRow = typeof doSchema.blobs.$inferSelect;
 
 function decrementStorageUsedBytes(db: BlobDb, sizeBytes: number): void {
 	db.update(doSchema.coordinatorState)
@@ -234,13 +196,13 @@ function decrementStorageUsedBytes(db: BlobDb, sizeBytes: number): void {
 		.run();
 }
 
-function toBlobRow(row: BlobSqlRow): BlobRow {
+function toBlobRow(row: BlobSelectRow): BlobRow {
 	return {
-		blob_id: row.blob_id,
+		blob_id: row.blobId,
 		state: row.state as BlobState,
-		size_bytes: Number(row.size_bytes),
-		created_at: Number(row.created_at),
-		last_uploaded_at: Number(row.last_uploaded_at),
-		delete_after: row.delete_after === null ? null : Number(row.delete_after),
+		size_bytes: Number(row.sizeBytes),
+		created_at: Number(row.createdAt),
+		last_uploaded_at: Number(row.lastUploadedAt),
+		delete_after: row.deleteAfter === null ? null : Number(row.deleteAfter),
 	};
 }

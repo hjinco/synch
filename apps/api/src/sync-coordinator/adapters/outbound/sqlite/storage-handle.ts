@@ -16,6 +16,12 @@ export type CoordinatorSqlValue = ArrayBuffer | string | number | null;
 
 export interface CoordinatorStorageHandle {
 	readonly db: CoordinatorDb;
+/**
+ * Raw SQL escape hatch shared by both runtimes. Prefer `db` (drizzle) for
+ * queries; keep `exec` for statements DO SQLite treats specially, such as
+ * single-statement reads that must not be split.
+ * Raw SQL without such a reason should be expressed with drizzle instead.
+ */
 	exec<T extends Record<string, CoordinatorSqlValue> = Record<string, CoordinatorSqlValue>>(
 		query: string,
 		...bindings: unknown[]

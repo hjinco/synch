@@ -1,42 +1,59 @@
+import { and, eq, gt, inArray, lte, notExists, sql } from "drizzle-orm";
+import type { SQL } from "drizzle-orm";
+import { QueryBuilder } from "drizzle-orm/sqlite-core";
+
+import * as doSchema from "../../../../db/do";
+
 /**
- * SQL mirror of the reference facts in domain/blob-gc-policy
+ * Drizzle mirror of the reference facts in domain/blob-gc-policy
  * (hasCurrentReference/hasRetainedHistory). Keep in lockstep with
  * decideBlobCollection/decidePendingDelete; the shared predicates are
  * covered by blob-store and blob-gc-service tests.
- *
+ */
+
+const queryBuilder = new QueryBuilder();
+
+/**
  * Blob is not referenced by a current entry or an unexpired version.
- * Requires the `blobs` table in scope. Binds `now` once for `expires_at`.
+ * Requires `doSchema.blobs` to be the outer query's table so the
+ * correlated `blobs.blob_id` references resolve.
  */
-export const BLOB_UNREFERENCED_SQL = `
-	NOT EXISTS (
-		SELECT 1
-		FROM entries
-		WHERE entries.blob_id = blobs.blob_id
-	)
-	AND NOT EXISTS (
-		SELECT 1
-		FROM entry_versions
-		WHERE entry_versions.blob_id = blobs.blob_id
-			AND entry_versions.expires_at > ?
-	)
-`;
+export function blobUnreferenced(now: number): SQL {
+	return and(
+		notExists(
+			queryBuilder
+				.select({ one: sql`1` })
+				.from(doSchema.entries)
+				.where(eq(doSchema.entries.blobId, doSchema.blobs.blobId)),
+		),
+		notExists(
+			queryBuilder
+				.select({ one: sql`1` })
+				.from(doSchema.entryVersions)
+				.where(
+					and(
+						eq(doSchema.entryVersions.blobId, doSchema.blobs.blobId),
+						gt(doSchema.entryVersions.expiresAt, now),
+					),
+				),
+		),
+	) as SQL;
+}
 
-/**
- * Staged or pending_delete blob whose grace period has passed and is unreferenced.
- * Binds `now` twice: `delete_after` cutoff, then version `expires_at` cutoff.
- */
-export const COLLECTIBLE_BLOB_SQL = `
-	blobs.state IN ('staged', 'pending_delete')
-	AND blobs.delete_after <= ?
-	AND ${BLOB_UNREFERENCED_SQL}
-`;
+/** Staged or pending_delete blob whose grace period has passed and is unreferenced. */
+export function collectibleBlob(now: number): SQL {
+	return and(
+		inArray(doSchema.blobs.state, ["staged", "pending_delete"]),
+		lte(doSchema.blobs.deleteAfter, now),
+		blobUnreferenced(now),
+	) as SQL;
+}
 
-/**
- * Pending-delete blob that GC can collect right now.
- * Binds `now` twice: `delete_after` cutoff, then version `expires_at` cutoff.
- */
-export const COLLECTIBLE_PENDING_DELETE_SQL = `
-	blobs.state = 'pending_delete'
-	AND blobs.delete_after <= ?
-	AND ${BLOB_UNREFERENCED_SQL}
-`;
+/** Pending-delete blob that GC can collect right now. */
+export function collectiblePendingDelete(now: number): SQL {
+	return and(
+		eq(doSchema.blobs.state, "pending_delete"),
+		lte(doSchema.blobs.deleteAfter, now),
+		blobUnreferenced(now),
+	) as SQL;
+}

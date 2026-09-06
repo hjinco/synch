@@ -1,6 +1,10 @@
+import { eq, gte, sql } from "drizzle-orm";
+import type { SQL } from "drizzle-orm";
+
+import * as doSchema from "../../../../db/do";
 import type { StorageStatusSnapshot } from "../../../application/dto/types";
 import type { VaultHealthSnapshot } from "../../../application/ports/outbound";
-import { COLLECTIBLE_PENDING_DELETE_SQL } from "./blob-collectability";
+import { collectiblePendingDelete } from "./blob-collectability";
 import type { CoordinatorStorageHandle } from "./storage-handle";
 
 /** Live websocket count, kept separate from storage since it isn't backed by SQL. */
@@ -15,121 +19,100 @@ export class CoordinatorHealthStore {
 	) {}
 
 	recordGcCompleted(now = Date.now()): void {
-		this.handle.exec(
-			`
-			UPDATE coordinator_state
-			SET last_gc_at = ?
-			WHERE id = 1
-			`,
-			now,
-		);
+		this.handle.db
+			.update(doSchema.coordinatorState)
+			.set({ lastGcAt: now })
+			.where(eq(doSchema.coordinatorState.id, 1))
+			.run();
 	}
 
 	readHealthSnapshot(
 		now: number,
 		activeCursorTtlMs: number,
 	): VaultHealthSnapshot | null {
-		const state = this.handle
-			.exec<{
-				vault_id: string;
-				current_cursor: number;
-				storage_used_bytes: number;
-				storage_limit_bytes: number;
-				last_commit_at: number | null;
-				last_gc_at: number | null;
-			}>(
-				`
-				SELECT
-					vault_id,
-					current_cursor,
-					storage_used_bytes,
-					storage_limit_bytes,
-					last_commit_at,
-					last_gc_at
-				FROM coordinator_state
-				WHERE id = 1
-				`,
-			)
-			.toArray()[0];
+		const activeSince = now - activeCursorTtlMs;
+		// State row and stats read in one statement so the snapshot observes a
+		// single consistent view of all tables.
+		const state = this.handle.db
+			.select({
+				vaultId: doSchema.coordinatorState.vaultId,
+				currentCursor: doSchema.coordinatorState.currentCursor,
+				storageUsedBytes: doSchema.coordinatorState.storageUsedBytes,
+				storageLimitBytes: doSchema.coordinatorState.storageLimitBytes,
+				lastCommitAt: doSchema.coordinatorState.lastCommitAt,
+				lastGcAt: doSchema.coordinatorState.lastGcAt,
+				entryCount: scalarCount(doSchema.entries, eq(doSchema.entries.deleted, 0)),
+				liveBlobCount: scalarCount(doSchema.blobs, eq(doSchema.blobs.state, "live")),
+				stagedBlobCount: scalarCount(
+					doSchema.blobs,
+					eq(doSchema.blobs.state, "staged"),
+				),
+				pendingDeleteBlobCount: scalarCount(
+					doSchema.blobs,
+					eq(doSchema.blobs.state, "pending_delete"),
+				),
+				collectiblePendingDeleteBlobCount: scalarCount(
+					doSchema.blobs,
+					collectiblePendingDelete(now),
+				),
+				oldestStagedBlobAt: sql<number | null>`(SELECT min(${doSchema.blobs.createdAt}) FROM ${doSchema.blobs} WHERE ${eq(doSchema.blobs.state, "staged")})`,
+				oldestPendingDeleteAt: sql<number | null>`(SELECT min(${doSchema.blobs.deleteAfter}) FROM ${doSchema.blobs} WHERE ${collectiblePendingDelete(now)})`,
+				activeLocalVaultCount: scalarCount(
+					doSchema.localVaultConnections,
+					gte(doSchema.localVaultConnections.lastConnectedAt, activeSince),
+				),
+			})
+			.from(doSchema.coordinatorState)
+			.where(eq(doSchema.coordinatorState.id, 1))
+			.get();
 		if (!state) {
 			return null;
 		}
 
-		const activeSince = now - activeCursorTtlMs;
-		const stats = this.handle
-			.exec<{
-				entry_count: number;
-				live_blob_count: number;
-				staged_blob_count: number;
-				pending_delete_blob_count: number;
-				collectible_pending_delete_blob_count: number;
-				oldest_staged_blob_at: number | null;
-				oldest_pending_delete_at: number | null;
-				active_local_vault_count: number;
-			}>(
-				`
-				SELECT
-					(SELECT count(*) FROM entries WHERE deleted = 0) AS entry_count,
-					(SELECT count(*) FROM blobs WHERE state = 'live') AS live_blob_count,
-					(SELECT count(*) FROM blobs WHERE state = 'staged') AS staged_blob_count,
-					(SELECT count(*) FROM blobs WHERE state = 'pending_delete') AS pending_delete_blob_count,
-					(SELECT count(*) FROM blobs WHERE ${COLLECTIBLE_PENDING_DELETE_SQL}) AS collectible_pending_delete_blob_count,
-					(SELECT min(created_at) FROM blobs WHERE state = 'staged') AS oldest_staged_blob_at,
-					(SELECT min(delete_after) FROM blobs WHERE ${COLLECTIBLE_PENDING_DELETE_SQL}) AS oldest_pending_delete_at,
-					(SELECT count(*) FROM local_vault_connections WHERE last_connected_at >= ?) AS active_local_vault_count
-				`,
-				now,
-				now,
-				now,
-				now,
-				activeSince,
-			)
-			.toArray()[0];
-
 		const snapshot = {
-			vaultId: state.vault_id,
-			currentCursor: Number(state.current_cursor),
-			entryCount: Number(stats?.entry_count ?? 0),
-			liveBlobCount: Number(stats?.live_blob_count ?? 0),
-			stagedBlobCount: Number(stats?.staged_blob_count ?? 0),
-			pendingDeleteBlobCount: Number(stats?.pending_delete_blob_count ?? 0),
+			vaultId: state.vaultId,
+			currentCursor: Number(state.currentCursor),
+			entryCount: Number(state.entryCount),
+			liveBlobCount: Number(state.liveBlobCount),
+			stagedBlobCount: Number(state.stagedBlobCount),
+			pendingDeleteBlobCount: Number(state.pendingDeleteBlobCount),
 			collectiblePendingDeleteBlobCount: Number(
-				stats?.collectible_pending_delete_blob_count ?? 0,
+				state.collectiblePendingDeleteBlobCount,
 			),
-			storageUsedBytes: Number(state.storage_used_bytes),
-			storageLimitBytes: Number(state.storage_limit_bytes),
-			activeLocalVaultCount: Number(stats?.active_local_vault_count ?? 0),
+			storageUsedBytes: Number(state.storageUsedBytes),
+			storageLimitBytes: Number(state.storageLimitBytes),
+			activeLocalVaultCount: Number(state.activeLocalVaultCount),
 			websocketCount: this.sockets.count(),
-			oldestStagedBlobAgeMs: ageMs(now, stats?.oldest_staged_blob_at ?? null),
-			oldestPendingDeleteAgeMs: ageMs(
-				now,
-				stats?.oldest_pending_delete_at ?? null,
-			),
-			lastCommitAt: nullableNumber(state.last_commit_at),
-			lastGcAt: nullableNumber(state.last_gc_at),
+			oldestStagedBlobAgeMs: ageMs(now, state.oldestStagedBlobAt),
+			oldestPendingDeleteAgeMs: ageMs(now, state.oldestPendingDeleteAt),
+			lastCommitAt: nullableNumber(state.lastCommitAt),
+			lastGcAt: nullableNumber(state.lastGcAt),
 		} satisfies VaultHealthSnapshot;
 
 		return snapshot;
 	}
 
 	readStorageStatus(): StorageStatusSnapshot {
-		const state = this.handle
-			.exec<{
-				storage_used_bytes: number;
-				storage_limit_bytes: number;
-			}>(
-				`
-				SELECT storage_used_bytes, storage_limit_bytes
-				FROM coordinator_state
-				WHERE id = 1
-				`,
-			)
-			.toArray()[0];
+		const state = this.handle.db
+			.select({
+				storageUsedBytes: doSchema.coordinatorState.storageUsedBytes,
+				storageLimitBytes: doSchema.coordinatorState.storageLimitBytes,
+			})
+			.from(doSchema.coordinatorState)
+			.where(eq(doSchema.coordinatorState.id, 1))
+			.get();
 		return {
-			storageUsedBytes: Number(state?.storage_used_bytes ?? 0),
-			storageLimitBytes: Number(state?.storage_limit_bytes ?? 0),
+			storageUsedBytes: Number(state?.storageUsedBytes ?? 0),
+			storageLimitBytes: Number(state?.storageLimitBytes ?? 0),
 		};
 	}
+}
+
+function scalarCount(
+	table: Parameters<ReturnType<CoordinatorStorageHandle["db"]["select"]>["from"]>[0],
+	condition: SQL,
+): SQL<number> {
+	return sql<number>`(SELECT count(*) FROM ${table} WHERE ${condition})`;
 }
 
 function nullableNumber(value: number | null): number | null {
