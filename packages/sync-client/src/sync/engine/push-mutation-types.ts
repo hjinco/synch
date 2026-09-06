@@ -17,7 +17,6 @@ import type {
 import type { PushBlobRetryCache } from "./push-blob-retry-cache";
 
 export interface PushMutationCommitterDeps extends SyncContentRuntimeDeps {
-  getApiBaseUrl: () => string;
   getRemoteVaultKey: () => Uint8Array;
   getSyncCryptoContext?: () => SyncCryptoContext;
   fileReader: LocalFileReader;

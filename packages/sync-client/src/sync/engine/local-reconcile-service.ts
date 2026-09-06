@@ -1,5 +1,4 @@
 import {
-  resolveSyncContentRuntime,
   type SyncContentRuntime,
   type SyncContentRuntimeDeps,
 } from "../core/content-runtime";
@@ -43,7 +42,7 @@ export class SyncLocalReconcileService {
   private readonly contentRuntime: SyncContentRuntime;
 
   constructor(private readonly deps: SyncLocalReconcileServiceDeps) {
-    this.contentRuntime = resolveSyncContentRuntime(deps);
+    this.contentRuntime = deps.contentRuntime;
   }
 
   async reconcileOnce(): Promise<ReconcileOnceResult> {

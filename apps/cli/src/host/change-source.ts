@@ -2,12 +2,12 @@ import path from "node:path";
 
 import { watch, type FSWatcher } from "chokidar";
 
-import { normalizeVaultPath } from "@synch/sync-client/sync/core/file-rules";
-import { isNeverSyncReservedPath } from "@synch/sync-client/sync/core/reserved-paths";
+import { normalizeVaultPath, isNeverSyncReservedPath } from "@synch/sync-client/core";
+
 import type {
   SyncChangeSource,
   SyncChangeSourceContext,
-} from "@synch/sync-client/sync/runtime/change-source";
+} from "@synch/sync-client/engine";
 import { VAULT_TMP_FILE_MARKER, type NodeSyncVaultAdapter } from "./vault-adapter";
 
 const DEFAULT_EVENT_DEBOUNCE_MS = 200;

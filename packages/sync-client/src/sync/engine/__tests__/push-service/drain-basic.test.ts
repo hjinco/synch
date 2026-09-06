@@ -1,3 +1,4 @@
+import { createTestContentRuntime } from "../../../../test-support/content-runtime";
 import { describe, expect, it } from "vitest";
 
 import { encodeUtf8, hashBytes } from "../../../core/content";
@@ -69,7 +70,7 @@ describe("SyncPushService drain: basic queue", () => {
       };
     });
     const service = new SyncPushService({
-      getApiBaseUrl: () => "http://127.0.0.1:8787",
+      contentRuntime: createTestContentRuntime(),
       getSyncToken: async () => createToken(),
       getSyncStore: () => store,
       getRemoteVaultKey: () => TEST_VAULT_KEY,
@@ -83,7 +84,7 @@ describe("SyncPushService drain: basic queue", () => {
         },
       },
       blobClient: {
-        async uploadBlob(_apiBaseUrl, _syncToken, _vaultId, blobId, bytes) {
+        async uploadBlob(_vaultId, blobId, bytes) {
           uploaded.push({
             blobId,
             bytes,
@@ -227,7 +228,7 @@ describe("SyncPushService drain: basic queue", () => {
       revision: mutation.baseRevision + 1,
     }));
     const service = new SyncPushService({
-      getApiBaseUrl: () => "http://127.0.0.1:8787",
+      contentRuntime: createTestContentRuntime(),
       getSyncToken: async () => createToken(),
       getSyncStore: () => store,
       getRemoteVaultKey: () => TEST_VAULT_KEY,
@@ -280,7 +281,7 @@ describe("SyncPushService drain: basic queue", () => {
       revision: mutation.baseRevision + 1,
     }));
     const service = new SyncPushService({
-      getApiBaseUrl: () => "http://127.0.0.1:8787",
+      contentRuntime: createTestContentRuntime(),
       getSyncToken: async () => createToken(),
       getSyncStore: () => store,
       getRemoteVaultKey: () => TEST_VAULT_KEY,
@@ -315,7 +316,7 @@ describe("SyncPushService drain: basic queue", () => {
       throw new Error("should not commit");
     });
     const service = new SyncPushService({
-      getApiBaseUrl: () => "http://127.0.0.1:8787",
+      contentRuntime: createTestContentRuntime(),
       getSyncToken: async () => createToken(),
       getSyncStore: () => store,
       getRemoteVaultKey: () => TEST_VAULT_KEY,

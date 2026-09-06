@@ -3,8 +3,8 @@ import fs from "node:fs";
 import fsPromises from "node:fs/promises";
 import path from "node:path";
 
-import type { AuthSessionTokenStore } from "@synch/sync-client/auth/session-token-store";
-import type { StoredRemoteVaultKeySecret } from "@synch/sync-client/remote-vault/types";
+import type { AuthSessionTokenStore } from "@synch/sync-client/auth";
+import type { StoredRemoteVaultKeySecret } from "@synch/sync-client/remote";
 
 interface StoredVaultCredential {
   remoteVaultId: string;

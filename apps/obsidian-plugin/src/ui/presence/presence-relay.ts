@@ -1,4 +1,4 @@
-import type { PresenceUpdatedPush } from "@synch/sync-client/sync/remote/realtime-types";
+import type { PresenceUpdatedPush } from "@synch/sync-client/remote";
 
 export type { PresenceUpdatedPush };
 

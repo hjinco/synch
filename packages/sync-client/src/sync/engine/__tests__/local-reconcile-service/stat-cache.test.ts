@@ -1,3 +1,4 @@
+import { createTestContentRuntime } from "../../../../test-support/content-runtime";
 import { describe, expect, it } from "vitest";
 
 import { encodeUtf8, hashBytes } from "../../../core/content";
@@ -23,6 +24,7 @@ describe("SyncLocalReconcileService stat cache", () => {
     let reads = 0;
 
     const service = new SyncLocalReconcileService({
+      contentRuntime: createTestContentRuntime(),
       getSyncStore: () => store,
       getRemoteVaultKey: () => TEST_VAULT_KEY,
       shouldSyncPath: () => true,
@@ -70,6 +72,7 @@ describe("SyncLocalReconcileService stat cache", () => {
     });
 
     const service = new SyncLocalReconcileService({
+      contentRuntime: createTestContentRuntime(),
       getSyncStore: () => store,
       getRemoteVaultKey: () => TEST_VAULT_KEY,
       shouldSyncPath: () => true,

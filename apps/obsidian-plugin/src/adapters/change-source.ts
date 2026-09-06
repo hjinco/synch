@@ -3,7 +3,7 @@ import type { Plugin } from "obsidian";
 import type {
   SyncChangeSource,
   SyncChangeSourceContext,
-} from "@synch/sync-client/sync/runtime/change-source";
+} from "@synch/sync-client/engine";
 import type { ObsidianSyncVaultAdapter } from "./vault-adapter";
 import { SyncVaultEventHandler } from "./vault-event-handler";
 

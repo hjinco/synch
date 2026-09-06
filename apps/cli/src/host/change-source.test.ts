@@ -6,8 +6,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   DEFAULT_SYNC_FILE_RULES,
   type SyncFileRules,
-} from "@synch/sync-client/sync/core/file-rules";
-import type { SyncChangeSourceContext } from "@synch/sync-client/sync/runtime/change-source";
+} from "@synch/sync-client/core";
+import type { SyncChangeSourceContext } from "@synch/sync-client/engine";
 import { NodeFsChangeSource } from "./change-source";
 import { NodeSyncVaultAdapter, VAULT_TMP_FILE_MARKER } from "./vault-adapter";
 

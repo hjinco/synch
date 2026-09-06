@@ -1,3 +1,4 @@
+import { createTestContentRuntime } from "../../../../test-support/content-runtime";
 import { describe, expect, it } from "vitest";
 
 import { encodeUtf8, hashBytes } from "../../../core/content";
@@ -14,6 +15,7 @@ describe("SyncEventRecorder suppression and binary files", () => {
     const store = createTestSyncStore();
     const gate = new SyncEventGate();
     const recorder = new SyncEventRecorder({
+      contentRuntime: createTestContentRuntime(),
       getSyncStore: () => store,
       getRemoteVaultKey: () => TEST_VAULT_KEY,
       eventGate: gate,
@@ -31,6 +33,7 @@ describe("SyncEventRecorder suppression and binary files", () => {
   it("tracks binary attachments with the same blob hash flow", async () => {
     const store = createTestSyncStore();
     const recorder = new SyncEventRecorder({
+      contentRuntime: createTestContentRuntime(),
       getSyncStore: () => store,
       getRemoteVaultKey: () => TEST_VAULT_KEY,
     });

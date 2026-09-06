@@ -1,5 +1,4 @@
 import {
-  resolveSyncContentRuntime,
   type SyncContentRuntime,
 } from "../core/content-runtime";
 import { getAvailableConflictCopyPath } from "../core/conflict-file";
@@ -36,7 +35,7 @@ export class PullPendingMutationHandler {
   private readonly contentRuntime: SyncContentRuntime;
 
   constructor(private readonly deps: PullEntryStateApplierDeps) {
-    this.contentRuntime = resolveSyncContentRuntime(deps);
+    this.contentRuntime = deps.contentRuntime;
   }
 
   async prepareConflictingPendingMutation(

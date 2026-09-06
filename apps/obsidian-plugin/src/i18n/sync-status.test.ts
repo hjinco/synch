@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { resetObsidianMocks } from "obsidian";
 
-import type { UserVisibleSyncState } from "@synch/sync-client/sync/runtime/user-visible-status";
+import type { UserVisibleSyncState } from "@synch/sync-client/engine";
 import { t } from "./index";
 import { formatSyncStatusLabel } from "./sync-status";
 

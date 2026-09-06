@@ -14,7 +14,7 @@ import {
 import type {
   PresencePosition,
   PresenceSelection,
-} from "@synch/sync-client/sync/core/presence";
+} from "@synch/sync-client/core";
 
 export type RemotePresenceCaret = {
   presenceId: string;

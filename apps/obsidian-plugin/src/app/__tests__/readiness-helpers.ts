@@ -4,9 +4,9 @@ import { vi } from "vitest";
 import { encodeBase64 } from "@synch/vault-crypto";
 import { writeAuthSessionToken } from "../../adapters/auth-session-storage";
 import { writeStoredRemoteVaultKeySecret } from "../../adapters/remote-vault-device-storage";
-import { DEFAULT_SYNC_FILE_RULES } from "@synch/sync-client/sync/core/file-rules";
-import { DEFAULT_VAULT_CONFIG_SYNC_RULES } from "@synch/sync-client/sync/core/vault-config-rules";
-import type { SyncConnection } from "@synch/sync-client/sync/store/store";
+import { DEFAULT_SYNC_FILE_RULES, DEFAULT_VAULT_CONFIG_SYNC_RULES } from "@synch/sync-client/core";
+
+import type { SyncConnection } from "@synch/sync-client/store";
 import { SYNCH_SETTINGS_KEY, type SynchPluginSettings } from "../../settings/schema";
 import {
   Plugin as TestPluginClass,

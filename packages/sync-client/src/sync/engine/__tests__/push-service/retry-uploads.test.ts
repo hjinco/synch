@@ -1,3 +1,4 @@
+import { createTestContentRuntime } from "../../../../test-support/content-runtime";
 import { describe, expect, it } from "vitest";
 
 import { encodeUtf8, hashBytes } from "../../../core/content";
@@ -242,7 +243,7 @@ function createRetryUploadService(
   uploadedBytes: Uint8Array[] = [],
 ) {
   return new SyncPushService({
-    getApiBaseUrl: () => "http://127.0.0.1:8787",
+    contentRuntime: createTestContentRuntime(),
     getSyncToken: async () => createToken(),
     getSyncStore: () => store,
     getRemoteVaultKey: () => TEST_VAULT_KEY,
@@ -256,7 +257,7 @@ function createRetryUploadService(
       },
     },
     blobClient: {
-      async uploadBlob(_apiBaseUrl, _syncToken, _vaultId, blobId, encryptedBytes) {
+      async uploadBlob(_vaultId, blobId, encryptedBytes) {
         uploadedBlobIds.push(blobId);
         uploadedBytes.push(encryptedBytes);
       },

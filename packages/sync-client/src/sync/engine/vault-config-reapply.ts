@@ -1,14 +1,11 @@
-import {
-  resolveSyncContentRuntime,
-  type SyncContentRuntimeDeps,
-} from "../core/content-runtime";
+import type { SyncContentRuntimeDeps } from "../core/content-runtime";
 import { decryptSyncBlob } from "../core/crypto";
 import {
   shouldSyncVaultConfigPath,
   type VaultConfigSyncRules,
 } from "../core/vault-config-rules";
 import type { SyncEventGate } from "./event-gate";
-import type { SyncPullClient } from "../remote/pull-client";
+import type { SyncBlobClient } from "../remote/blob-client";
 import type { SyncTokenResponse } from "../remote/client";
 import type { SyncStore } from "../store/store";
 import type { SyncVaultWriter } from "../vault/vault-writer";
@@ -23,8 +20,7 @@ export interface ReapplyRemoteVaultConfigDeps extends SyncContentRuntimeDeps {
   configDir: string;
   vaultWriter: SyncVaultWriter;
   eventGate: SyncEventGate;
-  pullClient: SyncPullClient;
-  getApiBaseUrl: () => string;
+  blobClient: Pick<SyncBlobClient, "downloadBlob">;
   getSyncToken: () => Promise<SyncTokenResponse>;
   getRemoteVaultKey: () => Uint8Array;
 }
@@ -32,7 +28,7 @@ export interface ReapplyRemoteVaultConfigDeps extends SyncContentRuntimeDeps {
 export async function reapplyAllowedRemoteVaultConfig(
   deps: ReapplyRemoteVaultConfigDeps,
 ): Promise<number> {
-  const contentRuntime = resolveSyncContentRuntime(deps);
+  const contentRuntime = deps.contentRuntime;
   const { store, rules } = deps;
   if (!rules.enabled) {
     return 0;
@@ -97,9 +93,7 @@ export async function reapplyAllowedRemoteVaultConfig(
           continue;
         }
 
-        const encryptedBytes = await deps.pullClient.downloadBlob(
-          deps.getApiBaseUrl(),
-          token.token,
+        const encryptedBytes = await deps.blobClient.downloadBlob(
           token.vaultId,
           remote.blobId,
         );

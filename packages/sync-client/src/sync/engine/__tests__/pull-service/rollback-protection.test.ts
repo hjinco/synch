@@ -1,10 +1,11 @@
+import { createTestContentRuntime } from "../../../../test-support/content-runtime";
 import { describe, expect, it } from "vitest";
 
 import { SyncPullService } from "../../pull-service";
 import { createTestSyncStore } from "../../../../test-support/in-memory-sync-store";
 import {
   createCommit,
-  createPullClient,
+  createBlobClient,
   createRealtimeSession,
   createToken,
   createVaultAdapter,
@@ -70,7 +71,7 @@ describe("SyncPullService rollback protection", () => {
         },
       ],
     });
-    const client = createPullClient({
+    const client = createBlobClient({
       blobs: {
         "blob-stale": await encryptTestBlob("blob-stale", new TextEncoder().encode(staleBody)),
       },
@@ -78,12 +79,12 @@ describe("SyncPullService rollback protection", () => {
 
     const rollbacks: Array<{ entryId: string; localRevision: number; remoteRevision: number }> = [];
     const service = new SyncPullService({
-      getApiBaseUrl: () => "http://127.0.0.1:8787",
+      contentRuntime: createTestContentRuntime(),
       getSyncToken: async () => createToken(),
       getSyncStore: () => store,
       getRemoteVaultKey: () => TEST_VAULT_KEY,
       vaultAdapter: adapter,
-      pullClient: client,
+      blobClient: client,
       onProgress: ignoreProgress,
       onRollbackDetected(event) {
         rollbacks.push({
@@ -150,7 +151,7 @@ describe("SyncPullService rollback protection", () => {
         },
       ],
     });
-    const client = createPullClient({
+    const client = createBlobClient({
       blobs: {
         "blob-newer": await encryptTestBlob("blob-newer", new TextEncoder().encode(newerBody)),
       },
@@ -158,12 +159,12 @@ describe("SyncPullService rollback protection", () => {
 
     const rollbacks: unknown[] = [];
     const service = new SyncPullService({
-      getApiBaseUrl: () => "http://127.0.0.1:8787",
+      contentRuntime: createTestContentRuntime(),
       getSyncToken: async () => createToken(),
       getSyncStore: () => store,
       getRemoteVaultKey: () => TEST_VAULT_KEY,
       vaultAdapter: adapter,
-      pullClient: client,
+      blobClient: client,
       onProgress: ignoreProgress,
       onRollbackDetected: (event) => rollbacks.push(event),
     });
@@ -221,7 +222,7 @@ describe("SyncPullService rollback protection", () => {
         },
       ],
     });
-    const client = createPullClient({
+    const client = createBlobClient({
       blobs: {
         "blob-current": await encryptTestBlob("blob-current", new TextEncoder().encode(currentBody)),
       },
@@ -229,12 +230,12 @@ describe("SyncPullService rollback protection", () => {
 
     const rollbacks: unknown[] = [];
     const service = new SyncPullService({
-      getApiBaseUrl: () => "http://127.0.0.1:8787",
+      contentRuntime: createTestContentRuntime(),
       getSyncToken: async () => createToken(),
       getSyncStore: () => store,
       getRemoteVaultKey: () => TEST_VAULT_KEY,
       vaultAdapter: adapter,
-      pullClient: client,
+      blobClient: client,
       onProgress: ignoreProgress,
       onRollbackDetected: (event) => rollbacks.push(event),
     });

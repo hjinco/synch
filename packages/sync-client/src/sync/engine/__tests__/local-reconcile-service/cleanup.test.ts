@@ -1,3 +1,4 @@
+import { createTestContentRuntime } from "../../../../test-support/content-runtime";
 import { describe, expect, it } from "vitest";
 
 import { createTestSyncStore } from "../../../../test-support/in-memory-sync-store";
@@ -38,6 +39,7 @@ describe("SyncLocalReconcileService cleanup", () => {
     });
 
     const service = new SyncLocalReconcileService({
+      contentRuntime: createTestContentRuntime(),
       getSyncStore: () => store,
       getRemoteVaultKey: () => TEST_VAULT_KEY,
       shouldSyncPath: () => true,
@@ -118,6 +120,7 @@ describe("SyncLocalReconcileService cleanup", () => {
     });
 
     const service = new SyncLocalReconcileService({
+      contentRuntime: createTestContentRuntime(),
       getSyncStore: () => store,
       getRemoteVaultKey: () => TEST_VAULT_KEY,
       shouldSyncPath: (path) => path !== "Assets/raw.bin" && path !== "Assets/remote.bin",

@@ -1,7 +1,7 @@
 import type { SyncTokenResponse } from "../remote/client";
 import type { SyncContentRuntimeDeps } from "../core/content-runtime";
 import type { SyncEventGateLike } from "./event-gate";
-import { SyncPullClient } from "../remote/pull-client";
+import type { SyncBlobClient } from "../remote/blob-client";
 import type { SyncRealtimeSession } from "../remote/realtime-client";
 import type { SyncCursorStore } from "../store/ports";
 import type { SyncOperationProgress } from "../runtime/user-visible-status";
@@ -20,7 +20,6 @@ const DEFAULT_PULL_APPLY_WINDOW = 100;
 const DEFAULT_PULL_PREPARE_CONCURRENCY = 10;
 
 export interface SyncPullServiceDeps extends SyncContentRuntimeDeps {
-  getApiBaseUrl: () => string;
   getSyncToken: () => Promise<SyncTokenResponse>;
   getSyncStore: () => SyncPullStore | null;
   getRemoteVaultKey: () => Uint8Array;
@@ -28,7 +27,7 @@ export interface SyncPullServiceDeps extends SyncContentRuntimeDeps {
   shouldUseLatestRemoteVersion?: (path: string) => boolean;
   vaultAdapter: PullVaultAdapter;
   eventGate?: SyncEventGateLike;
-  pullClient: Pick<SyncPullClient, "downloadBlob">;
+  blobClient: Pick<SyncBlobClient, "downloadBlob">;
   prepareConcurrency?: number;
   applyWindowSize?: number;
   onProgress?: (progress: SyncOperationProgress) => Promise<void>;
@@ -62,17 +61,14 @@ export interface PullOnceResult {
 }
 
 export class SyncPullService {
-  private readonly pullClient: Pick<SyncPullClient, "downloadBlob">;
   private readonly entryStateApplier: PullEntryStateApplier;
 
   constructor(private readonly deps: SyncPullServiceDeps) {
-    this.pullClient = deps.pullClient;
     this.entryStateApplier = new PullEntryStateApplier({
-      getApiBaseUrl: () => this.deps.getApiBaseUrl(),
       getRemoteVaultKey: () => this.deps.getRemoteVaultKey(),
       vaultAdapter: this.deps.vaultAdapter,
       eventGate: this.deps.eventGate,
-      pullClient: this.pullClient,
+      blobClient: this.deps.blobClient,
       contentRuntime: this.deps.contentRuntime,
       shouldApplyRemotePath: this.deps.shouldApplyRemotePath,
       shouldUseLatestRemoteVersion: this.deps.shouldUseLatestRemoteVersion,

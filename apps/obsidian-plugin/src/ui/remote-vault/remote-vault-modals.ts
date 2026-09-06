@@ -7,7 +7,7 @@ import type {
   CreateRemoteVaultInput,
 } from "./ports";
 import { validateVaultPassword } from "@synch/vault-crypto";
-import type { RemoteVaultRecord } from "@synch/sync-client/remote-vault/types";
+import type { RemoteVaultRecord } from "@synch/sync-client/remote";
 
 export async function openCreateRemoteVaultModal(
   app: App,

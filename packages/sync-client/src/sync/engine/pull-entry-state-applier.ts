@@ -1,11 +1,8 @@
 import { decryptSyncMetadata } from "../core/crypto";
-import {
-  resolveSyncContentRuntime,
-  type SyncContentRuntimeDeps,
-} from "../core/content-runtime";
+import type { SyncContentRuntimeDeps } from "../core/content-runtime";
 import type { SyncTokenResponse } from "../remote/client";
 import type { RemoteEntryState } from "../remote/changes";
-import type { SyncPullClient } from "../remote/pull-client";
+import type { SyncBlobClient } from "../remote/blob-client";
 import type { PendingMutationRow } from "../store/store";
 import type {
   SyncBlobStore,
@@ -46,11 +43,10 @@ import {
 } from "./pull-entry-state-internal";
 
 export interface PullEntryStateApplierDeps extends SyncContentRuntimeDeps {
-  getApiBaseUrl: () => string;
   getRemoteVaultKey: () => Uint8Array;
   vaultAdapter: PullEntryStateVaultAdapter;
   eventGate?: SyncEventGateLike;
-  pullClient: Pick<SyncPullClient, "downloadBlob">;
+  blobClient: Pick<SyncBlobClient, "downloadBlob">;
   shouldApplyRemotePath?: (path: string) => boolean;
   shouldUseLatestRemoteVersion?: (path: string) => boolean;
   prepareConcurrency?: number;
@@ -117,16 +113,10 @@ export class PullEntryStateApplier {
   private readonly manifestPlanner: PullManifestPlanner;
   private readonly pendingMutations: PullPendingMutationHandler;
 
-  private readonly deps: PullEntryStateApplierDeps;
-
-  constructor(deps: PullEntryStateApplierDeps) {
-    this.deps = {
-      ...deps,
-      contentRuntime: resolveSyncContentRuntime(deps),
-    };
-    this.blobPreparer = new PullBlobPreparer(this.deps);
-    this.manifestPlanner = new PullManifestPlanner(this.deps);
-    this.pendingMutations = new PullPendingMutationHandler(this.deps);
+  constructor(private readonly deps: PullEntryStateApplierDeps) {
+    this.blobPreparer = new PullBlobPreparer(deps);
+    this.manifestPlanner = new PullManifestPlanner(deps);
+    this.pendingMutations = new PullPendingMutationHandler(deps);
   }
 
   async createManifestItems(

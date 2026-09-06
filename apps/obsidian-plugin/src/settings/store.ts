@@ -7,11 +7,12 @@ import {
   type SynchPluginSettings,
   SYNCH_SETTINGS_KEY,
 } from "./schema";
-import { normalizeSyncFileRules, type SyncFileRules } from "@synch/sync-client/sync/core/file-rules";
 import {
+  normalizeSyncFileRules,
+  type SyncFileRules,
   normalizeVaultConfigSyncRules,
   type VaultConfigSyncRules,
-} from "@synch/sync-client/sync/core/vault-config-rules";
+} from "@synch/sync-client/core";
 
 export class SynchSettingsStore {
   private settings: SynchPluginSettings = DEFAULT_SYNCH_PLUGIN_SETTINGS;

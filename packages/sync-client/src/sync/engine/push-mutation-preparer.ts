@@ -4,7 +4,6 @@ import {
   type SyncBlobClient,
 } from "../remote/blob-client";
 import {
-  resolveSyncContentRuntime,
   type SyncContentRuntime,
 } from "../core/content-runtime";
 import {
@@ -33,7 +32,7 @@ export class PushMutationPreparer {
 
   constructor(private readonly deps: PushMutationCommitterDeps) {
     this.blobClient = deps.blobClient;
-    this.contentRuntime = resolveSyncContentRuntime(deps);
+    this.contentRuntime = deps.contentRuntime;
   }
 
   async prepareMutationForCommit(
@@ -105,8 +104,6 @@ export class PushMutationPreparer {
     if (!staged && encryptedBytes) {
       try {
         await this.blobClient.uploadBlob(
-          this.deps.getApiBaseUrl(),
-          token.token,
           token.vaultId,
           blobId,
           encryptedBytes,

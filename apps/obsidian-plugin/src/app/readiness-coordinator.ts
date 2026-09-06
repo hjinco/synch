@@ -1,13 +1,14 @@
 import { Notice } from "obsidian";
 
-import type { AuthReadiness } from "@synch/sync-client/auth/manager";
+import type { AuthReadiness } from "@synch/sync-client/auth";
 import { t, type SynchErrorContextKey } from "../i18n";
-import { isOfflineLikeError } from "@synch/sync-client/http/network-status";
-import type { RemoteVaultManager } from "@synch/sync-client/remote-vault/manager";
+import { isOfflineLikeError } from "@synch/sync-client/http";
 import {
+  type RemoteVaultManager,
   isRemoteVaultUnavailableError,
   type RemoteVaultUnavailableError,
-} from "@synch/sync-client/remote-vault/unavailable";
+} from "@synch/sync-client/remote";
+
 import type { SyncController } from "./sync-controller";
 import type { SynchUiEvent } from "../ui/ui-events";
 import type { SynchPluginSessionStore } from "./session-store";

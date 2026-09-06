@@ -1,3 +1,4 @@
+import { createTestContentRuntime } from "../../../../test-support/content-runtime";
 import { describe, expect, it } from "vitest";
 
 import { SyncPullService } from "../../pull-service";
@@ -5,7 +6,7 @@ import { createTestSyncStore } from "../../../../test-support/in-memory-sync-sto
 import {
   createCommit,
   createEventGate,
-  createPullClient,
+  createBlobClient,
   createRealtimeSession,
   createToken,
   createVaultAdapter,
@@ -50,13 +51,13 @@ describe("SyncPullService path operations", () => {
     });
 
     const service = new SyncPullService({
-      getApiBaseUrl: () => "http://127.0.0.1:8787",
+      contentRuntime: createTestContentRuntime(),
       getSyncToken: async () => createToken(),
       getSyncStore: () => store,
       getRemoteVaultKey: () => TEST_VAULT_KEY,
       shouldApplyRemotePath: (path) => path !== ".obsidian/app.json",
       vaultAdapter: adapter,
-      pullClient: createPullClient({}),
+      blobClient: createBlobClient({}),
       onProgress: ignoreProgress,
     });
 
@@ -120,7 +121,7 @@ describe("SyncPullService path operations", () => {
         },
       ],
     });
-    const client = createPullClient({
+    const client = createBlobClient({
       blobs: {
         "blob-new": await encryptTestBlob(
           "blob-new",
@@ -130,13 +131,13 @@ describe("SyncPullService path operations", () => {
     });
 
     const service = new SyncPullService({
-      getApiBaseUrl: () => "http://127.0.0.1:8787",
+      contentRuntime: createTestContentRuntime(),
       getSyncToken: async () => createToken(),
       getSyncStore: () => store,
       getRemoteVaultKey: () => TEST_VAULT_KEY,
       vaultAdapter: adapter,
       eventGate: createEventGate(suppressionCalls),
-      pullClient: client,
+      blobClient: client,
       onProgress: ignoreProgress,
     });
 
@@ -223,7 +224,7 @@ describe("SyncPullService path operations", () => {
         },
       ],
     });
-    const client = createPullClient({
+    const client = createBlobClient({
       blobs: {
         "blob-rename": await encryptTestBlob(
           "blob-rename",
@@ -233,13 +234,13 @@ describe("SyncPullService path operations", () => {
     });
 
     const service = new SyncPullService({
-      getApiBaseUrl: () => "http://127.0.0.1:8787",
+      contentRuntime: createTestContentRuntime(),
       getSyncToken: async () => createToken(),
       getSyncStore: () => store,
       getRemoteVaultKey: () => TEST_VAULT_KEY,
       vaultAdapter: adapter,
       eventGate: createEventGate(suppressionCalls),
-      pullClient: client,
+      blobClient: client,
       onProgress: ignoreProgress,
     });
 
@@ -335,7 +336,7 @@ describe("SyncPullService path operations", () => {
         },
       ],
     });
-    const client = createPullClient({
+    const client = createBlobClient({
       blobs: {
         "blob-a-new": await encryptTestBlob("blob-a-new", new TextEncoder().encode("new a")),
         "blob-b-new": await encryptTestBlob("blob-b-new", new TextEncoder().encode("new b")),
@@ -343,13 +344,13 @@ describe("SyncPullService path operations", () => {
     });
 
     const service = new SyncPullService({
-      getApiBaseUrl: () => "http://127.0.0.1:8787",
+      contentRuntime: createTestContentRuntime(),
       getSyncToken: async () => createToken(),
       getSyncStore: () => store,
       getRemoteVaultKey: () => TEST_VAULT_KEY,
       vaultAdapter: adapter,
       eventGate: createEventGate(suppressionCalls),
-      pullClient: client,
+      blobClient: client,
       onProgress: ignoreProgress,
     });
 
@@ -460,7 +461,7 @@ describe("SyncPullService path operations", () => {
         },
       ],
     });
-    const client = createPullClient({
+    const client = createBlobClient({
       blobs: {
         "blob-a-new": await encryptTestBlob("blob-a-new", new TextEncoder().encode("new a")),
         "blob-b-new": await encryptTestBlob("blob-b-new", new TextEncoder().encode("new b")),
@@ -483,12 +484,12 @@ describe("SyncPullService path operations", () => {
     const conflicts: PullConflictSummary[] = [];
 
     const service = new SyncPullService({
-      getApiBaseUrl: () => "http://127.0.0.1:8787",
+      contentRuntime: createTestContentRuntime(),
       getSyncToken: async () => createToken(),
       getSyncStore: () => store,
       getRemoteVaultKey: () => TEST_VAULT_KEY,
       vaultAdapter: adapter,
-      pullClient: client,
+      blobClient: client,
       onProgress: ignoreProgress,
       onConflict(event) {
         conflicts.push({

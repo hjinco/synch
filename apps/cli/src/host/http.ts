@@ -2,7 +2,7 @@ import type {
   HttpClient,
   HttpRequestInput,
   HttpResponseLike,
-} from "@synch/sync-client/http/request";
+} from "@synch/sync-client/http";
 
 export class NodeHttpClient implements HttpClient {
   async request(input: HttpRequestInput): Promise<HttpResponseLike> {

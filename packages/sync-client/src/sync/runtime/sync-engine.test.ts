@@ -4,6 +4,7 @@ import type { HttpRequestInput, HttpResponseLike } from "../../http/request";
 import { createTestSyncStore } from "../../test-support/in-memory-sync-store";
 import { InMemoryVaultAdapter } from "../../test-support/in-memory-vault-adapter";
 import { encodeUtf8, hashBytes } from "../core/content";
+import { SyncContentRuntime } from "../core/content-runtime";
 import { encryptSyncBlob } from "../core/crypto";
 import { DEFAULT_SYNC_FILE_RULES } from "../core/file-rules";
 import { DEFAULT_VAULT_CONFIG_SYNC_RULES } from "../core/vault-config-rules";
@@ -18,6 +19,35 @@ const TEST_VAULT_KEY = new Uint8Array(Array.from({ length: 32 }, (_, index) => i
 const CONFIG_DIR = ".obsidian";
 
 describe("SyncEngine", () => {
+  it("disposes its owned content runtime once", async () => {
+    const dispose = vi.spyOn(SyncContentRuntime.prototype, "dispose");
+    const { engine } = createTestEngine(new InMemoryVaultAdapter());
+    try {
+      await engine.dispose();
+      await engine.dispose();
+      expect(dispose).toHaveBeenCalledTimes(1);
+    } finally {
+      await engine.dispose();
+      dispose.mockRestore();
+    }
+  });
+
+  it("leaves a caller-owned runtime usable after the engine is disposed", async () => {
+    const contentRuntime = new SyncContentRuntime();
+    const dispose = vi.spyOn(contentRuntime, "dispose");
+    const { engine } = createTestEngine(new InMemoryVaultAdapter(), { contentRuntime });
+    try {
+      await engine.dispose();
+      expect(dispose).not.toHaveBeenCalled();
+      const bytes = encodeUtf8("still usable");
+      await expect(contentRuntime.hash(bytes)).resolves.toBe(await hashBytes(bytes));
+    } finally {
+      await engine.dispose();
+      await contentRuntime.dispose();
+      dispose.mockRestore();
+    }
+  });
+
   it("reports offline sync startup failures through status without a notice", async () => {
     const vault = new InMemoryVaultAdapter();
     vault.seedText("note.md", "body");

@@ -1,3 +1,4 @@
+import { createTestContentRuntime } from "../../test-support/content-runtime";
 import { describe, expect, it, vi } from "vitest";
 
 import { hashBytes } from "../core/content";
@@ -357,12 +358,12 @@ describe("SyncVersionHistoryService", () => {
       versionId: "version-old",
       body,
     });
-    const pullClient = createPullClient({
+    const blobClient = createBlobClient({
       "blob-old": await encryptSyncBlob(TEST_VAULT_KEY, new TextEncoder().encode(body), {
         blobId: "blob-old",
       }),
     });
-    const service = createService(store, { pullClient });
+    const service = createService(store, { blobClient });
 
     await expect(
       service.previewEntryVersionForPath("Folder/active.md", version),
@@ -400,12 +401,12 @@ describe("SyncVersionHistoryService", () => {
       path: "Images/photo.png",
       bytes,
     });
-    const pullClient = createPullClient({
+    const blobClient = createBlobClient({
       "blob-old": await encryptSyncBlob(TEST_VAULT_KEY, bytes, {
         blobId: "blob-old",
       }),
     });
-    const service = createService(store, { pullClient });
+    const service = createService(store, { blobClient });
 
     await expect(
       service.previewEntryVersionForPath("Images/photo.png", version),
@@ -462,7 +463,7 @@ describe("SyncVersionHistoryService", () => {
       }),
     });
     const service = createService(store, {
-      pullClient: createPullClient({
+      blobClient: createBlobClient({
         "blob-old": await encryptSyncBlob(TEST_VAULT_KEY, new TextEncoder().encode(body), {
           blobId: "blob-old",
         }),
@@ -587,7 +588,7 @@ describe("SyncVersionHistoryService", () => {
       body: "expected body",
     });
     const service = createService(store, {
-      pullClient: createPullClient({
+      blobClient: createBlobClient({
         "blob-old": await encryptSyncBlob(
           TEST_VAULT_KEY,
           new TextEncoder().encode("different body"),
@@ -622,7 +623,7 @@ describe("SyncVersionHistoryService", () => {
       versionId: "version-old",
     });
     const service = createService(store, {
-      pullClient: {
+      blobClient: {
         async downloadBlob() {
           throw new Error("download failed");
         },
@@ -745,7 +746,7 @@ function createService(
   overrides: Partial<ConstructorParameters<typeof SyncVersionHistoryService>[0]> = {},
 ): SyncVersionHistoryService {
   return new SyncVersionHistoryService({
-    getApiBaseUrl: () => "http://127.0.0.1:8787",
+    contentRuntime: createTestContentRuntime(),
     getSyncToken: async () => ({
       token: "sync-token",
       vaultId: "vault-1",
@@ -754,7 +755,7 @@ function createService(
     }),
     getStore: () => store,
     getRemoteVaultKey: () => TEST_VAULT_KEY,
-    pullClient: createPullClient({}),
+    blobClient: createBlobClient({}),
     withRealtimeSession: async (work) => await work(createRealtimeSession({})),
     runLocalMutationWork: async (work) => await work(),
     pullOnce: vi.fn(),
@@ -845,18 +846,16 @@ async function createEntryVersion(input: {
   };
 }
 
-function createPullClient(
+function createBlobClient(
   blobs: Record<string, Uint8Array>,
 ): {
   downloadBlob(
-    apiBaseUrl: string,
-    syncToken: string,
     vaultId: string,
     blobId: string,
   ): Promise<Uint8Array>;
 } {
   return {
-    async downloadBlob(_apiBaseUrl, _syncToken, _vaultId, blobId) {
+    async downloadBlob(_vaultId, blobId) {
       const blob = blobs[blobId];
       if (!blob) {
         throw new Error(`missing blob fixture for ${blobId}`);

@@ -4,49 +4,51 @@ import {
   isOffline as detectOffline,
   isOfflineLikeError,
   type OfflineDetector,
-} from "@synch/sync-client/http/network-status";
+} from "@synch/sync-client/http";
 import {
   isRemoteVaultUnavailableError,
   type RemoteVaultUnavailableError,
-} from "@synch/sync-client/remote-vault/unavailable";
-import type { SyncTokenResponse } from "@synch/sync-client/sync/remote/client";
+  type SyncTokenResponse,
+  type DeletedEntryPageCursor,
+  type EntryVersion,
+  type EntryVersionPageCursor,
+  type SyncStorageStatus,
+} from "@synch/sync-client/remote";
+
 import type {
   SyncDiagnosticErrorClassification,
   SyncDiagnosticSource,
   SyncDiagnostics,
   SyncFailurePhase,
-} from "@synch/sync-client/sync/diagnostics/types";
+} from "@synch/sync-client/diagnostics";
+
 import type {
-  DeletedEntryPageCursor,
-  EntryVersion,
-  EntryVersionPageCursor,
-  SyncStorageStatus,
-} from "@synch/sync-client/sync/remote/realtime-client";
-import type { SyncFileRules } from "@synch/sync-client/sync/core/file-rules";
-import type { PresenceSelection } from "@synch/sync-client/sync/core/presence";
-import type { VaultConfigSyncRules } from "@synch/sync-client/sync/core/vault-config-rules";
+  SyncFileRules,
+  PresenceSelection,
+  VaultConfigSyncRules,
+} from "@synch/sync-client/core";
+
 import {
   clearDexieSyncStore,
   createDexieSyncStore,
   readDexieSyncStoreConnection,
 } from "../adapters/dexie-store";
-import type { SyncConnection } from "@synch/sync-client/sync/store/store";
-import type { ReconcileOnceResult } from "@synch/sync-client/sync/engine/local-reconcile-service";
-import type { SyncDeletedEntriesPage } from "@synch/sync-client/sync/runtime/version-history-service";
-import type { SyncDeletedEntriesRestoreResult } from "@synch/sync-client/sync/runtime/version-history-service";
-import type { SyncDeletedEntriesPurgeResult } from "@synch/sync-client/sync/runtime/version-history-service";
+import type { SyncConnection } from "@synch/sync-client/store";
 import {
+  type ReconcileOnceResult,
+  type SyncDeletedEntriesPage,
+  type SyncDeletedEntriesRestoreResult,
+  type SyncDeletedEntriesPurgeResult,
   type SyncEngineEntryVersionsPage,
   type SyncFileSizeBlockedFile,
-} from "@synch/sync-client/sync/runtime/sync-engine";
-import { createObsidianSyncEngine } from "../adapters/sync-engine";
-import type { PresenceRelay } from "../ui/presence/presence-relay";
-import type { SyncEntryVersionPreview } from "@synch/sync-client/sync/runtime/version-history-service";
-import {
+  type SyncEntryVersionPreview,
   getUserVisibleSyncDisplayPercent,
   type UserVisibleSyncProgress,
   type UserVisibleSyncState,
-} from "@synch/sync-client/sync/runtime/user-visible-status";
+} from "@synch/sync-client/engine";
+
+import { createObsidianSyncEngine } from "../adapters/sync-engine";
+import type { PresenceRelay } from "../ui/presence/presence-relay";
 
 export interface SyncControllerDeps {
   plugin: Plugin;

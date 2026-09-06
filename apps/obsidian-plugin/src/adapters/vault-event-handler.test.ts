@@ -1,7 +1,7 @@
 import type { Plugin, TAbstractFile, TFile } from "obsidian";
 import { describe, expect, it, vi } from "vitest";
 
-import type { SyncEventRecorder } from "@synch/sync-client/sync/engine/event-recorder";
+import type { SyncChangeSourceContext } from "@synch/sync-client/engine";
 import type { ObsidianSyncVaultAdapter } from "./vault-adapter";
 import { SyncVaultEventHandler } from "./vault-event-handler";
 
@@ -37,7 +37,7 @@ describe("SyncVaultEventHandler", () => {
         async recordRename() {
           throw new Error("rename should not be recorded in this test");
         },
-      } satisfies Pick<SyncEventRecorder, "recordUpsert" | "recordRename" | "recordDelete">,
+      } satisfies SyncChangeSourceContext["eventRecorder"],
       autoLoop: { notifyLocalChange },
       runLocalMutationWork,
       hasActiveRemoteVaultSession: () => true,
@@ -88,7 +88,7 @@ describe("SyncVaultEventHandler", () => {
         recordUpsert,
         recordRename,
         recordDelete,
-      } satisfies Pick<SyncEventRecorder, "recordUpsert" | "recordRename" | "recordDelete">,
+      } satisfies SyncChangeSourceContext["eventRecorder"],
       autoLoop: { notifyLocalChange },
       runLocalMutationWork,
       hasActiveRemoteVaultSession: () => true,

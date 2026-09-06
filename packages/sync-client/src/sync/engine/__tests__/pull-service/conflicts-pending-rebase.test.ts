@@ -1,3 +1,4 @@
+import { createTestContentRuntime } from "../../../../test-support/content-runtime";
 import { describe, expect, it } from "vitest";
 
 import { hashBytes } from "../../../core/content";
@@ -6,7 +7,7 @@ import { createTestSyncStore } from "../../../../test-support/in-memory-sync-sto
 import {
   arrangePendingUpsertWithCachedBase,
   createCommit,
-  createPullClient,
+  createBlobClient,
   createRealtimeSession,
   createToken,
   createVaultAdapter,
@@ -70,7 +71,7 @@ describe("SyncPullService pending upsert rebase conflict resolution", () => {
         },
       ],
     });
-    const client = createPullClient({
+    const client = createBlobClient({
       blobs: {
         "blob-remote": await encryptTestBlob(
           "blob-remote",
@@ -80,12 +81,12 @@ describe("SyncPullService pending upsert rebase conflict resolution", () => {
     });
 
     const service = new SyncPullService({
-      getApiBaseUrl: () => "http://127.0.0.1:8787",
+      contentRuntime: createTestContentRuntime(),
       getSyncToken: async () => createToken(),
       getSyncStore: () => store,
       getRemoteVaultKey: () => TEST_VAULT_KEY,
       vaultAdapter: adapter,
-      pullClient: client,
+      blobClient: client,
       onProgress: ignoreProgress,
       onConflict(event) {
         conflicts.push({
@@ -181,7 +182,7 @@ describe("SyncPullService pending upsert rebase conflict resolution", () => {
         },
       ],
     });
-    const client = createPullClient({
+    const client = createBlobClient({
       blobs: {
         "blob-remote": await encryptTestBlob(
           "blob-remote",
@@ -191,12 +192,12 @@ describe("SyncPullService pending upsert rebase conflict resolution", () => {
     });
 
     const service = new SyncPullService({
-      getApiBaseUrl: () => "http://127.0.0.1:8787",
+      contentRuntime: createTestContentRuntime(),
       getSyncToken: async () => createToken(),
       getSyncStore: () => store,
       getRemoteVaultKey: () => TEST_VAULT_KEY,
       vaultAdapter: adapter,
-      pullClient: client,
+      blobClient: client,
       onProgress: ignoreProgress,
       onConflict(event) {
         conflicts.push({
@@ -287,19 +288,19 @@ describe("SyncPullService pending upsert rebase conflict resolution", () => {
         },
       ],
     });
-    const client = createPullClient({
+    const client = createBlobClient({
       blobs: {
         "blob-remote": await encryptTestBlob("blob-remote", remoteBytes),
       },
     });
 
     const service = new SyncPullService({
-      getApiBaseUrl: () => "http://127.0.0.1:8787",
+      contentRuntime: createTestContentRuntime(),
       getSyncToken: async () => createToken(),
       getSyncStore: () => store,
       getRemoteVaultKey: () => TEST_VAULT_KEY,
       vaultAdapter: adapter,
-      pullClient: client,
+      blobClient: client,
       onProgress: ignoreProgress,
       onConflict(event) {
         conflicts.push({

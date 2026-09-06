@@ -2,14 +2,14 @@ import type {
   DeletedEntryPageCursor,
   EntryVersion,
   EntryVersionPageCursor,
-} from "@synch/sync-client/sync/remote/realtime-client";
+} from "@synch/sync-client/remote";
 import type {
   SyncDeletedEntriesPage,
   SyncDeletedEntriesPurgeResult,
   SyncDeletedEntriesRestoreResult,
   SyncEntryVersionPreview,
   SyncEntryVersionsPage,
-} from "@synch/sync-client/sync/runtime/version-history-service";
+} from "@synch/sync-client/engine";
 
 // Minimal port of SyncController required by the version history UI.
 export interface VersionHistorySyncPort {

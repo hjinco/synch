@@ -1,7 +1,7 @@
 import { Plugin } from "obsidian";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { DEFAULT_SYNC_FILE_RULES } from "@synch/sync-client/sync/core/file-rules";
+import { DEFAULT_SYNC_FILE_RULES } from "@synch/sync-client/core";
 import { resetObsidianMocks, setLanguage } from "../../test-stubs/obsidian";
 import type { RemoteVaultPort } from "./ports";
 import {

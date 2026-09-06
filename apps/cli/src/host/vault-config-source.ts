@@ -1,7 +1,7 @@
-import type { VaultConfigSyncRules } from "@synch/sync-client/sync/core/vault-config-rules";
-import { shouldSyncVaultConfigPath } from "@synch/sync-client/sync/core/vault-config-rules";
-import type { SyncVaultConfigSource } from "@synch/sync-client/sync/runtime/vault-config-source";
-import type { SyncVaultFile } from "@synch/sync-client/sync/vault/ports";
+import { type VaultConfigSyncRules, shouldSyncVaultConfigPath } from "@synch/sync-client/core";
+
+import type { SyncVaultConfigSource } from "@synch/sync-client/engine";
+import type { SyncVaultFile } from "@synch/sync-client/vault";
 import fs from "node:fs/promises";
 import path from "node:path";
 

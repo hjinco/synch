@@ -7,9 +7,13 @@ export * from "./remote-vault/client";
 export * from "./remote-vault/manager";
 export * from "./remote-vault/types";
 export * from "./remote-vault/unavailable";
-export * from "./sync/remote/blob-client";
 export * from "./sync/remote/client";
-export * from "./sync/remote/pull-client";
-export * from "./sync/remote/realtime-client";
-export * from "./sync/remote/request-client";
+export type {
+  DeletedEntryPageCursor,
+  EntryVersion,
+  EntryVersionPageCursor,
+  PresenceUpdatedPush,
+  SyncStorageStatus,
+  WebSocketFactory,
+} from "./sync/remote/realtime-types";
 export * from "./sync/remote/token-manager";

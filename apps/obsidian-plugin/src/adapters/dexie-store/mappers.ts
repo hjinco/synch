@@ -1,4 +1,4 @@
-import type { SyncConnection } from "@synch/sync-client/sync/store/store";
+import type { SyncConnection } from "@synch/sync-client/store";
 import type { MetadataRecord } from "./records";
 
 export function toSyncConnection(

@@ -13,7 +13,7 @@ import type {
   SyncReconcileEntryState,
   SyncReconcileEntryUpdate,
   SyncStore,
-} from "@synch/sync-client/sync/store/store";
+} from "@synch/sync-client/store";
 import {
   applyAcceptedPushToEntry,
   clearPendingMutation,
@@ -33,7 +33,7 @@ import {
   toLocalEntryRow,
   toPendingMutationRow,
   toRemoteEntryRow,
-} from "@synch/sync-client/sync/store/entry-record";
+} from "@synch/sync-client/store/entry-record";
 import {
   METADATA_ID,
   MIN_PENDING_CREATED_AT,

@@ -1,3 +1,4 @@
+import { createTestContentRuntime } from "../../../../test-support/content-runtime";
 import type { UserVisibleSyncProgress } from "../../../runtime/user-visible-status";
 import { describe, expect, it } from "vitest";
 
@@ -7,7 +8,7 @@ import { createTestSyncStore } from "../../../../test-support/in-memory-sync-sto
 import {
   createCommit,
   createEventGate,
-  createPullClient,
+  createBlobClient,
   createRealtimeSession,
   createToken,
   createVaultAdapter,
@@ -67,7 +68,7 @@ describe("SyncPullService paging", () => {
         },
       ],
     });
-    const client = createPullClient({
+    const client = createBlobClient({
       blobs: {
         "blob-1": await encryptTestBlob("blob-1", new TextEncoder().encode("hello world")),
         "blob-2": await encryptTestBlob("blob-2", new TextEncoder().encode("blob content")),
@@ -75,13 +76,13 @@ describe("SyncPullService paging", () => {
     });
 
     const service = new SyncPullService({
-      getApiBaseUrl: () => "http://127.0.0.1:8787",
+      contentRuntime: createTestContentRuntime(),
       getSyncToken: async () => createToken(),
       getSyncStore: () => store,
       getRemoteVaultKey: () => TEST_VAULT_KEY,
       vaultAdapter: adapter,
       eventGate: createEventGate(suppressionCalls),
-      pullClient: client,
+      blobClient: client,
       onProgress: async (progress) => {
         progressUpdates.push(progress);
       },
@@ -162,12 +163,12 @@ describe("SyncPullService paging", () => {
       ],
     });
     const service = new SyncPullService({
-      getApiBaseUrl: () => "http://127.0.0.1:8787",
+      contentRuntime: createTestContentRuntime(),
       getSyncToken: async () => createToken(),
       getSyncStore: () => store,
       getRemoteVaultKey: () => TEST_VAULT_KEY,
       vaultAdapter: adapter,
-      pullClient: createPullClient({}),
+      blobClient: createBlobClient({}),
       onProgress: ignoreProgress,
     });
 
@@ -248,15 +249,15 @@ describe("SyncPullService paging", () => {
       }
       return { ...page, totalEntries: scenario === "shrinking" && pageNumber > 1 ? 4 : 5 };
     };
-    const client = createPullClient({ blobs });
+    const client = createBlobClient({ blobs });
 
     const service = new SyncPullService({
-      getApiBaseUrl: () => "http://127.0.0.1:8787",
+      contentRuntime: createTestContentRuntime(),
       getSyncToken: async () => createToken(),
       getSyncStore: () => store,
       getRemoteVaultKey: () => TEST_VAULT_KEY,
       vaultAdapter: adapter,
-      pullClient: client,
+      blobClient: client,
       applyWindowSize: 2,
       onProgress: async (progress) => {
         progressUpdates.push(progress);
@@ -318,19 +319,19 @@ describe("SyncPullService paging", () => {
         },
       ],
     });
-    const client = createPullClient({
+    const client = createBlobClient({
       blobs: {
         "blob-image": await encryptTestBlob("blob-image", binaryBlob),
       },
     });
 
     const service = new SyncPullService({
-      getApiBaseUrl: () => "http://127.0.0.1:8787",
+      contentRuntime: createTestContentRuntime(),
       getSyncToken: async () => createToken(),
       getSyncStore: () => store,
       getRemoteVaultKey: () => TEST_VAULT_KEY,
       vaultAdapter: adapter,
-      pullClient: client,
+      blobClient: client,
       onProgress: ignoreProgress,
     });
 
@@ -401,8 +402,6 @@ describe("SyncPullService paging", () => {
     };
     const client = {
       async downloadBlob(
-        _apiBaseUrl: string,
-        _syncToken: string,
         _vaultId: string,
         blobId: string,
       ): Promise<Uint8Array> {
@@ -424,12 +423,12 @@ describe("SyncPullService paging", () => {
     };
 
     const service = new SyncPullService({
-      getApiBaseUrl: () => "http://127.0.0.1:8787",
+      contentRuntime: createTestContentRuntime(),
       getSyncToken: async () => createToken(),
       getSyncStore: () => store,
       getRemoteVaultKey: () => TEST_VAULT_KEY,
       vaultAdapter: adapter,
-      pullClient: client,
+      blobClient: client,
       prepareConcurrency: 3,
       onProgress: ignoreProgress,
     });
@@ -492,8 +491,6 @@ describe("SyncPullService paging", () => {
     });
     const client = {
       async downloadBlob(
-        _apiBaseUrl: string,
-        _syncToken: string,
         _vaultId: string,
         blobId: string,
       ): Promise<Uint8Array> {
@@ -514,12 +511,12 @@ describe("SyncPullService paging", () => {
     };
 
     const service = new SyncPullService({
-      getApiBaseUrl: () => "http://127.0.0.1:8787",
+      contentRuntime: createTestContentRuntime(),
       getSyncToken: async () => createToken(),
       getSyncStore: () => store,
       getRemoteVaultKey: () => TEST_VAULT_KEY,
       vaultAdapter: recordingAdapter,
-      pullClient: client,
+      blobClient: client,
       prepareConcurrency: 2,
       onProgress: ignoreProgress,
     });

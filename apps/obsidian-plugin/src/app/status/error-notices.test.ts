@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { resetObsidianMocks } from "obsidian";
 
-import { RemoteVaultInputError } from "@synch/sync-client/remote-vault/manager";
+import { RemoteVaultInputError } from "@synch/sync-client/remote";
 import { t } from "../../i18n";
 import { formatSynchErrorNotice } from "./error-notices";
 

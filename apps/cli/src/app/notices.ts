@@ -1,9 +1,9 @@
-import type { AuthNoticeEvent } from "@synch/sync-client/auth/manager";
-import type { RemoteVaultNoticeEvent } from "@synch/sync-client/remote-vault/manager";
+import type { AuthNoticeEvent } from "@synch/sync-client/auth";
+import type { RemoteVaultNoticeEvent } from "@synch/sync-client/remote";
 import type {
   UserVisibleSyncProgress,
   UserVisibleSyncState,
-} from "@synch/sync-client/sync/runtime/user-visible-status";
+} from "@synch/sync-client/engine";
 
 export interface Logger {
   log(message: string): void;

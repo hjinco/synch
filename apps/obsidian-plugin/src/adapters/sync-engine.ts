@@ -4,7 +4,7 @@ import { defaultHttpClient } from "./http";
 import {
   SyncEngine,
   type SyncEngineDeps,
-} from "@synch/sync-client/sync/runtime/sync-engine";
+} from "@synch/sync-client/engine";
 import { ObsidianSyncVaultAdapter } from "./vault-adapter";
 import { ObsidianVaultConfigSource } from "./vault-config-source";
 import { ObsidianSyncChangeSource } from "./change-source";

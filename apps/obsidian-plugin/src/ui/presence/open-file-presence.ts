@@ -1,6 +1,6 @@
 import type { Plugin } from "obsidian";
 
-import type { PresenceSelection } from "@synch/sync-client/sync/core/presence";
+import type { PresenceSelection } from "@synch/sync-client/core";
 import {
   collectOpenMarkdownPresencePaths,
   collectActiveMarkdownPresenceFile,

@@ -12,10 +12,7 @@ import { SyncAutoLoop } from "../engine/auto-sync";
 import type { SyncTokenResponse } from "../remote/client";
 import { SyncEventGate } from "../engine/event-gate";
 import { SyncEventRecorder } from "../engine/event-recorder";
-import {
-  SyncContentRuntime,
-  type SyncContentRuntimeDeps,
-} from "../core/content-runtime";
+import { SyncContentRuntime } from "../core/content-runtime";
 import type { SyncFileRules } from "../core/file-rules";
 import type { PresenceSelection } from "../core/presence";
 import type { VaultConfigSyncRules } from "../core/vault-config-rules";
@@ -34,7 +31,6 @@ import { SyncPullService } from "../engine/pull-service";
 import { SyncPushService } from "../engine/push-service";
 import { SyncAuthorizedRequestClient } from "../remote/request-client";
 import { SyncBlobClient } from "../remote/blob-client";
-import { SyncPullClient } from "../remote/pull-client";
 import {
   type EntryVersion,
   type DeletedEntryPageCursor,
@@ -78,7 +74,9 @@ import { reapplyAllowedRemoteVaultConfig } from "../engine/vault-config-reapply"
 
 const HIDDEN_FOLDER_RECONCILE_INTERVAL_MS = 60_000;
 
-export interface SyncEngineDeps extends SyncContentRuntimeDeps {
+export interface SyncEngineDeps {
+  /** Caller-owned when supplied; otherwise the engine creates and disposes it. */
+  contentRuntime?: SyncContentRuntime;
   vaultAdapter: SyncVaultAdapter;
   vaultConfigSource: SyncVaultConfigSource;
   httpClient: HttpClient;
@@ -139,7 +137,7 @@ export class SyncEngine {
   private readonly ownsContentRuntime: boolean;
   private readonly syncEventRecorder: SyncEventRecorder;
   private readonly syncRequestClient: SyncAuthorizedRequestClient;
-  private readonly syncPullClient: SyncPullClient;
+  private readonly syncBlobClient: SyncBlobClient;
   private readonly syncPushService: SyncPushService;
   private readonly syncLocalReconcileService: SyncLocalReconcileService;
   private readonly syncAutoLoop: SyncAutoLoop;
@@ -165,15 +163,14 @@ export class SyncEngine {
       invalidateSyncToken: () => this.deps.invalidateSyncToken(),
       httpClient: this.deps.httpClient,
     });
-    this.syncPullClient = new SyncPullClient(this.syncRequestClient);
+    this.syncBlobClient = new SyncBlobClient(this.syncRequestClient);
     this.syncPushService = new SyncPushService({
-      getApiBaseUrl: () => this.deps.getApiBaseUrl(),
       getSyncToken: async () => await this.deps.getSyncToken(),
       getSyncStore: () => this.syncStore,
       getRemoteVaultKey: () => this.deps.getRemoteVaultKey(),
       fileReader: this.vaultAdapter,
       conflictFileWriter: this.vaultAdapter,
-      blobClient: new SyncBlobClient(this.syncRequestClient),
+      blobClient: this.syncBlobClient,
       contentRuntime: this.contentRuntime,
       onConflict: (event) => this.deps.notifySyncConflict(event),
       onFileSizeBlockedFilesChange: () => {
@@ -316,7 +313,6 @@ export class SyncEngine {
       },
     });
     this.syncPullService = new SyncPullService({
-      getApiBaseUrl: () => this.deps.getApiBaseUrl(),
       getSyncToken: async () => await this.deps.getSyncToken(),
       getSyncStore: () => this.syncStore,
       getRemoteVaultKey: () => this.deps.getRemoteVaultKey(),
@@ -326,7 +322,7 @@ export class SyncEngine {
         shouldUseLatestRemoteVaultConfig(path, this.vaultPathPolicyRules()),
       eventGate: this.syncEventGate,
       vaultAdapter: this.vaultAdapter,
-      pullClient: this.syncPullClient,
+      blobClient: this.syncBlobClient,
       contentRuntime: this.contentRuntime,
       onConflict: (event) => this.deps.notifySyncConflict(event),
       onRollbackDetected: (event) => this.deps.notifyRollbackDetected(event),
@@ -353,11 +349,10 @@ export class SyncEngine {
       },
     });
     this.syncVersionHistoryService = new SyncVersionHistoryService({
-      getApiBaseUrl: () => this.deps.getApiBaseUrl(),
       getSyncToken: async () => await this.deps.getSyncToken(),
       getStore: () => this.requireStore(),
       getRemoteVaultKey: () => this.deps.getRemoteVaultKey(),
-      pullClient: this.syncPullClient,
+      blobClient: this.syncBlobClient,
       contentRuntime: this.contentRuntime,
       withRealtimeSession: async (work) => await this.withRealtimeSession(work),
       runLocalMutationWork: async (work) => await this.runLocalMutationWork(work),
@@ -539,8 +534,7 @@ export class SyncEngine {
         configDir: this.configDir(),
         vaultWriter: this.vaultAdapter,
         eventGate: this.syncEventGate,
-        pullClient: this.syncPullClient,
-        getApiBaseUrl: () => this.deps.getApiBaseUrl(),
+        blobClient: this.syncBlobClient,
         getSyncToken: () => this.deps.getSyncToken(),
         getRemoteVaultKey: () => this.deps.getRemoteVaultKey(),
         contentRuntime: this.contentRuntime,

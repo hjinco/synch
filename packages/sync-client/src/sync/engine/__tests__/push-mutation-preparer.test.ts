@@ -1,3 +1,4 @@
+import { createTestContentRuntime } from "../../../test-support/content-runtime";
 import { describe, expect, it, vi } from "vitest";
 
 import { encodeUtf8, hashBytes } from "../../core/content";
@@ -43,7 +44,7 @@ describe("PushMutationPreparer encrypted payload retention", () => {
       };
       let uploadedBytes: Uint8Array | null = null;
       const preparer = new PushMutationPreparer({
-        getApiBaseUrl: () => "http://127.0.0.1:8787",
+        contentRuntime: createTestContentRuntime(),
         getRemoteVaultKey: () => TEST_VAULT_KEY,
         fileReader: {
           async readBytes(readPath) {
@@ -53,8 +54,6 @@ describe("PushMutationPreparer encrypted payload retention", () => {
         },
         blobClient: {
           async uploadBlob(
-            _apiBaseUrl,
-            _syncToken,
             _vaultId,
             _blobId,
             encryptedBytes,
@@ -204,7 +203,6 @@ async function createRetryFixture(path: string, blobRetryCache = new PushBlobRet
   const encrypt = vi.spyOn(crypto, "encryptBlob");
   const upload = vi.fn(async () => {});
   const preparer = new PushMutationPreparer({
-    getApiBaseUrl: () => "http://127.0.0.1:8787",
     getRemoteVaultKey: () => TEST_VAULT_KEY,
     getSyncCryptoContext: () => crypto,
     contentRuntime,

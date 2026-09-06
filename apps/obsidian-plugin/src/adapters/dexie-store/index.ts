@@ -12,7 +12,7 @@ import {
 } from "./local-vault";
 import { toSyncConnection } from "./mappers";
 import { DexieSyncStore } from "./store";
-import type { SyncConnection, SyncStore } from "@synch/sync-client/sync/store/store";
+import type { SyncConnection, SyncStore } from "@synch/sync-client/store";
 
 export async function createDexieSyncStore(plugin: Plugin): Promise<SyncStore> {
   const store = new DexieSyncStore(getOrCreateLocalVaultId(plugin));

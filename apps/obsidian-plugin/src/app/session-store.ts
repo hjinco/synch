@@ -1,6 +1,6 @@
 import type { Plugin } from "obsidian";
 
-import type { StoredRemoteVaultKeySecret } from "@synch/sync-client/remote-vault/types";
+import type { StoredRemoteVaultKeySecret } from "@synch/sync-client/remote";
 import {
   clearStoredRemoteVaultKeySecret,
   migrateLegacyRemoteVaultKeySecret,
@@ -8,7 +8,7 @@ import {
   writeStoredRemoteVaultKeySecret,
 } from "../adapters/remote-vault-device-storage";
 import { migrateLegacyAuthSessionToken } from "../adapters/auth-session-storage";
-import type { SyncConnection } from "@synch/sync-client/sync/store/store";
+import type { SyncConnection } from "@synch/sync-client/store";
 
 export interface SynchPluginSessionStoreDeps {
   plugin: Plugin;

@@ -1,10 +1,11 @@
+import { createTestContentRuntime } from "../../../../test-support/content-runtime";
 import { describe, expect, it } from "vitest";
 
 import { SyncPullService } from "../../pull-service";
 import { createTestSyncStore } from "../../../../test-support/in-memory-sync-store";
 import {
   createCommit,
-  createPullClient,
+  createBlobClient,
   createRealtimeSession,
   createToken,
   createVaultAdapter,
@@ -100,7 +101,7 @@ describe("SyncPullService deferred path dependencies", () => {
         },
       ],
     });
-    const client = createPullClient({
+    const client = createBlobClient({
       blobs: {
         "blob-a-new": await encryptTestBlob("blob-a-new", new TextEncoder().encode("new a")),
         "blob-b-new": await encryptTestBlob("blob-b-new", new TextEncoder().encode("new b")),
@@ -110,12 +111,12 @@ describe("SyncPullService deferred path dependencies", () => {
     const conflicts: Array<{ entryId: string; conflictPath: string | null }> = [];
 
     const service = new SyncPullService({
-      getApiBaseUrl: () => "http://127.0.0.1:8787",
+      contentRuntime: createTestContentRuntime(),
       getSyncToken: async () => createToken(),
       getSyncStore: () => store,
       getRemoteVaultKey: () => TEST_VAULT_KEY,
       vaultAdapter: adapter,
-      pullClient: client,
+      blobClient: client,
       applyWindowSize: 2,
       onProgress: ignoreProgress,
       onConflict(event) {
@@ -234,7 +235,7 @@ describe("SyncPullService deferred path dependencies", () => {
         },
       ],
     });
-    const client = createPullClient({
+    const client = createBlobClient({
       blobs: {
         "blob-a-new": await encryptTestBlob("blob-a-new", new TextEncoder().encode("new a")),
         "blob-b-new": await encryptTestBlob("blob-b-new", new TextEncoder().encode("new b")),
@@ -244,12 +245,12 @@ describe("SyncPullService deferred path dependencies", () => {
     const conflicts: Array<{ entryId: string; conflictPath: string | null }> = [];
 
     const service = new SyncPullService({
-      getApiBaseUrl: () => "http://127.0.0.1:8787",
+      contentRuntime: createTestContentRuntime(),
       getSyncToken: async () => createToken(),
       getSyncStore: () => store,
       getRemoteVaultKey: () => TEST_VAULT_KEY,
       vaultAdapter: adapter,
-      pullClient: client,
+      blobClient: client,
       applyWindowSize: 2,
       onProgress: ignoreProgress,
       onConflict(event) {

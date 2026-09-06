@@ -7,8 +7,8 @@ import {
   setRequestUrlMock,
 } from "../test-stubs/obsidian";
 import { t } from "../i18n";
-import { DEFAULT_SYNC_FILE_RULES } from "@synch/sync-client/sync/core/file-rules";
-import { DEFAULT_VAULT_CONFIG_SYNC_RULES } from "@synch/sync-client/sync/core/vault-config-rules";
+import { DEFAULT_SYNC_FILE_RULES, DEFAULT_VAULT_CONFIG_SYNC_RULES } from "@synch/sync-client/core";
+
 import { SyncController } from "./sync-controller";
 import { SYNCH_SETTINGS_KEY, type SynchPluginSettings } from "../settings/schema";
 import { SynchPluginController } from "./plugin-controller";

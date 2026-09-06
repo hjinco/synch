@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   DEFAULT_SYNC_FILE_RULES,
   type SyncFileRules,
-} from "@synch/sync-client/sync/core/file-rules";
+} from "@synch/sync-client/core";
 import { NodeSyncVaultAdapter } from "./vault-adapter";
 
 let vaultPath: string;

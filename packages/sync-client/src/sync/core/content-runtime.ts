@@ -9,7 +9,8 @@ import {
 import { createSha256ContentHasher as createDefaultSha256ContentHasher } from "./sha256-worker-pool";
 
 export interface SyncContentRuntimeDeps {
-  contentRuntime?: SyncContentRuntime;
+  /** Shared runtime borrowed from the engine or a standalone service's caller. */
+  contentRuntime: SyncContentRuntime;
 }
 
 export interface SyncContentRuntimeOptions {
@@ -76,13 +77,4 @@ export class SyncContentRuntime {
       await this.hasher.dispose?.();
     }
   }
-}
-
-export function resolveSyncContentRuntime(
-  deps: SyncContentRuntimeDeps,
-): SyncContentRuntime {
-  // TODO: Give standalone consumers an explicit ownership/disposal path (or
-  // require an injected runtime). Services that take this fallback currently
-  // have no way to terminate its worker pool or revoke its Blob URL.
-  return deps.contentRuntime ?? new SyncContentRuntime();
 }

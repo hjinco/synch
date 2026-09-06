@@ -2,12 +2,10 @@ import fs from "node:fs";
 import path from "node:path";
 import { DatabaseSync, type StatementSync } from "node:sqlite";
 
-import type {
-  AcceptedPushApplyPlan,
-  BlobRecord,
-  EntryRecord,
-} from "@synch/sync-client/sync/store/entry-record";
 import {
+  type AcceptedPushApplyPlan,
+  type BlobRecord,
+  type EntryRecord,
   applyAcceptedPushToEntry,
   clearPendingMutation,
   copyRemoteToBase,
@@ -25,7 +23,8 @@ import {
   toLocalEntryRow,
   toPendingMutationRow,
   toRemoteEntryRow,
-} from "@synch/sync-client/sync/store/entry-record";
+} from "@synch/sync-client/store/entry-record";
+
 import type {
   AcceptedPushMutationRow,
   CachedSyncBlobRow,
@@ -41,7 +40,7 @@ import type {
   SyncReconcileEntryState,
   SyncReconcileEntryUpdate,
   SyncStore,
-} from "@synch/sync-client/sync/store/store";
+} from "@synch/sync-client/store";
 import { SQLITE_STORE_SCHEMA } from "./schema";
 
 const ACCEPTED_PUSH_BATCH_MAX_RETRIES = 3;

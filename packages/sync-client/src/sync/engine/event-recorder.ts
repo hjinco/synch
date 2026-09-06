@@ -1,5 +1,4 @@
 import {
-  resolveSyncContentRuntime,
   type SyncContentRuntime,
   type SyncContentRuntimeDeps,
 } from "../core/content-runtime";
@@ -54,7 +53,7 @@ export class SyncEventRecorder {
   private readonly contentRuntime: SyncContentRuntime;
 
   constructor(private readonly deps: SyncEventRecorderDeps) {
-    this.contentRuntime = resolveSyncContentRuntime(deps);
+    this.contentRuntime = deps.contentRuntime;
   }
 
   async recordUpsert(

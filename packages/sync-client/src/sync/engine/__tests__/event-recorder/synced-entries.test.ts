@@ -1,3 +1,4 @@
+import { createTestContentRuntime } from "../../../../test-support/content-runtime";
 import { describe, expect, it } from "vitest";
 
 import { encodeUtf8, hashBytes } from "../../../core/content";
@@ -14,6 +15,7 @@ describe("SyncEventRecorder synced entries", () => {
   it("queues a delete mutation for a previously synced file", async () => {
     const store = createTestSyncStore();
     const recorder = new SyncEventRecorder({
+      contentRuntime: createTestContentRuntime(),
       getSyncStore: () => store,
       getRemoteVaultKey: () => TEST_VAULT_KEY,
     });
@@ -67,6 +69,7 @@ describe("SyncEventRecorder synced entries", () => {
   it("ignores unchanged upserts without queuing a mutation", async () => {
     const store = createTestSyncStore();
     const recorder = new SyncEventRecorder({
+      contentRuntime: createTestContentRuntime(),
       getSyncStore: () => store,
       getRemoteVaultKey: () => TEST_VAULT_KEY,
     });
@@ -105,6 +108,7 @@ describe("SyncEventRecorder synced entries", () => {
   it("does not reuse a locally renamed entry for a new file at the original path", async () => {
     const store = createTestSyncStore();
     const recorder = new SyncEventRecorder({
+      contentRuntime: createTestContentRuntime(),
       getSyncStore: () => store,
       getRemoteVaultKey: () => TEST_VAULT_KEY,
     });
@@ -170,6 +174,7 @@ describe("SyncEventRecorder synced entries", () => {
   it("replaces a pending delete when unchanged content is upserted again", async () => {
     const store = createTestSyncStore();
     const recorder = new SyncEventRecorder({
+      contentRuntime: createTestContentRuntime(),
       getSyncStore: () => store,
       getRemoteVaultKey: () => TEST_VAULT_KEY,
     });
@@ -229,6 +234,7 @@ describe("SyncEventRecorder synced entries", () => {
   it("replaces a pending delete for a tombstoned entry when the path is restored", async () => {
     const store = createTestSyncStore();
     const recorder = new SyncEventRecorder({
+      contentRuntime: createTestContentRuntime(),
       getSyncStore: () => store,
       getRemoteVaultKey: () => TEST_VAULT_KEY,
     });
@@ -296,6 +302,7 @@ describe("SyncEventRecorder synced entries", () => {
   it("finds a restored pending delete beyond the first 100 pending mutations", async () => {
     const store = createTestSyncStore();
     const recorder = new SyncEventRecorder({
+      contentRuntime: createTestContentRuntime(),
       getSyncStore: () => store,
       getRemoteVaultKey: () => TEST_VAULT_KEY,
     });

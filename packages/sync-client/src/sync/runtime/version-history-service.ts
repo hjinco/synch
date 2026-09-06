@@ -1,11 +1,10 @@
 import {
-  resolveSyncContentRuntime,
   type SyncContentRuntime,
   type SyncContentRuntimeDeps,
 } from "../core/content-runtime";
 import { decryptSyncBlob, decryptSyncMetadata, encryptSyncMetadata } from "../core/crypto";
 import type { SyncTokenResponse } from "../remote/client";
-import type { SyncPullClient } from "../remote/pull-client";
+import type { SyncBlobClient } from "../remote/blob-client";
 import type {
   DeletedEntryPageCursor,
   EntryVersion,
@@ -23,11 +22,10 @@ const VERSION_RESTORE_PAGE_SIZE = 25;
 const VERSION_PREVIEW_UNAVAILABLE_MESSAGE = "This version has no previewable content.";
 
 export interface SyncVersionHistoryServiceDeps extends SyncContentRuntimeDeps {
-  getApiBaseUrl: () => string;
   getSyncToken: () => Promise<SyncTokenResponse>;
   getStore: () => SyncVersionHistoryStore;
   getRemoteVaultKey: () => Uint8Array;
-  pullClient: Pick<SyncPullClient, "downloadBlob">;
+  blobClient: Pick<SyncBlobClient, "downloadBlob">;
   withRealtimeSession: <T>(
     work: (session: SyncRealtimeSession) => Promise<T>,
   ) => Promise<T>;
@@ -46,7 +44,7 @@ export class SyncVersionHistoryService {
   private readonly contentRuntime: SyncContentRuntime;
 
   constructor(private readonly deps: SyncVersionHistoryServiceDeps) {
-    this.contentRuntime = resolveSyncContentRuntime(deps);
+    this.contentRuntime = deps.contentRuntime;
   }
 
   async listEntryVersionsForPath(
@@ -356,9 +354,7 @@ export class SyncVersionHistoryService {
       },
     );
     const token = await this.deps.getSyncToken();
-    const encryptedBytes = await this.deps.pullClient.downloadBlob(
-      this.deps.getApiBaseUrl(),
-      token.token,
+    const encryptedBytes = await this.deps.blobClient.downloadBlob(
       token.vaultId,
       version.blobId,
     );

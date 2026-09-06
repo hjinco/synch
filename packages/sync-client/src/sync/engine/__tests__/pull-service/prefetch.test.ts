@@ -1,8 +1,9 @@
+import { createTestContentRuntime } from "../../../../test-support/content-runtime";
 import { describe, expect, it, vi } from "vitest";
 import { createTestSyncStore } from "../../../../test-support/in-memory-sync-store";
 import { SyncPullService } from "../../pull-service";
 import {
-  createCommit, createPullClient, createRealtimeSession, createToken,
+  createCommit, createBlobClient, createRealtimeSession, createToken,
   createVaultAdapter, encryptRemoteMetadata, encryptTestBlob, hashText,
   TEST_VAULT_KEY,
 } from "./helpers";
@@ -30,17 +31,17 @@ async function setup() {
       cursor: 3, hasMore: index < 2, commits: [commit],
     })),
   });
-  const client = createPullClient({ blobs: Object.fromEntries(await Promise.all(
+  const client = createBlobClient({ blobs: Object.fromEntries(await Promise.all(
     [1, 2, 3].map(async (id) => [
       `blob-${id}`, await encryptTestBlob(`blob-${id}`, new TextEncoder().encode(`body-${id}`)),
     ]),
   )) });
   const service = new SyncPullService({
-    getApiBaseUrl: () => "http://127.0.0.1:8787",
+    contentRuntime: createTestContentRuntime(),
     getSyncToken: async () => createToken(),
     getSyncStore: () => store,
     getRemoteVaultKey: () => TEST_VAULT_KEY,
-    vaultAdapter: adapter, pullClient: client, applyWindowSize: 1,
+    vaultAdapter: adapter, blobClient: client, applyWindowSize: 1,
   });
   return { store, adapter, session, client, service };
 }
@@ -52,7 +53,7 @@ describe("SyncPullService page prefetch", () => {
     const list = vi.spyOn(session, "listEntryStates");
     const download = client.downloadBlob.bind(client);
     const downloads = vi.spyOn(client, "downloadBlob").mockImplementation(async (...args) => {
-      if (args[3] === "blob-1") await release.promise;
+      if (args[1] === "blob-1") await release.promise;
       return await download(...args);
     });
     const pulling = service.pullOnce(session);

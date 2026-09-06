@@ -4,7 +4,6 @@ import type { SyncOperationProgress } from "../runtime/user-visible-status";
 import type { SyncBlobClient } from "../remote/blob-client";
 import type { ConflictFileWriter } from "../core/conflict-file";
 import {
-  resolveSyncContentRuntime,
   type SyncContentRuntime,
   type SyncContentRuntimeDeps,
 } from "../core/content-runtime";
@@ -37,7 +36,6 @@ import { PushBlobRetryCache } from "./push-blob-retry-cache";
 const DEFAULT_PUSH_PREPARE_CONCURRENCY = 12;
 
 export interface SyncPushServiceDeps extends SyncContentRuntimeDeps {
-  getApiBaseUrl: () => string;
   getSyncToken: () => Promise<SyncTokenResponse>;
   getSyncStore: () => SyncPushStore | null;
   getRemoteVaultKey: () => Uint8Array;
@@ -91,7 +89,7 @@ export class SyncPushService {
   private readonly contentRuntime: SyncContentRuntime;
 
   constructor(private readonly deps: SyncPushServiceDeps) {
-    this.contentRuntime = resolveSyncContentRuntime(deps);
+    this.contentRuntime = deps.contentRuntime;
   }
 
   async pushPendingMutations(
@@ -400,7 +398,6 @@ export class SyncPushService {
     syncCryptoContext: SyncCryptoContext,
   ): PushMutationCommitter {
     return new PushMutationCommitter({
-      getApiBaseUrl: () => this.deps.getApiBaseUrl(),
       getRemoteVaultKey: () => remoteVaultKey,
       getSyncCryptoContext: () => syncCryptoContext,
       fileReader: this.deps.fileReader,

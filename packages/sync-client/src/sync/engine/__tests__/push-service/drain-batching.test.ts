@@ -1,3 +1,4 @@
+import { createTestContentRuntime } from "../../../../test-support/content-runtime";
 import { describe, expect, it, vi } from "vitest";
 
 import { encodeUtf8, hashBytes } from "../../../core/content";
@@ -49,7 +50,7 @@ describe("SyncPushService drain: batching", () => {
       revision: mutation.baseRevision + 1,
     }));
     const service = new SyncPushService({
-      getApiBaseUrl: () => "http://127.0.0.1:8787",
+      contentRuntime: createTestContentRuntime(),
       getSyncToken: async () => createToken(),
       getSyncStore: () => store,
       getRemoteVaultKey: () => TEST_VAULT_KEY,
@@ -123,7 +124,7 @@ describe("SyncPushService drain: batching", () => {
       };
     });
     const service = new SyncPushService({
-      getApiBaseUrl: () => "http://127.0.0.1:8787",
+      contentRuntime: createTestContentRuntime(),
       getSyncToken: async () => createToken(),
       getSyncStore: () => store,
       getRemoteVaultKey: () => TEST_VAULT_KEY,
@@ -139,7 +140,7 @@ describe("SyncPushService drain: batching", () => {
         },
       },
       blobClient: {
-        async uploadBlob(_apiBaseUrl, _syncToken, _vaultId, blobId) {
+        async uploadBlob(_vaultId, blobId) {
           uploadStarts.push(blobId);
           const deferred = createDeferred<void>();
           uploadDeferreds.set(blobId, deferred);
@@ -216,13 +217,13 @@ describe("SyncPushService drain: batching", () => {
         return { cursor: ++cursor, entryId: mutation.entryId, revision: 1 };
       });
       const service = new SyncPushService({
-        getApiBaseUrl: () => "http://127.0.0.1:8787",
+        contentRuntime: createTestContentRuntime(),
         getSyncToken: async () => createToken(),
         getSyncStore: () => store,
         getRemoteVaultKey: () => TEST_VAULT_KEY,
         fileReader: { async readBytes() { return body; } },
         blobClient: {
-          async uploadBlob(_url, _token, _vault, blobId) {
+          async uploadBlob(_vault, blobId) {
             uploads.push(blobId);
             if (blobId === "blob-1" && shouldFail) {
               await slowUpload.promise;
@@ -312,7 +313,7 @@ describe("SyncPushService drain: batching", () => {
       );
     });
     const service = new SyncPushService({
-      getApiBaseUrl: () => "http://127.0.0.1:8787",
+      contentRuntime: createTestContentRuntime(),
       getSyncToken: async () => createToken(),
       getSyncStore: () => currentStore,
       getRemoteVaultKey: () => TEST_VAULT_KEY,

@@ -17,9 +17,9 @@ import {
   type VersionHistoryViewController,
   type VersionHistoryViewState,
 } from "./version-history-view";
-import { shouldSyncPath, type SyncFileRules } from "@synch/sync-client/sync/core/file-rules";
-import type { EntryVersion } from "@synch/sync-client/sync/remote/realtime-client";
-import type { SyncDeletedEntry } from "@synch/sync-client/sync/runtime/version-history-service";
+import { shouldSyncPath, type SyncFileRules } from "@synch/sync-client/core";
+import type { EntryVersion } from "@synch/sync-client/remote";
+import type { SyncDeletedEntry } from "@synch/sync-client/engine";
 import type { VersionHistorySyncPort } from "./sync-port";
 
 export interface SynchVersionHistoryControllerDeps {

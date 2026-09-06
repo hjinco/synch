@@ -1,20 +1,13 @@
 import type { Plugin, TFile } from "obsidian";
 
-import type { SyncAutoLoop } from "@synch/sync-client/sync/engine/auto-sync";
-import type { SyncEventRecorder } from "@synch/sync-client/sync/engine/event-recorder";
+import type { SyncChangeSourceContext } from "@synch/sync-client/engine";
 import type { ObsidianSyncVaultAdapter } from "./vault-adapter";
 
 export interface SyncVaultEventHandlerDeps {
   plugin: Plugin;
   vaultAdapter: ObsidianSyncVaultAdapter;
-  eventRecorder: Pick<
-    SyncEventRecorder,
-    "recordUpsert" | "recordRename" | "recordDelete"
-  > &
-    Partial<
-      Pick<SyncEventRecorder, "recordUpsertFromFile" | "recordRenameFromFile">
-    >;
-  autoLoop: Pick<SyncAutoLoop, "notifyLocalChange">;
+  eventRecorder: SyncChangeSourceContext["eventRecorder"];
+  autoLoop: Pick<SyncChangeSourceContext, "notifyLocalChange">;
   runLocalMutationWork: <T>(work: () => Promise<T>) => Promise<T>;
   hasActiveRemoteVaultSession: () => boolean;
   onError: (error: unknown) => void;

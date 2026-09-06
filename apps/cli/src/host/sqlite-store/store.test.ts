@@ -3,13 +3,13 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { InMemorySyncStore } from "@synch/sync-client/test-support/in-memory-sync-store";
-import { encryptSyncMetadata } from "@synch/sync-client/sync/core/crypto";
+import { InMemorySyncStore } from "@synch/sync-client/testing";
+import { encryptSyncMetadata } from "@synch/sync-client/core";
 import type {
   AcceptedPushMutationRow,
   PendingMutationRow,
   SyncStore,
-} from "@synch/sync-client/sync/store/store";
+} from "@synch/sync-client/store";
 import { SqliteSyncStore } from "./store";
 
 let tempDir: string;

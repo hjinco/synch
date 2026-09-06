@@ -1,3 +1,4 @@
+import { createTestContentRuntime } from "../../../../test-support/content-runtime";
 import { describe, expect, it } from "vitest";
 
 import { SyncPullService } from "../../pull-service";
@@ -5,7 +6,7 @@ import { createTestSyncStore } from "../../../../test-support/in-memory-sync-sto
 import {
   createCommit,
   createEventGate,
-  createPullClient,
+  createBlobClient,
   createRealtimeSession,
   createToken,
   createVaultAdapter,
@@ -93,7 +94,7 @@ describe("SyncPullService tombstones", () => {
         },
       ],
     });
-    const client = createPullClient({
+    const client = createBlobClient({
       blobs: {
         "blob-catchup": await encryptTestBlob(
           "blob-catchup",
@@ -103,13 +104,13 @@ describe("SyncPullService tombstones", () => {
     });
 
     const service = new SyncPullService({
-      getApiBaseUrl: () => "http://127.0.0.1:8787",
+      contentRuntime: createTestContentRuntime(),
       getSyncToken: async () => createToken(),
       getSyncStore: () => store,
       getRemoteVaultKey: () => TEST_VAULT_KEY,
       vaultAdapter: adapter,
       eventGate: createEventGate(suppressionCalls),
-      pullClient: client,
+      blobClient: client,
       onProgress: ignoreProgress,
       now: conflictTimestamp,
     });

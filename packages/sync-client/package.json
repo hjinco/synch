@@ -5,7 +5,17 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./*": "./src/*.ts"
+    "./auth": "./src/auth.ts",
+    "./billing": "./src/billing.ts",
+    "./core": "./src/core.ts",
+    "./diagnostics": "./src/diagnostics.ts",
+    "./engine": "./src/engine.ts",
+    "./http": "./src/http.ts",
+    "./remote": "./src/remote.ts",
+    "./store": "./src/store.ts",
+    "./store/entry-record": "./src/sync/store/entry-record.ts",
+    "./testing": "./src/testing.ts",
+    "./vault": "./src/vault.ts"
   },
   "scripts": {
     "test": "vitest --config vitest.config.mts",

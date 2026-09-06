@@ -1,3 +1,4 @@
+import { createTestContentRuntime } from "../../../../test-support/content-runtime";
 import { describe, expect, it, vi } from "vitest";
 
 import { encodeUtf8, hashBytes } from "../../../core/content";
@@ -55,7 +56,7 @@ describe("SyncPushService drain: limits", () => {
     let uploaded = false;
     const onFileSizeBlockedFilesChange = vi.fn();
     const service = new SyncPushService({
-      getApiBaseUrl: () => "http://127.0.0.1:8787",
+      contentRuntime: createTestContentRuntime(),
       getSyncToken: async () => createToken(),
       getSyncStore: () => store,
       getRemoteVaultKey: () => TEST_VAULT_KEY,
@@ -150,7 +151,7 @@ describe("SyncPushService drain: limits", () => {
       let uploadAttempts = 0;
       const onFileSizeBlockedFilesChange = vi.fn();
       const service = new SyncPushService({
-        getApiBaseUrl: () => "http://127.0.0.1:8787",
+        contentRuntime: createTestContentRuntime(),
         getSyncToken: async () => createToken(),
         getSyncStore: () => store,
         getRemoteVaultKey: () => TEST_VAULT_KEY,
@@ -223,7 +224,7 @@ describe("SyncPushService drain: limits", () => {
       createdAt: 2,
     });
     const service = new SyncPushService({
-      getApiBaseUrl: () => "http://127.0.0.1:8787",
+      contentRuntime: createTestContentRuntime(),
       getSyncToken: async () => createToken(),
       getSyncStore: () => store,
       getRemoteVaultKey: () => TEST_VAULT_KEY,
@@ -272,7 +273,7 @@ describe("SyncPushService drain: limits", () => {
       createdAt: 1,
     });
     const service = new SyncPushService({
-      getApiBaseUrl: () => "http://127.0.0.1:8787",
+      contentRuntime: createTestContentRuntime(),
       getSyncToken: async () => createToken(),
       getSyncStore: () => store,
       getRemoteVaultKey: () => TEST_VAULT_KEY,
@@ -344,7 +345,7 @@ describe("SyncPushService drain: limits", () => {
     session.maxFileSizeBytes = 0;
     let uploaded = false;
     const service = new SyncPushService({
-      getApiBaseUrl: () => "http://127.0.0.1:8787",
+      contentRuntime: createTestContentRuntime(),
       getSyncToken: async () => createToken(),
       getSyncStore: () => store,
       getRemoteVaultKey: () => TEST_VAULT_KEY,
@@ -430,7 +431,7 @@ describe("SyncPushService drain: limits", () => {
     });
     let uploadAttempts = 0;
     const service = new SyncPushService({
-      getApiBaseUrl: () => "http://127.0.0.1:8787",
+      contentRuntime: createTestContentRuntime(),
       getSyncToken: async () => createToken(),
       getSyncStore: () => store,
       getRemoteVaultKey: () => TEST_VAULT_KEY,
@@ -534,7 +535,7 @@ describe("SyncPushService drain: limits", () => {
     });
     const uploadAttempts: string[] = [];
     const service = new SyncPushService({
-      getApiBaseUrl: () => "http://127.0.0.1:8787",
+      contentRuntime: createTestContentRuntime(),
       getSyncToken: async () => createToken(),
       getSyncStore: () => store,
       getRemoteVaultKey: () => TEST_VAULT_KEY,
@@ -551,7 +552,7 @@ describe("SyncPushService drain: limits", () => {
         },
       },
       blobClient: {
-        async uploadBlob(_apiBaseUrl, _syncToken, _vaultId, blobId) {
+        async uploadBlob(_vaultId, blobId) {
           uploadAttempts.push(blobId);
           throw new SyncBlobUploadError(413, "quota_exceeded", "quota exceeded");
         },
@@ -624,7 +625,7 @@ describe("SyncPushService drain: limits", () => {
     session.storageLimitBytes = 50_000_000;
     let uploadAttempts = 0;
     const service = new SyncPushService({
-      getApiBaseUrl: () => "http://127.0.0.1:8787",
+      contentRuntime: createTestContentRuntime(),
       getSyncToken: async () => createToken(),
       getSyncStore: () => store,
       getRemoteVaultKey: () => TEST_VAULT_KEY,
@@ -706,7 +707,7 @@ describe("SyncPushService drain: limits", () => {
     session.storageLimitBytes = 50_000_000;
     let uploadAttempts = 0;
     const service = new SyncPushService({
-      getApiBaseUrl: () => "http://127.0.0.1:8787",
+      contentRuntime: createTestContentRuntime(),
       getSyncToken: async () => createToken(),
       getSyncStore: () => store,
       getRemoteVaultKey: () => TEST_VAULT_KEY,

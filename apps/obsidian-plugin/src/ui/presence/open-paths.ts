@@ -1,7 +1,7 @@
 import type {
   PresencePosition,
   PresenceSelection,
-} from "@synch/sync-client/sync/core/presence";
+} from "@synch/sync-client/core";
 import { getMarkdownEditorView } from "./presence-editor";
 
 export type PresenceWorkspaceLeaf = {

@@ -1,12 +1,11 @@
 import {
-  resolveSyncContentRuntime,
   type SyncContentRuntime,
   type SyncContentRuntimeDeps,
 } from "../core/content-runtime";
 import { createSyncCryptoContext, decryptSyncBlob } from "../core/crypto";
 import type { SyncTokenResponse } from "../remote/client";
 import type { RemoteEntryState } from "../remote/changes";
-import type { SyncPullClient } from "../remote/pull-client";
+import type { SyncBlobClient } from "../remote/blob-client";
 import type { SyncBlobStore } from "../store/ports";
 import type { SyncVaultAccess } from "../vault/ports";
 import { isAutoMergeTextPath } from "./text-merge-policy";
@@ -19,10 +18,9 @@ import {
 } from "./pull-entry-state-internal";
 
 interface PullBlobPreparerDeps extends SyncContentRuntimeDeps {
-  getApiBaseUrl: () => string;
   getRemoteVaultKey: () => Uint8Array;
   vaultAdapter: SyncVaultAccess;
-  pullClient: Pick<SyncPullClient, "downloadBlob">;
+  blobClient: Pick<SyncBlobClient, "downloadBlob">;
   prepareConcurrency?: number;
 }
 
@@ -30,7 +28,7 @@ export class PullBlobPreparer {
   private readonly contentRuntime: SyncContentRuntime;
 
   constructor(private readonly deps: PullBlobPreparerDeps) {
-    this.contentRuntime = resolveSyncContentRuntime(deps);
+    this.contentRuntime = deps.contentRuntime;
   }
 
   async preparePathBatchBlobs(
@@ -132,9 +130,7 @@ export class PullBlobPreparer {
       throw new Error(`Entry state ${state.entryId}@${state.revision} is missing a blob.`);
     }
 
-    return await this.deps.pullClient.downloadBlob(
-      this.deps.getApiBaseUrl(),
-      token.token,
+    return await this.deps.blobClient.downloadBlob(
       token.vaultId,
       state.blobId,
     );

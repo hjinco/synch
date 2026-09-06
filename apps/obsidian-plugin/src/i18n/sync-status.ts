@@ -1,7 +1,7 @@
 import type {
   UserVisibleSyncProgress,
   UserVisibleSyncState,
-} from "@synch/sync-client/sync/runtime/user-visible-status";
+} from "@synch/sync-client/engine";
 
 import { t } from "./index";
 

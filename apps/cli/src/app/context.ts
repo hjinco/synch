@@ -1,23 +1,26 @@
-import { AuthClient } from "@synch/sync-client/auth/client";
-import { AuthManager, type AuthReadiness } from "@synch/sync-client/auth/manager";
-import { RemoteVaultClient } from "@synch/sync-client/remote-vault/client";
-import { RemoteVaultManager } from "@synch/sync-client/remote-vault/manager";
+import { AuthClient, AuthManager, type AuthReadiness } from "@synch/sync-client/auth";
+
+import {
+  RemoteVaultClient,
+  RemoteVaultManager,
+  SyncAccessClient,
+  SyncTokenManager,
+} from "@synch/sync-client/remote";
+
 import {
   DEFAULT_SYNC_FILE_RULES,
   type SyncFileRules,
-} from "@synch/sync-client/sync/core/file-rules";
-import {
   DEFAULT_VAULT_CONFIG_SYNC_RULES,
   type VaultConfigSyncRules,
-} from "@synch/sync-client/sync/core/vault-config-rules";
-import { InMemorySyncDiagnostics } from "@synch/sync-client/sync/diagnostics/in-memory";
-import { SyncAccessClient } from "@synch/sync-client/sync/remote/client";
-import { SyncTokenManager } from "@synch/sync-client/sync/remote/token-manager";
-import { SyncEngine } from "@synch/sync-client/sync/runtime/sync-engine";
-import type {
-  UserVisibleSyncProgress,
-  UserVisibleSyncState,
-} from "@synch/sync-client/sync/runtime/user-visible-status";
+} from "@synch/sync-client/core";
+
+import { InMemorySyncDiagnostics } from "@synch/sync-client/diagnostics";
+
+import {
+  SyncEngine,
+  type UserVisibleSyncProgress,
+  type UserVisibleSyncState,
+} from "@synch/sync-client/engine";
 
 import { CLI_CLIENT_ID, CLI_VERSION, DEFAULT_CONFIG_DIR_NAME } from "../config";
 import { NodeFsChangeSource } from "../host/change-source";

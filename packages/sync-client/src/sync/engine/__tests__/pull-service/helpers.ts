@@ -4,7 +4,7 @@ import type { ListEntryStatesResponse } from "../../../remote/changes";
 import { encryptSyncBlob, encryptSyncMetadata } from "../../../core/crypto";
 import { hashBytes } from "../../../core/content";
 import type { SyncEventGateLike } from "../../event-gate";
-import type { SyncPullClient } from "../../../remote/pull-client";
+import type { SyncBlobClient } from "../../../remote/blob-client";
 import type { SyncRealtimeSession } from "../../../remote/realtime-client";
 import type { SyncStore } from "../../../store/store";
 
@@ -198,13 +198,11 @@ function requireHash(hash: string | undefined): string {
   return hash;
 }
 
-export function createPullClient(input: {
+export function createBlobClient(input: {
   blobs?: Record<string, string | Uint8Array>;
-}): SyncPullClient {
+}): SyncBlobClient {
   return {
     async downloadBlob(
-      _apiBaseUrl: string,
-      _syncToken: string,
       _vaultId: string,
       blobId: string,
     ): Promise<Uint8Array> {
@@ -215,7 +213,7 @@ export function createPullClient(input: {
 
       return typeof value === "string" ? new TextEncoder().encode(value) : value;
     },
-  } as SyncPullClient;
+  } as SyncBlobClient;
 }
 
 export function createRealtimeSession(input: {

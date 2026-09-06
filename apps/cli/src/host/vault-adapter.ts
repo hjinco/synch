@@ -2,19 +2,20 @@ import { randomBytes } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 
-import type { SyncFileRules } from "@synch/sync-client/sync/core/file-rules";
 import {
+  type SyncFileRules,
   isPathUnderFolders,
   normalizeVaultPath,
   pathHasHiddenSegment,
   shouldSyncPath,
-} from "@synch/sync-client/sync/core/file-rules";
-import { isNeverSyncReservedPath } from "@synch/sync-client/sync/core/reserved-paths";
-import { isForbiddenVaultPath } from "@synch/sync-client/sync/core/vault-path-policy";
+  isNeverSyncReservedPath,
+  isForbiddenVaultPath,
+} from "@synch/sync-client/core";
+
 import type {
   SyncVaultAdapter,
   SyncVaultFile,
-} from "@synch/sync-client/sync/vault/ports";
+} from "@synch/sync-client/vault";
 
 export interface NodeSyncVaultAdapterDeps {
   vaultPath: string;

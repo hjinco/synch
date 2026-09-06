@@ -1,3 +1,4 @@
+import { createTestContentRuntime } from "../../../../test-support/content-runtime";
 import { describe, expect, it } from "vitest";
 
 import { encodeUtf8, hashBytes } from "../../../core/content";
@@ -26,6 +27,7 @@ describe("SyncLocalReconcileService queueing", () => {
     });
 
     const service = new SyncLocalReconcileService({
+      contentRuntime: createTestContentRuntime(),
       getSyncStore: () => store,
       getRemoteVaultKey: () => TEST_VAULT_KEY,
       shouldSyncPath: () => true,
@@ -98,6 +100,7 @@ describe("SyncLocalReconcileService queueing", () => {
     });
 
     const service = new SyncLocalReconcileService({
+      contentRuntime: createTestContentRuntime(),
       getSyncStore: () => store,
       getRemoteVaultKey: () => TEST_VAULT_KEY,
       shouldSyncPath: () => true,
@@ -163,12 +166,14 @@ describe("SyncLocalReconcileService queueing", () => {
       bytes: renamedBytes,
     });
     const recorder = new SyncEventRecorder({
+      contentRuntime: createTestContentRuntime(),
       getSyncStore: () => store,
       getRemoteVaultKey: () => TEST_VAULT_KEY,
     });
     await recorder.recordRename(oldPath, nextPath, renamedBytes);
 
     const service = new SyncLocalReconcileService({
+      contentRuntime: createTestContentRuntime(),
       getSyncStore: () => store,
       getRemoteVaultKey: () => TEST_VAULT_KEY,
       shouldSyncPath: () => true,
@@ -236,6 +241,7 @@ describe("SyncLocalReconcileService queueing", () => {
     });
 
     const service = new SyncLocalReconcileService({
+      contentRuntime: createTestContentRuntime(),
       getSyncStore: () => store,
       getRemoteVaultKey: () => TEST_VAULT_KEY,
       shouldSyncPath: () => true,
@@ -311,6 +317,7 @@ describe("SyncLocalReconcileService queueing", () => {
     });
 
     const service = new SyncLocalReconcileService({
+      contentRuntime: createTestContentRuntime(),
       getSyncStore: () => store,
       getRemoteVaultKey: () => TEST_VAULT_KEY,
       shouldSyncPath: () => true,
@@ -373,6 +380,7 @@ describe("SyncLocalReconcileService queueing", () => {
 
     let files = [] as ReturnType<typeof localFile>[];
     const service = new SyncLocalReconcileService({
+      contentRuntime: createTestContentRuntime(),
       getSyncStore: () => store,
       getRemoteVaultKey: () => TEST_VAULT_KEY,
       shouldSyncPath: () => true,
@@ -471,6 +479,7 @@ describe("SyncLocalReconcileService queueing", () => {
     });
 
     const service = new SyncLocalReconcileService({
+      contentRuntime: createTestContentRuntime(),
       getSyncStore: () => observedStore,
       getRemoteVaultKey: () => TEST_VAULT_KEY,
       hashConcurrency: 2,

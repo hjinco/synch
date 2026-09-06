@@ -8,7 +8,7 @@ import {
   openCreateRemoteVaultModal,
 } from "./remote-vault-modals";
 import type { RemoteVaultPort } from "./ports";
-import { shouldSyncPath, type SyncFileRules } from "@synch/sync-client/sync/core/file-rules";
+import { shouldSyncPath, type SyncFileRules } from "@synch/sync-client/core";
 
 // Minimal port of SyncController required by the remote-vault flow.
 export interface RemoteVaultSyncPort {

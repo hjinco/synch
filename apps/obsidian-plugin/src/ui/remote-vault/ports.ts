@@ -1,7 +1,7 @@
 import type {
   RemoteVaultRecord,
   RemoteVaultSessionSummary,
-} from "@synch/sync-client/remote-vault/types";
+} from "@synch/sync-client/remote";
 
 // Must stay structurally identical to CreateRemoteVaultInput /
 // BootstrapRemoteVaultInput in @synch/sync-client/remote-vault/manager (the

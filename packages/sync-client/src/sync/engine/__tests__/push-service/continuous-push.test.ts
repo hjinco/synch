@@ -1,4 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
+
+import { createTestContentRuntime } from "../../../../test-support/content-runtime";
 import { createTestSyncStore } from "../../../../test-support/in-memory-sync-store";
 import { encodeUtf8, hashBytes } from "../../../core/content";
 import { SyncAutoLoop } from "../../auto-sync";
@@ -35,7 +37,7 @@ async function fixture(count: number) {
     cursor: ++cursor, entryId: mutation.entryId, revision: mutation.baseRevision + 1,
   }));
   const deps = {
-    getApiBaseUrl: () => "http://127.0.0.1:8787",
+    contentRuntime: createTestContentRuntime(),
     getSyncToken: async () => createToken(),
     getSyncStore: () => store,
     getRemoteVaultKey: () => TEST_VAULT_KEY,
@@ -56,7 +58,7 @@ describe("continuous push", () => {
     const service = new SyncPushService({
       ...deps,
       blobClient: {
-        async uploadBlob(_url, _token, _vault, id) {
+        async uploadBlob(_vault, id) {
           active++;
           maxActive = Math.max(maxActive, active);
           try { if (id === "blob-0") await slow.promise; }
@@ -96,6 +98,7 @@ describe("continuous push", () => {
     });
     const loop = new SyncAutoLoop({
       ...deps,
+      getApiBaseUrl: () => "http://127.0.0.1:8787",
       realtimeClient: createRealtimeClient(undefined, (next) => {
         next.commitMutations = session.commitMutations;
       }),

@@ -1,3 +1,4 @@
+import { createTestContentRuntime } from "../../../../test-support/content-runtime";
 import { describe, expect, it } from "vitest";
 
 import { encodeUtf8, hashBytes } from "../../../core/content";
@@ -7,7 +8,7 @@ import { SyncPullService } from "../../pull-service";
 import { SyncPushService } from "../../push-service";
 import {
   arrangePendingUpsertWithCachedBase,
-  createPullClient,
+  createBlobClient,
   createRealtimeSession,
   createVaultAdapter,
   encryptRemoteMetadata,
@@ -67,7 +68,7 @@ describe("SyncPushService stale revisions", () => {
       );
     });
     const service = new SyncPushService({
-      getApiBaseUrl: () => "http://127.0.0.1:8787",
+      contentRuntime: createTestContentRuntime(),
       getSyncToken: async () => createToken(),
       getSyncStore: () => store,
       getRemoteVaultKey: () => TEST_VAULT_KEY,
@@ -159,7 +160,7 @@ describe("SyncPushService stale revisions", () => {
       );
     });
     const service = new SyncPushService({
-      getApiBaseUrl: () => "http://127.0.0.1:8787",
+      contentRuntime: createTestContentRuntime(),
       getSyncToken: async () => createToken(),
       getSyncStore: () => store,
       getRemoteVaultKey: () => TEST_VAULT_KEY,
@@ -270,7 +271,7 @@ describe("SyncPushService stale revisions", () => {
       };
     });
     const service = new SyncPushService({
-      getApiBaseUrl: () => "http://127.0.0.1:8787",
+      contentRuntime: createTestContentRuntime(),
       getSyncToken: async () => createToken(),
       getSyncStore: () => store,
       getRemoteVaultKey: () => TEST_VAULT_KEY,
@@ -384,7 +385,7 @@ describe("SyncPushService stale revisions", () => {
       }),
     );
     const service = new SyncPushService({
-      getApiBaseUrl: () => "http://127.0.0.1:8787",
+      contentRuntime: createTestContentRuntime(),
       getSyncToken: async () => createToken(),
       getSyncStore: () => store,
       getRemoteVaultKey: () => TEST_VAULT_KEY,
@@ -475,12 +476,12 @@ describe("SyncPushService stale revisions", () => {
       ],
     });
     const pullService = new SyncPullService({
-      getApiBaseUrl: () => "http://127.0.0.1:8787",
+      contentRuntime: createTestContentRuntime(),
       getSyncToken: async () => createToken(),
       getSyncStore: () => store,
       getRemoteVaultKey: () => TEST_VAULT_KEY,
       vaultAdapter: adapter,
-      pullClient: createPullClient({
+      blobClient: createBlobClient({
         blobs: {
           "blob-remote": await encryptTestBlob("blob-remote", encodeUtf8(remoteText)),
         },
@@ -527,7 +528,7 @@ describe("SyncPushService stale revisions", () => {
       };
     });
     const pushService = new SyncPushService({
-      getApiBaseUrl: () => "http://127.0.0.1:8787",
+      contentRuntime: createTestContentRuntime(),
       getSyncToken: async () => createToken(),
       getSyncStore: () => store,
       getRemoteVaultKey: () => TEST_VAULT_KEY,

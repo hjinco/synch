@@ -1,4 +1,4 @@
-import { BillingClient } from "@synch/sync-client/billing/client";
+import { BillingClient } from "@synch/sync-client/billing";
 import { defaultHttpClient } from "../adapters/http";
 import { buildBillingWebPageUrl } from "./billing-web-url";
 import { getServerDeployment } from "../config";

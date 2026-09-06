@@ -1,3 +1,4 @@
+import { createTestContentRuntime } from "../../../../test-support/content-runtime";
 import { describe, expect, it } from "vitest";
 
 import { encodeUtf8, hashBytes } from "../../../core/content";
@@ -14,6 +15,7 @@ describe("SyncEventRecorder lifecycle", () => {
   it("coalesces create, modify, rename, and delete for an unsynced file", async () => {
     const store = createTestSyncStore();
     const recorder = new SyncEventRecorder({
+      contentRuntime: createTestContentRuntime(),
       getSyncStore: () => store,
       getRemoteVaultKey: () => TEST_VAULT_KEY,
     });
@@ -110,6 +112,7 @@ describe("SyncEventRecorder lifecycle", () => {
       bytes,
     });
     const recorder = new SyncEventRecorder({
+      contentRuntime: createTestContentRuntime(),
       getSyncStore: () => store,
       getRemoteVaultKey: () => TEST_VAULT_KEY,
     });
@@ -171,6 +174,7 @@ describe("SyncEventRecorder lifecycle", () => {
       createdAt: 2,
     });
     const recorder = new SyncEventRecorder({
+      contentRuntime: createTestContentRuntime(),
       getSyncStore: () => store,
       getRemoteVaultKey: () => TEST_VAULT_KEY,
     });

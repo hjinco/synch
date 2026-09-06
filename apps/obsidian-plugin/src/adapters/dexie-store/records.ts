@@ -3,7 +3,7 @@ export type {
   EntryRecord,
   PendingMutationOp,
   PendingMutationStatus,
-} from "@synch/sync-client/sync/store/entry-record";
+} from "@synch/sync-client/store/entry-record";
 
 export interface MetadataRecord {
   id: string;

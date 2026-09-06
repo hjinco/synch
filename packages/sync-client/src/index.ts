@@ -1,6 +1,7 @@
 export * from "./auth";
 export * from "./billing";
 export * from "./core";
+export * from "./diagnostics";
 export * from "./engine";
 export * from "./http";
 export * from "./remote";

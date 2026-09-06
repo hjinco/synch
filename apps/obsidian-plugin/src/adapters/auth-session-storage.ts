@@ -1,6 +1,6 @@
 import type { Plugin } from "obsidian";
 
-import type { AuthSessionTokenStore } from "@synch/sync-client/auth/session-token-store";
+import type { AuthSessionTokenStore } from "@synch/sync-client/auth";
 import { getOrCreateSecretScopeId } from "./secret-scope";
 
 const LEGACY_SESSION_TOKEN_SECRET = "synch-session-token";

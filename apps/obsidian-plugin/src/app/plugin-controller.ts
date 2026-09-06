@@ -9,9 +9,16 @@ import {
   openExternalUrl,
   SYNCH_DEVICE_LOGIN_RETURN_URI,
 } from "../adapters/external-browser";
-import { AuthClient } from "@synch/sync-client/auth/client";
-import { RemoteVaultClient } from "@synch/sync-client/remote-vault/client";
-import { SyncAccessClient } from "@synch/sync-client/sync/remote/client";
+import { AuthClient, AuthManager, type AuthReadiness } from "@synch/sync-client/auth";
+import {
+  RemoteVaultClient,
+  SyncAccessClient,
+  type SyncTokenResponse,
+  SyncTokenManager,
+  isRemoteVaultUnavailableError,
+  RemoteVaultManager,
+} from "@synch/sync-client/remote";
+
 import { getSynchLocale, t, type SynchErrorContextKey } from "../i18n";
 import { formatSynchErrorNotice } from "./status/error-notices";
 import { formatAuthNotice, formatAuthStatusLabel } from "./status/auth-status-label";
@@ -19,7 +26,7 @@ import {
   formatRemoteVaultNotice,
   formatRemoteVaultStatusLabel,
 } from "./status/remote-vault-status-label";
-import { AuthManager, type AuthReadiness } from "@synch/sync-client/auth/manager";
+
 import { ObsidianAuthSessionTokenStore } from "../adapters/auth-session-storage";
 import { SynchPluginDataStore } from "../adapters/plugin-data";
 import type { SynchSettingsController } from "../ui/settings/controller";
@@ -52,17 +59,15 @@ import {
   normalizeSyncFileRules,
   normalizeVaultPath,
   type SyncFileRules,
-} from "@synch/sync-client/sync/core/file-rules";
-import { isReservedSyncPath } from "@synch/sync-client/sync/core/reserved-paths";
-import type { SyncTokenResponse } from "@synch/sync-client/sync/remote/client";
-import type { PresenceSelection } from "@synch/sync-client/sync/core/presence";
-import { InMemorySyncDiagnostics } from "@synch/sync-client/sync/diagnostics/in-memory";
-import type { SyncFailurePhase } from "@synch/sync-client/sync/diagnostics/types";
+  isReservedSyncPath,
+  type PresenceSelection,
+} from "@synch/sync-client/core";
+
+import { InMemorySyncDiagnostics, type SyncFailurePhase } from "@synch/sync-client/diagnostics";
+
 import { SyncController } from "./sync-controller";
 import type { PresenceRelay } from "../ui/presence/presence-relay";
-import { SyncTokenManager } from "@synch/sync-client/sync/remote/token-manager";
-import { isRemoteVaultUnavailableError } from "@synch/sync-client/remote-vault/unavailable";
-import { RemoteVaultManager } from "@synch/sync-client/remote-vault/manager";
+
 import { getStorageDisplayState as resolveStorageDisplayState } from "../adapters/storage-warning";
 
 export interface SynchPluginControllerDeps {

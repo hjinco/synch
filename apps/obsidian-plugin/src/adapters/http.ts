@@ -4,7 +4,7 @@ import type {
   HttpClient,
   HttpRequestInput,
   HttpResponseLike,
-} from "@synch/sync-client/http/request";
+} from "@synch/sync-client/http";
 
 export {
   ApiRequestError,
@@ -15,7 +15,7 @@ export {
   type HttpClient,
   type HttpRequestInput,
   type HttpResponseLike,
-} from "@synch/sync-client/http/request";
+} from "@synch/sync-client/http";
 
 export class ObsidianHttpClient implements HttpClient {
   async request(input: HttpRequestInput): Promise<HttpResponseLike> {

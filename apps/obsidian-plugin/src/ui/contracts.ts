@@ -1,10 +1,9 @@
-import type { UserVisibleSyncProgress } from "@synch/sync-client/sync/runtime/user-visible-status";
-import type { SyncFileRules } from "@synch/sync-client/sync/core/file-rules";
-import type { VaultConfigSyncRules } from "@synch/sync-client/sync/core/vault-config-rules";
+import type { UserVisibleSyncProgress } from "@synch/sync-client/engine";
+import type { SyncFileRules, VaultConfigSyncRules } from "@synch/sync-client/core";
 
 // The only type bridge allowed so the ui layer never imports feature modules
 // directly.
-export type { AuthReadiness } from "@synch/sync-client/auth/manager";
+export type { AuthReadiness } from "@synch/sync-client/auth";
 
 export type SynchFileRules = SyncFileRules;
 

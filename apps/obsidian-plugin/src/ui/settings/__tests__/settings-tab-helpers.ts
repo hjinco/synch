@@ -3,8 +3,8 @@ import { vi } from "vitest";
 
 import { getStorageDisplayState as resolveStorageDisplayState } from "../../../adapters/storage-warning";
 import type { SynchDeletedFile } from "../../contracts";
-import { DEFAULT_SYNC_FILE_RULES } from "@synch/sync-client/sync/core/file-rules";
-import { DEFAULT_VAULT_CONFIG_SYNC_RULES } from "@synch/sync-client/sync/core/vault-config-rules";
+import { DEFAULT_SYNC_FILE_RULES, DEFAULT_VAULT_CONFIG_SYNC_RULES } from "@synch/sync-client/core";
+
 import type { SynchSettingsController } from "../controller";
 import { SynchSettingTab } from "../settings-tab";
 

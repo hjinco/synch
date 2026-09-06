@@ -1,3 +1,4 @@
+import { createTestContentRuntime } from "../../../../test-support/content-runtime";
 import { describe, expect, it } from "vitest";
 
 import { decryptSyncBlob } from "../../../core/crypto";
@@ -6,7 +7,7 @@ import { createTestSyncStore } from "../../../../test-support/in-memory-sync-sto
 import {
   createCommit,
   createEventGate,
-  createPullClient,
+  createBlobClient,
   createRealtimeSession,
   createToken,
   createVaultAdapter,
@@ -68,13 +69,13 @@ describe("SyncPullService path conflicts", () => {
       ],
     });
     const service = new SyncPullService({
-      getApiBaseUrl: () => "http://127.0.0.1:8787",
+      contentRuntime: createTestContentRuntime(),
       getSyncToken: async () => createToken(),
       getSyncStore: () => store,
       getRemoteVaultKey: () => TEST_VAULT_KEY,
       shouldUseLatestRemoteVersion: (candidate) => candidate.startsWith(".obsidian/"),
       vaultAdapter: adapter,
-      pullClient: createPullClient({
+      blobClient: createBlobClient({
         blobs: {
           "blob-old": await encryptTestBlob(
             "blob-old",
@@ -183,13 +184,13 @@ describe("SyncPullService path conflicts", () => {
       ],
     });
     const service = new SyncPullService({
-      getApiBaseUrl: () => "http://127.0.0.1:8787",
+      contentRuntime: createTestContentRuntime(),
       getSyncToken: async () => createToken(),
       getSyncStore: () => store,
       getRemoteVaultKey: () => TEST_VAULT_KEY,
       shouldUseLatestRemoteVersion: (candidate) => candidate.startsWith(".obsidian/"),
       vaultAdapter: adapter,
-      pullClient: createPullClient({}),
+      blobClient: createBlobClient({}),
       onProgress: ignoreProgress,
     });
 
@@ -260,13 +261,13 @@ describe("SyncPullService path conflicts", () => {
       ],
     });
     const service = new SyncPullService({
-      getApiBaseUrl: () => "http://127.0.0.1:8787",
+      contentRuntime: createTestContentRuntime(),
       getSyncToken: async () => createToken(),
       getSyncStore: () => store,
       getRemoteVaultKey: () => TEST_VAULT_KEY,
       shouldUseLatestRemoteVersion: (candidate) => candidate.startsWith(".obsidian/"),
       vaultAdapter: adapter,
-      pullClient: createPullClient({
+      blobClient: createBlobClient({
         blobs: {
           "blob-live": await encryptTestBlob(
             "blob-live",
@@ -337,13 +338,13 @@ describe("SyncPullService path conflicts", () => {
       ],
     });
     const service = new SyncPullService({
-      getApiBaseUrl: () => "http://127.0.0.1:8787",
+      contentRuntime: createTestContentRuntime(),
       getSyncToken: async () => createToken(),
       getSyncStore: () => store,
       getRemoteVaultKey: () => TEST_VAULT_KEY,
       shouldUseLatestRemoteVersion: (candidate) => candidate.startsWith(".obsidian/"),
       vaultAdapter: adapter,
-      pullClient: createPullClient({}),
+      blobClient: createBlobClient({}),
       onProgress: ignoreProgress,
     });
 
@@ -418,13 +419,13 @@ describe("SyncPullService path conflicts", () => {
       ],
     });
     const service = new SyncPullService({
-      getApiBaseUrl: () => "http://127.0.0.1:8787",
+      contentRuntime: createTestContentRuntime(),
       getSyncToken: async () => createToken(),
       getSyncStore: () => store,
       getRemoteVaultKey: () => TEST_VAULT_KEY,
       shouldUseLatestRemoteVersion: (candidate) => candidate.startsWith(".obsidian/"),
       vaultAdapter: adapter,
-      pullClient: createPullClient({
+      blobClient: createBlobClient({
         blobs: {
           "blob-latest": await encryptTestBlob(
             "blob-latest",
@@ -493,13 +494,13 @@ describe("SyncPullService path conflicts", () => {
       ],
     });
     const service = new SyncPullService({
-      getApiBaseUrl: () => "http://127.0.0.1:8787",
+      contentRuntime: createTestContentRuntime(),
       getSyncToken: async () => createToken(),
       getSyncStore: () => store,
       getRemoteVaultKey: () => TEST_VAULT_KEY,
       shouldUseLatestRemoteVersion: (candidate) => candidate.startsWith(".obsidian/"),
       vaultAdapter: adapter,
-      pullClient: createPullClient({}),
+      blobClient: createBlobClient({}),
       onProgress: ignoreProgress,
     });
 
@@ -551,13 +552,13 @@ describe("SyncPullService path conflicts", () => {
       ],
     });
     const service = new SyncPullService({
-      getApiBaseUrl: () => "http://127.0.0.1:8787",
+      contentRuntime: createTestContentRuntime(),
       getSyncToken: async () => createToken(),
       getSyncStore: () => store,
       getRemoteVaultKey: () => TEST_VAULT_KEY,
       shouldUseLatestRemoteVersion: (candidate) => candidate.startsWith(".obsidian/"),
       vaultAdapter: adapter,
-      pullClient: createPullClient({
+      blobClient: createBlobClient({
         blobs: {
           "blob-latest": await encryptTestBlob(
             "blob-latest",
@@ -640,15 +641,15 @@ describe("SyncPullService path conflicts", () => {
         },
       ],
     });
-    const client = createPullClient({});
+    const client = createBlobClient({});
 
     const service = new SyncPullService({
-      getApiBaseUrl: () => "http://127.0.0.1:8787",
+      contentRuntime: createTestContentRuntime(),
       getSyncToken: async () => createToken(),
       getSyncStore: () => store,
       getRemoteVaultKey: () => TEST_VAULT_KEY,
       vaultAdapter: adapter,
-      pullClient: client,
+      blobClient: client,
       onProgress: ignoreProgress,
       onConflict(event) {
         conflicts.push({
@@ -755,12 +756,12 @@ describe("SyncPullService path conflicts", () => {
       ],
     });
     const service = new SyncPullService({
-      getApiBaseUrl: () => "http://127.0.0.1:8787",
+      contentRuntime: createTestContentRuntime(),
       getSyncToken: async () => createToken(),
       getSyncStore: () => store,
       getRemoteVaultKey: () => TEST_VAULT_KEY,
       vaultAdapter: adapter,
-      pullClient: createPullClient({}),
+      blobClient: createBlobClient({}),
       onProgress: ignoreProgress,
     });
 
@@ -855,7 +856,7 @@ describe("SyncPullService path conflicts", () => {
         },
       ],
     });
-    const client = createPullClient({
+    const client = createBlobClient({
       blobs: {
         "blob-remote-a": await encryptTestBlob(
           "blob-remote-a",
@@ -869,12 +870,12 @@ describe("SyncPullService path conflicts", () => {
     });
 
     const service = new SyncPullService({
-      getApiBaseUrl: () => "http://127.0.0.1:8787",
+      contentRuntime: createTestContentRuntime(),
       getSyncToken: async () => createToken(),
       getSyncStore: () => store,
       getRemoteVaultKey: () => TEST_VAULT_KEY,
       vaultAdapter: adapter,
-      pullClient: client,
+      blobClient: client,
       onProgress: ignoreProgress,
       onConflict(event) {
         conflicts.push({
@@ -971,7 +972,7 @@ describe("SyncPullService path conflicts", () => {
         },
       ],
     });
-    const client = createPullClient({
+    const client = createBlobClient({
       blobs: {
         "blob-remote": await encryptTestBlob(
           "blob-remote",
@@ -981,12 +982,12 @@ describe("SyncPullService path conflicts", () => {
     });
 
     const service = new SyncPullService({
-      getApiBaseUrl: () => "http://127.0.0.1:8787",
+      contentRuntime: createTestContentRuntime(),
       getSyncToken: async () => createToken(),
       getSyncStore: () => store,
       getRemoteVaultKey: () => TEST_VAULT_KEY,
       vaultAdapter: adapter,
-      pullClient: client,
+      blobClient: client,
       onProgress: ignoreProgress,
       onConflict(event) {
         conflicts.push({
@@ -1071,7 +1072,7 @@ describe("SyncPullService path conflicts", () => {
         },
       ],
     });
-    const client = createPullClient({
+    const client = createBlobClient({
       blobs: {
         "blob-a": await encryptTestBlob("blob-a", new TextEncoder().encode("first body")),
         "blob-b": await encryptTestBlob("blob-b", new TextEncoder().encode("second body")),
@@ -1079,13 +1080,13 @@ describe("SyncPullService path conflicts", () => {
     });
 
     const service = new SyncPullService({
-      getApiBaseUrl: () => "http://127.0.0.1:8787",
+      contentRuntime: createTestContentRuntime(),
       getSyncToken: async () => createToken(),
       getSyncStore: () => store,
       getRemoteVaultKey: () => TEST_VAULT_KEY,
       vaultAdapter: adapter,
       eventGate: createEventGate(suppressionCalls),
-      pullClient: client,
+      blobClient: client,
       onProgress: ignoreProgress,
       onConflict(event) {
         conflicts.push({
@@ -1185,19 +1186,19 @@ describe("SyncPullService path conflicts", () => {
         },
       ],
     });
-    const client = createPullClient({
+    const client = createBlobClient({
       blobs: {
         "blob-b": await encryptTestBlob("blob-b", new TextEncoder().encode("remote body")),
       },
     });
 
     const service = new SyncPullService({
-      getApiBaseUrl: () => "http://127.0.0.1:8787",
+      contentRuntime: createTestContentRuntime(),
       getSyncToken: async () => createToken(),
       getSyncStore: () => store,
       getRemoteVaultKey: () => TEST_VAULT_KEY,
       vaultAdapter: adapter,
-      pullClient: client,
+      blobClient: client,
       onProgress: ignoreProgress,
       onConflict(event) {
         conflicts.push({
