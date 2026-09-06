@@ -4,55 +4,8 @@ import { z } from "zod";
 import type { SessionReader } from "../../../../auth/session";
 import { createEnsureAuthenticatedSession } from "../../../../platform/http/authenticated-session";
 import type { VaultService } from "../../../application";
+import { vaultKeyEnvelopeSchema } from "../../../application/dto/vault-key-envelope";
 import { Hono } from "hono";
-
-const ENVELOPE_VERSION = 1;
-const KEY_VERSION = 1;
-const ARGON2_MEMORY_KIB = 65_536;
-const ARGON2_ITERATIONS = 3;
-const ARGON2_PARALLELISM = 1;
-const ARGON2_SALT_BYTES = 16;
-const AES_GCM_NONCE_BYTES = 12;
-const WRAPPED_VAULT_KEY_BYTES = 48;
-
-const BASE64_PATTERN = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/;
-
-function base64Bytes(byteLength: number): z.ZodString {
-	const encodedLength = Math.ceil(byteLength / 3) * 4;
-
-	return z
-		.string()
-		.length(encodedLength)
-		.regex(BASE64_PATTERN)
-		.refine((value) => base64DecodedLength(value) === byteLength, {
-			message: `must decode to ${byteLength} bytes`,
-		});
-}
-
-function base64DecodedLength(value: string): number | null {
-	try {
-		return atob(value).length;
-	} catch {
-		return null;
-	}
-}
-
-const vaultKeyEnvelopeSchema = z.object({
-	version: z.literal(ENVELOPE_VERSION),
-	keyVersion: z.literal(KEY_VERSION),
-	kdf: z.object({
-		name: z.literal("argon2id"),
-		memoryKiB: z.literal(ARGON2_MEMORY_KIB),
-		iterations: z.literal(ARGON2_ITERATIONS),
-		parallelism: z.literal(ARGON2_PARALLELISM),
-		salt: base64Bytes(ARGON2_SALT_BYTES),
-	}),
-	wrap: z.object({
-		algorithm: z.literal("aes-256-gcm"),
-		nonce: base64Bytes(AES_GCM_NONCE_BYTES),
-		ciphertext: base64Bytes(WRAPPED_VAULT_KEY_BYTES),
-	}),
-});
 
 export function registerVaultRoutes(
 	app: Hono,

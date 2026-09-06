@@ -35,3 +35,20 @@ export function canGrantVaultAccess(facts: VaultAuthorizationFacts): boolean {
 			facts.organizationRole === "owner")
 	);
 }
+
+/** Free remote vaults are deleted after 90 days without a synced change. */
+export const FREE_VAULT_INACTIVITY_DELETE_AFTER_MS =
+	90 * 24 * 60 * 60 * 1000;
+
+export const FREE_VAULT_INACTIVITY_DELETE_DAYS = Math.round(
+	FREE_VAULT_INACTIVITY_DELETE_AFTER_MS / (24 * 60 * 60 * 1000),
+);
+
+/**
+ * Only free-plan organizations are subject to inactivity-based vault
+ * deletion. Kept as a string predicate so the vault domain does not need to
+ * depend on the subscription domain.
+ */
+export function isInactivityDeletionPlan(planId: string): boolean {
+	return planId === "free";
+}

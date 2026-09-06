@@ -1,4 +1,9 @@
 /**
+ * SQL mirror of the reference facts in domain/blob-gc-policy
+ * (hasCurrentReference/hasRetainedHistory). Keep in lockstep with
+ * decideBlobCollection/decidePendingDelete; the shared predicates are
+ * covered by blob-store and blob-gc-service tests.
+ *
  * Blob is not referenced by a current entry or an unexpired version.
  * Requires the `blobs` table in scope. Binds `now` once for `expires_at`.
  */

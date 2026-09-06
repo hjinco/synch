@@ -14,6 +14,8 @@ export const STAGED_BLOB_STALE_MS = 60 * 60 * 1000;
 export const PENDING_DELETE_STALE_MS = 24 * 60 * 60 * 1000;
 export const ACTIVE_WITHOUT_RECENT_COMMIT_MS = 24 * 60 * 60 * 1000;
 export const PENDING_DELETE_BACKLOG_WARNING_COUNT = 100;
+/** Default window during which a cursor still counts as active for health. */
+export const DEFAULT_CURSOR_ACTIVE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const STORAGE_NEAR_LIMIT_RATIO = 0.8;
 
 export function evaluateHealth(

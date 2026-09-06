@@ -1,10 +1,6 @@
 import type { VaultRetentionEmailMessage } from "../../../application/dto/queue-messages";
 import type { RetentionEmailSender } from "../../../application/ports/outbound/retention-email-sender";
-import { FREE_VAULT_INACTIVITY_DELETE_AFTER_MS } from "../../../application/services/vault-lifecycle-service";
-
-const INACTIVITY_DAYS = Math.round(
-	FREE_VAULT_INACTIVITY_DELETE_AFTER_MS / (24 * 60 * 60 * 1000),
-);
+import { FREE_VAULT_INACTIVITY_DELETE_DAYS } from "../../../domain/policy";
 
 export class VaultRetentionEmailConsumer {
 	constructor(
@@ -47,7 +43,7 @@ function renderDeletionNotice(message: VaultRetentionEmailMessage): {
 			: `The last synced content change was ${formatTimestamp(lastCommitAt)}.`;
 	const lines = [
 		`Your free Synch remote vault “${vaultName}” was permanently deleted on ${formatTimestamp(message.deletedAt)}.`,
-		`Remote vaults on the free plan are deleted after ${INACTIVITY_DAYS} days without a synced content change. ${lastChange}`,
+		`Remote vaults on the free plan are deleted after ${FREE_VAULT_INACTIVITY_DELETE_DAYS} days without a synced content change. ${lastChange}`,
 		"",
 		"Your local Obsidian vault was not touched. Only the encrypted copy stored by Synch was removed, and Synch cannot recover it.",
 		"To sync this vault again, set it up as a new remote vault in the Synch plugin.",

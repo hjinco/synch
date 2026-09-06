@@ -9,6 +9,8 @@ import { blobObjectKey, blobObjectKeyPrefix } from "../platform/blob/object-key"
 import type { AppDb } from "../db/client";
 import type { SubscriptionProductIdsByPlanId } from "../subscription/application";
 import { SyncCoordinatorApplicationError } from "../sync-coordinator/application/errors/coordinator-errors";
+import { DEFAULT_BLOB_GRACE_PERIOD_MS } from "../sync-coordinator/domain/blob-gc-policy";
+import { DEFAULT_CURSOR_ACTIVE_TTL_MS } from "../sync-coordinator/domain/health-policy";
 import { MaintenanceService } from "../sync-coordinator/application/services/maintenance-service";
 import type {
 	MaintenanceRunner,
@@ -62,9 +64,6 @@ export type CoordinatorApplicationConfig = {
 	blobGracePeriodMs?: number;
 	cursorActiveTtlMs?: number;
 };
-
-const DEFAULT_BLOB_GRACE_PERIOD_MS = 30 * 60 * 1000;
-const DEFAULT_CURSOR_ACTIVE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
 /** Builds the coordinator's platform-neutral stores and service graph. */
 export function createCoordinatorApplication(

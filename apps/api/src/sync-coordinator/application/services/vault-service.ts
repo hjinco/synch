@@ -10,13 +10,13 @@ import type {
 } from "../ports/outbound";
 import type { SyncPauseState, SyncRepairResult } from "../dto/sync-repair";
 import type { SocketSession, VaultStateLimits } from "../dto/types";
+import { isStaleStagedBlobPauseReason } from "../../domain/blob-policy";
 import { isBlobPinned } from "../../domain/blob-gc-policy";
 import { STAGED_BLOB_STALE_MS } from "../../domain/health-policy";
 import type { BlobGcService } from "./blob-gc-service";
 import type { HealthService } from "./health-service";
 
 export const MAX_REPAIRABLE_STALE_STAGED_BLOBS = 100;
-const STALE_BLOB_PAUSE_REASON_PREFIX = "staged blob ";
 
 export class VaultService {
 	private purged = false;
@@ -105,7 +105,7 @@ export class VaultService {
 			MAX_REPAIRABLE_STALE_STAGED_BLOBS + 1,
 		);
 
-		if (pause && !pause.reason.startsWith(STALE_BLOB_PAUSE_REASON_PREFIX)) {
+		if (pause && !isStaleStagedBlobPauseReason(pause.reason)) {
 			return repairRequiredResult(
 				pause,
 				staleBlobs.length,

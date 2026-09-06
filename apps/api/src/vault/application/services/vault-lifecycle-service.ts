@@ -1,4 +1,8 @@
 import type { SubscriptionPolicyReader } from "../../../subscription/application";
+import {
+	FREE_VAULT_INACTIVITY_DELETE_AFTER_MS,
+	isInactivityDeletionPlan,
+} from "../../domain/policy";
 import type { InactiveVaultCandidate } from "../../domain/types";
 import type { PurgeVault } from "../ports/inbound/purge-vault";
 import type { RunVaultRetention } from "../ports/inbound/run-vault-retention";
@@ -6,9 +10,6 @@ import type { CoordinatorPurgeWriter } from "../ports/outbound/coordinator-purge
 import type { VaultLifecycleStore } from "../ports/outbound/vault-lifecycle-store";
 import type { VaultPurgeQueue } from "../ports/outbound/vault-purge-queue";
 
-/** Free remote vaults are deleted after 90 days without a synced change. */
-export const FREE_VAULT_INACTIVITY_DELETE_AFTER_MS =
-	90 * 24 * 60 * 60 * 1000;
 const SCAN_PAGE_SIZE = 100;
 
 export class VaultPurgeService implements PurgeVault {
@@ -80,7 +81,7 @@ export class RunVaultRetentionService implements RunVaultRetention {
 		}
 
 		const policy = await this.policyReader.readOrganizationPolicy(organizationId);
-		const isFree = policy.id === "free";
+		const isFree = isInactivityDeletionPlan(policy.id);
 		cache.set(organizationId, isFree);
 		return isFree;
 	}

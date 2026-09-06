@@ -1,10 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { getSubscriptionPlanPolicy } from "../../../subscription/domain/policy";
+import { FREE_VAULT_INACTIVITY_DELETE_AFTER_MS } from "../../domain/policy";
 import type { InactiveVaultCandidate } from "../../domain/types";
 import type { VaultLifecycleStore } from "../ports/outbound/vault-lifecycle-store";
 import type { VaultPurgeQueue } from "../ports/outbound/vault-purge-queue";
-import { FREE_VAULT_INACTIVITY_DELETE_AFTER_MS, RunVaultRetentionService } from "./vault-lifecycle-service";
+import { RunVaultRetentionService } from "./vault-lifecycle-service";
 
 const NOW = Date.UTC(2026, 7, 14, 12);
 

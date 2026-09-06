@@ -23,6 +23,17 @@ export type BlobStageDecision =
 	  }
 	| { kind: "staged"; storageDeltaBytes: number };
 
+/**
+ * Stale-staged pauses are persisted as human-readable text; the prefix is the
+ * stable identifier used to recognize them when reading stored pause state.
+ * Follow-up: persist a stable pause-reason id instead of matching on text.
+ */
+export const STALE_STAGED_BLOB_PAUSE_REASON_PREFIX = "staged blob ";
+
+export function isStaleStagedBlobPauseReason(reason: string): boolean {
+	return reason.startsWith(STALE_STAGED_BLOB_PAUSE_REASON_PREFIX);
+}
+
 export function decideBlobStage(input: {
 	blobId: string;
 	sizeBytes: number;

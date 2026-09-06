@@ -1,4 +1,5 @@
 import type { VaultService } from "../../../vault/application";
+import { DEFAULT_SYNC_TOKEN_TTL_SECONDS } from "../../domain/token-policy";
 import { SyncAccessApplicationError } from "../errors/sync-access-errors";
 import type { IssueSyncToken } from "../ports/inbound/issue-sync-token";
 import type { VerifySyncToken } from "../ports/inbound/verify-sync-token";
@@ -10,7 +11,6 @@ import type {
 	SyncTokenIssueResponse,
 } from "../dto/token";
 
-const DEFAULT_SYNC_TOKEN_TTL_SECONDS = 120;
 // TODO: Remove this field after MIN_SUPPORTED_OBSIDIAN_PLUGIN_VERSION is
 // raised past plugin releases that still validate syncFormatVersion.
 const CURRENT_SYNC_FORMAT_VERSION = 2;

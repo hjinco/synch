@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { createDb } from "../../src/db/client";
 import { getSubscriptionPlanPolicy } from "../../src/subscription/domain/policy";
+import { FREE_VAULT_INACTIVITY_DELETE_AFTER_MS } from "../../src/vault/domain/policy";
 import { VaultPurgeConsumer } from "../../src/vault/adapters/inbound/queue/purge-consumer";
 import { VaultRetentionEmailConsumer } from "../../src/vault/adapters/inbound/queue/retention-email-consumer";
 import {
@@ -10,7 +11,6 @@ import {
 } from "../../src/vault/adapters/outbound/purge-queue";
 import type { VaultPurgeMessage, VaultRetentionEmailMessage } from "../../src/vault/application";
 import {
-	FREE_VAULT_INACTIVITY_DELETE_AFTER_MS,
 	RunVaultRetentionService,
 	VaultPurgeService,
 } from "../../src/vault/application/services/vault-lifecycle-service";

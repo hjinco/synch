@@ -1,5 +1,12 @@
 import type { BlobLifecycleState } from "./blob-policy";
 
+/**
+ * Default staged-blob grace period before a blob becomes collectable.
+ * Deployment config may override this; the domain default keeps the
+ * collectability contract in one place.
+ */
+export const DEFAULT_BLOB_GRACE_PERIOD_MS = 30 * 60 * 1000;
+
 export type BlobCollectionFacts = {
 	state: BlobLifecycleState;
 	deleteAfter: number | null;

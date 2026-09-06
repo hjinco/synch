@@ -8,6 +8,9 @@ export type SyncTokenClaimValues = {
 	exp: number;
 };
 
+/** Default lifetime for short-lived sync tokens; configurable via env. */
+export const DEFAULT_SYNC_TOKEN_TTL_SECONDS = 120;
+
 /**
  * Mirrors the existing JWT claim validation without bringing a schema/runtime
  * dependency into the domain layer. JWT decoding and error translation remain
