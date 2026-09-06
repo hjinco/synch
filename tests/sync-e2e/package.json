@@ -1,0 +1,9 @@
+{
+  "name": "@synch/sync-e2e", "private": true, "type": "module",
+  "scripts": { "test:e2e": "vitest run", "typecheck": "tsgo --noEmit" },
+  "devDependencies": {
+    "@synch/sync-client": "workspace:*", "@synch/vault-crypto": "workspace:*",
+    "@types/node": "^25.6.0", "@types/ws": "^8.18.1", "typescript": "^5.9.3",
+    "vitest": "^4.1.4", "ws": "^8.20.0"
+  }
+}

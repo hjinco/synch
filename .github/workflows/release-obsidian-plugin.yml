@@ -25,7 +25,13 @@ permissions:
   attestations: write
 
 jobs:
+  sync-e2e:
+    uses: ./.github/workflows/sync-e2e.yml
+    permissions:
+      contents: read
+
   release:
+    needs: sync-e2e
     runs-on: ubuntu-latest
 
     env:

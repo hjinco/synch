@@ -26,7 +26,6 @@
 		"test:integration:cloudflare:watch": "vitest --config ./vitest.config.mts",
 		"test:unit": "vitest run --config ./vitest.unit.config.mts --exclude test/self-host/**/*.test.ts",
 		"test:e2e:node": "vitest run --config ./vitest.unit.config.mts test/self-host",
-		"test:smoke": "node ./scripts/e2e-smoke.mjs",
 		"cf-typegen": "wrangler types",
 		"typecheck": "pnpm run cf-typegen && tsgo --noEmit",
 		"start:node": "node dist/server.mjs",

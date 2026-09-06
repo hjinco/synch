@@ -11,7 +11,11 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  sync-e2e:
+    uses: ./.github/workflows/sync-e2e.yml
+
   deploy:
+    needs: sync-e2e
     runs-on: ubuntu-latest
 
     steps:

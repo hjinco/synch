@@ -1,0 +1,32 @@
+name: Sync E2E
+
+on:
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  sync-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        runtime: [node, cloudflare]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 10.33.0
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm -C tests/sync-e2e typecheck
+      - name: Verify encrypted sync and conflict recovery
+        run: pnpm -C tests/sync-e2e test:e2e
+        env:
+          SYNC_E2E_RUNTIME: ${{ matrix.runtime }}
