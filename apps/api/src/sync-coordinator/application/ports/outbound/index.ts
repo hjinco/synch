@@ -1,38 +1,22 @@
 export type { SyncTokenVerifier } from "./token-verifier";
-export type { BlobObjectKeyBuilder, BlobObjectRepository } from "./blob-storage";
-export type { CoordinatorStorageLifecycle } from "./storage-lifecycle";
-export type { InitialVaultLimitReader, VaultStateStore } from "./vault-state-store";
 export type {
-	DeletedEntryPurgeFacts,
-	DeletedEntryPurgeTransaction,
+	BlobObjectKeyBuilder,
+	BlobObjectRepository,
+} from "./blob-storage";
+export type { CoordinatorStorageLifecycle } from "./storage-lifecycle";
+export type {
+	InitialVaultLimitReader,
+	VaultStateStore,
+} from "./vault-state-store";
+export type {
 	EntryHistoryStore,
 	EntryStateStore,
+	EntryStore,
+	EntryVersionStore,
 } from "./entry-store";
-export type {
-	MutationEntrySnapshot,
-	MutationStore,
-	MutationTransaction,
-} from "./mutation-store";
-export type {
-	BlobStageFacts,
-	BlobStageTransaction,
-	BlobMutationFacts,
-	BlobMutationTransaction,
-	BlobReferenceSnapshot,
-	BlobStateStore,
-} from "./blob-state-store";
-export type {
-	BlobGcCandidate,
-	BlobGcDeleteResult,
-	BlobGcStore,
-	BlobPendingDeleteFacts,
-	BlobPendingDeleteTransaction,
-} from "./blob-gc-store";
-export type {
-	StaleStagedBlobFacts,
-	StaleStagedBlobStore,
-	StaleStagedBlobTransaction,
-} from "./stale-staged-blob-store";
+export type { BlobGcCandidate, BlobGcQueries } from "./blob-gc-queries";
+export type * from "./unit-of-work";
+export type * from "./entry-writes";
 export type {
 	HealthStateStore,
 	VaultHealthSnapshot,
@@ -52,3 +36,6 @@ export type {
 	SyncRepairIssue,
 	SyncRepairResult,
 } from "../../dto/sync-repair";
+export type * from "./blob-store";
+export type * from "./coordinator-state-store";
+export type * from "./local-vault-connection-store";

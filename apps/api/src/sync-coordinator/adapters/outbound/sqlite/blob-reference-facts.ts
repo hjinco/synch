@@ -1,11 +1,8 @@
-import { and, eq, gt, sql } from "drizzle-orm";
+import { and, eq, exists, gt, sql } from "drizzle-orm";
+import { QueryBuilder } from "drizzle-orm/sqlite-core";
 
 import * as doSchema from "../../../../db/do";
-import type {
-	BlobMutationFacts,
-	BlobReferenceFacts,
-} from "../../../application/ports/outbound/blob-state-store";
-import type { BlobState } from "../../../application/ports/outbound/storage-models";
+import type { BlobReferenceFacts } from "../../../domain/blob-gc-policy";
 import type { CoordinatorDb } from "./storage-handle";
 
 type BlobReferenceDb = Pick<CoordinatorDb, "select">;
@@ -37,48 +34,43 @@ export function readBlobReferenceFacts(
 		)
 		.limit(1)
 		.get();
-	const activeStaging = db
-		.select({ found: sql<number>`1` })
-		.from(doSchema.blobs)
-		.where(
-			and(
-				eq(doSchema.blobs.blobId, blobId),
-				eq(doSchema.blobs.state, "staged"),
-				gt(doSchema.blobs.deleteAfter, now),
-			),
-		)
-		.limit(1)
-		.get();
 
 	return {
 		hasCurrentReference: currentReference !== undefined,
 		hasRetainedHistory: retainedHistory !== undefined,
-		hasActiveStaging: activeStaging !== undefined,
 	};
 }
 
-export function readBlobMutationFacts(
-	db: BlobReferenceDb,
-	blobId: string,
-	now: number,
-): BlobMutationFacts {
-	const blob = db
-		.select({
-			state: doSchema.blobs.state,
-			sizeBytes: doSchema.blobs.sizeBytes,
-		})
-		.from(doSchema.blobs)
-		.where(eq(doSchema.blobs.blobId, blobId))
-		.limit(1)
-		.get();
+const queryBuilder = new QueryBuilder();
 
+export function currentBlobReference() {
+	return exists(
+		queryBuilder
+			.select({ one: sql`1` })
+			.from(doSchema.entries)
+			.where(eq(doSchema.entries.blobId, doSchema.blobs.blobId)),
+	);
+}
+export function retainedBlobReference(now: number) {
+	return exists(
+		queryBuilder
+			.select({ one: sql`1` })
+			.from(doSchema.entryVersions)
+			.where(
+				and(
+					eq(doSchema.entryVersions.blobId, doSchema.blobs.blobId),
+					gt(doSchema.entryVersions.expiresAt, now),
+				),
+			),
+	);
+}
+/**
+ * Correlated facts for a batched blobs query; the outer table must be blobs.
+ * Use subquery builders so Drizzle retains table qualification inside SELECT expressions.
+ */
+export function blobReferenceColumns(now: number) {
 	return {
-		blob: blob
-			? {
-					state: blob.state as BlobState,
-					sizeBytes: Number(blob.sizeBytes),
-				}
-			: null,
-		referenceFacts: readBlobReferenceFacts(db, blobId, now),
+		hasCurrentReference: sql<number>`${currentBlobReference()}`,
+		hasRetainedHistory: sql<number>`${retainedBlobReference(now)}`,
 	};
 }

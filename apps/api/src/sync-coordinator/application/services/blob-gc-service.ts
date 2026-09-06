@@ -1,14 +1,16 @@
 import {
+	markUnpinnedBlobPendingDelete,
+	deleteCollectibleBlobRecords,
+} from "./blob-record-operations";
+import {
 	decideBlobCollection,
-	decidePendingDelete,
 	earliestGcDeadline,
 } from "../../domain/blob-gc-policy";
 import type {
 	BlobGcCandidate,
-	BlobGcStore,
+	CoordinatorUnitOfWork,
 	BlobObjectKeyBuilder,
 	BlobObjectRepository,
-	HealthStateStore,
 	MaintenanceScheduler,
 	VaultStateStore,
 } from "../ports/outbound";
@@ -38,10 +40,11 @@ export type RunBlobGcOptions = {
 export class BlobGcService {
 	constructor(
 		private readonly vaultStateStore: Pick<VaultStateStore, "readVaultId">,
-		private readonly blobGcStore: BlobGcStore,
+		private readonly unitOfWork: CoordinatorUnitOfWork<
+			"gc" | "blobs" | "blobReferences" | "versions" | "state"
+		>,
 		private readonly blobStorage: BlobObjectRepository,
 		private readonly objectKeyBuilder: BlobObjectKeyBuilder,
-		private readonly healthStore: Pick<HealthStateStore, "recordGcCompleted">,
 		private readonly maintenanceScheduler: MaintenanceScheduler,
 		private readonly healthService: Pick<
 			HealthService,
@@ -62,7 +65,10 @@ export class BlobGcService {
 	}
 
 	readNextGcAt(now = Date.now()): number | null {
-		return earliestGcDeadline(this.blobGcStore.readGcDeadlines(now), now);
+		return earliestGcDeadline(
+			this.unitOfWork.stores.gc.readGcDeadlines(now),
+			now,
+		);
 	}
 
 	async scheduleNow(now = Date.now()): Promise<void> {
@@ -79,8 +85,11 @@ export class BlobGcService {
 		}
 
 		const now = options.now ?? Date.now();
-		this.blobGcStore.expireEntryVersions(now);
-		const due = this.blobGcStore.listCollectibleBlobs(now, GC_BATCH_SIZE);
+		this.unitOfWork.stores.versions.expireEntryVersions(now);
+		const due = this.unitOfWork.stores.gc.listCollectibleBlobs(
+			now,
+			GC_BATCH_SIZE,
+		);
 		const collectible = due.filter((blob) => this.isCollectible(blob, now));
 		let deletedCount = 0;
 		try {
@@ -103,7 +112,7 @@ export class BlobGcService {
 		if ((options.scheduleNextGc ?? true) && nextGcAt !== null) {
 			await this.scheduleAt(nextGcAt, now);
 		}
-		this.healthStore.recordGcCompleted(now);
+		this.unitOfWork.stores.state.recordGcCompleted(now);
 		if (options.scheduleHealthFlush ?? true) {
 			await this.maintenanceScheduler.defer("health_summary_flush", now, now);
 		}
@@ -123,25 +132,13 @@ export class BlobGcService {
 		}
 
 		const now = Date.now();
-		this.blobGcStore.expireEntryVersions(now);
+		this.unitOfWork.stores.versions.expireEntryVersions(now);
 		const collectibleBlobs: BlobGcCandidate[] = [];
 		for (const blobId of uniqueBlobIds) {
-			this.blobGcStore.withPendingDeleteTransaction(
-				blobId,
-				now,
-				(transaction) => {
-					const facts = transaction.readFacts();
-					if (!facts) {
-						return;
-					}
-
-					const decision = decidePendingDelete(facts, now);
-					if (decision.kind === "mark_pending_delete") {
-						transaction.markPendingDelete(decision.deleteAfter);
-					}
-				},
+			this.unitOfWork.run((stores) =>
+				markUnpinnedBlobPendingDelete(stores, blobId, now),
 			);
-			const blob = this.blobGcStore.readCollectibleBlob(blobId, now);
+			const blob = this.unitOfWork.stores.gc.readCollectibleBlob(blobId, now);
 			if (!blob || !this.isCollectible(blob, now)) {
 				continue;
 			}
@@ -150,16 +147,23 @@ export class BlobGcService {
 
 		let deletedCount = 0;
 		try {
-			deletedCount = await this.deleteCollectibleBatch(vaultId, collectibleBlobs, now);
+			deletedCount = await this.deleteCollectibleBatch(
+				vaultId,
+				collectibleBlobs,
+				now,
+			);
 		} catch (error) {
 			if (error instanceof BlobObjectBatchDeleteError) {
 				deletedCount = error.deletedCount;
 			}
-			console.error("[sync-coordinator] immediate purged blob deletion failed", {
-				vaultId,
-				blobIds: collectibleBlobs.map((blob) => blob.blob_id),
-				error: error instanceof Error ? error.message : String(error),
-			});
+			console.error(
+				"[sync-coordinator] immediate purged blob deletion failed",
+				{
+					vaultId,
+					blobIds: collectibleBlobs.map((blob) => blob.blob_id),
+					error: error instanceof Error ? error.message : String(error),
+				},
+			);
 		}
 
 		await this.scheduleNext(now);
@@ -195,27 +199,24 @@ export class BlobGcService {
 		const deletedCount =
 			succeededBlobIds.length === 0
 				? 0
-				: this.blobGcStore.deleteCollectibleBlobs(succeededBlobIds, now).length;
+				: this.unitOfWork.run(
+						(stores) =>
+							deleteCollectibleBlobRecords(stores, succeededBlobIds, now)
+								.length,
+					);
 		if (failedKeys.length > 0) {
 			throw new BlobObjectBatchDeleteError(failedKeys, deletedCount);
 		}
 		return deletedCount;
 	}
 
-	private isCollectible(
-		blob: {
-			state: "staged" | "live" | "pending_delete";
-			delete_after: number | null;
-		},
-		now: number,
-	): boolean {
+	private isCollectible(blob: BlobGcCandidate, now: number): boolean {
 		return (
 			decideBlobCollection(
 				{
 					state: blob.state,
 					deleteAfter: blob.delete_after,
-					hasCurrentReference: false,
-					hasRetainedHistory: false,
+					...blob.referenceFacts,
 				},
 				now,
 			).kind === "collectible"

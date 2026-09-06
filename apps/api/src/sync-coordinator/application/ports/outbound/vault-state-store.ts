@@ -14,8 +14,6 @@ export interface VaultStateStore {
 	readSyncPause(): SyncPauseState | null;
 	clearSyncPause(): void;
 	vaultStateExistsFor(vaultId: string): boolean;
-	recordLocalVaultConnection(userId: string, localVaultId: string): void;
-	deleteLocalVaultConnection(userId: string, localVaultId: string): void;
 	readVaultLimits(): {
 		storageLimitBytes: number;
 		maxFileSizeBytes: number;

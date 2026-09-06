@@ -1,11 +1,18 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { BlobGcService } from "./blob-gc-service";
-import type { BlobPendingDeleteTransaction } from "../ports/outbound";
+import {
+	createTestCoordinatorState,
+	createTestUnitOfWork,
+} from "../../test-helpers";
 
 function blob(blobId: string) {
 	return {
 		blob_id: blobId,
+		referenceFacts: {
+			hasCurrentReference: false,
+			hasRetainedHistory: false,
+		},
 		state: "pending_delete" as const,
 		size_bytes: 10,
 		created_at: 1,
@@ -23,11 +30,11 @@ function createFixture() {
 			readCollectibleBlob: vi.fn((blobId: string) =>
 				blobId === "blob-1" || blobId === "blob-2" ? blob(blobId) : null,
 			),
-			withPendingDeleteTransaction: vi.fn(runPendingDeleteTransaction),
+			readBlob: vi.fn((id: string) => blob(id)),
+			updateState: vi.fn(),
 			deleteCollectibleBlobs: vi.fn((blobIds: readonly string[]) =>
 				blobIds.map((blobId) => blob(blobId)),
 			),
-			deleteBlobIfCollectible: vi.fn(() => "deleted" as const),
 			readGcDeadlines: vi.fn(() => []),
 		},
 		blobStorage: {
@@ -41,7 +48,8 @@ function createFixture() {
 			deleteByPrefix: vi.fn(async () => {}),
 		},
 		objectKeyBuilder: {
-			blobObjectKey: (vaultId: string, blobId: string) => `${vaultId}/${blobId}`,
+			blobObjectKey: (vaultId: string, blobId: string) =>
+				`${vaultId}/${blobId}`,
 			blobObjectKeyPrefix: (vaultId: string) => `${vaultId}/`,
 		},
 		healthStore: { recordGcCompleted: vi.fn() },
@@ -53,30 +61,18 @@ function createFixture() {
 	};
 	const useCase = new BlobGcService(
 		fixture.vaultStateStore,
-		fixture.blobGcStore,
+		createTestUnitOfWork(
+			createTestCoordinatorState({
+				...fixture.blobGcStore,
+				...fixture.healthStore,
+			}),
+		),
 		fixture.blobStorage,
 		fixture.objectKeyBuilder,
-		fixture.healthStore,
 		fixture.maintenanceScheduler,
 		fixture.healthService,
 	);
 	return { fixture, useCase };
-}
-
-function runPendingDeleteTransaction(
-	_blobId: string,
-	_now: number,
-	operation: (transaction: BlobPendingDeleteTransaction) => void,
-): void {
-	operation({
-		readFacts: vi.fn(() => ({
-			state: "pending_delete" as const,
-			deleteAfter: 1,
-			hasCurrentReference: false,
-			hasRetainedHistory: false,
-		})),
-		markPendingDelete: vi.fn(),
-	});
 }
 
 describe("BlobGcService purged blob collection", () => {
@@ -87,9 +83,13 @@ describe("BlobGcService purged blob collection", () => {
 			const { fixture, useCase } = createFixture();
 			const scheduleNext = vi.spyOn(useCase, "scheduleNext");
 
-			await useCase.collectPurgedBlobs("vault-1", ["blob-1", "blob-1", "blob-2"]);
+			await useCase.collectPurgedBlobs("vault-1", [
+				"blob-1",
+				"blob-1",
+				"blob-2",
+			]);
 
-			expect(fixture.blobGcStore.withPendingDeleteTransaction).toHaveBeenCalledTimes(2);
+			expect(fixture.blobGcStore.updateState).toHaveBeenCalledTimes(2);
 			expect(fixture.blobStorage.deleteMany).toHaveBeenCalledWith([
 				"vault-1/blob-1",
 				"vault-1/blob-2",
@@ -100,8 +100,12 @@ describe("BlobGcService purged blob collection", () => {
 			);
 			expect(fixture.blobStorage.delete).not.toHaveBeenCalled();
 			expect(scheduleNext).toHaveBeenCalledWith(2);
-			expect(fixture.healthService.scheduleSummaryFlush).toHaveBeenCalledWith(2);
-			expect(fixture.healthService.notifyStorageStatusChanged).toHaveBeenCalledOnce();
+			expect(fixture.healthService.scheduleSummaryFlush).toHaveBeenCalledWith(
+				2,
+			);
+			expect(
+				fixture.healthService.notifyStorageStatusChanged,
+			).toHaveBeenCalledOnce();
 		} finally {
 			vi.useRealTimers();
 		}
@@ -110,16 +114,22 @@ describe("BlobGcService purged blob collection", () => {
 	it("does not delete sqlite rows when the object batch fails", async () => {
 		vi.useFakeTimers();
 		vi.setSystemTime(2);
-		const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+		const consoleError = vi
+			.spyOn(console, "error")
+			.mockImplementation(() => {});
 		try {
 			const { fixture, useCase } = createFixture();
-			fixture.blobStorage.deleteMany.mockRejectedValue(new Error("temporary failure"));
+			fixture.blobStorage.deleteMany.mockRejectedValue(
+				new Error("temporary failure"),
+			);
 			const scheduleNext = vi.spyOn(useCase, "scheduleNext");
 
 			await useCase.collectPurgedBlobs("vault-1", ["blob-1", "blob-2"]);
 
 			expect(fixture.blobGcStore.deleteCollectibleBlobs).not.toHaveBeenCalled();
-			expect(fixture.healthService.notifyStorageStatusChanged).not.toHaveBeenCalled();
+			expect(
+				fixture.healthService.notifyStorageStatusChanged,
+			).not.toHaveBeenCalled();
 			expect(scheduleNext).toHaveBeenCalledWith(2);
 			expect(consoleError).toHaveBeenCalledWith(
 				"[sync-coordinator] immediate purged blob deletion failed",
@@ -137,7 +147,9 @@ describe("BlobGcService purged blob collection", () => {
 	it("deletes sqlite rows for objects that succeeded when a batch is partial", async () => {
 		vi.useFakeTimers();
 		vi.setSystemTime(2);
-		const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+		const consoleError = vi
+			.spyOn(console, "error")
+			.mockImplementation(() => {});
 		try {
 			const { fixture, useCase } = createFixture();
 			fixture.blobStorage.deleteMany.mockResolvedValue({
@@ -150,7 +162,9 @@ describe("BlobGcService purged blob collection", () => {
 				["blob-1"],
 				2,
 			);
-			expect(fixture.healthService.notifyStorageStatusChanged).toHaveBeenCalledOnce();
+			expect(
+				fixture.healthService.notifyStorageStatusChanged,
+			).toHaveBeenCalledOnce();
 			expect(consoleError).toHaveBeenCalledWith(
 				"[sync-coordinator] immediate purged blob deletion failed",
 				expect.objectContaining({
@@ -181,13 +195,11 @@ describe("BlobGcService purged blob collection", () => {
 
 		await useCase.collectPurgedBlobs("vault-1", ["missing"]);
 
-		expect(fixture.blobGcStore.withPendingDeleteTransaction).toHaveBeenCalledWith(
-			"missing",
-			expect.any(Number),
-			expect.any(Function),
-		);
+		expect(fixture.blobGcStore.readBlob).toHaveBeenCalledWith("missing");
 		expect(fixture.blobGcStore.deleteCollectibleBlobs).not.toHaveBeenCalled();
 		expect(fixture.blobStorage.deleteMany).not.toHaveBeenCalled();
-		expect(fixture.healthService.notifyStorageStatusChanged).not.toHaveBeenCalled();
+		expect(
+			fixture.healthService.notifyStorageStatusChanged,
+		).not.toHaveBeenCalled();
 	});
 });

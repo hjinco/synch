@@ -25,8 +25,10 @@ export type VaultSyncStatusSummary = VaultHealthSnapshot & {
 };
 
 export interface HealthStateStore {
-	recordGcCompleted(now?: number): void;
-	readHealthSnapshot(now: number, activeCursorTtlMs: number): VaultHealthSnapshot | null;
+	readHealthSnapshot(
+		now: number,
+		activeCursorTtlMs: number,
+	): VaultHealthSnapshot | null;
 	readStorageStatus(): StorageStatusSnapshot;
 }
 

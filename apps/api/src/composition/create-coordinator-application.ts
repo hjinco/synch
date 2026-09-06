@@ -1,3 +1,4 @@
+import { SqliteCoordinatorUnitOfWork } from "../sync-coordinator/adapters/outbound/sqlite/unit-of-work";
 import {
 	isCommunityEdition,
 	type DeploymentProfile,
@@ -5,7 +6,10 @@ import {
 import { createSubscriptionFeature } from "./features/create-subscription-feature";
 import { createVaultOrganizationReader } from "./features/create-vault-feature";
 import { createSyncTokenFeature } from "./features/create-sync-access-feature";
-import { blobObjectKey, blobObjectKeyPrefix } from "../platform/blob/object-key";
+import {
+	blobObjectKey,
+	blobObjectKeyPrefix,
+} from "../platform/blob/object-key";
 import type { AppDb } from "../db/client";
 import type { SubscriptionProductIdsByPlanId } from "../subscription/application";
 import { SyncCoordinatorApplicationError } from "../sync-coordinator/application/errors/coordinator-errors";
@@ -30,17 +34,10 @@ import { HealthService } from "../sync-coordinator/application/services/health-s
 import { MutationService } from "../sync-coordinator/application/services/mutation-service";
 import { CoordinatorControlMessageHandler } from "../sync-coordinator/adapters/inbound/websocket/control-message-handler";
 import { SocketConnectionService } from "../sync-coordinator/application/services/socket-connection-service";
-import { CoordinatorBlobStore } from "../sync-coordinator/adapters/outbound/sqlite/blob-store";
-import { CoordinatorBlobGcStore } from "../sync-coordinator/adapters/outbound/sqlite/blob-gc-store";
-import { CoordinatorStaleStagedBlobStore } from "../sync-coordinator/adapters/outbound/sqlite/stale-staged-blob-store";
-import { CoordinatorCursorStore } from "../sync-coordinator/adapters/outbound/sqlite/cursor-store";
-import { CoordinatorEntryStore } from "../sync-coordinator/adapters/outbound/sqlite/entry-store";
 import {
 	CoordinatorHealthStore,
 	type CoordinatorSocketCounter,
 } from "../sync-coordinator/adapters/outbound/sqlite/health-store";
-import { CoordinatorHistoryStore } from "../sync-coordinator/adapters/outbound/sqlite/history-store";
-import { CoordinatorMutationStore } from "../sync-coordinator/adapters/outbound/sqlite/mutation-store";
 import type { CoordinatorStorageHandle } from "../sync-coordinator/adapters/outbound/sqlite/storage-handle";
 import { VaultService } from "../sync-coordinator/application/services/vault-service";
 import { VaultSyncStatusRepository } from "../sync-coordinator/adapters/outbound/health-persistence/status-repository";
@@ -51,7 +48,10 @@ export type CoordinatorApplicationDependencies = {
 	storageHandle: CoordinatorStorageHandle;
 	blobStorage: BlobObjectRepository;
 	socketGateway: SocketGateway & {
-		openSocket(request: Request, session: import("../sync-coordinator/application/dto/types").SocketSession): Promise<Response>;
+		openSocket(
+			request: Request,
+			session: import("../sync-coordinator/application/dto/types").SocketSession,
+		): Promise<Response>;
 	};
 	socketCounter: CoordinatorSocketCounter;
 	maintenanceScheduler: MaintenanceScheduler & MaintenanceRunner;
@@ -74,17 +74,15 @@ export function createCoordinatorApplication(
 		config.blobGracePeriodMs ?? DEFAULT_BLOB_GRACE_PERIOD_MS;
 	const cursorActiveTtlMs =
 		config.cursorActiveTtlMs ?? DEFAULT_CURSOR_ACTIVE_TTL_MS;
-	const blobStore = new CoordinatorBlobStore(deps.storageHandle);
-	const blobGcStore = new CoordinatorBlobGcStore(deps.storageHandle);
-	const staleStagedBlobStore = new CoordinatorStaleStagedBlobStore(deps.storageHandle);
-	const cursorStore = new CoordinatorCursorStore(deps.storageHandle);
-	const entryStore = new CoordinatorEntryStore(deps.storageHandle);
+	const unitOfWork = new SqliteCoordinatorUnitOfWork(deps.storageHandle);
+	const {
+		state: cursorStore,
+		connections,
+	} = unitOfWork.stores;
 	const healthStore = new CoordinatorHealthStore(
 		deps.storageHandle,
 		deps.socketCounter,
 	);
-	const historyStore = new CoordinatorHistoryStore(deps.storageHandle);
-	const mutationStore = new CoordinatorMutationStore(deps.storageHandle);
 	const subscriptionFeature = createSubscriptionFeature(deps.db, {
 		selfHosted: isCommunityEdition(config.profile),
 		productIdsByPlanId: config.productIdsByPlanId,
@@ -105,16 +103,15 @@ export function createCoordinatorApplication(
 	);
 	const blobGcService = new BlobGcService(
 		cursorStore,
-		blobGcStore,
+		unitOfWork,
 		deps.blobStorage,
 		objectKeyBuilder,
-		healthStore,
 		deps.maintenanceScheduler,
 		healthService,
 	);
 	const blobService = new BlobService(
 		syncTokenService,
-		blobStore,
+		unitOfWork,
 		blobGcService,
 		deps.socketGateway,
 		deps.blobStorage,
@@ -123,7 +120,7 @@ export function createCoordinatorApplication(
 		healthService,
 	);
 	const mutationService = new MutationService(
-		mutationStore,
+		unitOfWork,
 		blobGcService,
 		cursorStore,
 		deps.blobStorage,
@@ -132,9 +129,7 @@ export function createCoordinatorApplication(
 		healthService,
 	);
 	const entryService = new EntryService(
-		entryStore,
-		historyStore,
-		cursorStore,
+		unitOfWork,
 		mutationService,
 		blobGcService,
 	);
@@ -156,12 +151,14 @@ export function createCoordinatorApplication(
 				}
 
 				const policy =
-					await subscriptionFeature.policyReader.readOrganizationPolicy(organizationId);
+					await subscriptionFeature.policyReader.readOrganizationPolicy(
+						organizationId,
+					);
 				return policy.limits;
 			},
 		},
 		healthService,
-		staleStagedBlobStore,
+		unitOfWork,
 		blobGcService,
 	);
 	const socketConnectionService = new SocketConnectionService(
@@ -191,6 +188,7 @@ export function createCoordinatorApplication(
 		healthStore,
 		services,
 		healthService,
+		connections,
 	);
 
 	return {

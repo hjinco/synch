@@ -3,7 +3,11 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { SqliteCoordinatorStorageHandle } from "./storage-handle";
 import { SqliteCoordinatorStorage } from "./storage-lifecycle";
-import { closeAllTestSqliteCoordinators, createSqliteCoordinator, testSession } from "./test-helpers";
+import {
+	closeAllTestSqliteCoordinators,
+	createSqliteCoordinator,
+	testSession,
+} from "./test-helpers";
 
 afterEach(() => {
 	closeAllTestSqliteCoordinators();
@@ -20,30 +24,32 @@ describe("sqlite backend: storage lifecycle", () => {
 			.all() as Array<{ name: string }>;
 		const names = tables.map((row) => row.name);
 		expect(names).toEqual(
-			expect.arrayContaining(["entries", "entry_versions", "blobs", "coordinator_state"]),
+			expect.arrayContaining([
+				"entries",
+				"entry_versions",
+				"blobs",
+				"coordinator_state",
+			]),
 		);
 	});
 
 	it("purgeVaultState() clears rows but leaves the schema intact for reuse", async () => {
-		const { sqlite, mutationStore, cursorStore, entryStore } =
+		const { sqlite, mutationService, cursorStore, entryStore } =
 			await createSqliteCoordinator();
-		await mutationStore.commitMutations(
-			testSession(),
-			{
-				type: "commit_mutations",
-				requestId: "req-1",
-				mutations: [
-					{
-						mutationId: "m1",
-						entryId: "entry-1",
-						op: "upsert",
-						baseRevision: 0,
-						blobId: null,
-						encryptedMetadata: "ciphertext",
-					},
-				],
-			},
-		);
+		await mutationService.commitMutations(testSession(), {
+			type: "commit_mutations",
+			requestId: "req-1",
+			mutations: [
+				{
+					mutationId: "m1",
+					entryId: "entry-1",
+					op: "upsert",
+					baseRevision: 0,
+					blobId: null,
+					encryptedMetadata: "ciphertext",
+				},
+			],
+		});
 		expect(entryStore.readEntry("entry-1")).not.toBeNull();
 
 		const lifecycle = new SqliteCoordinatorStorage(sqlite);
@@ -51,7 +57,9 @@ describe("sqlite backend: storage lifecycle", () => {
 		await lifecycle.purgeVaultState();
 
 		expect(entryStore.readEntry("entry-1")).toBeNull();
-		expect(handle.exec("SELECT * FROM coordinator_state").toArray()).toEqual([]);
+		expect(handle.exec("SELECT * FROM coordinator_state").toArray()).toEqual(
+			[],
+		);
 
 		// schema must still exist so the vault can be re-provisioned
 		cursorStore.ensureVaultState("vault-1", {
@@ -61,5 +69,4 @@ describe("sqlite backend: storage lifecycle", () => {
 		});
 		expect(cursorStore.readVaultId()).toBe("vault-1");
 	});
-
 });

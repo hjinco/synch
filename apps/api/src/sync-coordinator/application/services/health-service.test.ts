@@ -162,7 +162,9 @@ describe("HealthService", () => {
 		const deferMaintenance = vi.fn(async () => {});
 		const service = new HealthService(
 			createStateRepository({
-				readHealthSnapshot: vi.fn(() => createSnapshot({ lastCommitAt: 1_000 })),
+				readHealthSnapshot: vi.fn(() =>
+					createSnapshot({ lastCommitAt: 1_000 }),
+				),
 			}),
 			{
 				upsert: vi.fn(async () => {
@@ -174,7 +176,11 @@ describe("HealthService", () => {
 		);
 
 		await expect(service.flushSummary({ now })).resolves.toBeNull();
-		expect(deferMaintenance).toHaveBeenCalledWith("health_summary_flush", now, now);
+		expect(deferMaintenance).toHaveBeenCalledWith(
+			"health_summary_flush",
+			now,
+			now,
+		);
 
 		await service.scheduleSummaryFlush(now);
 		expect(deferMaintenance).toHaveBeenCalledWith(
@@ -190,7 +196,9 @@ describe("HealthService", () => {
 		const deferMaintenance = vi.fn(async () => {});
 		const service = new HealthService(
 			createStateRepository({
-				readHealthSnapshot: vi.fn(() => createSnapshot({ lastCommitAt: 1_000 })),
+				readHealthSnapshot: vi.fn(() =>
+					createSnapshot({ lastCommitAt: 1_000 }),
+				),
 			}),
 			{
 				upsert: vi.fn(async () => {
@@ -201,9 +209,9 @@ describe("HealthService", () => {
 			{ defer: deferMaintenance },
 		);
 
-		await expect(service.flushSummary({ now, throwOnError: true })).rejects.toBe(
-			failure,
-		);
+		await expect(
+			service.flushSummary({ now, throwOnError: true }),
+		).rejects.toBe(failure);
 		expect(deferMaintenance).not.toHaveBeenCalled();
 	});
 });
@@ -235,7 +243,6 @@ function createStateRepository(
 	overrides: Partial<HealthStateStore> = {},
 ): HealthStateStore {
 	return {
-		recordGcCompleted: vi.fn(),
 		readHealthSnapshot: vi.fn(() => null),
 		readStorageStatus: vi.fn(() => ({
 			storageUsedBytes: 0,

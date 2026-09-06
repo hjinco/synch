@@ -2,22 +2,19 @@ import type Database from "better-sqlite3";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { SqliteCoordinatorUnitOfWork } from "./unit-of-work";
 
-import { CoordinatorBlobStore } from "./blob-store";
-import { CoordinatorBlobGcStore } from "./blob-gc-store";
-import { CoordinatorStaleStagedBlobStore } from "./stale-staged-blob-store";
-import { CoordinatorCursorStore } from "./cursor-store";
-import { CoordinatorEntryStore } from "./entry-store";
-import { CoordinatorHealthStore } from "./health-store";
-import { CoordinatorHistoryStore } from "./history-store";
-import { CoordinatorMutationStore } from "./mutation-store";
+import type {
+	SocketSession,
+	VaultStateLimits,
+} from "../../../application/dto/types";
 import { MutationService } from "../../../application/services/mutation-service";
+import { CoordinatorHealthStore } from "./health-store";
 import {
 	openExclusiveSqliteConnection,
 	SqliteCoordinatorStorageHandle,
 } from "./storage-handle";
 import { SqliteCoordinatorStorage } from "./storage-lifecycle";
-import type { SocketSession, VaultStateLimits } from "../../../application/dto/types";
 
 export const DEFAULT_TEST_LIMITS: VaultStateLimits = {
 	storageLimitBytes: 1_000_000_000,
@@ -48,14 +45,18 @@ export async function createSqliteCoordinator(
 	await lifecycle.migrate();
 
 	const handle = new SqliteCoordinatorStorageHandle(sqlite);
-	const cursorStore = new CoordinatorCursorStore(handle);
+	const unitOfWork = new SqliteCoordinatorUnitOfWork(handle);
+	const {
+		state: cursorStore,
+		blobs: blobStore,
+		gc: blobGcStore,
+		entries: entryStore,
+		versions: historyStore,
+		connections,
+	} = unitOfWork.stores;
 	cursorStore.ensureVaultState(vaultId, limits);
-	const blobStore = new CoordinatorBlobStore(handle);
-	const blobGcStore = new CoordinatorBlobGcStore(handle);
-	const staleStagedBlobStore = new CoordinatorStaleStagedBlobStore(handle);
-	const mutationStoreAdapter = new CoordinatorMutationStore(handle);
 	const mutationService = new MutationService(
-		mutationStoreAdapter,
+		unitOfWork,
 		{ scheduleNext: async () => null },
 		cursorStore,
 		{
@@ -71,18 +72,6 @@ export async function createSqliteCoordinator(
 		30 * 60 * 1000,
 		{ scheduleSummaryFlush: async () => {} },
 	);
-	const mutationStore = {
-		commitMutations: (
-			session: Parameters<MutationService["commitMutations"]>[0],
-			message: Parameters<MutationService["commitMutations"]>[1],
-			options?: Parameters<MutationService["commitMutations"]>[2],
-		) => mutationService.commitMutations(session, message, options),
-		commitMutation: (
-			session: Parameters<MutationService["commitMutation"]>[0],
-			message: Parameters<MutationService["commitMutation"]>[1],
-			options?: Parameters<MutationService["commitMutation"]>[2],
-		) => mutationService.commitMutation(session, message, options),
-	};
 
 	return {
 		vaultId,
@@ -92,11 +81,11 @@ export async function createSqliteCoordinator(
 		cursorStore,
 		blobStore,
 		blobGcStore,
-		staleStagedBlobStore,
-		entryStore: new CoordinatorEntryStore(handle),
-		historyStore: new CoordinatorHistoryStore(handle),
-		mutationStore,
-		mutationStoreAdapter,
+		connections,
+		entryStore,
+		historyStore,
+		mutationService,
+		unitOfWork,
 		healthStore: new CoordinatorHealthStore(handle, { count: () => 0 }),
 	};
 }
@@ -116,7 +105,9 @@ export function closeAllTestSqliteCoordinators(): void {
 	}
 }
 
-export function testSession(overrides: Partial<SocketSession> = {}): SocketSession {
+export function testSession(
+	overrides: Partial<SocketSession> = {},
+): SocketSession {
 	return {
 		userId: "user-1",
 		vaultId: "vault-1",

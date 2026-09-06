@@ -17,9 +17,7 @@ export type BlobCollectionFacts = {
 export type BlobReferenceFacts = Pick<
 	BlobCollectionFacts,
 	"hasCurrentReference" | "hasRetainedHistory"
-> & {
-	hasActiveStaging: boolean;
-};
+>;
 
 export type BlobCollectionDecision =
 	| { kind: "collectible" }
@@ -31,14 +29,14 @@ export type BlobCollectionDecision =
 				| "current_reference"
 				| "retained_history"
 				| "missing_deadline";
-		};
+	  };
 
 export type PendingDeleteDecision =
 	| { kind: "mark_pending_delete"; deleteAfter: number }
 	| {
 			kind: "retain";
 			reason: "staged" | "current_reference" | "retained_history";
-		};
+	  };
 
 export function decideBlobCollection(
 	facts: BlobCollectionFacts,
@@ -79,21 +77,13 @@ export function decidePendingDelete(
 	return {
 		kind: "mark_pending_delete",
 		deleteAfter:
-			facts.deleteAfter === null
-				? now
-				: Math.min(facts.deleteAfter, now),
+			facts.deleteAfter === null ? now : Math.min(facts.deleteAfter, now),
 	};
 }
 
-export function isBlobPinned(
-	facts: BlobReferenceFacts,
-	includeStaging = true,
-): boolean {
-	return (
-		facts.hasCurrentReference ||
-		facts.hasRetainedHistory ||
-		(includeStaging && facts.hasActiveStaging)
-	);
+/** Current entries and unexpired history pin ciphertext independently of staging. */
+export function isBlobPinned(facts: BlobReferenceFacts): boolean {
+	return facts.hasCurrentReference || facts.hasRetainedHistory;
 }
 
 export function earliestGcDeadline(

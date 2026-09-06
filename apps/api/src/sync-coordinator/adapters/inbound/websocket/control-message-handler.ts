@@ -19,6 +19,7 @@ import type {
 } from "../../../application/dto/types";
 import type { PresenceSelection } from "../../../application/dto/protocol-types";
 import type {
+	LocalVaultConnectionStore,
 	HealthStateStore,
 	SocketGateway,
 	VaultStateStore,
@@ -58,9 +59,7 @@ export type CoordinatorControlMessageServices = {
 	): Promise<DeletedEntriesPurgeResult>;
 };
 
-export class CoordinatorControlMessageHandler
-	implements CoordinatorSocketMessageHandler
-{
+export class CoordinatorControlMessageHandler implements CoordinatorSocketMessageHandler {
 	constructor(
 		private readonly socketService: Pick<
 			SocketGateway,
@@ -74,17 +73,24 @@ export class CoordinatorControlMessageHandler
 		>,
 		private readonly vaultStateStore: Pick<
 			VaultStateStore,
-			"currentCursor" | "recordLocalVaultConnection" | "readVaultLimits"
+			"currentCursor" | "readVaultLimits"
 		>,
 		private readonly healthStore: Pick<HealthStateStore, "readStorageStatus">,
 		private readonly services: CoordinatorControlMessageServices,
 		private readonly healthSummaryScheduler: {
 			scheduleSummaryFlush(now?: number): Promise<void>;
 		},
+		private readonly connections: Pick<
+			LocalVaultConnectionStore,
+			"recordLocalVaultConnection"
+		>,
 		private readonly presenceStore = new PresenceStore(),
 	) {}
 
-	async handle(connectionId: string, parsed: ClientControlMessage): Promise<void> {
+	async handle(
+		connectionId: string,
+		parsed: ClientControlMessage,
+	): Promise<void> {
 		const session = this.socketService.readSocketSession(connectionId);
 		if (!session) {
 			this.socketService.sendSocketMessage(connectionId, {
@@ -92,7 +98,11 @@ export class CoordinatorControlMessageHandler
 				code: "unauthorized",
 				message: "socket session is missing",
 			});
-			this.socketService.closeSocket(connectionId, 4401, "missing socket session");
+			this.socketService.closeSocket(
+				connectionId,
+				4401,
+				"missing socket session",
+			);
 			return;
 		}
 
@@ -108,9 +118,10 @@ export class CoordinatorControlMessageHandler
 					});
 					return;
 				}
-				this.vaultStateStore.recordLocalVaultConnection(
+				this.connections.recordLocalVaultConnection(
 					session.userId,
 					session.localVaultId,
+					Date.now(),
 				);
 				const limits = this.vaultStateStore.readVaultLimits();
 				await this.healthSummaryScheduler.scheduleSummaryFlush();
@@ -158,8 +169,8 @@ export class CoordinatorControlMessageHandler
 
 		if (parsed.type === "list_entry_states") {
 			try {
-					this.socketService.sendSocketMessage(
-						connectionId,
+				this.socketService.sendSocketMessage(
+					connectionId,
 					this.services.listEntryStates(session, parsed),
 				);
 			} catch (error) {
@@ -180,8 +191,8 @@ export class CoordinatorControlMessageHandler
 
 		if (parsed.type === "list_entry_versions") {
 			try {
-					this.socketService.sendSocketMessage(
-						connectionId,
+				this.socketService.sendSocketMessage(
+					connectionId,
 					await this.services.listEntryVersions(session, parsed),
 				);
 			} catch (error) {
@@ -202,8 +213,8 @@ export class CoordinatorControlMessageHandler
 
 		if (parsed.type === "list_deleted_entries") {
 			try {
-					this.socketService.sendSocketMessage(
-						connectionId,
+				this.socketService.sendSocketMessage(
+					connectionId,
 					await this.services.listDeletedEntries(session, parsed),
 				);
 			} catch (error) {
@@ -241,7 +252,7 @@ export class CoordinatorControlMessageHandler
 				return;
 			}
 
-				this.socketService.sendSocketMessage(connectionId, result.message);
+			this.socketService.sendSocketMessage(connectionId, result.message);
 			if (result.broadcastCursor !== null) {
 				this.broadcastCursorExcept(connectionId, result.broadcastCursor);
 			}
@@ -498,7 +509,11 @@ export class CoordinatorControlMessageHandler
 			this.socketService.sendSocketMessage(toConnectionId, message);
 			return;
 		}
-		this.socketService.broadcastPresenceToWatchers(entryId, presenceId, message);
+		this.socketService.broadcastPresenceToWatchers(
+			entryId,
+			presenceId,
+			message,
+		);
 	}
 
 	private broadcastCursorExcept(connectionId: string, cursor: number): void {

@@ -1,11 +1,8 @@
-import { and, eq, gte, isNotNull, sql } from "drizzle-orm";
+import type { InsertEntryVersionInput } from "../../../application/ports/outbound/entry-writes";
+import { and, eq, gte, lte, isNotNull, sql } from "drizzle-orm";
 
 import * as doSchema from "../../../../db/do";
 import type { EntryVersionPageCursor } from "../../../application/dto/types";
-import type {
-	DeletedEntryPurgeFacts,
-	DeletedEntryPurgeTransaction,
-} from "../../../application/ports/outbound/entry-store";
 import type {
 	EntryVersionListRow,
 	EntryVersionReason,
@@ -13,7 +10,7 @@ import type {
 } from "../../../application/ports/outbound/storage-models";
 import type { CoordinatorStorageHandle } from "./storage-handle";
 
-export class CoordinatorHistoryStore {
+export class CoordinatorEntryVersionStore {
 	constructor(private readonly handle: CoordinatorStorageHandle) {}
 
 	listEntryVersions(
@@ -127,67 +124,69 @@ export class CoordinatorHistoryStore {
 			: null;
 	}
 
-	withDeletedEntryPurgeTransaction<T>(
-		entryId: string,
-		retentionStart: number,
-		operation: (transaction: DeletedEntryPurgeTransaction) => T,
-	): T {
-		return this.handle.db.transaction((tx) => {
-			const transaction: DeletedEntryPurgeTransaction = {
-				readFacts: (): DeletedEntryPurgeFacts => {
-					const current = tx
-						.select({
-							revision: doSchema.entries.revision,
-							deleted: doSchema.entries.deleted,
-						})
-						.from(doSchema.entries)
-						.where(eq(doSchema.entries.entryId, entryId))
-						.limit(1)
-						.get();
-					const hasRestorableHistory = tx
-						.select({ found: sql<number>`1` })
-						.from(doSchema.entryVersions)
-						.where(
-							and(
-								eq(doSchema.entryVersions.entryId, entryId),
-								eq(doSchema.entryVersions.opType, "upsert"),
-								isNotNull(doSchema.entryVersions.blobId),
-								gte(doSchema.entryVersions.capturedAt, retentionStart),
-							),
-						)
-						.limit(1)
-						.get();
-					const candidateBlobIds = tx
-						.select({ blobId: doSchema.entryVersions.blobId })
-						.from(doSchema.entryVersions)
-						.where(
-							and(
-								eq(doSchema.entryVersions.entryId, entryId),
-								isNotNull(doSchema.entryVersions.blobId),
-							),
-						)
-						.all()
-						.flatMap((row) => (row.blobId ? [row.blobId] : []));
+	insertEntryVersion(input: InsertEntryVersionInput): boolean {
+		const inserted = this.handle.db
+			.insert(doSchema.entryVersions)
+			.values({
+				versionId: input.versionId,
+				entryId: input.entryId,
+				sourceRevision: input.sourceRevision,
+				opType: input.opType,
+				blobId: input.blobId,
+				encryptedMetadata: input.encryptedMetadata,
+				reason: input.reason,
+				bucketStartMs: input.bucketStartMs,
+				capturedAt: input.createdAt,
+				expiresAt: input.expiresAt,
+				createdByUserId: input.createdByUserId,
+				createdByLocalVaultId: input.createdByLocalVaultId,
+			})
+			.onConflictDoNothing()
+			.returning({ versionId: doSchema.entryVersions.versionId })
+			.get();
 
-					return {
-						current: current
-							? {
-									revision: Number(current.revision),
-									deleted: Number(current.deleted) === 1,
-								}
-							: null,
-						hasRestorableHistory: Boolean(hasRestorableHistory),
-						candidateBlobIds: [...new Set(candidateBlobIds)],
-					};
-				},
-				deleteEntryVersions: () => {
-					tx.delete(doSchema.entryVersions)
-						.where(eq(doSchema.entryVersions.entryId, entryId))
-						.run();
-				},
-			};
-
-			return operation(transaction);
-		});
+		return inserted !== undefined;
+	}
+	hasRestorableHistory(entryId: string, retentionStart: number): boolean {
+		return (
+			this.handle.db
+				.select({ found: sql<number>`1` })
+				.from(doSchema.entryVersions)
+				.where(
+					and(
+						eq(doSchema.entryVersions.entryId, entryId),
+						eq(doSchema.entryVersions.opType, "upsert"),
+						isNotNull(doSchema.entryVersions.blobId),
+						gte(doSchema.entryVersions.capturedAt, retentionStart),
+					),
+				)
+				.limit(1)
+				.get() !== undefined
+		);
+	}
+	listBlobIds(entryId: string): string[] {
+		return this.handle.db
+			.selectDistinct({ blobId: doSchema.entryVersions.blobId })
+			.from(doSchema.entryVersions)
+			.where(
+				and(
+					eq(doSchema.entryVersions.entryId, entryId),
+					isNotNull(doSchema.entryVersions.blobId),
+				),
+			)
+			.all()
+			.flatMap((row) => (row.blobId === null ? [] : [row.blobId]));
+	}
+	deleteEntryVersions(entryId: string): void {
+		this.handle.db
+			.delete(doSchema.entryVersions)
+			.where(eq(doSchema.entryVersions.entryId, entryId))
+			.run();
+	}
+	expireEntryVersions(now: number): void {
+		this.handle.db
+			.delete(doSchema.entryVersions)
+			.where(lte(doSchema.entryVersions.expiresAt, now))
+			.run();
 	}
 }

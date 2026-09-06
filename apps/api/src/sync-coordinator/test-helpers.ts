@@ -1,10 +1,17 @@
 import { vi } from "vitest";
 
 import { SyncCoordinatorApplicationError } from "./application/errors/coordinator-errors";
-import { decideBlobStage } from "./domain/blob-policy";
-import { isBlobPinned } from "./domain/blob-gc-policy";
-import { STAGED_BLOB_STALE_MS } from "./domain/health-policy";
-import type { CoordinatorBlobStore } from "./adapters/outbound/sqlite/blob-store";
+import { stageBlobRecord } from "./application/services/blob-record-operations";
+import type {
+	CoordinatorStores,
+	CoordinatorUnitOfWork,
+	EntryStore,
+	EntryVersionStore,
+	BlobStore,
+	BlobGcQueries,
+	CoordinatorStateStore,
+	LocalVaultConnectionStore,
+} from "./application/ports/outbound";
 import { BlobService } from "./application/services/blob-service";
 import { BlobGcService } from "./application/services/blob-gc-service";
 import { EntryService } from "./application/services/entry-service";
@@ -17,23 +24,11 @@ import type {
 import { MutationService } from "./application/services/mutation-service";
 import type {
 	BlobObjectRepository,
-	BlobMutationTransaction,
-	BlobPendingDeleteTransaction,
-	BlobStageTransaction,
-	BlobGcStore,
-	BlobStateStore,
 	CoordinatorStorageLifecycle,
-	DeletedEntryPurgeTransaction,
-	EntryHistoryStore,
-	EntryStateStore,
 	HealthStateStore,
 	InitialVaultLimitReader,
-	MutationStore,
-	MutationTransaction,
 	SocketGateway,
-	StaleStagedBlobStore,
 	SyncTokenVerifier,
-	VaultStateStore,
 } from "./application/ports/outbound";
 import {
 	bindCoordinatorApi,
@@ -66,42 +61,23 @@ export function testWebSocket(): WebSocket {
 }
 
 export function stageBlobForTest(
-	blobStore: CoordinatorBlobStore,
+	unitOfWork: CoordinatorUnitOfWork<"blobs" | "blobReferences" | "state">,
 	blobId: string,
 	sizeBytes: number,
 	now: number,
 	deleteAfter: number,
 ): { status: "staged" | "sync_paused" } {
-	return blobStore.withStageTransaction(blobId, now, (transaction) => {
-		const decision = decideBlobStage({
+	return unitOfWork.run((stores) => {
+		const decision = stageBlobRecord(
+			stores,
 			blobId,
 			sizeBytes,
 			now,
-		staleAfterMs: STAGED_BLOB_STALE_MS,
-			...(() => {
-				const { referenceFacts, ...facts } = transaction.readFacts();
-				return {
-					...facts,
-					isPinned: facts.existing
-						? isBlobPinned(referenceFacts, false)
-						: false,
-				};
-			})(),
-		});
-		if (decision.kind === "sync_paused") {
-			transaction.pauseSync(now, decision.reason);
-			return { status: "sync_paused" };
-		}
-		if (decision.kind === "rejected") {
-			throw new SyncCoordinatorApplicationError(decision.code);
-		}
-		transaction.persistStage({
-			sizeBytes,
-			now,
 			deleteAfter,
-			storageDeltaBytes: decision.storageDeltaBytes,
-		});
-		return { status: "staged" };
+		);
+		if (decision.kind === "rejected")
+			throw new SyncCoordinatorApplicationError(decision.code);
+		return { status: decision.kind };
 	});
 }
 
@@ -132,43 +108,30 @@ export function createTestCoordinatorState(
 		readEntry: vi.fn(() => null),
 		listEntryVersions: vi.fn(() => []),
 		readEntryVersion: vi.fn(() => null),
-		withDeletedEntryPurgeTransaction: vi.fn(
-			(
-				_entryId: string,
-				_retentionStart: number,
-				operation: (transaction: DeletedEntryPurgeTransaction) => unknown,
-			) =>
-				operation({
-					readFacts: vi.fn(() => ({
-						current: null,
-						hasRestorableHistory: false,
-						candidateBlobIds: [],
-					})),
-					deleteEntryVersions: vi.fn(),
-				}),
-		) as EntryHistoryStore["withDeletedEntryPurgeTransaction"],
-		withTransaction: vi.fn(runTestMutationTransaction) as MutationStore["withTransaction"],
-		withStageTransaction: vi.fn(runTestStageTransaction) as BlobStateStore["withStageTransaction"],
-		withBlobTransaction: vi.fn(runTestBlobMutationTransaction) as BlobStateStore["withBlobTransaction"],
+		readMutationEntry: vi.fn(() => null),
+		upsertEntry: vi.fn(),
+		insertEntryVersion: vi.fn(() => true),
+		hasRestorableHistory: vi.fn(() => false),
+		listBlobIds: vi.fn(() => []),
+		deleteEntryVersions: vi.fn(),
 		readBlob: vi.fn(() => null),
-		readBlobFacts: vi.fn(() => ({
-			blob: null,
-			referenceFacts: {
-				hasCurrentReference: false,
-				hasRetainedHistory: false,
-				hasActiveStaging: false,
-			},
+		read: vi.fn(() => ({
+			hasCurrentReference: false,
+			hasRetainedHistory: false,
 		})),
+		persistStage: vi.fn(),
+		updateState: vi.fn(),
 		listStaleStagedBlobs: vi.fn(() => []),
-		deleteBlobRecord: vi.fn(),
-		withStagedBlobTransaction: vi.fn(runTestBlobMutationTransaction) as StaleStagedBlobStore["withStagedBlobTransaction"],
+		deleteBlobRecord: vi.fn(() => []),
 		expireEntryVersions: vi.fn(),
 		listCollectibleBlobs: vi.fn(() => []),
 		readCollectibleBlob: vi.fn(() => null),
-		deleteBlobIfCollectible: vi.fn(() => "skipped" as const),
 		deleteCollectibleBlobs: vi.fn(() => []),
-		withPendingDeleteTransaction: vi.fn(runTestPendingDeleteTransaction) as BlobGcStore["withPendingDeleteTransaction"],
 		readGcDeadlines: vi.fn(() => []),
+		readStorageUsedBytes: vi.fn(() => 0),
+		adjustStorageUsedBytes: vi.fn(),
+		pauseSync: vi.fn(),
+		saveCommit: vi.fn(),
 		recordGcCompleted: vi.fn(),
 		readHealthSnapshot: vi.fn(() => null),
 		readStorageStatus: vi.fn(() => ({
@@ -179,76 +142,20 @@ export function createTestCoordinatorState(
 	};
 }
 
-function runTestStageTransaction<T>(
-	_blobId: string,
-	_now: number,
-	operation: (transaction: BlobStageTransaction) => T,
-): T {
-	return operation({
-		readFacts: vi.fn(() => ({
-			existing: null,
-			referenceFacts: {
-				hasCurrentReference: false,
-				hasRetainedHistory: false,
-				hasActiveStaging: false,
-			},
-			storageUsedBytes: 0,
-			storageLimitBytes: 0,
-			maxFileSizeBytes: 0,
-		})),
-		persistStage: vi.fn(),
-		pauseSync: vi.fn(),
-	});
-}
-
-function runTestBlobMutationTransaction<T>(
-	_blobId: string,
-	_now: number,
-	operation: (transaction: BlobMutationTransaction) => T,
-): T {
-	return operation({
-		readFacts: vi.fn(() => ({
-			blob: null,
-			referenceFacts: {
-				hasCurrentReference: false,
-				hasRetainedHistory: false,
-				hasActiveStaging: false,
-			},
-		})),
-		deleteStagedBlob: vi.fn(),
-	});
-}
-
-function runTestPendingDeleteTransaction(
-	_blobId: string,
-	_now: number,
-	operation: (transaction: BlobPendingDeleteTransaction) => void,
-): void {
-	operation({
-		readFacts: vi.fn(() => null),
-		markPendingDelete: vi.fn(),
-	});
-}
-
-function runTestMutationTransaction<T>(
-	operation: (transaction: MutationTransaction) => T,
-): T {
-	let cursor = 0;
-	return operation({
-		readEntry: vi.fn(() => null),
-		readBlobState: vi.fn(() => "staged" as const),
-		restagePendingDeleteBlob: vi.fn(),
-		insertEntryVersion: vi.fn(() => true),
-		readCurrentCursor: vi.fn(() => cursor),
-		allocateCursor: vi.fn(() => {
-			cursor += 1;
-			return cursor;
-		}),
-		upsertEntry: vi.fn(),
-		markBlobLive: vi.fn(),
-		markBlobPendingDeleteIfUnreferenced: vi.fn(),
-		finalizeCommit: vi.fn(),
-	});
+/** Thin transaction callback runner for service interaction tests. Rollback is tested with real SQLite. */
+export function createTestUnitOfWork(
+	state: TestCoordinatorState,
+): CoordinatorUnitOfWork {
+	const stores: CoordinatorStores = {
+		entries: state,
+		versions: state,
+		blobs: state,
+		gc: state,
+		state,
+		connections: state,
+		blobReferences: state,
+	};
+	return { stores, run: (operation) => operation(stores) };
 }
 
 export function createMockCoordinatorSocketService(
@@ -286,6 +193,7 @@ export function createCoordinatorService({
 	maintenanceScheduler?: MaintenanceScheduler & MaintenanceRunner;
 	storageStatusBroadcastDelayMs?: number;
 } = {}): TestCoordinatorService {
+	const unitOfWork = createTestUnitOfWork(stateRepository);
 	const healthService = new HealthService(
 		stateRepository,
 		null,
@@ -296,16 +204,15 @@ export function createCoordinatorService({
 	);
 	const blobGcService = new BlobGcService(
 		stateRepository,
-		stateRepository,
+		unitOfWork,
 		blobRepository,
 		objectKeyBuilder,
-		stateRepository,
 		maintenanceScheduler,
 		healthService,
 	);
 	const blobService = new BlobService(
 		syncTokenService,
-		stateRepository,
+		unitOfWork,
 		blobGcService,
 		socketService,
 		blobRepository,
@@ -314,7 +221,7 @@ export function createCoordinatorService({
 		healthService,
 	);
 	const mutationService = new MutationService(
-		stateRepository,
+		unitOfWork,
 		blobGcService,
 		stateRepository,
 		blobRepository,
@@ -323,9 +230,7 @@ export function createCoordinatorService({
 		healthService,
 	);
 	const entryService = new EntryService(
-		stateRepository,
-		stateRepository,
-		stateRepository,
+		unitOfWork,
 		mutationService,
 		blobGcService,
 	);
@@ -342,7 +247,7 @@ export function createCoordinatorService({
 			},
 		},
 		healthService,
-		stateRepository,
+		unitOfWork,
 		blobGcService,
 	);
 	const socketConnectionService = new SocketConnectionService(
@@ -372,6 +277,7 @@ export function createCoordinatorService({
 		stateRepository,
 		services,
 		healthService,
+		stateRepository,
 	);
 	return Object.assign(services, {
 		mutationService,
@@ -383,7 +289,8 @@ export function createCoordinatorService({
 		) => {
 			if (typeof message !== "string") return;
 			const parsed = parseClientControlMessage(JSON.parse(message));
-			if (parsed.success) await socketMessageHandler.handle(connectionId, parsed.data);
+			if (parsed.success)
+				await socketMessageHandler.handle(connectionId, parsed.data);
 		},
 		handleSocketDisconnect: (connectionId = "test") => {
 			socketMessageHandler.handleDisconnect(connectionId);
@@ -403,13 +310,13 @@ export type TestCoordinatorService = CoordinatorApi & {
 };
 
 export type TestCoordinatorState = CoordinatorStorageLifecycle &
-	VaultStateStore &
-	EntryStateStore &
-	EntryHistoryStore &
-		import("./application/ports/outbound").MutationStore &
-	BlobStateStore &
-	BlobGcStore &
-	StaleStagedBlobStore &
+	CoordinatorStateStore &
+	EntryStore &
+	EntryVersionStore &
+	BlobStore &
+	BlobGcQueries &
+	LocalVaultConnectionStore &
+	CoordinatorStores["blobReferences"] &
 	HealthStateStore;
 
 function createSyncTokenVerifier(): SyncTokenVerifier {
@@ -440,7 +347,8 @@ function createBlobObjectRepository(): BlobObjectRepository {
 	};
 }
 
-function createMaintenanceScheduler(): MaintenanceScheduler & MaintenanceRunner {
+function createMaintenanceScheduler(): MaintenanceScheduler &
+	MaintenanceRunner {
 	return {
 		defer: vi.fn(async () => {}),
 		drain: vi.fn(async () => {}),

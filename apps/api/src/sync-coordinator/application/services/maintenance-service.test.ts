@@ -131,7 +131,6 @@ function createStateRepository(
 	overrides: Partial<HealthStateStore> = {},
 ): HealthStateStore {
 	return {
-		recordGcCompleted: vi.fn(),
 		readHealthSnapshot: vi.fn(() => null),
 		readStorageStatus: vi.fn(() => ({
 			storageUsedBytes: 0,

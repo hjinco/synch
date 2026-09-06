@@ -44,11 +44,15 @@ describe("blob GC policy", () => {
 			hasRetainedHistory: false,
 		};
 
-		expect(decideBlobCollection({ ...base, hasCurrentReference: true }, 2)).toEqual({
+		expect(
+			decideBlobCollection({ ...base, hasCurrentReference: true }, 2),
+		).toEqual({
 			kind: "retained",
 			reason: "current_reference",
 		});
-		expect(decideBlobCollection({ ...base, hasRetainedHistory: true }, 2)).toEqual({
+		expect(
+			decideBlobCollection({ ...base, hasRetainedHistory: true }, 2),
+		).toEqual({
 			kind: "retained",
 			reason: "retained_history",
 		});
@@ -100,15 +104,12 @@ describe("blob GC policy", () => {
 		expect(earliestGcDeadline([], 3)).toBeNull();
 	});
 
-	it("pins a blob when current state, retained history, or active staging references it", () => {
-		const facts = {
-			hasCurrentReference: false,
-			hasRetainedHistory: false,
-			hasActiveStaging: true,
-		};
-
-		expect(isBlobPinned(facts)).toBe(true);
-		expect(isBlobPinned(facts, false)).toBe(false);
-		expect(isBlobPinned({ ...facts, hasRetainedHistory: true }, false)).toBe(true);
+	it.each([
+		{ hasCurrentReference: false, hasRetainedHistory: false, pinned: false },
+		{ hasCurrentReference: true, hasRetainedHistory: false, pinned: true },
+		{ hasCurrentReference: false, hasRetainedHistory: true, pinned: true },
+		{ hasCurrentReference: true, hasRetainedHistory: true, pinned: true },
+	])("pins ciphertext according to references: %j", ({ pinned, ...facts }) => {
+		expect(isBlobPinned(facts)).toBe(pinned);
 	});
 });

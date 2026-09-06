@@ -22,11 +22,7 @@ import type {
 	RestoreEntryVersionsResult,
 	SocketSession,
 } from "../dto/types";
-import type {
-	EntryHistoryStore,
-	EntryStateStore,
-	VaultStateStore,
-} from "../ports/outbound";
+import type { CoordinatorUnitOfWork } from "../ports/outbound";
 import type { BlobGcService } from "./blob-gc-service";
 import type { MutationService } from "./mutation-service";
 
@@ -36,11 +32,8 @@ const MAX_ENTRY_STATE_BATCH = 500;
 
 export class EntryService {
 	constructor(
-		private readonly entryStore: EntryStateStore,
-		private readonly historyStore: EntryHistoryStore,
-		private readonly vaultStateStore: Pick<
-			VaultStateStore,
-			"currentCursor" | "readVersionHistoryRetentionDays"
+		private readonly unitOfWork: CoordinatorUnitOfWork<
+			"entries" | "versions" | "state"
 		>,
 		private readonly mutationService: Pick<
 			MutationService,
@@ -50,23 +43,21 @@ export class EntryService {
 	) {}
 
 	listEntryStates(
-		session: SocketSession,
+		_session: SocketSession,
 		message: ListEntryStatesMessage,
 	): EntryStatesListedMessage {
 		const effectiveLimit = Math.min(message.limit, MAX_ENTRY_STATE_BATCH);
-		const currentCursor = this.vaultStateStore.currentCursor();
+		const currentCursor = this.unitOfWork.stores.state.currentCursor();
 		const targetCursor =
-			message.targetCursor === null
-				? currentCursor
-				: message.targetCursor;
+			message.targetCursor === null ? currentCursor : message.targetCursor;
 		validateCursorRange(message, targetCursor, currentCursor);
-		const entries = this.entryStore.listEntryStates(
+		const entries = this.unitOfWork.stores.entries.listEntryStates(
 			message.sinceCursor,
 			targetCursor,
 			message.after,
 			effectiveLimit + 1,
 		);
-		const totalEntries = this.entryStore.countEntryStates(
+		const totalEntries = this.unitOfWork.stores.entries.countEntryStates(
 			message.sinceCursor,
 			targetCursor,
 		);
@@ -100,13 +91,13 @@ export class EntryService {
 	}
 
 	async listDeletedEntries(
-		session: SocketSession,
+		_session: SocketSession,
 		message: ListDeletedEntriesMessage,
 	): Promise<DeletedEntriesListedMessage> {
 		const versionHistoryRetentionMs = this.readVersionHistoryRetentionMs();
 		const retentionStart = Date.now() - versionHistoryRetentionMs;
 		const effectiveLimit = Math.min(message.limit, MAX_DELETED_ENTRIES_BATCH);
-		const entries = this.entryStore.listDeletedEntries(
+		const entries = this.unitOfWork.stores.entries.listDeletedEntries(
 			message.before,
 			retentionStart,
 			effectiveLimit + 1,
@@ -136,13 +127,13 @@ export class EntryService {
 	}
 
 	async listEntryVersions(
-		session: SocketSession,
+		_session: SocketSession,
 		message: ListEntryVersionsMessage,
 	): Promise<EntryVersionsListedMessage> {
 		const versionHistoryRetentionMs = this.readVersionHistoryRetentionMs();
 		const retentionStart = Date.now() - versionHistoryRetentionMs;
 		const effectiveLimit = Math.min(message.limit, MAX_HISTORY_BATCH);
-		const versions = this.historyStore.listEntryVersions(
+		const versions = this.unitOfWork.stores.versions.listEntryVersions(
 			message.entryId,
 			message.before,
 			retentionStart,
@@ -150,7 +141,10 @@ export class EntryService {
 		);
 		const hasMore = versions.length > effectiveLimit;
 		const page = hasMore ? versions.slice(0, effectiveLimit) : versions;
-		if (page.length === 0 && !this.entryStore.readEntry(message.entryId)) {
+		if (
+			page.length === 0 &&
+			!this.unitOfWork.stores.entries.readEntry(message.entryId)
+		) {
 			throw new SyncCoordinatorApplicationError("not_found", {
 				message: "entry history not found",
 			});
@@ -188,14 +182,14 @@ export class EntryService {
 		const versionHistoryRetentionMs = this.readVersionHistoryRetentionMs();
 		const retentionStart = Date.now() - versionHistoryRetentionMs;
 
-		const current = this.entryStore.readEntry(message.entryId);
+		const current = this.unitOfWork.stores.entries.readEntry(message.entryId);
 		if (!current) {
 			throw new SyncCoordinatorApplicationError("not_found", {
 				message: "entry not found",
 			});
 		}
 
-		const target = this.historyStore.readEntryVersion(
+		const target = this.unitOfWork.stores.versions.readEntryVersion(
 			message.entryId,
 			message.versionId,
 			retentionStart,
@@ -285,20 +279,24 @@ export class EntryService {
 		const mutations: CommitMutationsMessage["mutations"] = [];
 
 		for (const restore of message.restores) {
-			const current = this.entryStore.readEntry(restore.entryId);
+			const current = this.unitOfWork.stores.entries.readEntry(restore.entryId);
 			if (!current) {
 				results.push(rejectedRestore(restore, "not_found", "entry not found"));
 				continue;
 			}
 
-			const target = this.historyStore.readEntryVersion(
+			const target = this.unitOfWork.stores.versions.readEntryVersion(
 				restore.entryId,
 				restore.versionId,
 				retentionStart,
 			);
 			if (!target) {
 				results.push(
-					rejectedRestore(restore, "not_found", "requested version was not found"),
+					rejectedRestore(
+						restore,
+						"not_found",
+						"requested version was not found",
+					),
 				);
 				continue;
 			}
@@ -358,7 +356,7 @@ export class EntryService {
 				message: {
 					type: "entry_versions_restored",
 					requestId: message.requestId,
-					cursor: this.vaultStateStore.currentCursor(),
+					cursor: this.unitOfWork.stores.state.currentCursor(),
 					results,
 				},
 				broadcastCursor: null,
@@ -391,7 +389,8 @@ export class EntryService {
 							status: "accepted",
 							entryId: restore.entryId,
 							restoredFromVersionId: restore.versionId,
-							restoredFromRevision: restoredFromRevisions[i] ?? restore.baseRevision,
+							restoredFromRevision:
+								restoredFromRevisions[i] ?? restore.baseRevision,
 							cursor: commitResult.cursor,
 							revision: commitResult.revision,
 						}
@@ -426,70 +425,75 @@ export class EntryService {
 		const results: PurgeDeletedEntryBatchResult[] = [];
 		const candidateBlobIds = new Set<string>();
 		for (const entry of message.entries) {
-			const outcome = this.historyStore.withDeletedEntryPurgeTransaction(
-				entry.entryId,
-				retentionStart,
-				(transaction) => {
-					const facts = transaction.readFacts();
-					const decision = decideDeletedEntryPurge({
-						current: facts.current,
-						receivedRevision: entry.revision,
-						hasRestorableHistory: facts.hasRestorableHistory,
-					});
-					switch (decision.kind) {
-						case "not_found":
-							return {
-								result: {
-									status: "rejected",
-									entryId: entry.entryId,
-									code: "not_found",
-									message: "entry not found",
-								} satisfies PurgeDeletedEntryBatchResult,
-								candidateBlobIds: [],
-							};
-						case "not_deleted":
-							return {
-								result: {
-									status: "rejected",
-									entryId: entry.entryId,
-									code: "not_deleted",
-									message: "entry is not deleted",
-								} satisfies PurgeDeletedEntryBatchResult,
-								candidateBlobIds: [],
-							};
-						case "stale_revision":
-							return {
-								result: {
-									status: "rejected",
-									entryId: entry.entryId,
-									code: "stale_revision",
-									message: `expected revision ${decision.expectedRevision} but received ${entry.revision}`,
-									expectedRevision: decision.expectedRevision,
-								} satisfies PurgeDeletedEntryBatchResult,
-								candidateBlobIds: [],
-							};
-						case "no_history":
-							return {
-								result: {
-									status: "rejected",
-									entryId: entry.entryId,
-									code: "no_history",
-									message: "deleted entry has no restorable history",
-								} satisfies PurgeDeletedEntryBatchResult,
-								candidateBlobIds: [],
-							};
-						case "accepted":
-							transaction.deleteEntryVersions();
-							return {
-								result: {
-									status: "accepted",
-									entryId: entry.entryId,
-								} satisfies PurgeDeletedEntryBatchResult,
-								candidateBlobIds: facts.candidateBlobIds,
-							};
+			const outcome = this.unitOfWork.run((stores) => {
+				const current = stores.entries.readMutationEntry(entry.entryId);
+				const facts = {
+					current,
+					hasRestorableHistory: stores.versions.hasRestorableHistory(
+						entry.entryId,
+						retentionStart,
+					),
+				};
+				const decision = decideDeletedEntryPurge({
+					current: facts.current,
+					receivedRevision: entry.revision,
+					hasRestorableHistory: facts.hasRestorableHistory,
+				});
+				switch (decision.kind) {
+					case "not_found":
+						return {
+							result: {
+								status: "rejected",
+								entryId: entry.entryId,
+								code: "not_found",
+								message: "entry not found",
+							} satisfies PurgeDeletedEntryBatchResult,
+							candidateBlobIds: [],
+						};
+					case "not_deleted":
+						return {
+							result: {
+								status: "rejected",
+								entryId: entry.entryId,
+								code: "not_deleted",
+								message: "entry is not deleted",
+							} satisfies PurgeDeletedEntryBatchResult,
+							candidateBlobIds: [],
+						};
+					case "stale_revision":
+						return {
+							result: {
+								status: "rejected",
+								entryId: entry.entryId,
+								code: "stale_revision",
+								message: `expected revision ${decision.expectedRevision} but received ${entry.revision}`,
+								expectedRevision: decision.expectedRevision,
+							} satisfies PurgeDeletedEntryBatchResult,
+							candidateBlobIds: [],
+						};
+					case "no_history":
+						return {
+							result: {
+								status: "rejected",
+								entryId: entry.entryId,
+								code: "no_history",
+								message: "deleted entry has no restorable history",
+							} satisfies PurgeDeletedEntryBatchResult,
+							candidateBlobIds: [],
+						};
+					case "accepted": {
+						const candidateBlobIds = stores.versions.listBlobIds(entry.entryId);
+						stores.versions.deleteEntryVersions(entry.entryId);
+						return {
+							result: {
+								status: "accepted",
+								entryId: entry.entryId,
+							} satisfies PurgeDeletedEntryBatchResult,
+							candidateBlobIds,
+						};
 					}
-				},
-			);
+				}
+			});
 			results.push(outcome.result);
 			for (const blobId of outcome.candidateBlobIds) {
 				candidateBlobIds.add(blobId);
@@ -515,7 +519,9 @@ export class EntryService {
 	}
 
 	private readVersionHistoryRetentionMs(): number {
-		return this.vaultStateStore.readVersionHistoryRetentionDays() * DAY_IN_MS;
+		return (
+			this.unitOfWork.stores.state.readVersionHistoryRetentionDays() * DAY_IN_MS
+		);
 	}
 }
 

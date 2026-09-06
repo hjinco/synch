@@ -1,6 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { MAX_REPAIRABLE_STALE_STAGED_BLOBS, VaultService } from "./vault-service";
+import {
+	MAX_REPAIRABLE_STALE_STAGED_BLOBS,
+	VaultService,
+} from "./vault-service";
 import { stageBlobForTest } from "../../test-helpers";
 import {
 	closeAllTestSqliteCoordinators,
@@ -23,7 +26,7 @@ describe("VaultService sync repair", () => {
 		const sqlite = await createSqliteCoordinator();
 		const now = Date.now();
 		stageBlobForTest(
-			sqlite.blobStore,
+			sqlite.unitOfWork,
 			"blob-stale",
 			100,
 			now - STAGED_BLOB_STALE_MS - 1,
@@ -59,7 +62,7 @@ describe("VaultService sync repair", () => {
 		const sqlite = await createSqliteCoordinator();
 		const now = Date.now();
 		stageBlobForTest(
-			sqlite.blobStore,
+			sqlite.unitOfWork,
 			"blob-referenced",
 			100,
 			now - STAGED_BLOB_STALE_MS - 1,
@@ -113,7 +116,10 @@ describe("VaultService sync repair", () => {
 		);
 		const blobStorage = createBlobStorage();
 
-		const result = await createVaultService(sqlite, blobStorage).repairSyncState("vault-1");
+		const result = await createVaultService(
+			sqlite,
+			blobStorage,
+		).repairSyncState("vault-1");
 
 		expect(result).toMatchObject({
 			status: "repaired",
@@ -129,7 +135,7 @@ describe("VaultService sync repair", () => {
 		const sqlite = await createSqliteCoordinator();
 		const now = Date.now();
 		stageBlobForTest(
-			sqlite.blobStore,
+			sqlite.unitOfWork,
 			"blob-stale",
 			100,
 			now - STAGED_BLOB_STALE_MS - 1,
@@ -146,7 +152,10 @@ describe("VaultService sync repair", () => {
 			}),
 		});
 
-		const result = await createVaultService(sqlite, blobStorage).repairSyncState("vault-1");
+		const result = await createVaultService(
+			sqlite,
+			blobStorage,
+		).repairSyncState("vault-1");
 
 		expect(result).toMatchObject({
 			status: "manual_repair_required",
@@ -164,7 +173,10 @@ describe("VaultService sync repair", () => {
 		vi.spyOn(sqlite.cursorStore, "vaultStateExistsFor").mockReturnValue(false);
 		const blobStorage = createBlobStorage();
 
-		const result = await createVaultService(sqlite, blobStorage).repairSyncState("vault-1");
+		const result = await createVaultService(
+			sqlite,
+			blobStorage,
+		).repairSyncState("vault-1");
 
 		expect(result).toMatchObject({
 			status: "not_paused",
@@ -181,7 +193,7 @@ describe("VaultService sync repair", () => {
 		const sqlite = await createSqliteCoordinator();
 		const now = Date.now();
 		stageBlobForTest(
-			sqlite.blobStore,
+			sqlite.unitOfWork,
 			"blob-stale",
 			100,
 			now - STAGED_BLOB_STALE_MS - 1,
@@ -194,7 +206,10 @@ describe("VaultService sync repair", () => {
 		);
 		const blobStorage = createBlobStorage();
 
-		const result = await createVaultService(sqlite, blobStorage).repairSyncState("vault-1");
+		const result = await createVaultService(
+			sqlite,
+			blobStorage,
+		).repairSyncState("vault-1");
 
 		expect(result).toMatchObject({
 			status: "manual_repair_required",
@@ -220,7 +235,7 @@ describe("VaultService sync repair", () => {
 		const staleCount = MAX_REPAIRABLE_STALE_STAGED_BLOBS + 1;
 		for (let index = 0; index < staleCount; index += 1) {
 			stageBlobForTest(
-				sqlite.blobStore,
+				sqlite.unitOfWork,
 				`blob-stale-${index}`,
 				100,
 				now - STAGED_BLOB_STALE_MS - 1,
@@ -234,7 +249,10 @@ describe("VaultService sync repair", () => {
 		);
 		const blobStorage = createBlobStorage();
 
-		const result = await createVaultService(sqlite, blobStorage).repairSyncState("vault-1");
+		const result = await createVaultService(
+			sqlite,
+			blobStorage,
+		).repairSyncState("vault-1");
 
 		expect(result).toMatchObject({
 			status: "manual_repair_required",
@@ -288,7 +306,7 @@ function createVaultService(
 			},
 		},
 		{ scheduleSummaryFlush: async () => {} },
-		sqlite.staleStagedBlobStore,
+		sqlite.unitOfWork,
 		blobGcService,
 	);
 }

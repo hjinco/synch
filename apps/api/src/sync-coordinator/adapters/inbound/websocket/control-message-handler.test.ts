@@ -18,8 +18,7 @@ describe("coordinator websocket control messages", () => {
 			versionHistoryRetentionDays: 1,
 		};
 		const stateRepository = socketStateRepository();
-		const socketService = createMockCoordinatorSocketService({
-		});
+		const socketService = createMockCoordinatorSocketService({});
 		const initialVaultLimitReader = {
 			readInitialVaultLimits: vi.fn(async () => limits),
 		};
@@ -43,8 +42,7 @@ describe("coordinator websocket control messages", () => {
 	it("skips subscription policy lookup when websocket vault state exists", async () => {
 		const stateRepository = socketStateRepository();
 		vi.mocked(stateRepository.vaultStateExistsFor).mockReturnValue(true);
-		const socketService = createMockCoordinatorSocketService({
-		});
+		const socketService = createMockCoordinatorSocketService({});
 		const initialVaultLimitReader = {
 			readInitialVaultLimits: vi.fn(async () => ({
 				storageLimitBytes: 50_000_000,
@@ -61,7 +59,9 @@ describe("coordinator websocket control messages", () => {
 		await service.prepareSocketSession("token", "vault-1");
 
 		expect(stateRepository.vaultStateExistsFor).toHaveBeenCalledWith("vault-1");
-		expect(initialVaultLimitReader.readInitialVaultLimits).not.toHaveBeenCalled();
+		expect(
+			initialVaultLimitReader.readInitialVaultLimits,
+		).not.toHaveBeenCalled();
 		expect(stateRepository.ensureVaultState).not.toHaveBeenCalled();
 	});
 
@@ -70,24 +70,29 @@ describe("coordinator websocket control messages", () => {
 		const sender = testWebSocket();
 		const stateRepository = socketStateRepository(session);
 		const socketService = socketServiceMock(session);
-		const service = createCoordinatorService({ stateRepository, socketService });
-		const commitMutations = vi.spyOn(service, "commitMutations").mockResolvedValue({
-			message: {
-				type: "commit_mutations_committed",
-				requestId: "request-commit",
-				cursor: 42,
-				results: [
-					{
-						status: "accepted",
-						mutationId: "mutation-1",
-						cursor: 42,
-						entryId: "entry-1",
-						revision: 3,
-					},
-				],
-			},
-			broadcastCursor: 42,
+		const service = createCoordinatorService({
+			stateRepository,
+			socketService,
 		});
+		const commitMutations = vi
+			.spyOn(service, "commitMutations")
+			.mockResolvedValue({
+				message: {
+					type: "commit_mutations_committed",
+					requestId: "request-commit",
+					cursor: 42,
+					results: [
+						{
+							status: "accepted",
+							mutationId: "mutation-1",
+							cursor: 42,
+							entryId: "entry-1",
+							revision: 3,
+						},
+					],
+				},
+				broadcastCursor: 42,
+			});
 
 		await service.handleSocketMessage(
 			sender,
@@ -147,8 +152,13 @@ describe("coordinator websocket control messages", () => {
 		const sender = testWebSocket();
 		const stateRepository = socketStateRepository(session);
 		const socketService = socketServiceMock(session);
-		const service = createCoordinatorService({ stateRepository, socketService });
-		const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+		const service = createCoordinatorService({
+			stateRepository,
+			socketService,
+		});
+		const consoleError = vi
+			.spyOn(console, "error")
+			.mockImplementation(() => {});
 		vi.spyOn(service, "commitMutations").mockResolvedValue({
 			message: {
 				type: "commit_mutations_committed",
@@ -221,19 +231,24 @@ describe("coordinator websocket control messages", () => {
 		const sender = testWebSocket();
 		const stateRepository = socketStateRepository(session);
 		const socketService = socketServiceMock(session);
-		const service = createCoordinatorService({ stateRepository, socketService });
-		const restoreEntryVersion = vi.spyOn(service, "restoreEntryVersion").mockResolvedValue({
-			message: {
-				type: "entry_version_restored",
-				requestId: "request-restore",
-				entryId: "entry-1",
-				restoredFromVersionId: "version-1",
-				restoredFromRevision: 1,
-				cursor: 42,
-				revision: 3,
-			},
-			broadcastCursor: 42,
+		const service = createCoordinatorService({
+			stateRepository,
+			socketService,
 		});
+		const restoreEntryVersion = vi
+			.spyOn(service, "restoreEntryVersion")
+			.mockResolvedValue({
+				message: {
+					type: "entry_version_restored",
+					requestId: "request-restore",
+					entryId: "entry-1",
+					restoredFromVersionId: "version-1",
+					restoredFromRevision: 1,
+					cursor: 42,
+					revision: 3,
+				},
+				broadcastCursor: 42,
+			});
 
 		await service.handleSocketMessage(
 			sender,
@@ -310,6 +325,7 @@ describe("coordinator websocket control messages", () => {
 		expect(stateRepository.recordLocalVaultConnection).toHaveBeenCalledWith(
 			"user-1",
 			"local-vault-1",
+			expect.any(Number),
 		);
 	});
 
@@ -317,7 +333,10 @@ describe("coordinator websocket control messages", () => {
 		const sender = testWebSocket();
 		const stateRepository = socketStateRepository();
 		const socketService = socketServiceMock();
-		const service = createCoordinatorService({ stateRepository, socketService });
+		const service = createCoordinatorService({
+			stateRepository,
+			socketService,
+		});
 
 		await service.handleSocketMessage(
 			sender,
@@ -341,7 +360,10 @@ describe("coordinator websocket control messages", () => {
 		const sender = testWebSocket();
 		const stateRepository = socketStateRepository();
 		const socketService = socketServiceMock();
-		const service = createCoordinatorService({ stateRepository, socketService });
+		const service = createCoordinatorService({
+			stateRepository,
+			socketService,
+		});
 
 		await service.handleSocketMessage(
 			sender,
@@ -362,7 +384,10 @@ describe("coordinator websocket control messages", () => {
 		const sender = testWebSocket();
 		const stateRepository = socketStateRepository(session);
 		const socketService = socketServiceMock(session);
-		const service = createCoordinatorService({ stateRepository, socketService });
+		const service = createCoordinatorService({
+			stateRepository,
+			socketService,
+		});
 
 		await service.handleSocketMessage(
 			sender,
@@ -387,7 +412,10 @@ describe("coordinator websocket control messages", () => {
 		const sender = testWebSocket();
 		const stateRepository = socketStateRepository(session);
 		const socketService = socketServiceMock(session);
-		const service = createCoordinatorService({ stateRepository, socketService });
+		const service = createCoordinatorService({
+			stateRepository,
+			socketService,
+		});
 
 		await service.handleSocketMessage(
 			sender,
@@ -414,7 +442,10 @@ describe("coordinator websocket control messages", () => {
 		const sender = testWebSocket();
 		const stateRepository = socketStateRepository(session);
 		const socketService = socketServiceMock(session);
-		const service = createCoordinatorService({ stateRepository, socketService });
+		const service = createCoordinatorService({
+			stateRepository,
+			socketService,
+		});
 
 		await service.handleSocketMessage(
 			sender,
@@ -507,14 +538,17 @@ describe("coordinator websocket control messages", () => {
 			displayName: "User",
 			selection: presenceSelection(1, 2),
 		});
-		expect(socketService.sendSocketMessage).not.toHaveBeenCalledWith("watcher", {
-			type: "presence_updated",
-			presenceId: "other",
-			entryId: "entry-2",
-			userId: "user-1",
-			displayName: "User",
-			selection: presenceSelection(3, 4),
-		});
+		expect(socketService.sendSocketMessage).not.toHaveBeenCalledWith(
+			"watcher",
+			{
+				type: "presence_updated",
+				presenceId: "other",
+				entryId: "entry-2",
+				userId: "user-1",
+				displayName: "User",
+				selection: presenceSelection(3, 4),
+			},
+		);
 	});
 
 	it("replays existing payloads for every newly watched entry", async () => {
@@ -533,7 +567,8 @@ describe("coordinator websocket control messages", () => {
 		};
 		const socketService = createMockCoordinatorSocketService({
 			readSocketSession: vi.fn(
-				(connectionId: string) => sessions[connectionId as keyof typeof sessions] ?? null,
+				(connectionId: string) =>
+					sessions[connectionId as keyof typeof sessions] ?? null,
 			),
 		});
 		const service = createCoordinatorService({
@@ -585,7 +620,9 @@ describe("coordinator websocket control messages", () => {
 			}),
 		};
 		const socketService = createMockCoordinatorSocketService({
-			readSocketSession: vi.fn((connectionId: string) => sessions[connectionId] ?? null),
+			readSocketSession: vi.fn(
+				(connectionId: string) => sessions[connectionId] ?? null,
+			),
 		});
 		const service = createCoordinatorService({
 			stateRepository: socketStateRepository(),
@@ -619,14 +656,18 @@ describe("coordinator websocket control messages", () => {
 			"watcher",
 		);
 
-		expect(socketService.broadcastPresenceToWatchers).toHaveBeenCalledWith("entry-1", "peer", {
-			type: "presence_updated",
-			presenceId: "peer",
-			entryId: "entry-1",
-			userId: "ada",
-			displayName: "Ada",
-			selection: presenceSelection(1, 2),
-		});
+		expect(socketService.broadcastPresenceToWatchers).toHaveBeenCalledWith(
+			"entry-1",
+			"peer",
+			{
+				type: "presence_updated",
+				presenceId: "peer",
+				entryId: "entry-1",
+				userId: "ada",
+				displayName: "Ada",
+				selection: presenceSelection(1, 2),
+			},
+		);
 		expect(socketService.sendSocketMessage).toHaveBeenCalledWith("watcher", {
 			type: "presence_updated",
 			presenceId: "peer",
@@ -655,14 +696,18 @@ describe("coordinator websocket control messages", () => {
 			}),
 		);
 
-		expect(socketService.broadcastPresenceToWatchers).toHaveBeenCalledWith("entry-1", "test", {
-			type: "presence_updated",
-			presenceId: "test",
-			entryId: "entry-1",
-			userId: "user-1",
-			displayName: "User",
-			selection: presenceSelection(1, 2),
-		});
+		expect(socketService.broadcastPresenceToWatchers).toHaveBeenCalledWith(
+			"entry-1",
+			"test",
+			{
+				type: "presence_updated",
+				presenceId: "test",
+				entryId: "entry-1",
+				userId: "user-1",
+				displayName: "User",
+				selection: presenceSelection(1, 2),
+			},
+		);
 	});
 
 	it("broadcasts a clear when a client clears its presence", async () => {
@@ -716,10 +761,14 @@ describe("coordinator websocket control messages", () => {
 		);
 		service.handleSocketDisconnect();
 
-		expect(socketService.broadcastPresenceToWatchers).toHaveBeenCalledWith("entry-1", "test", {
-			type: "presence_cleared",
-			presenceId: "test",
-		});
+		expect(socketService.broadcastPresenceToWatchers).toHaveBeenCalledWith(
+			"entry-1",
+			"test",
+			{
+				type: "presence_cleared",
+				presenceId: "test",
+			},
+		);
 	});
 
 	it("does not broadcast a presence clear when the socket never published", () => {
@@ -751,7 +800,7 @@ describe("coordinator websocket control messages", () => {
 					iss: "synch",
 					exp: 1,
 					iat: 1,
-			})),
+				})),
 			} as never,
 		});
 
@@ -769,6 +818,11 @@ describe("coordinator websocket control messages", () => {
 	it("stages blobs without subscription policy limits", async () => {
 		const session = testSocketSession();
 		const stateRepository = socketStateRepository(session);
+		vi.mocked(stateRepository.readVaultLimits).mockReturnValue({
+			storageLimitBytes: 0,
+			maxFileSizeBytes: 0,
+			versionHistoryRetentionDays: 1,
+		});
 		const socketService = socketServiceMock(session);
 		const service = createCoordinatorService({
 			stateRepository,
@@ -793,11 +847,10 @@ describe("coordinator websocket control messages", () => {
 			50_000_000,
 		);
 
-		expect(stateRepository.withStageTransaction).toHaveBeenCalledWith(
-				"blob-unlimited",
-				expect.any(Number),
-				expect.any(Function),
-			);
+		expect(stateRepository.persistStage).toHaveBeenCalledWith(
+			"blob-unlimited",
+			expect.objectContaining({ sizeBytes: 50_000_000 }),
+		);
 		expect(socketService.broadcastStorageStatus).toHaveBeenCalledWith({
 			type: "storage_status_updated",
 			storageStatus: {
@@ -815,14 +868,11 @@ describe("coordinator websocket control messages", () => {
 			socketService,
 		});
 
-		await service.applyVaultPolicy(
-			"vault-1",
-			{
-				storageLimitBytes: 50_000_000,
-				maxFileSizeBytes: 3_000_000,
-				versionHistoryRetentionDays: 1,
-			},
-		);
+		await service.applyVaultPolicy("vault-1", {
+			storageLimitBytes: 50_000_000,
+			maxFileSizeBytes: 3_000_000,
+			versionHistoryRetentionDays: 1,
+		});
 
 		const limits = {
 			storageLimitBytes: 50_000_000,
@@ -830,7 +880,10 @@ describe("coordinator websocket control messages", () => {
 			versionHistoryRetentionDays: 1,
 		};
 		expect(stateRepository.ensureVaultState).not.toHaveBeenCalled();
-		expect(stateRepository.applyVaultPolicy).toHaveBeenCalledWith("vault-1", limits);
+		expect(stateRepository.applyVaultPolicy).toHaveBeenCalledWith(
+			"vault-1",
+			limits,
+		);
 		expect(socketService.broadcastPolicyUpdated).toHaveBeenCalledWith({
 			type: "policy_updated",
 			policy: {
@@ -851,6 +904,10 @@ describe("coordinator websocket control messages", () => {
 			deleteMany: vi.fn(async () => ({ failedKeys: [] })),
 		};
 		const candidate = {
+			referenceFacts: {
+				hasCurrentReference: false,
+				hasRetainedHistory: false,
+			},
 			blob_id: "blob-1",
 			state: "pending_delete" as const,
 			size_bytes: 100,
@@ -890,30 +947,14 @@ describe("coordinator websocket control messages", () => {
 				throw new Error("r2 unavailable");
 			}),
 		};
-		const withDeletedEntryPurgeTransaction = vi.fn(
-			(_entryId, _retentionStart, operation) =>
-				operation({
-					readFacts: vi.fn(() => ({
-						current: { revision: 2, deleted: true },
-						hasRestorableHistory: true,
-						candidateBlobIds: ["blob-1"],
-					})),
-					deleteEntryVersions: vi.fn(),
-				}),
-		);
-		const withPendingDeleteTransaction = vi.fn((_blobId, _now, operation) =>
-			operation({
-				readFacts: vi.fn(() => ({
-					state: "pending_delete" as const,
-					deleteAfter: 1,
-					hasCurrentReference: false,
-					hasRetainedHistory: false,
-				})),
-				markPendingDelete: vi.fn(),
-			}),
-		);
+		const deleteEntryVersions = vi.fn();
+		const updateState = vi.fn();
 		const deleteCollectibleBlobs = vi.fn();
 		const candidate = {
+			referenceFacts: {
+				hasCurrentReference: false,
+				hasRetainedHistory: false,
+			},
 			blob_id: "blob-1",
 			state: "pending_delete" as const,
 			size_bytes: 100,
@@ -924,8 +965,20 @@ describe("coordinator websocket control messages", () => {
 		const service = createCoordinatorService({
 			stateRepository: {
 				...stateRepository,
-				withDeletedEntryPurgeTransaction,
-				withPendingDeleteTransaction,
+				deleteEntryVersions,
+				updateState,
+				readMutationEntry: vi.fn(() => ({
+					entryId: "entry-1",
+					revision: 2,
+					deleted: true,
+					blobId: null,
+					encryptedMetadata: "",
+					updatedSeq: 2,
+					lastMutationId: "m2",
+				})),
+				hasRestorableHistory: vi.fn(() => true),
+				listBlobIds: vi.fn(() => ["blob-1"]),
+				readBlob: vi.fn(() => candidate),
 				readCollectibleBlob: vi.fn(() => candidate),
 				deleteCollectibleBlobs,
 				readGcDeadlines: vi.fn(() => [1]),
@@ -933,7 +986,9 @@ describe("coordinator websocket control messages", () => {
 			socketService: socketServiceMock(),
 			blobRepository: blobRepository as never,
 		});
-		const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+		const consoleError = vi
+			.spyOn(console, "error")
+			.mockImplementation(() => {});
 
 		await expect(
 			service.purgeDeletedEntries(testSocketSession(), {
@@ -955,12 +1010,8 @@ describe("coordinator websocket control messages", () => {
 			candidateBlobIds: ["blob-1"],
 		});
 
-		expect(withDeletedEntryPurgeTransaction).toHaveBeenCalled();
-		expect(withPendingDeleteTransaction).toHaveBeenCalledWith(
-			"blob-1",
-			expect.any(Number),
-			expect.any(Function),
-		);
+		expect(deleteEntryVersions).toHaveBeenCalledWith("entry-1");
+		expect(updateState).toHaveBeenCalledWith("blob-1", "pending_delete", 1);
 		expect(blobRepository.deleteMany).toHaveBeenCalledWith(["vault-1/blob-1"]);
 		expect(deleteCollectibleBlobs).not.toHaveBeenCalled();
 		consoleError.mockRestore();
@@ -987,7 +1038,10 @@ describe("coordinator websocket control messages", () => {
 		await service.purgeVault("vault-1");
 		await service.handleSocketClose();
 
-		expect(socketService.closeAllSockets).toHaveBeenCalledWith(4403, "vault deleted");
+		expect(socketService.closeAllSockets).toHaveBeenCalledWith(
+			4403,
+			"vault deleted",
+		);
 		expect(blobRepository.deleteByPrefix).toHaveBeenCalledWith("vault-1/");
 		expect(stateRepository.purgeVaultState).toHaveBeenCalled();
 	});

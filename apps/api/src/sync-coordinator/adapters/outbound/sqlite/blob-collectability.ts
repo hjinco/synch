@@ -1,46 +1,23 @@
-import { and, eq, gt, inArray, lte, notExists, sql } from "drizzle-orm";
 import type { SQL } from "drizzle-orm";
-import { QueryBuilder } from "drizzle-orm/sqlite-core";
-
+import { and, eq, inArray, lte, not } from "drizzle-orm";
 import * as doSchema from "../../../../db/do";
+import {
+	currentBlobReference,
+	retainedBlobReference,
+} from "./blob-reference-facts";
 
 /**
- * Drizzle mirror of the reference facts in domain/blob-gc-policy
- * (hasCurrentReference/hasRetainedHistory). Keep in lockstep with
- * decideBlobCollection/decidePendingDelete; the shared predicates are
- * covered by blob-store and blob-gc-service tests.
- */
-
-const queryBuilder = new QueryBuilder();
-
-/**
- * Blob is not referenced by a current entry or an unexpired version.
- * Requires `doSchema.blobs` to be the outer query's table so the
- * correlated `blobs.blob_id` references resolve.
+ * SQL projection of domain/blob-gc-policy for filtering before LIMIT and
+ * guarding writes. blob-collectability.test.ts checks agreement with the
+ * domain at state, reference, expiry and grace-period boundaries.
+ * Requires blobs as the outer query table.
  */
 export function blobUnreferenced(now: number): SQL {
 	return and(
-		notExists(
-			queryBuilder
-				.select({ one: sql`1` })
-				.from(doSchema.entries)
-				.where(eq(doSchema.entries.blobId, doSchema.blobs.blobId)),
-		),
-		notExists(
-			queryBuilder
-				.select({ one: sql`1` })
-				.from(doSchema.entryVersions)
-				.where(
-					and(
-						eq(doSchema.entryVersions.blobId, doSchema.blobs.blobId),
-						gt(doSchema.entryVersions.expiresAt, now),
-					),
-				),
-		),
+		not(currentBlobReference()),
+		not(retainedBlobReference(now)),
 	) as SQL;
 }
-
-/** Staged or pending_delete blob whose grace period has passed and is unreferenced. */
 export function collectibleBlob(now: number): SQL {
 	return and(
 		inArray(doSchema.blobs.state, ["staged", "pending_delete"]),

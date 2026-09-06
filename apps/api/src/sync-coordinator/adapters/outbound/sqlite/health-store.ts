@@ -18,14 +18,6 @@ export class CoordinatorHealthStore {
 		private readonly sockets: CoordinatorSocketCounter,
 	) {}
 
-	recordGcCompleted(now = Date.now()): void {
-		this.handle.db
-			.update(doSchema.coordinatorState)
-			.set({ lastGcAt: now })
-			.where(eq(doSchema.coordinatorState.id, 1))
-			.run();
-	}
-
 	readHealthSnapshot(
 		now: number,
 		activeCursorTtlMs: number,
@@ -41,8 +33,14 @@ export class CoordinatorHealthStore {
 				storageLimitBytes: doSchema.coordinatorState.storageLimitBytes,
 				lastCommitAt: doSchema.coordinatorState.lastCommitAt,
 				lastGcAt: doSchema.coordinatorState.lastGcAt,
-				entryCount: scalarCount(doSchema.entries, eq(doSchema.entries.deleted, 0)),
-				liveBlobCount: scalarCount(doSchema.blobs, eq(doSchema.blobs.state, "live")),
+				entryCount: scalarCount(
+					doSchema.entries,
+					eq(doSchema.entries.deleted, 0),
+				),
+				liveBlobCount: scalarCount(
+					doSchema.blobs,
+					eq(doSchema.blobs.state, "live"),
+				),
 				stagedBlobCount: scalarCount(
 					doSchema.blobs,
 					eq(doSchema.blobs.state, "staged"),
@@ -55,8 +53,12 @@ export class CoordinatorHealthStore {
 					doSchema.blobs,
 					collectiblePendingDelete(now),
 				),
-				oldestStagedBlobAt: sql<number | null>`(SELECT min(${doSchema.blobs.createdAt}) FROM ${doSchema.blobs} WHERE ${eq(doSchema.blobs.state, "staged")})`,
-				oldestPendingDeleteAt: sql<number | null>`(SELECT min(${doSchema.blobs.deleteAfter}) FROM ${doSchema.blobs} WHERE ${collectiblePendingDelete(now)})`,
+				oldestStagedBlobAt: sql<
+					number | null
+				>`(SELECT min(${doSchema.blobs.createdAt}) FROM ${doSchema.blobs} WHERE ${eq(doSchema.blobs.state, "staged")})`,
+				oldestPendingDeleteAt: sql<
+					number | null
+				>`(SELECT min(${doSchema.blobs.deleteAfter}) FROM ${doSchema.blobs} WHERE ${collectiblePendingDelete(now)})`,
 				activeLocalVaultCount: scalarCount(
 					doSchema.localVaultConnections,
 					gte(doSchema.localVaultConnections.lastConnectedAt, activeSince),
@@ -109,7 +111,9 @@ export class CoordinatorHealthStore {
 }
 
 function scalarCount(
-	table: Parameters<ReturnType<CoordinatorStorageHandle["db"]["select"]>["from"]>[0],
+	table: Parameters<
+		ReturnType<CoordinatorStorageHandle["db"]["select"]>["from"]
+	>[0],
 	condition: SQL,
 ): SQL<number> {
 	return sql<number>`(SELECT count(*) FROM ${table} WHERE ${condition})`;

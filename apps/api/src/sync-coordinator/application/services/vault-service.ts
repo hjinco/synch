@@ -1,3 +1,4 @@
+import { deleteUnreferencedStagedBlob } from "./blob-record-operations";
 import type {
 	BlobObjectRepository,
 	BlobObjectKeyBuilder,
@@ -5,13 +6,12 @@ import type {
 	HealthStateStore,
 	InitialVaultLimitReader,
 	SocketGateway,
-	StaleStagedBlobStore,
+	CoordinatorUnitOfWork,
 	VaultStateStore,
 } from "../ports/outbound";
 import type { SyncPauseState, SyncRepairResult } from "../dto/sync-repair";
 import type { SocketSession, VaultStateLimits } from "../dto/types";
 import { isStaleStagedBlobPauseReason } from "../../domain/blob-policy";
-import { isBlobPinned } from "../../domain/blob-gc-policy";
 import { STAGED_BLOB_STALE_MS } from "../../domain/health-policy";
 import type { BlobGcService } from "./blob-gc-service";
 import type { HealthService } from "./health-service";
@@ -33,8 +33,13 @@ export class VaultService {
 		private readonly objectKeyBuilder: BlobObjectKeyBuilder,
 		private readonly initialVaultLimitReader: InitialVaultLimitReader,
 		private readonly healthService: Pick<HealthService, "scheduleSummaryFlush">,
-		private readonly staleStagedBlobStore: StaleStagedBlobStore,
-		private readonly blobGcService: Pick<BlobGcService, "readNextGcAt" | "scheduleNow">,
+		private readonly unitOfWork: CoordinatorUnitOfWork<
+			"blobs" | "blobReferences" | "state" | "connections"
+		>,
+		private readonly blobGcService: Pick<
+			BlobGcService,
+			"readNextGcAt" | "scheduleNow"
+		>,
 	) {}
 
 	isPurged(): boolean {
@@ -59,7 +64,7 @@ export class VaultService {
 	}
 
 	async detachLocalVault(session: SocketSession): Promise<void> {
-		this.vaultStateStore.deleteLocalVaultConnection(
+		this.unitOfWork.stores.connections.deleteLocalVaultConnection(
 			session.userId,
 			session.localVaultId,
 		);
@@ -88,7 +93,9 @@ export class VaultService {
 	async purgeVault(vaultId: string): Promise<void> {
 		this.purged = true;
 		this.socketGateway.closeAllSockets(4403, "vault deleted");
-		await this.blobRepository.deleteByPrefix(this.objectKeyBuilder.blobObjectKeyPrefix(vaultId));
+		await this.blobRepository.deleteByPrefix(
+			this.objectKeyBuilder.blobObjectKeyPrefix(vaultId),
+		);
 		await this.storage.purgeVaultState();
 	}
 
@@ -99,9 +106,8 @@ export class VaultService {
 
 		const now = Date.now();
 		const pause = this.vaultStateStore.readSyncPause();
-		const staleBlobs = this.staleStagedBlobStore.listStaleStagedBlobs(
-			now,
-			STAGED_BLOB_STALE_MS,
+		const staleBlobs = this.unitOfWork.stores.blobs.listStaleStagedBlobs(
+			now - STAGED_BLOB_STALE_MS,
 			MAX_REPAIRABLE_STALE_STAGED_BLOBS + 1,
 		);
 
@@ -130,24 +136,8 @@ export class VaultService {
 			// blob live after its object has already been deleted. A leftover
 			// object is recoverable; a live entry pointing at missing ciphertext
 			// is not.
-			const metadataResult = this.staleStagedBlobStore.withStagedBlobTransaction(
-				blob.blob_id,
-				now,
-				(transaction) => {
-					const facts = transaction.readFacts();
-					if (!facts.blob) {
-						return "missing";
-					}
-					if (
-						facts.blob.state !== "staged" ||
-						isBlobPinned(facts.referenceFacts, false)
-					) {
-						return "referenced";
-					}
-
-					transaction.deleteStagedBlob();
-					return "deleted";
-				},
+			const metadataResult = this.unitOfWork.run((stores) =>
+				deleteUnreferencedStagedBlob(stores, blob.blob_id, now),
 			);
 			if (metadataResult === "referenced") {
 				issue = "referenced_staged_blob";
@@ -173,11 +163,11 @@ export class VaultService {
 			}
 		}
 
-		const remainingStaleBlobs = this.staleStagedBlobStore.listStaleStagedBlobs(
-			now,
-			STAGED_BLOB_STALE_MS,
-			MAX_REPAIRABLE_STALE_STAGED_BLOBS + 1,
-		);
+		const remainingStaleBlobs =
+			this.unitOfWork.stores.blobs.listStaleStagedBlobs(
+				now - STAGED_BLOB_STALE_MS,
+				MAX_REPAIRABLE_STALE_STAGED_BLOBS + 1,
+			);
 		const nextGcAt = this.blobGcService.readNextGcAt(now);
 
 		// Re-arm the shared GC job after repair. The scheduler buckets this to

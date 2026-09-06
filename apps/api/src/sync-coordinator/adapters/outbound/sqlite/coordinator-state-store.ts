@@ -1,21 +1,64 @@
-import { and, eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 
 import * as doSchema from "../../../../db/do";
 import type { SyncPauseState } from "../../../application/ports/outbound";
 import type { VaultStateLimits } from "../../../application/dto/types";
-import type { CoordinatorDb, CoordinatorStorageHandle } from "./storage-handle";
+import type { CoordinatorStorageHandle } from "./storage-handle";
 
-type CursorDb = Pick<CoordinatorDb, "insert" | "select">;
-
-export class CoordinatorCursorStore {
+export class CoordinatorStateStore {
 	constructor(private readonly handle: CoordinatorStorageHandle) {}
 
+	recordGcCompleted(now: number): void {
+		this.handle.db
+			.update(doSchema.coordinatorState)
+			.set({ lastGcAt: now })
+			.where(eq(doSchema.coordinatorState.id, 1))
+			.run();
+	}
+
 	currentCursor(): number {
-		return currentCursor(this.handle.db);
+		const state = this.handle.db
+			.select({
+				cursor: doSchema.coordinatorState.currentCursor,
+			})
+			.from(doSchema.coordinatorState)
+			.where(eq(doSchema.coordinatorState.id, 1))
+			.limit(1)
+			.get();
+		if (state) {
+			return Number(state.cursor);
+		}
+
+		throw new Error("vault sync state is not initialized");
 	}
 
 	ensureVaultState(vaultId: string, initialLimits: VaultStateLimits): void {
-		ensureVaultState(this.handle.db, vaultId, initialLimits);
+		const existing = this.handle.db
+			.select({
+				vaultId: doSchema.coordinatorState.vaultId,
+			})
+			.from(doSchema.coordinatorState)
+			.where(eq(doSchema.coordinatorState.id, 1))
+			.limit(1)
+			.get();
+		if (existing) {
+			if (existing.vaultId !== vaultId) {
+				throw new Error("durable object vault id mismatch");
+			}
+			return;
+		}
+
+		this.handle.db
+			.insert(doSchema.coordinatorState)
+			.values({
+				id: 1,
+				vaultId,
+				currentCursor: 0,
+				storageLimitBytes: initialLimits.storageLimitBytes,
+				maxFileSizeBytes: initialLimits.maxFileSizeBytes,
+				versionHistoryRetentionDays: initialLimits.versionHistoryRetentionDays,
+			})
+			.run();
 	}
 
 	readVaultId(): string | null {
@@ -131,96 +174,39 @@ export class CoordinatorCursorStore {
 		return this.readVaultLimits().versionHistoryRetentionDays;
 	}
 
-	recordLocalVaultConnection(userId: string, localVaultId: string): void {
-		recordLocalVaultConnection(this.handle.db, userId, localVaultId, Date.now());
+	readStorageUsedBytes(): number {
+		const row = this.handle.db
+			.select({ used: doSchema.coordinatorState.storageUsedBytes })
+			.from(doSchema.coordinatorState)
+			.where(eq(doSchema.coordinatorState.id, 1))
+			.get();
+		if (!row) throw new Error("vault sync state is not initialized");
+		return Number(row.used);
 	}
-
-	deleteLocalVaultConnection(userId: string, localVaultId: string): void {
+	adjustStorageUsedBytes(delta: number): void {
 		this.handle.db
-			.delete(doSchema.localVaultConnections)
-			.where(
-				and(
-					eq(doSchema.localVaultConnections.userId, userId),
-					eq(doSchema.localVaultConnections.localVaultId, localVaultId),
-				),
-			)
+			.update(doSchema.coordinatorState)
+			.set({
+				storageUsedBytes: sql`max(0, ${doSchema.coordinatorState.storageUsedBytes} + ${delta})`,
+			})
+			.where(eq(doSchema.coordinatorState.id, 1))
 			.run();
 	}
-
-	currentCursorInTransaction(db: CursorDb): number {
-		return currentCursor(db);
+	pauseSync(now: number, reason: string): void {
+		this.handle.db
+			.update(doSchema.coordinatorState)
+			.set({
+				syncPausedAt: sql`coalesce(${doSchema.coordinatorState.syncPausedAt}, ${now})`,
+				syncPauseReason: sql`coalesce(${doSchema.coordinatorState.syncPauseReason}, ${reason})`,
+			})
+			.where(eq(doSchema.coordinatorState.id, 1))
+			.run();
 	}
-
-}
-
-function ensureVaultState(
-	db: CursorDb,
-	vaultId: string,
-	initialLimits: VaultStateLimits,
-): void {
-	const existing = db
-		.select({
-			vaultId: doSchema.coordinatorState.vaultId,
-		})
-		.from(doSchema.coordinatorState)
-		.where(eq(doSchema.coordinatorState.id, 1))
-		.limit(1)
-		.get();
-	if (existing) {
-		if (existing.vaultId !== vaultId) {
-			throw new Error("durable object vault id mismatch");
-		}
-		return;
+	saveCommit(cursor: number, now: number): void {
+		this.handle.db
+			.update(doSchema.coordinatorState)
+			.set({ currentCursor: cursor, lastCommitAt: now })
+			.where(eq(doSchema.coordinatorState.id, 1))
+			.run();
 	}
-
-	db.insert(doSchema.coordinatorState)
-		.values({
-			id: 1,
-			vaultId,
-			currentCursor: 0,
-			storageLimitBytes: initialLimits.storageLimitBytes,
-			maxFileSizeBytes: initialLimits.maxFileSizeBytes,
-			versionHistoryRetentionDays: initialLimits.versionHistoryRetentionDays,
-		})
-		.run();
-}
-
-function currentCursor(db: CursorDb): number {
-	const state = db
-		.select({
-			cursor: doSchema.coordinatorState.currentCursor,
-		})
-		.from(doSchema.coordinatorState)
-		.where(eq(doSchema.coordinatorState.id, 1))
-		.limit(1)
-		.get();
-	if (state) {
-		return Number(state.cursor);
-	}
-
-	throw new Error("vault sync state is not initialized");
-}
-
-function recordLocalVaultConnection(
-	db: CursorDb,
-	userId: string,
-	localVaultId: string,
-	lastConnectedAt: number,
-): void {
-	db.insert(doSchema.localVaultConnections)
-		.values({
-			userId,
-			localVaultId,
-			lastConnectedAt,
-		})
-		.onConflictDoUpdate({
-			target: [
-				doSchema.localVaultConnections.userId,
-				doSchema.localVaultConnections.localVaultId,
-			],
-			set: {
-				lastConnectedAt,
-			},
-		})
-		.run();
 }

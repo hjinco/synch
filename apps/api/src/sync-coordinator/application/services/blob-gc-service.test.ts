@@ -1,14 +1,18 @@
 import { describe, expect, it, vi } from "vitest";
 
+import {
+	createTestCoordinatorState,
+	createTestUnitOfWork,
+} from "../../test-helpers";
 import { BlobGcService, GC_BATCH_SIZE } from "./blob-gc-service";
-import type {
-	BlobGcStore,
-	BlobPendingDeleteTransaction,
-} from "../ports/outbound";
 
 function candidate(blobId: string) {
 	return {
 		blob_id: blobId,
+		referenceFacts: {
+			hasCurrentReference: false,
+			hasRetainedHistory: false,
+		},
 		state: "pending_delete" as const,
 		size_bytes: 10,
 		created_at: 1,
@@ -23,16 +27,17 @@ function createFixture(overrides: Partial<Fixture> = {}) {
 		vaultStateStore: { readVaultId: vi.fn(() => "vault-1") },
 		blobGcStore: {
 			expireEntryVersions: vi.fn(),
-			listCollectibleBlobs: vi.fn(() => [candidate("blob-1"), candidate("blob-2")]),
+			listCollectibleBlobs: vi.fn(() => [
+				candidate("blob-1"),
+				candidate("blob-2"),
+			]),
 			readCollectibleBlob: vi.fn(() => null),
-			withPendingDeleteTransaction: vi.fn(runPendingDeleteTransaction),
 			deleteCollectibleBlobs: vi.fn((blobIds: readonly string[]) => {
 				for (const blobId of blobIds) {
 					events.push(`metadata:${blobId}`);
 				}
 				return blobIds.map((blobId) => candidate(blobId));
 			}),
-			deleteBlobIfCollectible: vi.fn(() => "deleted" as const),
 			readGcDeadlines: vi.fn(() => [5_000]),
 		},
 		blobStorage: {
@@ -47,7 +52,8 @@ function createFixture(overrides: Partial<Fixture> = {}) {
 			deleteByPrefix: vi.fn(async () => {}),
 		},
 		objectKeyBuilder: {
-			blobObjectKey: (vaultId: string, blobId: string) => `${vaultId}/${blobId}`,
+			blobObjectKey: (vaultId: string, blobId: string) =>
+				`${vaultId}/${blobId}`,
 			blobObjectKeyPrefix: (vaultId: string) => `${vaultId}/`,
 		},
 		healthStore: { recordGcCompleted: vi.fn() },
@@ -67,10 +73,14 @@ function createFixture(overrides: Partial<Fixture> = {}) {
 
 	const useCase = new BlobGcService(
 		fixture.vaultStateStore,
-		fixture.blobGcStore as unknown as BlobGcStore,
+		createTestUnitOfWork(
+			createTestCoordinatorState({
+				...fixture.blobGcStore,
+				...fixture.healthStore,
+			}),
+		),
 		fixture.blobStorage,
 		fixture.objectKeyBuilder,
-		fixture.healthStore,
 		fixture.maintenanceScheduler,
 		fixture.healthService,
 	);
@@ -83,17 +93,11 @@ type Fixture = {
 	blobGcStore: {
 		expireEntryVersions: MockFn<(now: number) => void>;
 		listCollectibleBlobs: MockFn<(now: number, limit: number) => Candidate[]>;
-		readCollectibleBlob: MockFn<(blobId: string, now: number) => Candidate | null>;
-		withPendingDeleteTransaction: MockFn<
-			(
-				blobId: string,
-				now: number,
-				operation: (transaction: BlobPendingDeleteTransaction) => void,
-			) => void
+		readCollectibleBlob: MockFn<
+			(blobId: string, now: number) => Candidate | null
 		>;
-		deleteCollectibleBlobs: MockFn<(blobIds: readonly string[], now: number) => Candidate[]>;
-		deleteBlobIfCollectible: MockFn<
-			(blobId: string, now: number) => "deleted" | "skipped"
+		deleteCollectibleBlobs: MockFn<
+			(blobIds: readonly string[], now: number) => Candidate[]
 		>;
 		readGcDeadlines: MockFn<(now: number) => readonly number[]>;
 	};
@@ -121,22 +125,6 @@ type Fixture = {
 
 type MockFn<T extends (...args: any[]) => any> = ReturnType<typeof vi.fn<T>>;
 type Candidate = ReturnType<typeof candidate>;
-
-function runPendingDeleteTransaction(
-	_blobId: string,
-	_now: number,
-	operation: (transaction: BlobPendingDeleteTransaction) => void,
-): void {
-	operation({
-		readFacts: vi.fn(() => ({
-			state: "pending_delete" as const,
-			deleteAfter: 1,
-			hasCurrentReference: false,
-			hasRetainedHistory: false,
-		})),
-		markPendingDelete: vi.fn(),
-	});
-}
 
 describe("BlobGcService scheduled GC", () => {
 	it("deletes collectible objects in one batch before sqlite rows", async () => {
@@ -176,7 +164,9 @@ describe("BlobGcService scheduled GC", () => {
 			2,
 			2,
 		);
-		expect(fixture.healthService.notifyStorageStatusChanged).toHaveBeenCalledOnce();
+		expect(
+			fixture.healthService.notifyStorageStatusChanged,
+		).toHaveBeenCalledOnce();
 	});
 
 	it("does not delete sqlite rows when object deletion fails", async () => {
@@ -196,7 +186,9 @@ describe("BlobGcService scheduled GC", () => {
 		);
 		expect(fixture.blobGcStore.deleteCollectibleBlobs).not.toHaveBeenCalled();
 		expect(fixture.healthStore.recordGcCompleted).not.toHaveBeenCalled();
-		expect(fixture.healthService.notifyStorageStatusChanged).not.toHaveBeenCalled();
+		expect(
+			fixture.healthService.notifyStorageStatusChanged,
+		).not.toHaveBeenCalled();
 	});
 
 	it("deletes sqlite rows for objects that succeeded when a batch is partial", async () => {
@@ -219,9 +211,24 @@ describe("BlobGcService scheduled GC", () => {
 			2,
 		);
 		expect(fixture.healthStore.recordGcCompleted).not.toHaveBeenCalled();
-		expect(fixture.healthService.notifyStorageStatusChanged).toHaveBeenCalledOnce();
+		expect(
+			fixture.healthService.notifyStorageStatusChanged,
+		).toHaveBeenCalledOnce();
 		expect(fixture.maintenanceScheduler.defer).not.toHaveBeenCalled();
 	});
+
+	it.each(["hasCurrentReference", "hasRetainedHistory"] as const)(
+		"retains a candidate whose %s fact is set",
+		async (reference) => {
+			const { fixture, useCase } = createFixture();
+			const pinned = candidate("pinned");
+			pinned.referenceFacts[reference] = true;
+			fixture.blobGcStore.listCollectibleBlobs.mockReturnValue([pinned]);
+			await useCase.runGc("vault-1", { now: 2 });
+			expect(fixture.blobStorage.deleteMany).not.toHaveBeenCalled();
+			expect(fixture.blobGcStore.deleteCollectibleBlobs).not.toHaveBeenCalled();
+		},
+	);
 
 	it("is a no-op when no vault state exists", async () => {
 		const { fixture, useCase } = createFixture({

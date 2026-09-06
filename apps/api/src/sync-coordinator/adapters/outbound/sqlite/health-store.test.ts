@@ -15,28 +15,28 @@ afterEach(() => {
 
 describe("sqlite backend: health summary", () => {
 	it("reports entry/blob counts and defers to the injected socket counter", async () => {
-		const { handle, mutationStore } = await createSqliteCoordinator();
+		const { handle, mutationService } = await createSqliteCoordinator();
 		const healthStore = new CoordinatorHealthStore(handle, { count: () => 3 });
 
-		await mutationStore.commitMutations(
-			testSession(),
-			{
-				type: "commit_mutations",
-				requestId: "req-1",
-				mutations: [
-					{
-						mutationId: "m1",
-						entryId: "entry-1",
-						op: "upsert",
-						baseRevision: 0,
-						blobId: null,
-						encryptedMetadata: "ciphertext",
-					},
-				],
-			},
-		);
+		await mutationService.commitMutations(testSession(), {
+			type: "commit_mutations",
+			requestId: "req-1",
+			mutations: [
+				{
+					mutationId: "m1",
+					entryId: "entry-1",
+					op: "upsert",
+					baseRevision: 0,
+					blobId: null,
+					encryptedMetadata: "ciphertext",
+				},
+			],
+		});
 
-		const snapshot = healthStore.readHealthSnapshot(10_000, 30 * 24 * 60 * 60 * 1000);
+		const snapshot = healthStore.readHealthSnapshot(
+			10_000,
+			30 * 24 * 60 * 60 * 1000,
+		);
 		expect(snapshot).toMatchObject({
 			vaultId: "vault-1",
 			entryCount: 1,
@@ -47,13 +47,20 @@ describe("sqlite backend: health summary", () => {
 	it("counts version-pinned pending_delete as census only", async () => {
 		const { handle, healthStore } = await createSqliteCoordinator();
 		const now = 1_000_000;
-		insertPendingDeleteBlob(handle, "blob-pinned", now - PENDING_DELETE_STALE_MS);
+		insertPendingDeleteBlob(
+			handle,
+			"blob-pinned",
+			now - PENDING_DELETE_STALE_MS,
+		);
 		insertEntryVersion(handle, {
 			blobId: "blob-pinned",
 			expiresAt: now + 1,
 		});
 
-		const snapshot = healthStore.readHealthSnapshot(now, 30 * 24 * 60 * 60 * 1000);
+		const snapshot = healthStore.readHealthSnapshot(
+			now,
+			30 * 24 * 60 * 60 * 1000,
+		);
 
 		expect(snapshot).toMatchObject({
 			pendingDeleteBlobCount: 1,
@@ -68,7 +75,10 @@ describe("sqlite backend: health summary", () => {
 		const deleteAfter = now - 5_000;
 		insertPendingDeleteBlob(handle, "blob-collectible", deleteAfter);
 
-		const snapshot = healthStore.readHealthSnapshot(now, 30 * 24 * 60 * 60 * 1000);
+		const snapshot = healthStore.readHealthSnapshot(
+			now,
+			30 * 24 * 60 * 60 * 1000,
+		);
 
 		expect(snapshot).toMatchObject({
 			pendingDeleteBlobCount: 1,
@@ -82,7 +92,10 @@ describe("sqlite backend: health summary", () => {
 		const now = PENDING_DELETE_STALE_MS + 5_000;
 		insertPendingDeleteBlob(handle, "blob-stale", 0);
 
-		const snapshot = healthStore.readHealthSnapshot(now, 30 * 24 * 60 * 60 * 1000);
+		const snapshot = healthStore.readHealthSnapshot(
+			now,
+			30 * 24 * 60 * 60 * 1000,
+		);
 
 		expect(snapshot).toMatchObject({
 			collectiblePendingDeleteBlobCount: 1,

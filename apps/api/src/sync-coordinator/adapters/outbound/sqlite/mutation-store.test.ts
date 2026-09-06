@@ -1,6 +1,10 @@
 import { afterEach, describe, expect, it } from "vitest";
 
-import { closeAllTestSqliteCoordinators, createSqliteCoordinator, testSession } from "./test-helpers";
+import {
+	closeAllTestSqliteCoordinators,
+	createSqliteCoordinator,
+	testSession,
+} from "./test-helpers";
 
 afterEach(() => {
 	closeAllTestSqliteCoordinators();
@@ -8,29 +12,31 @@ afterEach(() => {
 
 describe("sqlite backend: mutation commits", () => {
 	it("accepts a fresh upsert and advances the cursor", async () => {
-		const { mutationStore, entryStore } = await createSqliteCoordinator();
+		const { mutationService, entryStore } = await createSqliteCoordinator();
 		const session = testSession();
 
-		const result = await mutationStore.commitMutations(
-			session,
-			{
-				type: "commit_mutations",
-				requestId: "req-1",
-				mutations: [
-					{
-						mutationId: "mutation-1",
-						entryId: "entry-1",
-						op: "upsert",
-						baseRevision: 0,
-						blobId: null,
-						encryptedMetadata: "ciphertext-a",
-					},
-				],
-			},
-		);
+		const result = await mutationService.commitMutations(session, {
+			type: "commit_mutations",
+			requestId: "req-1",
+			mutations: [
+				{
+					mutationId: "mutation-1",
+					entryId: "entry-1",
+					op: "upsert",
+					baseRevision: 0,
+					blobId: null,
+					encryptedMetadata: "ciphertext-a",
+				},
+			],
+		});
 
 		expect(result.message.results).toMatchObject([
-			{ status: "accepted", mutationId: "mutation-1", entryId: "entry-1", revision: 1 },
+			{
+				status: "accepted",
+				mutationId: "mutation-1",
+				entryId: "entry-1",
+				revision: 1,
+			},
 		]);
 		expect(entryStore.readEntry("entry-1")).toMatchObject({
 			entry_id: "entry-1",
@@ -41,34 +47,31 @@ describe("sqlite backend: mutation commits", () => {
 	});
 
 	it("rejects duplicate mutation ids within the same batch", async () => {
-		const { mutationStore } = await createSqliteCoordinator();
+		const { mutationService } = await createSqliteCoordinator();
 		const session = testSession();
 
-		const result = await mutationStore.commitMutations(
-			session,
-			{
-				type: "commit_mutations",
-				requestId: "req-dup",
-				mutations: [
-					{
-						mutationId: "dup",
-						entryId: "entry-1",
-						op: "upsert",
-						baseRevision: 0,
-						blobId: null,
-						encryptedMetadata: "a",
-					},
-					{
-						mutationId: "dup",
-						entryId: "entry-2",
-						op: "upsert",
-						baseRevision: 0,
-						blobId: null,
-						encryptedMetadata: "b",
-					},
-				],
-			},
-		);
+		const result = await mutationService.commitMutations(session, {
+			type: "commit_mutations",
+			requestId: "req-dup",
+			mutations: [
+				{
+					mutationId: "dup",
+					entryId: "entry-1",
+					op: "upsert",
+					baseRevision: 0,
+					blobId: null,
+					encryptedMetadata: "a",
+				},
+				{
+					mutationId: "dup",
+					entryId: "entry-2",
+					op: "upsert",
+					baseRevision: 0,
+					blobId: null,
+					encryptedMetadata: "b",
+				},
+			],
+		});
 
 		expect(result.message.results).toMatchObject([
 			{ status: "accepted", mutationId: "dup" },
@@ -77,26 +80,23 @@ describe("sqlite backend: mutation commits", () => {
 	});
 
 	it("rejects a stale base revision", async () => {
-		const { mutationStore } = await createSqliteCoordinator();
+		const { mutationService } = await createSqliteCoordinator();
 		const session = testSession();
 		const commit = (mutationId: string, baseRevision: number) =>
-			mutationStore.commitMutations(
-				session,
-				{
-					type: "commit_mutations",
-					requestId: `req-${mutationId}`,
-					mutations: [
-						{
-							mutationId,
-							entryId: "entry-1",
-							op: "upsert",
-							baseRevision,
-							blobId: null,
-							encryptedMetadata: "ciphertext",
-						},
-					],
-				},
-			);
+			mutationService.commitMutations(session, {
+				type: "commit_mutations",
+				requestId: `req-${mutationId}`,
+				mutations: [
+					{
+						mutationId,
+						entryId: "entry-1",
+						op: "upsert",
+						baseRevision,
+						blobId: null,
+						encryptedMetadata: "ciphertext",
+					},
+				],
+			});
 
 		await commit("mutation-1", 0);
 		const stale = await commit("mutation-2", 0);
@@ -113,7 +113,7 @@ describe("sqlite backend: mutation commits", () => {
 	});
 
 	it("replays an already-applied mutation id idempotently", async () => {
-		const { mutationStore } = await createSqliteCoordinator();
+		const { mutationService } = await createSqliteCoordinator();
 		const session = testSession();
 		const message = {
 			type: "commit_mutations" as const,
@@ -130,45 +130,47 @@ describe("sqlite backend: mutation commits", () => {
 			],
 		};
 
-		const first = await mutationStore.commitMutations(session, message);
-		const replay = await mutationStore.commitMutations(session, message);
+		const first = await mutationService.commitMutations(session, message);
+		const replay = await mutationService.commitMutations(session, message);
 
 		expect(replay.message.results).toEqual(first.message.results);
 	});
 
 	it("commits accepted mutations in a batch alongside a rejected sibling", async () => {
-		const { mutationStore, entryStore, cursorStore } = await createSqliteCoordinator();
+		const { mutationService, entryStore, cursorStore } =
+			await createSqliteCoordinator();
 		const session = testSession();
 
-		const result = await mutationStore.commitMutations(
-			session,
-			{
-				type: "commit_mutations",
-				requestId: "req-partial",
-				mutations: [
-					{
-						mutationId: "mutation-ok",
-						entryId: "entry-1",
-						op: "upsert",
-						baseRevision: 0,
-						blobId: null,
-						encryptedMetadata: "ciphertext-a",
-					},
-					{
-						mutationId: "mutation-bad-blob",
-						entryId: "entry-2",
-						op: "upsert",
-						baseRevision: 0,
-						blobId: "unstaged-blob",
-						encryptedMetadata: "ciphertext-b",
-					},
-				],
-			},
-		);
+		const result = await mutationService.commitMutations(session, {
+			type: "commit_mutations",
+			requestId: "req-partial",
+			mutations: [
+				{
+					mutationId: "mutation-ok",
+					entryId: "entry-1",
+					op: "upsert",
+					baseRevision: 0,
+					blobId: null,
+					encryptedMetadata: "ciphertext-a",
+				},
+				{
+					mutationId: "mutation-bad-blob",
+					entryId: "entry-2",
+					op: "upsert",
+					baseRevision: 0,
+					blobId: "unstaged-blob",
+					encryptedMetadata: "ciphertext-b",
+				},
+			],
+		});
 
 		expect(result.message.results).toMatchObject([
 			{ status: "accepted", mutationId: "mutation-ok", entryId: "entry-1" },
-			{ status: "rejected", mutationId: "mutation-bad-blob", code: "blob_not_staged" },
+			{
+				status: "rejected",
+				mutationId: "mutation-bad-blob",
+				code: "blob_not_staged",
+			},
 		]);
 		expect(entryStore.readEntry("entry-1")).toMatchObject({ revision: 1 });
 		expect(entryStore.readEntry("entry-2")).toBeNull();
@@ -176,7 +178,8 @@ describe("sqlite backend: mutation commits", () => {
 	});
 
 	it("accepts exactly one of several concurrent commits racing the same base revision", async () => {
-		const { mutationStore, entryStore, cursorStore } = await createSqliteCoordinator();
+		const { mutationService, entryStore, cursorStore } =
+			await createSqliteCoordinator();
 		const session = testSession();
 
 		// Each commit's DB work runs inside a single synchronous
@@ -187,29 +190,30 @@ describe("sqlite backend: mutation commits", () => {
 		// of silently double-accepting a stale base revision.
 		const attempts = await Promise.all(
 			Array.from({ length: 5 }, (_, index) =>
-				mutationStore.commitMutations(
-					session,
-					{
-						type: "commit_mutations",
-						requestId: `req-race-${index}`,
-						mutations: [
-							{
-								mutationId: `mutation-race-${index}`,
-								entryId: "entry-1",
-								op: "upsert",
-								baseRevision: 0,
-								blobId: null,
-								encryptedMetadata: `ciphertext-${index}`,
-							},
-						],
-					},
-				),
+				mutationService.commitMutations(session, {
+					type: "commit_mutations",
+					requestId: `req-race-${index}`,
+					mutations: [
+						{
+							mutationId: `mutation-race-${index}`,
+							entryId: "entry-1",
+							op: "upsert",
+							baseRevision: 0,
+							blobId: null,
+							encryptedMetadata: `ciphertext-${index}`,
+						},
+					],
+				}),
 			),
 		);
 
 		const results = attempts.map((attempt) => attempt.message.results[0]);
-		expect(results.filter((result) => result.status === "accepted")).toHaveLength(1);
-		expect(results.filter((result) => result.status === "rejected")).toHaveLength(4);
+		expect(
+			results.filter((result) => result.status === "accepted"),
+		).toHaveLength(1);
+		expect(
+			results.filter((result) => result.status === "rejected"),
+		).toHaveLength(4);
 		expect(
 			results
 				.filter((result) => result.status === "rejected")
@@ -220,10 +224,10 @@ describe("sqlite backend: mutation commits", () => {
 	});
 
 	it("captures before_restore history when commit options request it", async () => {
-		const { mutationStore, historyStore } = await createSqliteCoordinator();
+		const { mutationService, historyStore } = await createSqliteCoordinator();
 		const session = testSession();
 
-		await mutationStore.commitMutations(session, {
+		await mutationService.commitMutations(session, {
 			type: "commit_mutations",
 			requestId: "req-1",
 			mutations: [
@@ -237,7 +241,7 @@ describe("sqlite backend: mutation commits", () => {
 				},
 			],
 		});
-		await mutationStore.commitMutations(
+		await mutationService.commitMutations(
 			session,
 			{
 				type: "commit_mutations",
@@ -257,7 +261,9 @@ describe("sqlite backend: mutation commits", () => {
 		);
 
 		const versions = historyStore.listEntryVersions("entry-1", null, 0, 10);
-		expect(versions.map((version) => version.reason)).toEqual(["before_restore"]);
+		expect(versions.map((version) => version.reason)).toEqual([
+			"before_restore",
+		]);
 		expect(versions[0]).toMatchObject({
 			entry_id: "entry-1",
 			source_revision: 1,

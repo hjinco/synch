@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
-import { SyncCoordinatorApplicationError } from "../errors/coordinator-errors";
-import { STAGED_BLOB_STALE_MS } from "../../domain/health-policy";
-import type { BlobObjectRepository, SyncTokenVerifier } from "../ports/outbound";
+import type {
+	BlobObjectRepository,
+	SyncTokenVerifier,
+} from "../ports/outbound";
 import {
 	createCoordinatorService,
 	createTestCoordinatorState,
@@ -26,19 +27,9 @@ describe("coordinator blob lifecycle", () => {
 				storageStatusBroadcastDelayMs: 300,
 			});
 
-			await service.stageBlob(
-				"token",
-				"vault-1",
-				"blob-1",
-				100,
-			);
+			await service.stageBlob("token", "vault-1", "blob-1", 100);
 			storageUsedBytes = 200;
-			await service.stageBlob(
-				"token",
-				"vault-1",
-				"blob-2",
-				100,
-			);
+			await service.stageBlob("token", "vault-1", "blob-2", 100);
 
 			expect(socketService.broadcastStorageStatus).not.toHaveBeenCalled();
 
@@ -68,12 +59,7 @@ describe("coordinator blob lifecycle", () => {
 				storageStatusBroadcastDelayMs: 300,
 			});
 
-			await service.stageBlob(
-				"token",
-				"vault-1",
-				"blob-1",
-				100,
-			);
+			await service.stageBlob("token", "vault-1", "blob-1", 100);
 			service.dispose();
 
 			await vi.advanceTimersByTimeAsync(300);
@@ -96,27 +82,15 @@ describe("coordinator blob lifecycle", () => {
 		} as unknown as SyncTokenVerifier;
 		const pauseSync = vi.fn();
 		const stateRepository = createTestCoordinatorState({
-			withStageTransaction: vi.fn((_blobId, _now, operation) =>
-				operation({
-					readFacts: vi.fn(() => ({
-						existing: {
-							state: "staged" as const,
-							sizeBytes: 66_701,
-							createdAt: 0,
-							},
-							referenceFacts: {
-								hasCurrentReference: false,
-								hasRetainedHistory: false,
-								hasActiveStaging: false,
-							},
-							storageUsedBytes: 0,
-						storageLimitBytes: 100_000_000,
-						maxFileSizeBytes: 10_000_000,
-					})),
-					persistStage: vi.fn(),
-					pauseSync,
-				}),
-			),
+			readBlob: vi.fn(() => ({
+				blob_id: "blob-stale",
+				state: "staged" as const,
+				size_bytes: 66_701,
+				created_at: 0,
+				last_uploaded_at: 0,
+				delete_after: 1,
+			})),
+			pauseSync,
 		});
 		const socketService = socketServiceMock();
 		const service = createCoordinatorService({
@@ -126,19 +100,9 @@ describe("coordinator blob lifecycle", () => {
 		});
 
 		await expect(
-			service.stageBlob(
-				"token",
-				"vault-1",
-				"blob-stale",
-				66_701,
-			),
+			service.stageBlob("token", "vault-1", "blob-stale", 66_701),
 		).rejects.toMatchObject({ code: "sync_paused" });
 
-		expect(stateRepository.withStageTransaction).toHaveBeenCalledWith(
-			"blob-stale",
-			expect.any(Number),
-			expect.any(Function),
-		);
 		expect(pauseSync).toHaveBeenCalledWith(
 			expect.any(Number),
 			expect.stringContaining("blob-stale"),
@@ -161,20 +125,17 @@ describe("coordinator blob lifecycle", () => {
 			})),
 		} as unknown as SyncTokenVerifier;
 		const stateRepository = createTestCoordinatorState({
-			readBlobFacts: vi.fn(() => ({
-				blob: {
-					blob_id: "blob-1",
-					state: "live" as const,
-					size_bytes: 42,
-					created_at: 1,
-					last_uploaded_at: 1,
-					delete_after: null,
-				},
-				referenceFacts: {
-					hasCurrentReference: true,
+			readBlob: vi.fn(() => ({
+				blob_id: "blob-1",
+				state: "live" as const,
+				size_bytes: 42,
+				created_at: 1,
+				last_uploaded_at: 1,
+				delete_after: null,
+			})),
+			read: vi.fn(() => ({
+				hasCurrentReference: true,
 				hasRetainedHistory: false,
-				hasActiveStaging: false,
-			},
 			})),
 		});
 		const blobRepository = {
@@ -192,7 +153,7 @@ describe("coordinator blob lifecycle", () => {
 			"token",
 			"vault-1",
 		);
-		expect(stateRepository.readBlobFacts).toHaveBeenCalledWith(
+		expect(stateRepository.read).toHaveBeenCalledWith(
 			"blob-1",
 			expect.any(Number),
 		);
@@ -210,21 +171,21 @@ describe("coordinator blob lifecycle", () => {
 				exp: 200,
 			})),
 		} as unknown as SyncTokenVerifier;
-		const deleteStagedBlob = vi.fn();
+		const deleteStagedBlob = vi.fn(() => []);
 		const stateRepository = createTestCoordinatorState({
-			withBlobTransaction: vi.fn((_blobId, _now, operation) =>
-				operation({
-					readFacts: vi.fn(() => ({
-						blob: { state: "staged" as const, sizeBytes: 42 },
-						referenceFacts: {
-							hasCurrentReference: true,
-							hasRetainedHistory: false,
-							hasActiveStaging: false,
-						},
-					})),
-					deleteStagedBlob,
-				}),
-			),
+			readBlob: vi.fn(() => ({
+				blob_id: "blob-1",
+				state: "staged" as const,
+				size_bytes: 42,
+				created_at: 1,
+				last_uploaded_at: 1,
+				delete_after: 100,
+			})),
+			read: vi.fn(() => ({
+				hasCurrentReference: true,
+				hasRetainedHistory: false,
+			})),
+			deleteBlobRecord: deleteStagedBlob,
 		});
 		const service = createCoordinatorService({
 			syncTokenService,
@@ -233,11 +194,6 @@ describe("coordinator blob lifecycle", () => {
 
 		await service.abortStagedBlob("token", "vault-1", "blob-1");
 
-		expect(stateRepository.withBlobTransaction).toHaveBeenCalledWith(
-			"blob-1",
-			expect.any(Number),
-			expect.any(Function),
-		);
 		expect(deleteStagedBlob).not.toHaveBeenCalled();
 	});
 
@@ -253,11 +209,7 @@ describe("coordinator blob lifecycle", () => {
 			})),
 		} as unknown as SyncTokenVerifier;
 		const stateRepository = createTestCoordinatorState({
-			withStageTransaction: vi.fn(() => {
-				throw new SyncCoordinatorApplicationError("quota_exceeded", {
-					message: "simulated quota failure",
-				});
-			}),
+			readStorageUsedBytes: vi.fn(() => 100_000_000),
 		});
 		const service = createCoordinatorService({
 			syncTokenService,
@@ -265,9 +217,10 @@ describe("coordinator blob lifecycle", () => {
 			socketService: socketServiceMock(),
 		});
 
-		await expect(service.stageBlob("token", "vault-1", "blob-1", 42)).rejects.toMatchObject({
+		await expect(
+			service.stageBlob("token", "vault-1", "blob-1", 42),
+		).rejects.toMatchObject({
 			code: "quota_exceeded",
-			details: { message: "simulated quota failure" },
 		});
 	});
 
@@ -283,11 +236,14 @@ describe("coordinator blob lifecycle", () => {
 			})),
 		} as unknown as SyncTokenVerifier;
 		const stateRepository = createTestCoordinatorState({
-			withStageTransaction: vi.fn(() => {
-				throw new SyncCoordinatorApplicationError("blob_size_changed", {
-					message: "simulated blob size conflict",
-				});
-			}),
+			readBlob: vi.fn(() => ({
+				blob_id: "blob-1",
+				state: "staged" as const,
+				size_bytes: 43,
+				created_at: Date.now(),
+				last_uploaded_at: Date.now(),
+				delete_after: Date.now() + 1000,
+			})),
 		});
 		const service = createCoordinatorService({
 			syncTokenService,
@@ -295,9 +251,10 @@ describe("coordinator blob lifecycle", () => {
 			socketService: socketServiceMock(),
 		});
 
-		await expect(service.stageBlob("token", "vault-1", "blob-1", 42)).rejects.toMatchObject({
+		await expect(
+			service.stageBlob("token", "vault-1", "blob-1", 42),
+		).rejects.toMatchObject({
 			code: "blob_size_changed",
-			details: { message: "simulated blob size conflict" },
 		});
 	});
 });

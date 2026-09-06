@@ -2,7 +2,7 @@ import { decideEntryMutation } from "../../domain/entry-policy";
 import type {
 	BlobObjectKeyBuilder,
 	BlobObjectRepository,
-	MutationStore,
+	CoordinatorUnitOfWork,
 	VaultStateStore,
 } from "../ports/outbound";
 import type {
@@ -18,7 +18,9 @@ import type { HealthService } from "./health-service";
 
 export class MutationService {
 	constructor(
-		private readonly mutationStore: MutationStore,
+		private readonly unitOfWork: CoordinatorUnitOfWork<
+			"entries" | "versions" | "blobs" | "blobReferences" | "state"
+		>,
 		private readonly blobGcService: Pick<BlobGcService, "scheduleNext">,
 		private readonly vaultStateStore: Pick<
 			VaultStateStore,
@@ -55,7 +57,13 @@ export class MutationService {
 		const now = Date.now();
 		const versionHistoryRetentionMs =
 			this.vaultStateStore.readVersionHistoryRetentionDays() * DAY_IN_MS;
-		const result = this.mutationStore.withTransaction((transaction) => {
+		const result = this.unitOfWork.run((stores) => {
+			let nextCursor: number | null = null;
+			const readCursor = () => {
+				if (stores.state.readVaultId() !== session.vaultId)
+					throw new Error("durable object vault id mismatch");
+				return stores.state.currentCursor();
+			};
 			const results: CommitMutationBatchResult[] = [];
 			let highestResponseCursor: number | null = null;
 			let highestBroadcastCursor: number | null = null;
@@ -75,7 +83,7 @@ export class MutationService {
 				}
 				seenMutationIds.add(mutationId);
 
-				const current = transaction.readEntry(mutation.entryId);
+				const current = stores.entries.readMutationEntry(mutation.entryId);
 				const mutationDecision = decideEntryMutation({
 					current: current
 						? {
@@ -136,7 +144,7 @@ export class MutationService {
 						continue;
 					}
 
-					const nextBlobState = transaction.readBlobState(nextBlobId);
+					const nextBlobState = stores.blobs.readBlob(nextBlobId)?.state;
 					if (!nextBlobState) {
 						results.push({
 							status: "rejected",
@@ -149,8 +157,9 @@ export class MutationService {
 					}
 
 					if (nextBlobState === "pending_delete") {
-						transaction.restagePendingDeleteBlob(
+						stores.blobs.updateState(
 							nextBlobId,
+							"staged",
 							now + this.blobGracePeriodMs,
 						);
 					}
@@ -158,7 +167,7 @@ export class MutationService {
 
 				const versionExpiresAt = now + versionHistoryRetentionMs;
 				if (mutationDecision.forcedHistoryBefore && current) {
-					transaction.insertEntryVersion({
+					stores.versions.insertEntryVersion({
 						versionId: crypto.randomUUID(),
 						entryId: mutation.entryId,
 						sourceRevision: current.revision,
@@ -174,8 +183,9 @@ export class MutationService {
 					});
 				}
 
-				const cursor = transaction.allocateCursor(session.vaultId);
-				transaction.upsertEntry({
+				const cursor: number = (nextCursor ?? readCursor()) + 1;
+				nextCursor = cursor;
+				stores.entries.upsertEntry({
 					entryId: mutation.entryId,
 					revision: mutationDecision.revision,
 					blobId: nextBlobId,
@@ -189,7 +199,7 @@ export class MutationService {
 				});
 
 				if (mutationDecision.captureAutoVersion) {
-					transaction.insertEntryVersion({
+					stores.versions.insertEntryVersion({
 						versionId: crypto.randomUUID(),
 						entryId: mutation.entryId,
 						sourceRevision: mutationDecision.revision,
@@ -202,25 +212,24 @@ export class MutationService {
 						expiresAt: versionExpiresAt,
 						createdByUserId: session.userId,
 						createdByLocalVaultId: session.localVaultId,
-						ignoreConflict: true,
 					});
 				}
 
 				if (nextBlobId) {
-					transaction.markBlobLive(nextBlobId);
+					stores.blobs.updateState(nextBlobId, "live", null);
 				}
-				if (currentBlobId && currentBlobId !== nextBlobId) {
-					transaction.markBlobPendingDeleteIfUnreferenced(
-						currentBlobId,
-						now,
-					);
+				// Replacing the current reference starts retirement even when history
+				// still pins the ciphertext. GC separately waits for that history to expire.
+				if (
+					currentBlobId &&
+					currentBlobId !== nextBlobId &&
+					!stores.blobReferences.read(currentBlobId, now).hasCurrentReference
+				) {
+					stores.blobs.updateState(currentBlobId, "pending_delete", now);
 				}
 
 				highestResponseCursor = Math.max(highestResponseCursor ?? 0, cursor);
-				highestBroadcastCursor = Math.max(
-					highestBroadcastCursor ?? 0,
-					cursor,
-				);
+				highestBroadcastCursor = Math.max(highestBroadcastCursor ?? 0, cursor);
 				results.push({
 					status: "accepted",
 					mutationId,
@@ -230,10 +239,8 @@ export class MutationService {
 				});
 			}
 
-			transaction.finalizeCommit(now);
-			const responseCursor =
-				highestResponseCursor ??
-				transaction.readCurrentCursor(session.vaultId);
+			if (nextCursor !== null) stores.state.saveCommit(nextCursor, now);
+			const responseCursor = highestResponseCursor ?? readCursor();
 			return {
 				message: {
 					type: "commit_mutations_committed",

@@ -1,14 +1,15 @@
 import { SyncCoordinatorApplicationError } from "../errors/coordinator-errors";
-import {
-	decideBlobStage,
-	type BlobStageDecision,
-} from "../../domain/blob-policy";
+import { type BlobStageDecision } from "../../domain/blob-policy";
 import { isBlobPinned } from "../../domain/blob-gc-policy";
-import { STAGED_BLOB_STALE_MS } from "../../domain/health-policy";
+import {
+	stageBlobRecord,
+	accountForDeletedBlobs,
+	deleteUnreferencedStagedBlob,
+} from "./blob-record-operations";
 import type {
 	BlobObjectKeyBuilder,
 	BlobObjectRepository,
-	BlobStateStore,
+	CoordinatorUnitOfWork,
 	SocketGateway,
 	SyncTokenVerifier,
 } from "../ports/outbound";
@@ -18,12 +19,11 @@ import type { HealthService } from "./health-service";
 export class BlobService {
 	constructor(
 		private readonly syncTokenService: SyncTokenVerifier,
-		private readonly blobStore: BlobStateStore,
-		private readonly blobGcService: Pick<BlobGcService, "scheduleAt">,
-		private readonly socketService: Pick<
-			SocketGateway,
-			"closeAllSockets"
+		private readonly unitOfWork: CoordinatorUnitOfWork<
+			"blobs" | "blobReferences" | "state"
 		>,
+		private readonly blobGcService: Pick<BlobGcService, "scheduleAt">,
+		private readonly socketService: Pick<SocketGateway, "closeAllSockets">,
 		private readonly blobRepository: BlobObjectRepository,
 		private readonly objectKeyBuilder: BlobObjectKeyBuilder,
 		private readonly blobGracePeriodMs: number,
@@ -42,44 +42,23 @@ export class BlobService {
 		await this.syncTokenService.verifySyncToken(token, vaultId);
 
 		const now = Date.now();
-		const decision = this.blobStore.withStageTransaction(blobId, now, (transaction) => {
-			const { referenceFacts, ...facts } = transaction.readFacts();
-			const next = decideBlobStage({
+		const decision = this.unitOfWork.run((stores) =>
+			stageBlobRecord(
+				stores,
 				blobId,
 				sizeBytes,
 				now,
-				staleAfterMs: STAGED_BLOB_STALE_MS,
-				...facts,
-				isPinned: facts.existing
-					? isBlobPinned(referenceFacts, false)
-					: false,
-			});
+				now + this.blobGracePeriodMs,
+			),
+		);
+		if (decision.kind === "rejected") throwBlobStageError(blobId, decision);
 
-			if (next.kind === "sync_paused") {
-				transaction.pauseSync(now, next.reason);
-				return next;
-			}
-			if (next.kind === "rejected") {
-				throwBlobStageError(blobId, next);
-			}
-
-			transaction.persistStage({
-				sizeBytes,
-				now,
-				deleteAfter: now + this.blobGracePeriodMs,
-				storageDeltaBytes: next.storageDeltaBytes,
-			});
-			return next;
-		});
 		if (decision.kind === "sync_paused") {
 			this.socketService.closeAllSockets(4403, "sync paused for vault repair");
 			throw syncPausedError();
 		}
 
-		await this.blobGcService.scheduleAt(
-			now + this.blobGracePeriodMs,
-			now,
-		);
+		await this.blobGcService.scheduleAt(now + this.blobGracePeriodMs, now);
 		this.healthService.notifyStorageStatusChanged();
 	}
 
@@ -90,32 +69,38 @@ export class BlobService {
 	): Promise<void> {
 		await this.syncTokenService.verifySyncToken(token, vaultId);
 		const now = Date.now();
-		this.blobStore.withBlobTransaction(blobId, now, (transaction) => {
-			const facts = transaction.readFacts();
-			if (
-				!facts.blob ||
-				facts.blob.state !== "staged" ||
-				isBlobPinned(facts.referenceFacts, false)
-			) {
-				return;
-			}
-			transaction.deleteStagedBlob();
-		});
+		this.unitOfWork.run((stores) =>
+			deleteUnreferencedStagedBlob(stores, blobId, now),
+		);
 		await this.healthService.scheduleSummaryFlush();
 		this.healthService.notifyStorageStatusChanged();
 	}
 
-	async deleteBlob(token: string | null | undefined, vaultId: string, blobId: string): Promise<void> {
+	async deleteBlob(
+		token: string | null | undefined,
+		vaultId: string,
+		blobId: string,
+	): Promise<void> {
 		await this.syncTokenService.verifySyncToken(token, vaultId);
 		const now = Date.now();
-		const { blob, referenceFacts } = this.blobStore.readBlobFacts(blobId, now);
-		if (blob && isBlobPinned(referenceFacts, false)) {
+		const { blob, referenceFacts } = this.unitOfWork.run((stores) => ({
+			blob: stores.blobs.readBlob(blobId),
+			referenceFacts: stores.blobReferences.read(blobId, now),
+		}));
+		if (blob && isBlobPinned(referenceFacts)) {
 			return;
 		}
 
-		await this.blobRepository.delete(this.objectKeyBuilder.blobObjectKey(vaultId, blobId));
+		await this.blobRepository.delete(
+			this.objectKeyBuilder.blobObjectKey(vaultId, blobId),
+		);
 		if (blob) {
-			this.blobStore.deleteBlobRecord(blobId);
+			this.unitOfWork.run((stores) => {
+				accountForDeletedBlobs(
+					stores.state,
+					stores.blobs.deleteBlobRecord(blobId),
+				);
+			});
 			await this.healthService.scheduleSummaryFlush();
 			this.healthService.notifyStorageStatusChanged();
 		}

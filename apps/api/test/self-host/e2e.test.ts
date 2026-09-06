@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import WebSocket from "ws";
 
-import { createNodeRuntime, type NodeRuntime } from "../../src/runtime/node";
+import { createNodeRuntime } from "../../src/runtime/node";
 import { createNodeWebSocketUpgradeHandler } from "../../src/runtime/node-websocket";
 import { LocalDiskBlobObjectStorage } from "../../src/sync-blob-transfer/adapters/outbound/local-disk-object-storage";
 import {
