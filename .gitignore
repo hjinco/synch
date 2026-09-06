@@ -8,7 +8,10 @@ Cargo.lock
 *.tsbuildinfo
 apps/obsidian-plugin/main.js
 apps/api/worker-configuration.d.ts
+# Legacy generated benchmark caches; no longer used.
 packages/sync-client/benchmarks/fixtures/
 
 .omx
 .env
+
+benchmark-results/

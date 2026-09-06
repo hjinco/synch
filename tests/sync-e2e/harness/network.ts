@@ -1,7 +1,6 @@
-import WebSocket from "ws";
-import type { HttpClient } from "@synch/sync-client/http";
+import { createTransport } from "@synch/sync-testkit/transport";
 
-/** Transport-only controls: server replies and conflict decisions always remain real. */
+/** E2E opts into wire capture and corruption; benchmark transport does neither. */
 export class DeviceNetwork {
   readonly sent: string[] = [];
   readonly received: string[] = [];
@@ -18,41 +17,29 @@ export class DeviceNetwork {
     return { hasReached: () => reached, release };
   }
 
-  createWebSocket = (url: string, protocols: string[]): globalThis.WebSocket => {
-    const socket = new WebSocket(url, protocols);
-    socket.on("message", bytes => this.received.push(bytes.toString()));
-    const send = socket.send.bind(socket);
-    socket.send = (data, ...args: unknown[]) => {
-      const text = String(data);
-      this.sent.push(text);
+  private readonly transport = createTransport({
+    sent: text => { this.sent.push(text); },
+    received: text => { this.received.push(text); },
+    beforeSend: text => {
       if (this.hold && JSON.parse(text).type === "commit_mutations") {
         const hold = this.hold;
         this.hold = undefined;
         hold.reached();
-        void hold.release.then(() => { if (socket.readyState === WebSocket.OPEN) send(data); });
-      } else {
-        send(data, ...(args as []));
+        return hold.release;
       }
-    };
-    // ws implements the browser event API consumed by SyncRealtimeClient.
-    return socket as unknown as globalThis.WebSocket;
-  };
-
-  readonly httpClient: HttpClient = {
-    request: async input => {
-      if (input.method === "PUT" && input.body instanceof ArrayBuffer) this.uploads.push(new Uint8Array(input.body.slice(0)));
-      const response = await fetch(input.url, {
-        method: input.method, headers: input.headers, body: input.body, signal: AbortSignal.timeout(10_000),
-      });
-      let bytes = new Uint8Array(await response.arrayBuffer());
-      if (response.ok && (!input.method || input.method === "GET") && input.url.includes("/blobs/")) {
-        this.downloads.push(bytes.slice());
-        if (this.tamperBlob) { bytes = bytes.slice(); bytes[bytes.length - 1] ^= 1; }
-      }
-      const text = new TextDecoder().decode(bytes);
-      let json: unknown;
-      try { json = JSON.parse(text); } catch { /* Binary response. */ }
-      return { status: response.status, text, json, arrayBuffer: bytes.buffer as ArrayBuffer };
     },
-  };
+    beforeRequest: input => {
+      if (input.method === "PUT" && input.body instanceof ArrayBuffer) this.uploads.push(new Uint8Array(input.body.slice(0)));
+    },
+    response: (input, status, buffer) => {
+      if (status >= 200 && status < 300 && (!input.method || input.method === "GET") && input.url.includes("/blobs/")) {
+        const bytes = new Uint8Array(buffer);
+        this.downloads.push(bytes.slice());
+        if (this.tamperBlob) bytes[bytes.length - 1] ^= 1;
+      }
+    },
+  }, 10_000);
+  readonly httpClient = this.transport.httpClient;
+  readonly createWebSocket = this.transport.createWebSocket;
+  close() { this.transport.close(); }
 }

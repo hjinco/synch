@@ -75,5 +75,7 @@ export class Device {
     return { device: this.name, files: await this.snapshot(), connection: await this.store.readSyncConnection(),
       pending: await this.store.listDirtyEntries(100), errors: this.errors.map(String), diagnostics: this.diagnostics.getSnapshot() };
   }
-  async close() { await this.engine.dispose(); await this.store.close(); }
+  async close() {
+    try { await this.engine.dispose(); } finally { this.network.close(); await this.store.close(); }
+  }
 }

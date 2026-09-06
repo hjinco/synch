@@ -19,7 +19,6 @@
   },
   "scripts": {
     "test": "vitest --config vitest.config.mts",
-    "bench": "vitest bench --config vitest.bench.config.mts",
     "typecheck": "tsgo --noEmit --skipLibCheck"
   },
   "dependencies": {

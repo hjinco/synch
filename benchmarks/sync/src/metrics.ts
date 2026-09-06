@@ -1,10 +1,10 @@
 /** Per-run observations. No file contents or identifiers are included in reports. */
-export class PushMetrics {
+export class SyncMetrics {
   private startedAt = 0;
   private totalMs = 0;
-  private firstCommitMs: number | null = null;
+  private firstCommitAckMs: number | null = null;
   private readonly completed = new Map<string, number>();
-  private slowUploadCompletedMs: number | null = null;
+  private uploadCompletedMs: number | null = null;
   private uploadRequests = 0;
   private uploadedBytes = 0;
   private commitRequests = 0;
@@ -35,16 +35,16 @@ export class PushMetrics {
     this.uploadedBytes += bytes;
   }
 
-  slowUploadCompleted(): void {
-    this.slowUploadCompletedMs = this.elapsed();
+  attachmentUploadCompleted(): void {
+    this.uploadCompletedMs = this.elapsed();
   }
 
   commitStarted(): void {
     this.commitRequests += 1;
   }
 
-  committed(): void {
-    this.firstCommitMs ??= this.elapsed();
+  commitAcknowledged(): void {
+    this.firstCommitAckMs ??= this.elapsed();
   }
 
   fileCompleted(path: string): void {
@@ -59,15 +59,15 @@ export class PushMetrics {
       .map(([, time]) => time);
     return {
       totalMs: this.totalMs,
-      firstCommitMs: this.firstCommitMs,
+      firstCommitAckMs: this.firstCommitAckMs,
       firstNoteAppliedMs: notes.length ? Math.min(...notes) : null,
       fileAppliedP95Ms: percentile95(all),
       noteAppliedP95Ms: percentile95(notes),
       filesApplied: all.length,
-      notesAppliedBeforeSlowUpload: this.slowUploadCompletedMs === null
+      notesAppliedBeforeAttachmentUploadCompleted: this.uploadCompletedMs === null
         ? null
-        : notes.filter((time) => time < this.slowUploadCompletedMs!).length,
-      slowUploadCompletedMs: this.slowUploadCompletedMs,
+        : notes.filter((time) => time < this.uploadCompletedMs!).length,
+      uploadCompletedMs: this.uploadCompletedMs,
       uploadRequests: this.uploadRequests,
       uploadedBytes: this.uploadedBytes,
       commitRequests: this.commitRequests,

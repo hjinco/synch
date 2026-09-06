@@ -1,10 +1,13 @@
 {
-  "name": "@synch/sync-e2e",
+  "name": "@synch/sync-benchmarks",
   "private": true,
   "type": "module",
   "scripts": {
-    "test:e2e": "vitest run",
-    "typecheck": "tsgo --noEmit"
+    "bench": "tsx src/cli.ts",
+    "compare": "tsx src/compare.ts",
+    "test": "vitest run",
+    "typecheck": "tsgo --noEmit",
+    "test:lifecycle": "vitest run --config vitest.integration.config.ts"
   },
   "devDependencies": {
     "@synch/sync-client": "workspace:*",
@@ -14,6 +17,7 @@
     "typescript": "^5.9.3",
     "vitest": "^4.1.4",
     "ws": "^8.20.0",
-    "@synch/sync-testkit": "workspace:*"
+    "@synch/sync-testkit": "workspace:*",
+    "tsx": "^4.21.0"
   }
 }

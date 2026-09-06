@@ -17,13 +17,14 @@
     "build:plugin": "pnpm -C apps/obsidian-plugin build",
     "release:plugin": "pnpm -C apps/obsidian-plugin release:prepare",
     "sync:api-lockfile": "node ./scripts/sync-api-lockfile.mjs",
-    "bench:sync-client:compare": "node ./scripts/bench-sync-client-compare.mjs",
     "check:api-lockfile": "node ./scripts/sync-api-lockfile.mjs --check",
     "test:api": "pnpm -C apps/api test:integration:cloudflare",
     "test:affected": "pnpm -r --if-present --filter \"...[origin/main]\" run test -- --run",
     "test:rust": "cargo test",
     "typecheck": "pnpm -r --if-present typecheck",
-    "typecheck:affected": "pnpm -r --if-present --filter \"...[origin/main]\" run typecheck"
+    "typecheck:affected": "pnpm -r --if-present --filter \"...[origin/main]\" run typecheck",
+    "bench:sync": "pnpm -C benchmarks/sync bench",
+    "bench:sync:compare": "pnpm -C benchmarks/sync compare"
   },
   "devDependencies": {
     "@typescript/native-preview": "^7.0.0-dev.20260423.1",

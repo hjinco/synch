@@ -55,3 +55,6 @@ If the host supplies a runtime, the host owns its disposal. Internal services
 borrow a required runtime; standalone service tests supply and dispose one
 explicitly. HTTP blob uploads and downloads share one authorized client,
 which owns API URL resolution and token refresh.
+
+System-level performance benchmarks live in `benchmarks/sync` and use real local
+Node/Cloudflare servers. Run `pnpm bench:sync` from the repository root.

@@ -68,3 +68,8 @@ The network helper only delays actual messages or corrupts actual blob responses
 for explicit failure tests. It never fabricates successful server responses or
 implements server conflict policy. Scenario ordering uses completion conditions,
 not timing sleeps; the server readiness probe polls the health endpoint.
+
+Server/account provisioning and real transport are shared through
+`@synch/sync-testkit`. E2E-specific wire capture and fault injection remain in
+this suite. System performance measurements live in `benchmarks/sync`; E2E
+assertion and scenario lifecycles are not reused as benchmark timing boundaries.
