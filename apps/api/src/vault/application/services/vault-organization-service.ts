@@ -1,7 +1,7 @@
 import type { VaultOrganizationReader } from "../ports/inbound/vault-organization-reader";
 import type { VaultCatalogStore } from "../ports/outbound/vault-catalog-store";
 
-export class ReadVaultOrganizationUseCase implements VaultOrganizationReader {
+export class VaultOrganizationService implements VaultOrganizationReader {
 	constructor(private readonly store: VaultCatalogStore) {}
 
 	async listActiveVaultIdsForOrganization(organizationId: string): Promise<string[]> {

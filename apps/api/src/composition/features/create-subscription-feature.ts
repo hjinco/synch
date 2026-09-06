@@ -14,9 +14,7 @@ import {
 } from "../../subscription/adapters/outbound/coordinator-vault-policy-writer";
 import type { SubscriptionPolicyRefreshQueue } from "../../subscription/application/ports/outbound/subscription-policy-refresh-queue";
 import type { SubscriptionPolicyRefreshMessage } from "../../subscription/application";
-import { ReadSubscriptionAccessUseCase } from "../../subscription/application/use-cases/read-subscription-access";
-import { ReadOrganizationPolicyUseCase } from "../../subscription/application/use-cases/read-organization-policy";
-import { RefreshOrganizationPolicyUseCase } from "../../subscription/application/use-cases/refresh-organization-policy";
+import { SubscriptionService } from "../../subscription/application/services/subscription-service";
 import type { AppDb } from "../../db/client";
 
 export type SubscriptionFeatureConfig = {
@@ -24,12 +22,18 @@ export type SubscriptionFeatureConfig = {
 	productIdsByPlanId?: SubscriptionProductIdsByPlanId;
 };
 
+export type SubscriptionRefreshDependencies = {
+	vaultReader: OrganizationVaultReader;
+	vaultPolicyTransport: VaultPolicyTransport;
+};
+
 export type SubscriptionFeature = {
+	service: SubscriptionService;
 	policyReader: SubscriptionPolicyReader;
 	accessReader: SubscriptionAccessReader;
 };
 
-export type SubscriptionRefreshFeature = SubscriptionFeature & {
+export type SubscriptionRefreshFeature = {
 	refreshOrganizationPolicy: RefreshOrganizationPolicy;
 	consumer: SubscriptionPolicyRefreshConsumer;
 };
@@ -38,37 +42,40 @@ export type SubscriptionRefreshFeature = SubscriptionFeature & {
 export function createSubscriptionFeature(
 	db: AppDb,
 	config: SubscriptionFeatureConfig,
+	refresh?: SubscriptionRefreshDependencies,
 ): SubscriptionFeature {
-	const dataReader = new DrizzleSubscriptionPolicyDataReader(db);
-	return {
-		policyReader: new ReadOrganizationPolicyUseCase({
-			selfHosted: config.selfHosted,
-			productIdsByPlanId: config.productIdsByPlanId,
-			dataReader,
+	const service = new SubscriptionService({
+		selfHosted: config.selfHosted,
+		productIdsByPlanId: config.productIdsByPlanId,
+		dataReader: new DrizzleSubscriptionPolicyDataReader(db),
+		...(refresh && {
+			vaultReader: refresh.vaultReader,
+			vaultPolicyWriter: new CoordinatorVaultPolicyWriter(
+				refresh.vaultPolicyTransport,
+			),
 		}),
-		accessReader: new ReadSubscriptionAccessUseCase(),
+	});
+	return {
+		service,
+		policyReader: service,
+		accessReader: service,
 	};
 }
 
-/** Creates the policy refresh use case and its queue inbound adapter. */
+/** Creates the policy refresh service and its queue inbound adapter. */
 export function createSubscriptionRefreshFeature(
-	config: SubscriptionFeatureConfig & {
+	config: SubscriptionFeatureConfig & SubscriptionRefreshDependencies & {
 		db: AppDb;
-		vaultReader: OrganizationVaultReader;
-		vaultPolicyTransport: VaultPolicyTransport;
 	},
 ): SubscriptionRefreshFeature {
-	const subscriptionFeature = createSubscriptionFeature(config.db, config);
-	const refreshOrganizationPolicy = new RefreshOrganizationPolicyUseCase(
-		subscriptionFeature.policyReader,
-		config.vaultReader,
-		new CoordinatorVaultPolicyWriter(config.vaultPolicyTransport),
-	);
+	const { service } = createSubscriptionFeature(config.db, config, {
+		vaultReader: config.vaultReader,
+		vaultPolicyTransport: config.vaultPolicyTransport,
+	});
 
 	return {
-		...subscriptionFeature,
-		refreshOrganizationPolicy,
-		consumer: new SubscriptionPolicyRefreshConsumer(refreshOrganizationPolicy),
+		refreshOrganizationPolicy: service,
+		consumer: new SubscriptionPolicyRefreshConsumer(service),
 	};
 }
 

@@ -41,7 +41,7 @@ export function createCoordinatorRuntime(ctx: DurableObjectState, env: Cloudflar
 
 	return {
 		app: application.app,
-		useCases: application.useCases,
+		services: application.services,
 		socketMessageHandler: application.socketMessageHandler,
 		socketGateway: socketService,
 		ready,

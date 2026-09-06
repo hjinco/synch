@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { VerifySyncTokenUseCase } from "../../../application/use-cases/verify-sync-token";
+import { VerifySyncTokenService } from "../../../application/services/sync-token-service";
 import { JoseSyncTokenCodec } from "../../outbound/jose-sync-token-codec";
 import { createRequestTokenVerifier, readSyncTokenFromRequest } from "./request-auth";
 
@@ -9,7 +9,7 @@ const SECRET = "unit-test-secret";
 describe("sync token request authentication", () => {
 	it("prefers the bearer token over websocket auth protocol", async () => {
 		const codec = new JoseSyncTokenCodec(SECRET);
-		const verifier = createRequestTokenVerifier(new VerifySyncTokenUseCase(codec));
+		const verifier = createRequestTokenVerifier(new VerifySyncTokenService(codec));
 		const bearer = await codec.signSyncToken({
 			sub: "user-1",
 			vaultId: "vault-1",

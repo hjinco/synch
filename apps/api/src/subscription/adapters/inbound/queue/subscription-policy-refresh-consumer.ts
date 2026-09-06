@@ -3,11 +3,11 @@ import type { SubscriptionPolicyRefreshMessage } from "../../../application/dto/
 
 export class SubscriptionPolicyRefreshConsumer {
 	constructor(
-		private readonly refreshOrganizationPolicyUseCase: RefreshOrganizationPolicy,
+		private readonly refreshOrganizationPolicyService: RefreshOrganizationPolicy,
 	) {}
 
 	async refreshOrganizationPolicy(organizationId: string): Promise<void> {
-		await this.refreshOrganizationPolicyUseCase.refreshOrganizationPolicy(
+		await this.refreshOrganizationPolicyService.refreshOrganizationPolicy(
 			organizationId,
 		);
 	}

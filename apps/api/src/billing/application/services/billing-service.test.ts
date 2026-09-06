@@ -11,7 +11,7 @@ import type { BillingSubscriptionStore } from "../ports/outbound/billing-subscri
 import type { BillingApplicationConfig } from "../dto/billing";
 import { BillingApplicationService } from "./billing-service";
 import type { SubscriptionProductIdsByPlanId } from "../../../subscription/application";
-import { ReadSubscriptionAccessUseCase } from "../../../subscription/application/use-cases/read-subscription-access";
+import { SubscriptionService } from "../../../subscription/application/services/subscription-service";
 
 describe("BillingApplicationService", () => {
 	beforeEach(() => {
@@ -717,7 +717,7 @@ function createBillingService(
 			updateSubscriptionProduct: polarMocks.updatePolarSubscriptionProduct,
 			createCustomerPortalSession: polarMocks.createPolarCustomerPortalSession,
 		} as never,
-		new ReadSubscriptionAccessUseCase(),
+		new SubscriptionService(),
 		{
 			productIdsByPlanId,
 			publicBaseUrl: "https://api.synch.example",

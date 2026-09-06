@@ -1,6 +1,8 @@
 import type { SubscriptionPolicyReader } from "../../../subscription/application";
 import type { InactiveVaultCandidate } from "../../domain/types";
+import type { PurgeVault } from "../ports/inbound/purge-vault";
 import type { RunVaultRetention } from "../ports/inbound/run-vault-retention";
+import type { CoordinatorPurgeWriter } from "../ports/outbound/coordinator-purge-writer";
 import type { VaultLifecycleStore } from "../ports/outbound/vault-lifecycle-store";
 import type { VaultPurgeQueue } from "../ports/outbound/vault-purge-queue";
 
@@ -9,7 +11,26 @@ export const FREE_VAULT_INACTIVITY_DELETE_AFTER_MS =
 	90 * 24 * 60 * 60 * 1000;
 const SCAN_PAGE_SIZE = 100;
 
-export class RunVaultRetentionUseCase implements RunVaultRetention {
+export class VaultPurgeService implements PurgeVault {
+	constructor(
+		private readonly store: VaultLifecycleStore,
+		private readonly coordinator: CoordinatorPurgeWriter,
+	) {}
+
+	async purgeVault(vaultId: string): Promise<void> {
+		await this.store.markVaultPurgeRunning(vaultId);
+		try {
+			await this.coordinator.purgeVault(vaultId);
+			await this.store.hardDeleteVault(vaultId);
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			await this.store.markVaultPurgeFailed(vaultId, message);
+			throw error;
+		}
+	}
+}
+
+export class RunVaultRetentionService implements RunVaultRetention {
 	constructor(
 		private readonly store: VaultLifecycleStore,
 		private readonly policyReader: SubscriptionPolicyReader,

@@ -53,7 +53,7 @@ export function createNodeCoordinatorRuntime(
 	let application: ReturnType<typeof createCoordinatorApplication>;
 	const maintenanceScheduler = new NodeMaintenanceScheduler(storageHandle, async () => {
 		try {
-			await vaultLock.run(vaultId, () => application.useCases.handleAlarm());
+			await vaultLock.run(vaultId, () => application.services.handleAlarm());
 		} catch (error) {
 			// Mirrors `SyncCoordinator.alarm()`'s catch: an unhandled rejection
 			// here would crash the whole Node process (unlike a DO, where a
@@ -89,9 +89,9 @@ export function createNodeCoordinatorRuntime(
 			fetch: (request: Request) =>
 				vaultLock.run(vaultId, () => application.app.fetch(request)),
 		},
-		useCases: {
+		services: {
 			handleSocketClose: () =>
-				vaultLock.run(vaultId, () => application.useCases.handleSocketClose()),
+				vaultLock.run(vaultId, () => application.services.handleSocketClose()),
 		},
 		socketMessageHandler: {
 			handle: (connectionId: string, message: ClientControlMessage) =>

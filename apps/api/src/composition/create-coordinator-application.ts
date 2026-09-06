@@ -176,7 +176,7 @@ export function createCoordinatorApplication(
 		healthService,
 		vaultService,
 	);
-	const useCases = bindCoordinatorApi({
+	const services = bindCoordinatorApi({
 		blobService,
 		blobGcService,
 		entryService,
@@ -190,16 +190,16 @@ export function createCoordinatorApplication(
 		deps.socketGateway,
 		cursorStore,
 		healthStore,
-		useCases,
+		services,
 		healthService,
 	);
 
 	return {
 		app: createCoordinatorApp({
-			useCases,
+			services,
 			socketHandshake: deps.socketGateway,
 		}),
-		useCases,
+		services,
 		socketMessageHandler,
 		socketConnectionService,
 		dispose: () => healthService.dispose(),

@@ -9,7 +9,7 @@ import { parseBearerToken, SYNC_WEBSOCKET_AUTH_PROTOCOL_PREFIX } from "../../../
 import type { SyncPauseState, SyncRepairResult } from "../../../application/dto/sync-repair";
 import type { SocketSession, VaultStateLimits } from "../../../application/dto/types";
 
-export interface CoordinatorHttpUseCases {
+export interface CoordinatorHttpServices {
 	repairSyncState(vaultId: string): Promise<SyncRepairResult>;
 	readSyncPause(vaultId: string): SyncPauseState | null;
 	stageBlob(
@@ -40,7 +40,7 @@ const policyLimitsSchema = z.object({
 
 export function createCoordinatorApp(
 	deps: {
-		useCases: CoordinatorHttpUseCases;
+		services: CoordinatorHttpServices;
 		socketHandshake: CoordinatorSocketHandshake;
 	},
 ) {
@@ -56,7 +56,7 @@ export function createCoordinatorApp(
 		),
 		async (c) => {
 			const { vaultId } = c.req.valid("param");
-			return c.json(await deps.useCases.repairSyncState(vaultId));
+			return c.json(await deps.services.repairSyncState(vaultId));
 		},
 	);
 
@@ -70,7 +70,7 @@ export function createCoordinatorApp(
 		),
 		async (c) => {
 			const { vaultId } = c.req.valid("param");
-			return c.json({ syncPause: deps.useCases.readSyncPause(vaultId) });
+			return c.json({ syncPause: deps.services.readSyncPause(vaultId) });
 		},
 	);
 
@@ -95,7 +95,7 @@ export function createCoordinatorApp(
 					400,
 				);
 			}
-			await deps.useCases.stageBlob(readSyncToken(c.req.raw), vaultId, blobId, sizeBytes);
+			await deps.services.stageBlob(readSyncToken(c.req.raw), vaultId, blobId, sizeBytes);
 			return new Response(null, { status: 204 });
 		},
 	);
@@ -111,7 +111,7 @@ export function createCoordinatorApp(
 		),
 		async (c) => {
 			const { vaultId, blobId } = c.req.valid("param");
-			await deps.useCases.abortStagedBlob(readSyncToken(c.req.raw), vaultId, blobId);
+			await deps.services.abortStagedBlob(readSyncToken(c.req.raw), vaultId, blobId);
 			return new Response(null, { status: 204 });
 		},
 	);
@@ -133,7 +133,7 @@ export function createCoordinatorApp(
 		async (c) => {
 			const { vaultId } = c.req.valid("param");
 			const body = c.req.valid("json");
-			const result = await deps.useCases.applyVaultPolicy(
+			const result = await deps.services.applyVaultPolicy(
 				vaultId,
 				body.limits,
 			);
@@ -151,7 +151,7 @@ export function createCoordinatorApp(
 		),
 		async (c) => {
 			const { vaultId } = c.req.valid("param");
-			await deps.useCases.purgeVault(vaultId);
+			await deps.services.purgeVault(vaultId);
 			return new Response(null, { status: 204 });
 		},
 	);
@@ -177,12 +177,12 @@ export function createCoordinatorApp(
 			}
 
 			const { vaultId } = c.req.valid("param");
-			const session = await deps.useCases.prepareSocketSession(
+			const session = await deps.services.prepareSocketSession(
 				readSyncToken(request),
 				vaultId,
 			);
 			const response = await deps.socketHandshake.openSocket(request, session);
-			await deps.useCases.completeSocketOpen();
+			await deps.services.completeSocketOpen();
 			return response;
 		},
 	);

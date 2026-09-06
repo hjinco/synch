@@ -5,12 +5,12 @@ import type { VaultInactivityNotice } from "../../../domain/types";
 
 export class VaultPurgeConsumer {
 	constructor(
-		private readonly purgeVaultUseCase: PurgeVault,
+		private readonly purgeVaultService: PurgeVault,
 		private readonly retentionEmailQueue?: RetentionEmailQueue,
 	) {}
 
 	async purgeVault(vaultId: string): Promise<void> {
-		await this.purgeVaultUseCase.purgeVault(vaultId);
+		await this.purgeVaultService.purgeVault(vaultId);
 	}
 
 	async handleMessage(message: Message<VaultPurgeMessage>): Promise<void> {

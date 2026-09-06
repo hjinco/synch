@@ -78,13 +78,13 @@ describe("SyncCoordinator error boundaries", () => {
 			),
 		).rejects.toBe(error);
 
-		expect(runtime.useCases.commitMutation).not.toHaveBeenCalled();
+		expect(runtime.services.commitMutation).not.toHaveBeenCalled();
 		expect(consoleError).toHaveBeenCalled();
 	});
 
 	it("keeps application RPC error mapping while logging and rethrowing unknown errors", async () => {
 		const applicationError = new SyncCoordinatorApplicationError("not_found");
-		runtime.useCases.commitMutation.mockRejectedValueOnce(applicationError);
+		runtime.services.commitMutation.mockRejectedValueOnce(applicationError);
 
 		await expect(
 			coordinator.commitMutation(
@@ -95,7 +95,7 @@ describe("SyncCoordinator error boundaries", () => {
 		expect(consoleError).not.toHaveBeenCalled();
 
 		const internalError = new Error("sqlite unavailable");
-		runtime.useCases.commitMutation.mockRejectedValueOnce(internalError);
+		runtime.services.commitMutation.mockRejectedValueOnce(internalError);
 
 		await expect(
 			coordinator.commitMutation(
@@ -164,7 +164,7 @@ describe("SyncCoordinator error boundaries", () => {
 	});
 
 	it("does not reject when websocket termination cleanup fails", async () => {
-		runtime.useCases.handleSocketClose.mockRejectedValueOnce(
+		runtime.services.handleSocketClose.mockRejectedValueOnce(
 			new Error("health flush scheduling failed"),
 		);
 
@@ -188,7 +188,7 @@ describe("SyncCoordinator error boundaries", () => {
 			coordinator.webSocketError({} as WebSocket, new Error("socket failure")),
 		).resolves.toBeUndefined();
 
-		expect(runtime.useCases.handleSocketClose).not.toHaveBeenCalled();
+		expect(runtime.services.handleSocketClose).not.toHaveBeenCalled();
 		expect(consoleError).toHaveBeenCalled();
 	});
 });
@@ -198,7 +198,7 @@ function createRuntime() {
 		app: {
 			fetch: vi.fn(async () => new Response("ok")),
 		},
-		useCases: {
+		services: {
 			commitMutation: vi.fn(async () => ({})),
 			handleSocketClose: vi.fn(async () => {}),
 		},

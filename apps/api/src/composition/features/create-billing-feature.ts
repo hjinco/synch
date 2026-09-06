@@ -6,7 +6,7 @@ import type {
 	SubscriptionAccessReader,
 	SubscriptionProductIdsByPlanId,
 } from "../../subscription/application";
-import { BillingApplicationService } from "../../billing/application/use-cases/billing-service";
+import { BillingApplicationService } from "../../billing/application/services/billing-service";
 import { DrizzleBillingStore } from "../../billing/adapters/outbound/drizzle-billing-store";
 import { PolarBillingProvider } from "../../billing/adapters/outbound/polar-provider";
 import { createPolarWebhookPlugin } from "../../billing/adapters/inbound/better-auth/polar-webhook-plugin";

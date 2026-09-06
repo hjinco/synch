@@ -1,13 +1,18 @@
 import { BlobTransferApplicationError } from "../errors/blob-transfer-errors";
 import { isSafeBlobId } from "../../domain/id-policy";
+import type { DownloadBlob } from "../ports/inbound/download-blob";
 import type { UploadBlob } from "../ports/inbound/upload-blob";
 import type { CoordinatorBlobStager } from "../ports/outbound/coordinator-blob-stager";
 import type { BlobObjectStorage } from "../ports/outbound/blob-object-storage";
 import type { VerifySyncToken } from "../../../sync-access/application";
-import type { BlobUploadInput, BlobUploadResponse } from "../dto/blob-transfer";
+import type {
+	BlobDownloadInput,
+	BlobUploadInput,
+	BlobUploadResponse,
+} from "../dto/blob-transfer";
 import type { BlobObjectKeyBuilder } from "../ports/outbound/blob-object-key-builder";
 
-export class UploadBlobUseCase implements UploadBlob {
+export class BlobTransferService implements UploadBlob, DownloadBlob {
 	constructor(
 		private readonly tokenVerifier: VerifySyncToken,
 		private readonly coordinatorBlobStager: CoordinatorBlobStager,
@@ -60,5 +65,15 @@ export class UploadBlobUseCase implements UploadBlob {
 		}
 
 		return { ok: true, blobId: input.blobId };
+	}
+
+	async downloadBlob(input: BlobDownloadInput): Promise<ReadableStream<Uint8Array> | null> {
+		if (!isSafeBlobId(input.vaultId) || !isSafeBlobId(input.blobId)) {
+			throw new BlobTransferApplicationError("invalid_id");
+		}
+		await this.tokenVerifier.verifySyncToken(input.token, input.vaultId);
+		return await this.blobStorage.download(
+			this.objectKeyBuilder.blobObjectKey(input.vaultId, input.blobId),
+		);
 	}
 }

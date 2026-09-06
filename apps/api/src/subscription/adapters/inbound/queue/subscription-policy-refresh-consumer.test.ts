@@ -4,7 +4,7 @@ import { SubscriptionPolicyRefreshConsumer } from "./subscription-policy-refresh
 
 describe("SubscriptionPolicyRefreshConsumer", () => {
 	it("refreshes organization policy and acknowledges the queue message", async () => {
-		const refreshOrganizationPolicyUseCase = {
+		const refreshOrganizationPolicyService = {
 			refreshOrganizationPolicy: vi.fn(async () => {}),
 		};
 		const message = {
@@ -16,20 +16,20 @@ describe("SubscriptionPolicyRefreshConsumer", () => {
 			retry: vi.fn(),
 		};
 		const consumer = new SubscriptionPolicyRefreshConsumer(
-			refreshOrganizationPolicyUseCase,
+			refreshOrganizationPolicyService,
 		);
 
 		await consumer.handleMessage(message as never);
 
 		expect(
-			refreshOrganizationPolicyUseCase.refreshOrganizationPolicy,
+			refreshOrganizationPolicyService.refreshOrganizationPolicy,
 		).toHaveBeenCalledWith("org-1");
 		expect(message.ack).toHaveBeenCalledOnce();
 		expect(message.retry).not.toHaveBeenCalled();
 	});
 
 	it("retries the queue message when policy refresh fails", async () => {
-		const refreshOrganizationPolicyUseCase = {
+		const refreshOrganizationPolicyService = {
 			refreshOrganizationPolicy: vi.fn(async () => {
 				throw new Error("coordinator unavailable");
 			}),
@@ -43,7 +43,7 @@ describe("SubscriptionPolicyRefreshConsumer", () => {
 			retry: vi.fn(),
 		};
 		const consumer = new SubscriptionPolicyRefreshConsumer(
-			refreshOrganizationPolicyUseCase,
+			refreshOrganizationPolicyService,
 		);
 
 		await consumer.handleMessage(message as never);

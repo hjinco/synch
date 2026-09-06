@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import type { VaultService } from "../../../vault/application";
 import type { SyncTokenClaims } from "../dto/token";
-import { IssueSyncTokenUseCase } from "./issue-sync-token";
+import { IssueSyncTokenService } from "./sync-token-service";
 
 function accessibleVault() {
 	return {
@@ -17,7 +17,7 @@ function accessibleVault() {
 	};
 }
 
-describe("IssueSyncTokenUseCase", () => {
+describe("IssueSyncTokenService", () => {
 	it("issues a token for an accessible vault", async () => {
 		const vaultService = {
 			getAccessibleVault: vi.fn(async () => accessibleVault()),
@@ -26,7 +26,7 @@ describe("IssueSyncTokenUseCase", () => {
 			signSyncToken: vi.fn(async (_claims: SyncTokenClaims) => "token"),
 		};
 		const pauseReader = { readSyncPause: vi.fn(async () => null) };
-		const useCase = new IssueSyncTokenUseCase(vaultService, signer, pauseReader, 120);
+		const useCase = new IssueSyncTokenService(vaultService, signer, pauseReader, 120);
 
 		await expect(
 			useCase.issueSyncToken({
@@ -58,7 +58,7 @@ describe("IssueSyncTokenUseCase", () => {
 		} as unknown as VaultService;
 		const signer = { signSyncToken: vi.fn(async () => "token") };
 		const pauseReader = { readSyncPause: vi.fn(async () => null) };
-		const useCase = new IssueSyncTokenUseCase(vaultService, signer, pauseReader);
+		const useCase = new IssueSyncTokenService(vaultService, signer, pauseReader);
 
 		await expect(
 			useCase.issueSyncToken({
@@ -82,7 +82,7 @@ describe("IssueSyncTokenUseCase", () => {
 				reason: "staged blob remained staged for at least one hour",
 			})),
 		};
-		const useCase = new IssueSyncTokenUseCase(vaultService, signer, pauseReader);
+		const useCase = new IssueSyncTokenService(vaultService, signer, pauseReader);
 
 		await expect(
 			useCase.issueSyncToken({

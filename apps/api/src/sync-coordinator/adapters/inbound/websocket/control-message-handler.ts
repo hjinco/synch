@@ -26,7 +26,7 @@ import type {
 import type { CoordinatorSocketMessageHandler } from "./socket-message-handler";
 import { PresenceStore } from "../../outbound/socket/presence-store";
 
-export type CoordinatorControlMessageUseCases = {
+export type CoordinatorControlMessageServices = {
 	detachLocalVault(session: SocketSession): Promise<void>;
 	commitMutations(
 		session: SocketSession,
@@ -77,7 +77,7 @@ export class CoordinatorControlMessageHandler
 			"currentCursor" | "recordLocalVaultConnection" | "readVaultLimits"
 		>,
 		private readonly healthStore: Pick<HealthStateStore, "readStorageStatus">,
-		private readonly useCases: CoordinatorControlMessageUseCases,
+		private readonly services: CoordinatorControlMessageServices,
 		private readonly healthSummaryScheduler: {
 			scheduleSummaryFlush(now?: number): Promise<void>;
 		},
@@ -138,7 +138,7 @@ export class CoordinatorControlMessageHandler
 		if (parsed.type === "commit_mutations") {
 			let result: CommitMutationsResult;
 			try {
-				result = await this.useCases.commitMutations(session, parsed);
+				result = await this.services.commitMutations(session, parsed);
 			} catch (error) {
 				this.socketService.sendSocketMessage(connectionId, {
 					type: "commit_mutations_failed",
@@ -160,7 +160,7 @@ export class CoordinatorControlMessageHandler
 			try {
 					this.socketService.sendSocketMessage(
 						connectionId,
-					this.useCases.listEntryStates(session, parsed),
+					this.services.listEntryStates(session, parsed),
 				);
 			} catch (error) {
 				const details = websocketRequestError(
@@ -182,7 +182,7 @@ export class CoordinatorControlMessageHandler
 			try {
 					this.socketService.sendSocketMessage(
 						connectionId,
-					await this.useCases.listEntryVersions(session, parsed),
+					await this.services.listEntryVersions(session, parsed),
 				);
 			} catch (error) {
 				const details = websocketRequestError(
@@ -204,7 +204,7 @@ export class CoordinatorControlMessageHandler
 			try {
 					this.socketService.sendSocketMessage(
 						connectionId,
-					await this.useCases.listDeletedEntries(session, parsed),
+					await this.services.listDeletedEntries(session, parsed),
 				);
 			} catch (error) {
 				const details = websocketRequestError(
@@ -225,7 +225,7 @@ export class CoordinatorControlMessageHandler
 		if (parsed.type === "restore_entry_version") {
 			let result: RestoreEntryVersionResult;
 			try {
-				result = await this.useCases.restoreEntryVersion(session, parsed);
+				result = await this.services.restoreEntryVersion(session, parsed);
 			} catch (error) {
 				const details = websocketRequestError(
 					error,
@@ -251,7 +251,7 @@ export class CoordinatorControlMessageHandler
 		if (parsed.type === "restore_entry_versions") {
 			let result: RestoreEntryVersionsResult;
 			try {
-				result = await this.useCases.restoreEntryVersions(session, parsed);
+				result = await this.services.restoreEntryVersions(session, parsed);
 			} catch (error) {
 				const details = websocketRequestError(
 					error,
@@ -276,7 +276,7 @@ export class CoordinatorControlMessageHandler
 
 		if (parsed.type === "purge_deleted_entries") {
 			try {
-				const result = await this.useCases.purgeDeletedEntries(session, parsed);
+				const result = await this.services.purgeDeletedEntries(session, parsed);
 				this.socketService.sendSocketMessage(connectionId, result.message);
 			} catch (error) {
 				const details = websocketRequestError(
@@ -296,7 +296,7 @@ export class CoordinatorControlMessageHandler
 
 		if (parsed.type === "detach_local_vault") {
 			try {
-				await this.useCases.detachLocalVault(session);
+				await this.services.detachLocalVault(session);
 				this.socketService.sendSocketMessage(connectionId, {
 					type: "local_vault_detached",
 					requestId: parsed.requestId,

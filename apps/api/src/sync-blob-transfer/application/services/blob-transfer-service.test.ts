@@ -1,8 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { BlobTransferApplicationError } from "../errors/blob-transfer-errors";
-import { DownloadBlobUseCase } from "./download-blob";
-import { UploadBlobUseCase } from "./upload-blob";
+import { BlobTransferService } from "./blob-transfer-service";
 
 const objectKeyBuilder = {
 	blobObjectKey: (vaultId: string, blobId: string) => `${vaultId}/${blobId}`,
@@ -37,7 +36,7 @@ describe("blob transfer use cases", () => {
 			abortStagedBlob: vi.fn(async () => {}),
 		};
 		const verifier = { verifySyncToken: vi.fn(async () => ({}) as never) };
-		const useCase = new UploadBlobUseCase(verifier, stager, blobStorage, objectKeyBuilder);
+		const useCase = new BlobTransferService(verifier, stager, blobStorage, objectKeyBuilder);
 
 		await expect(
 			useCase.uploadBlob({
@@ -67,7 +66,7 @@ describe("blob transfer use cases", () => {
 			abortStagedBlob: vi.fn(async () => {}),
 		};
 		const verifier = { verifySyncToken: vi.fn(async () => ({}) as never) };
-		const useCase = new UploadBlobUseCase(verifier, stager, blobStorage, objectKeyBuilder);
+		const useCase = new BlobTransferService(verifier, stager, blobStorage, objectKeyBuilder);
 
 		await expect(
 			useCase.uploadBlob({
@@ -90,7 +89,7 @@ describe("blob transfer use cases", () => {
 			abortStagedBlob: vi.fn(async () => {}),
 		};
 		const verifier = { verifySyncToken: vi.fn(async () => ({}) as never) };
-		const useCase = new UploadBlobUseCase(verifier, stager, blobStorage, objectKeyBuilder);
+		const useCase = new BlobTransferService(verifier, stager, blobStorage, objectKeyBuilder);
 
 		await expect(
 			useCase.uploadBlob({
@@ -108,7 +107,7 @@ describe("blob transfer use cases", () => {
 		const blobStorage = storage();
 		const stager = { stageBlob: vi.fn(), abortStagedBlob: vi.fn() };
 		const verifier = { verifySyncToken: vi.fn() };
-		const useCase = new UploadBlobUseCase(verifier, stager, blobStorage, objectKeyBuilder);
+		const useCase = new BlobTransferService(verifier, stager, blobStorage, objectKeyBuilder);
 
 		await expect(
 			useCase.uploadBlob({
@@ -125,7 +124,7 @@ describe("blob transfer use cases", () => {
 	it("downloads only after token verification", async () => {
 		const blobStorage = storage();
 		const verifier = { verifySyncToken: vi.fn(async () => ({}) as never) };
-		const useCase = new DownloadBlobUseCase(verifier, blobStorage, objectKeyBuilder);
+		const useCase = new BlobTransferService(verifier, { stageBlob: vi.fn(), abortStagedBlob: vi.fn() }, blobStorage, objectKeyBuilder);
 
 		await expect(
 			useCase.downloadBlob({ vaultId: "vault-1", blobId: "blob-1", token: "token" }),

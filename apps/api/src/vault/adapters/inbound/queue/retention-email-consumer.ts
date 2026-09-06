@@ -1,6 +1,6 @@
 import type { VaultRetentionEmailMessage } from "../../../application/dto/queue-messages";
 import type { RetentionEmailSender } from "../../../application/ports/outbound/retention-email-sender";
-import { FREE_VAULT_INACTIVITY_DELETE_AFTER_MS } from "../../../application/use-cases/run-vault-retention";
+import { FREE_VAULT_INACTIVITY_DELETE_AFTER_MS } from "../../../application/services/vault-lifecycle-service";
 
 const INACTIVITY_DAYS = Math.round(
 	FREE_VAULT_INACTIVITY_DELETE_AFTER_MS / (24 * 60 * 60 * 1000),

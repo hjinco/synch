@@ -143,7 +143,7 @@ export function createNodeWebSocketUpgradeHandler(runtime: NodeRuntime, publicUr
 					console.error("[node-websocket] presence disconnect failed", error);
 				});
 				coordinator.socketGateway.unregisterSocket(ws);
-				track(coordinator.useCases.handleSocketClose()).catch((error: unknown) => {
+				track(coordinator.services.handleSocketClose()).catch((error: unknown) => {
 					console.error("[node-websocket] socket close handling failed", error);
 				});
 			};

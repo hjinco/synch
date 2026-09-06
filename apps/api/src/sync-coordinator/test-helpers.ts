@@ -356,7 +356,7 @@ export function createCoordinatorService({
 		healthService,
 		vaultService,
 	);
-	const useCases = bindCoordinatorApi({
+	const services = bindCoordinatorApi({
 		blobService,
 		blobGcService,
 		entryService,
@@ -370,10 +370,10 @@ export function createCoordinatorService({
 		socketService,
 		stateRepository,
 		stateRepository,
-		useCases,
+		services,
 		healthService,
 	);
-	return Object.assign(useCases, {
+	return Object.assign(services, {
 		mutationService,
 		dispose: () => healthService.dispose(),
 		handleSocketMessage: async (

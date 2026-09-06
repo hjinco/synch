@@ -4,7 +4,7 @@ import { getSubscriptionPlanPolicy } from "../../../subscription/domain/policy";
 import type { InactiveVaultCandidate } from "../../domain/types";
 import type { VaultLifecycleStore } from "../ports/outbound/vault-lifecycle-store";
 import type { VaultPurgeQueue } from "../ports/outbound/vault-purge-queue";
-import { FREE_VAULT_INACTIVITY_DELETE_AFTER_MS, RunVaultRetentionUseCase } from "./run-vault-retention";
+import { FREE_VAULT_INACTIVITY_DELETE_AFTER_MS, RunVaultRetentionService } from "./vault-lifecycle-service";
 
 const NOW = Date.UTC(2026, 7, 14, 12);
 
@@ -39,7 +39,7 @@ function setup(input: {
 	const purgeQueue = {
 		enqueueInactiveVaultPurge: vi.fn(async () => {}),
 	};
-	const service = new RunVaultRetentionUseCase(
+	const service = new RunVaultRetentionService(
 		store as unknown as VaultLifecycleStore,
 		policyReader,
 		purgeQueue as unknown as VaultPurgeQueue,
@@ -47,7 +47,7 @@ function setup(input: {
 	return { service, store, policyReader, purgeQueue };
 }
 
-describe("RunVaultRetentionUseCase", () => {
+describe("RunVaultRetentionService", () => {
 	it("queues a purge carrying the notice before hard deletion", async () => {
 		const { service, store, purgeQueue } = setup({
 			candidates: [candidate({ lastCommitAt: 1_000 })],
