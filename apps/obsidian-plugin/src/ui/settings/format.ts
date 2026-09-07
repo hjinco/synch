@@ -1,9 +1,9 @@
+import type { UserVisibleSyncProgress } from "@synch/sync-client/engine";
 import { t } from "../../i18n";
 import { formatSyncStatusLabel } from "../../i18n/sync-status";
 import type {
   SynchStorageDisplayState,
   SynchStorageStatus,
-  SynchSyncProgress,
   SynchSyncState,
 } from "../contracts";
 import { getStorageDisplayState as resolveStorageDisplayState } from "../../adapters/storage-warning";
@@ -15,7 +15,7 @@ export function shouldShowSyncSpinner(state: SynchSyncState): boolean {
 export function formatSyncDescription(
   state: SynchSyncState,
   percent: number,
-  syncProgress: SynchSyncProgress,
+  syncProgress: UserVisibleSyncProgress,
 ): string {
   const label = formatSyncStatusLabel(state, percent, syncProgress);
   if (state === "reconciling") return label;

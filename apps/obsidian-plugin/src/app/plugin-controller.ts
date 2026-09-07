@@ -1,3 +1,4 @@
+import type { UserVisibleSyncProgress } from "@synch/sync-client/engine";
 import { Notice, type Plugin, TFolder } from "obsidian";
 
 import { SynchReadinessCoordinator } from "./readiness-coordinator";
@@ -43,22 +44,20 @@ import type {
   SynchDeletedFilesRestoreResult,
   SynchEntryVersionCursor,
   SynchFileSizeBlockedFile,
-  SynchFileRules,
   SynchCommunityPluginUpdateStatus,
   SynchServerCompatibilityStatus,
   SynchStorageDisplayState,
   SynchStorageStatus,
   SynchSubscriptionStatus,
   SynchSyncLogs,
-  SynchSyncProgress,
   SynchSyncState,
-  SynchVaultConfigSyncRules,
   SynchVersionPreview,
 } from "../ui/contracts";
 import {
   normalizeSyncFileRules,
   normalizeVaultPath,
   type SyncFileRules,
+  type VaultConfigSyncRules,
   isReservedSyncPath,
   type PresenceSelection,
 } from "@synch/sync-client/core";
@@ -386,7 +385,7 @@ export class SynchPluginController implements SynchSettingsController {
     return this.syncController.getSyncPercent();
   }
 
-  getSyncProgress(): SynchSyncProgress {
+  getSyncProgress(): UserVisibleSyncProgress {
     return this.syncController.getSyncProgress();
   }
 
@@ -512,14 +511,14 @@ export class SynchPluginController implements SynchSettingsController {
     this.syncController.clearPresence();
   }
 
-  getSyncFileRules(): SynchFileRules {
+  getSyncFileRules(): SyncFileRules {
     return normalizeSyncFileRules(
       this.settingsStore.getSnapshot().fileRules,
       this.configDir(),
     );
   }
 
-  getVaultConfigSyncRules(): SynchVaultConfigSyncRules {
+  getVaultConfigSyncRules(): VaultConfigSyncRules {
     return this.settingsStore.getSnapshot().vaultConfigSync;
   }
 
@@ -533,9 +532,9 @@ export class SynchPluginController implements SynchSettingsController {
       .sort((left, right) => left.localeCompare(right));
   }
 
-  async updateSyncFileRule<K extends keyof SynchFileRules>(
+  async updateSyncFileRule<K extends keyof SyncFileRules>(
     key: K,
-    value: SynchFileRules[K],
+    value: SyncFileRules[K],
   ): Promise<void> {
     await this.updateSyncFileRules({
       ...this.getSyncFileRules(),
@@ -557,9 +556,9 @@ export class SynchPluginController implements SynchSettingsController {
     });
   }
 
-  async updateVaultConfigSyncRule<K extends keyof SynchVaultConfigSyncRules>(
+  async updateVaultConfigSyncRule<K extends keyof VaultConfigSyncRules>(
     key: K,
-    value: SynchVaultConfigSyncRules[K],
+    value: VaultConfigSyncRules[K],
   ): Promise<void> {
     await this.updateVaultConfigSyncRules({
       ...this.getVaultConfigSyncRules(),
@@ -775,7 +774,7 @@ export class SynchPluginController implements SynchSettingsController {
   }
 
   private async updateVaultConfigSyncRules(
-    nextRules: SynchVaultConfigSyncRules,
+    nextRules: VaultConfigSyncRules,
   ): Promise<void> {
     const changed = await this.settingsStore.updateVaultConfigSyncRules(nextRules);
     if (!changed) {

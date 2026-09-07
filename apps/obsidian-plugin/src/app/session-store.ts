@@ -46,10 +46,6 @@ export class SynchPluginSessionStore {
     this.deps.refreshUi();
   }
 
-  getStoredSyncConnection(): SyncConnection | null {
-    return this.storedSyncConnection;
-  }
-
   setStoredSyncConnection(connection: SyncConnection | null): void {
     this.storedSyncConnection = connection;
   }

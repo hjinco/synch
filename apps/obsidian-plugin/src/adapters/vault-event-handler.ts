@@ -7,7 +7,7 @@ export interface SyncVaultEventHandlerDeps {
   plugin: Plugin;
   vaultAdapter: ObsidianSyncVaultAdapter;
   eventRecorder: SyncChangeSourceContext["eventRecorder"];
-  autoLoop: Pick<SyncChangeSourceContext, "notifyLocalChange">;
+  notifyLocalChange: SyncChangeSourceContext["notifyLocalChange"];
   runLocalMutationWork: <T>(work: () => Promise<T>) => Promise<T>;
   hasActiveRemoteVaultSession: () => boolean;
   onError: (error: unknown) => void;
@@ -180,7 +180,7 @@ export class SyncVaultEventHandler {
   ): void {
     if (changed) {
       this.deps.onFileQueued?.(event);
-      this.deps.autoLoop.notifyLocalChange();
+      this.deps.notifyLocalChange();
     }
   }
 }

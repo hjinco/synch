@@ -1,3 +1,4 @@
+import type { SyncFileRules, VaultConfigSyncRules } from "@synch/sync-client/core";
 import type {
   App,
   SettingDefinition,
@@ -6,7 +7,6 @@ import type {
 
 import { getServerDeployment } from "../../config";
 import { t } from "../../i18n";
-import type { SynchFileRules, SynchVaultConfigSyncRules } from "../contracts";
 import type { SynchSettingsController } from "./controller";
 import {
   getPluginUpdateRowContent,
@@ -44,8 +44,8 @@ type BooleanKeys<T> = Extract<
 // their own modals, so array-valued rule keys are deliberately excluded.
 export type SynchSettingControlKey =
   | "syncIntervalMs"
-  | `fileRules.${BooleanKeys<SynchFileRules>}`
-  | `vaultConfigSync.${BooleanKeys<SynchVaultConfigSyncRules>}`;
+  | `fileRules.${BooleanKeys<SyncFileRules>}`
+  | `vaultConfigSync.${BooleanKeys<VaultConfigSyncRules>}`;
 
 export interface SynchSettingDefinitionsHost {
   app: App;
@@ -283,14 +283,14 @@ export function getSynchSettingControlValue(
   }
 
   if (key.startsWith("fileRules.")) {
-    const ruleKey = key.slice("fileRules.".length) as BooleanKeys<SynchFileRules>;
+    const ruleKey = key.slice("fileRules.".length) as BooleanKeys<SyncFileRules>;
     return controller.getSyncFileRules()[ruleKey];
   }
 
   if (key.startsWith("vaultConfigSync.")) {
     const ruleKey = key.slice(
       "vaultConfigSync.".length,
-    ) as BooleanKeys<SynchVaultConfigSyncRules>;
+    ) as BooleanKeys<VaultConfigSyncRules>;
     return controller.getVaultConfigSyncRules()[ruleKey];
   }
 
@@ -308,7 +308,7 @@ export async function setSynchSettingControlValue(
   }
 
   if (key.startsWith("fileRules.")) {
-    const ruleKey = key.slice("fileRules.".length) as BooleanKeys<SynchFileRules>;
+    const ruleKey = key.slice("fileRules.".length) as BooleanKeys<SyncFileRules>;
     await controller.updateSyncFileRule(ruleKey, value === true);
     return;
   }
@@ -316,7 +316,7 @@ export async function setSynchSettingControlValue(
   if (key.startsWith("vaultConfigSync.")) {
     const ruleKey = key.slice(
       "vaultConfigSync.".length,
-    ) as BooleanKeys<SynchVaultConfigSyncRules>;
+    ) as BooleanKeys<VaultConfigSyncRules>;
     await controller.updateVaultConfigSyncRule(ruleKey, value === true);
   }
 }
@@ -485,7 +485,7 @@ function pluginUpdateDefinitions(
 function fileRuleToggle(
   name: string,
   desc: string,
-  key: BooleanKeys<SynchFileRules>,
+  key: BooleanKeys<SyncFileRules>,
 ): SettingDefinition<SynchSettingControlKey> {
   return {
     name,
@@ -500,7 +500,7 @@ function fileRuleToggle(
 function vaultConfigToggle(
   name: string,
   desc: string,
-  key: BooleanKeys<SynchVaultConfigSyncRules>,
+  key: BooleanKeys<VaultConfigSyncRules>,
 ): SettingDefinition<SynchSettingControlKey> {
   return {
     name,

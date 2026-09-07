@@ -1,20 +1,19 @@
+import type { UserVisibleSyncProgress } from "@synch/sync-client/engine";
+import type { SyncFileRules, VaultConfigSyncRules } from "@synch/sync-client/core";
+import type { AuthReadiness } from "@synch/sync-client/auth";
 import type {
-  AuthReadiness,
   SynchDeletedFileCursor,
   SynchDeletedFilesPage,
   SynchDeletedFilesPurgeResult,
   SynchDeletedFile,
   SynchDeletedFilesRestoreResult,
   SynchFileSizeBlockedFile,
-  SynchFileRules,
-  SynchVaultConfigSyncRules,
   SynchCommunityPluginUpdateStatus,
   SynchServerCompatibilityStatus,
   SynchStorageStatus,
   SynchStorageDisplayState,
   SynchSyncLogs,
   SynchSubscriptionStatus,
-  SynchSyncProgress,
   SynchSyncState,
   SynchVersionPreview,
 } from "../contracts";
@@ -33,7 +32,7 @@ export interface SynchSettingsController {
   getAuthStatusLabel(): string;
   getSyncState(): SynchSyncState;
   getSyncPercent(): number;
-  getSyncProgress(): SynchSyncProgress;
+  getSyncProgress(): UserVisibleSyncProgress;
   getSyncLogs(): SynchSyncLogs;
   clearSyncLogs(): void;
   subscribeSyncLogs(listener: () => void): () => void;
@@ -60,19 +59,19 @@ export interface SynchSettingsController {
   openRemoteVaultManagementPage(): void;
   disconnectRemoteVault(): Promise<void>;
   updateApiBaseUrl(value: string): Promise<void>;
-  getSyncFileRules(): SynchFileRules;
-  getVaultConfigSyncRules(): SynchVaultConfigSyncRules;
-  updateSyncFileRule<K extends keyof SynchFileRules>(
+  getSyncFileRules(): SyncFileRules;
+  getVaultConfigSyncRules(): VaultConfigSyncRules;
+  updateSyncFileRule<K extends keyof SyncFileRules>(
     key: K,
-    value: SynchFileRules[K],
+    value: SyncFileRules[K],
   ): Promise<void>;
   updateExcludedFolders(paths: string[]): Promise<void>;
   listSelectableExcludedFolderPaths(): string[];
   updateIncludedHiddenFolders(paths: string[]): Promise<void>;
   listSelectableIncludedHiddenFolderPaths(): Promise<string[]>;
-  updateVaultConfigSyncRule<K extends keyof SynchVaultConfigSyncRules>(
+  updateVaultConfigSyncRule<K extends keyof VaultConfigSyncRules>(
     key: K,
-    value: SynchVaultConfigSyncRules[K],
+    value: VaultConfigSyncRules[K],
   ): Promise<void>;
   listDeletedFiles(
     before: SynchDeletedFileCursor | null,

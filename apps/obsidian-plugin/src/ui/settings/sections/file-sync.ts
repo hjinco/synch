@@ -1,6 +1,6 @@
+import type { SyncFileRules } from "@synch/sync-client/core";
 import { App, Setting } from "obsidian";
 import { t } from "../../../i18n";
-import type { SynchFileRules } from "../../contracts";
 import type { SynchSettingsController } from "../controller";
 import { ExcludedFoldersModal, IncludedHiddenFoldersModal } from "../modals";
 import { RefreshSettings } from "./shared";
@@ -10,7 +10,7 @@ export function populateExcludedFoldersSetting(
   app: App,
   controller: SynchSettingsController,
   refresh: RefreshSettings,
-  fileRules: SynchFileRules,
+  fileRules: SyncFileRules,
 ): void {
   setting
     .setName(t("excluded.header"))
@@ -37,7 +37,7 @@ export function populateExcludedFolderRow(
   setting: Setting,
   controller: SynchSettingsController,
   refresh: RefreshSettings,
-  fileRules: SynchFileRules,
+  fileRules: SyncFileRules,
   folder: string,
 ): void {
   setting
@@ -58,7 +58,7 @@ export function populateHiddenFoldersSetting(
   app: App,
   controller: SynchSettingsController,
   refresh: RefreshSettings,
-  fileRules: SynchFileRules,
+  fileRules: SyncFileRules,
 ): void {
   setting
     .setName(t("hiddenFolders.header"))
@@ -87,7 +87,7 @@ export function populateHiddenFolderRow(
   setting: Setting,
   controller: SynchSettingsController,
   refresh: RefreshSettings,
-  fileRules: SynchFileRules,
+  fileRules: SyncFileRules,
   folder: string,
 ): void {
   setting

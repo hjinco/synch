@@ -38,7 +38,7 @@ describe("SyncVaultEventHandler", () => {
           throw new Error("rename should not be recorded in this test");
         },
       } satisfies SyncChangeSourceContext["eventRecorder"],
-      autoLoop: { notifyLocalChange },
+      notifyLocalChange,
       runLocalMutationWork,
       hasActiveRemoteVaultSession: () => true,
       onError,
@@ -89,7 +89,7 @@ describe("SyncVaultEventHandler", () => {
         recordRename,
         recordDelete,
       } satisfies SyncChangeSourceContext["eventRecorder"],
-      autoLoop: { notifyLocalChange },
+      notifyLocalChange,
       runLocalMutationWork,
       hasActiveRemoteVaultSession: () => true,
       onError: vi.fn(),

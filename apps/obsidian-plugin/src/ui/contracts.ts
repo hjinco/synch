@@ -1,14 +1,3 @@
-import type { UserVisibleSyncProgress } from "@synch/sync-client/engine";
-import type { SyncFileRules, VaultConfigSyncRules } from "@synch/sync-client/core";
-
-// The only type bridge allowed so the ui layer never imports feature modules
-// directly.
-export type { AuthReadiness } from "@synch/sync-client/auth";
-
-export type SynchFileRules = SyncFileRules;
-
-export type SynchVaultConfigSyncRules = VaultConfigSyncRules;
-
 /**
  * Obsidian's undocumented settings-modal API, present on `App` at runtime.
  * Kept optional so callers degrade gracefully if Obsidian changes it.
@@ -33,8 +22,6 @@ export type SynchSyncState =
   | "up_to_date"
   | "attention_needed"
   | "update_required";
-
-export type SynchSyncProgress = UserVisibleSyncProgress;
 
 export interface SynchSyncLogs {
   count: number;

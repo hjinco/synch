@@ -68,18 +68,3 @@ export class ObsidianAuthSessionTokenStore implements AuthSessionTokenStore {
     this.plugin.app.secretStorage.setSecret(LEGACY_SESSION_TOKEN_SECRET, "");
   }
 }
-
-export async function readAuthSessionToken(plugin: Plugin): Promise<string> {
-  return await new ObsidianAuthSessionTokenStore(plugin).read();
-}
-
-export async function writeAuthSessionToken(
-  plugin: Plugin,
-  sessionToken: string,
-): Promise<void> {
-  await new ObsidianAuthSessionTokenStore(plugin).write(sessionToken);
-}
-
-export async function clearAuthSessionToken(plugin: Plugin): Promise<void> {
-  await new ObsidianAuthSessionTokenStore(plugin).clear();
-}

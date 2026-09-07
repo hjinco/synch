@@ -2,7 +2,7 @@ import type { Plugin } from "obsidian";
 import { vi } from "vitest";
 
 import { encodeBase64 } from "@synch/vault-crypto";
-import { writeAuthSessionToken } from "../../adapters/auth-session-storage";
+import { ObsidianAuthSessionTokenStore } from "../../adapters/auth-session-storage";
 import { writeStoredRemoteVaultKeySecret } from "../../adapters/remote-vault-device-storage";
 import { DEFAULT_SYNC_FILE_RULES, DEFAULT_VAULT_CONFIG_SYNC_RULES } from "@synch/sync-client/core";
 
@@ -37,7 +37,7 @@ export async function createConnectedPlugin(
       encodeBase64(remoteVaultKey),
     );
   } else {
-    await writeAuthSessionToken(plugin, "stored-token");
+    await new ObsidianAuthSessionTokenStore(plugin).write("stored-token");
     await writeStoredRemoteVaultKeySecret(plugin, { remoteVaultKey });
   }
   return plugin;

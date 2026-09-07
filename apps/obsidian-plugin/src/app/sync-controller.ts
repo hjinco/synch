@@ -172,11 +172,7 @@ export class SyncController {
   }
 
   async stop(): Promise<void> {
-    this.stopPeriodicSync();
-    this.syncEngine.setStorageStatusWatching(false);
-    this.syncEngine.setPresenceWatching(false);
-    this.syncEngine.stopAutoSync();
-    this.setStorageStatus(null);
+    this.stopSyncAndClearSubscriptions();
     await this.periodicSyncPromise?.catch(() => {});
     await this.syncEngine.closeStore();
     await this.syncEngine.dispose();
@@ -218,10 +214,6 @@ export class SyncController {
     return await this.syncEngine.readLocalVaultId();
   }
 
-  async getOrCreateLocalVaultId(remoteVaultId: string): Promise<string> {
-    return await this.syncEngine.getOrCreateLocalVaultId(remoteVaultId);
-  }
-
   async detachLocalVaultFromServer(): Promise<void> {
     if (!this.deps.hasActiveRemoteVaultSession() || !this.deps.hasAuthenticatedSession()) {
       return;
@@ -231,11 +223,7 @@ export class SyncController {
   }
 
   stopAutoSyncAndMarkNotReady(): void {
-    this.stopPeriodicSync();
-    this.syncEngine.setStorageStatusWatching(false);
-    this.syncEngine.setPresenceWatching(false);
-    this.syncEngine.stopAutoSync();
-    this.setStorageStatus(null);
+    this.stopSyncAndClearSubscriptions();
     this.setSyncProgress({
       completedEntries: 0,
       totalEntries: 0,
@@ -244,20 +232,12 @@ export class SyncController {
   }
 
   stopAutoSyncAndMarkPaused(): void {
-    this.stopPeriodicSync();
-    this.syncEngine.setStorageStatusWatching(false);
-    this.syncEngine.setPresenceWatching(false);
-    this.syncEngine.stopAutoSync();
-    this.setStorageStatus(null);
+    this.stopSyncAndClearSubscriptions();
     this.setSyncStatus("paused");
   }
 
   async resetLocalSyncState(): Promise<void> {
-    this.stopPeriodicSync();
-    this.syncEngine.setStorageStatusWatching(false);
-    this.syncEngine.setPresenceWatching(false);
-    this.syncEngine.stopAutoSync();
-    this.setStorageStatus(null);
+    this.stopSyncAndClearSubscriptions();
     const store = this.syncEngine.detachStore();
     try {
       await store?.close();
@@ -335,11 +315,7 @@ export class SyncController {
 
   async ensureAutoSyncState(): Promise<void> {
     if (!this.deps.hasActiveRemoteVaultSession() || !this.deps.hasAuthenticatedSession()) {
-      this.stopPeriodicSync();
-      this.syncEngine.setStorageStatusWatching(false);
-      this.syncEngine.setPresenceWatching(false);
-      this.syncEngine.stopAutoSync();
-      this.setStorageStatus(null);
+      this.stopSyncAndClearSubscriptions();
       if (this.shouldShowOfflineBeforeReady()) {
         this.setSyncStatus("offline");
         return;
@@ -459,14 +435,7 @@ export class SyncController {
     }
 
     try {
-      this.recordSyncStarted("manual");
-      this.setSyncStatus("syncing");
-      const reconcile = await this.syncEngine.reconcileOnce();
-      this.recordSyncReconciled("manual", reconcile);
-      await this.syncEngine.waitForLocalMutationWork();
-      if (await this.syncEngine.syncNow()) {
-        this.recordSyncCompleted("manual");
-      }
+      await this.runSyncCycle("manual");
     } catch (error) {
       await this.handleSyncError(error, "auto_sync");
     }
@@ -644,16 +613,20 @@ export class SyncController {
     }
   }
 
+  private async runSyncCycle(source: "manual" | "periodic"): Promise<void> {
+    this.recordSyncStarted(source);
+    this.setSyncStatus("syncing");
+    const reconcile = await this.syncEngine.reconcileOnce();
+    this.recordSyncReconciled(source, reconcile);
+    await this.syncEngine.waitForLocalMutationWork();
+    if (await this.syncEngine.syncNow()) {
+      this.recordSyncCompleted(source);
+    }
+  }
+
   private async runPeriodicSyncCycle(): Promise<void> {
     try {
-      this.recordSyncStarted("periodic");
-      this.setSyncStatus("syncing");
-      const reconcile = await this.syncEngine.reconcileOnce();
-      this.recordSyncReconciled("periodic", reconcile);
-      await this.syncEngine.waitForLocalMutationWork();
-      if (await this.syncEngine.syncNow()) {
-        this.recordSyncCompleted("periodic");
-      }
+      await this.runSyncCycle("periodic");
     } catch (error) {
       if (!this.periodicSyncEnabled) {
         return;
@@ -672,6 +645,14 @@ export class SyncController {
       this.periodicSyncTimer = null;
       void this.runPeriodicSyncAndSchedule();
     }, intervalMs);
+  }
+
+  private stopSyncAndClearSubscriptions(): void {
+    this.stopPeriodicSync();
+    this.syncEngine.setStorageStatusWatching(false);
+    this.syncEngine.setPresenceWatching(false);
+    this.syncEngine.stopAutoSync();
+    this.setStorageStatus(null);
   }
 
   private stopPeriodicSync(): void {

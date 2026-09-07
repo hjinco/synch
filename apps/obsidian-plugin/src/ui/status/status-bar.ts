@@ -1,3 +1,4 @@
+import type { UserVisibleSyncProgress } from "@synch/sync-client/engine";
 import { setIcon, type Plugin } from "obsidian";
 
 import { t } from "../../i18n";
@@ -6,13 +7,12 @@ import type {
   AppWithSettings,
   SynchStorageDisplayState,
   SynchSyncState,
-  SynchSyncProgress,
 } from "../contracts";
 
 export interface SynchStatusBarState {
   getSyncState(): SynchSyncState;
   getSyncPercent(): number;
-  getSyncProgress?(): SynchSyncProgress;
+  getSyncProgress?(): UserVisibleSyncProgress;
   getStorageDisplayState(): SynchStorageDisplayState;
 }
 

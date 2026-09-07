@@ -5,9 +5,9 @@ import { submitOnEnter } from "../keyboard";
 import type {
   BootstrapRemoteVaultInput,
   CreateRemoteVaultInput,
-} from "./ports";
+  RemoteVaultRecord,
+} from "@synch/sync-client/remote";
 import { validateVaultPassword } from "@synch/vault-crypto";
-import type { RemoteVaultRecord } from "@synch/sync-client/remote";
 
 export async function openCreateRemoteVaultModal(
   app: App,

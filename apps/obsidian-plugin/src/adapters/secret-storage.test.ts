@@ -4,7 +4,6 @@ import type { Plugin } from "obsidian";
 
 import { encodeBase64 } from "@synch/vault-crypto";
 import {
-  clearAuthSessionToken,
   migrateLegacyAuthSessionToken,
   ObsidianAuthSessionTokenStore,
 } from "./auth-session-storage";
@@ -164,7 +163,7 @@ describe("vault-scoped secret storage", () => {
       plugin.app.secretStorage.getSecret("synch-session-token-scope-a"),
     ).toBe("legacy-token");
 
-    await clearAuthSessionToken(plugin);
+    await store.clear();
 
     await expect(store.read()).resolves.toBe("");
     expect(plugin.app.secretStorage.getSecret("synch-session-token")).toBe("");

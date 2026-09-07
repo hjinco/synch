@@ -5,7 +5,7 @@ import {
   resetObsidianMocks,
   setRequestUrlMock,
 } from "../test-stubs/obsidian";
-import { readAuthSessionToken } from "../adapters/auth-session-storage";
+import { ObsidianAuthSessionTokenStore } from "../adapters/auth-session-storage";
 import { readStoredRemoteVaultKeySecret } from "../adapters/remote-vault-device-storage";
 import { t } from "../i18n";
 import { SyncController } from "./sync-controller";
@@ -40,7 +40,7 @@ describe("SynchPluginController readiness reconciliation", () => {
 
     await controller.initialize();
 
-    await expect(readAuthSessionToken(plugin)).resolves.toBe("stored-token");
+    await expect(new ObsidianAuthSessionTokenStore(plugin).read()).resolves.toBe("stored-token");
     await expect(readStoredRemoteVaultKeySecret(plugin)).resolves.toEqual({
       remoteVaultKey: new Uint8Array(32).fill(1),
     });
