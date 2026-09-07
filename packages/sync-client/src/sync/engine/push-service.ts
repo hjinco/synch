@@ -33,9 +33,8 @@ import {
 } from "./push-mutation-committer";
 import { PushBlobRetryCache } from "./push-blob-retry-cache";
 
-// TODO: Replace this fixed preparation cap with CPU and memory budgets, including
-// prepared payloads waiting for transfer. TransferScheduler controls network
-// concurrency separately; keep this cap until preparation is resource-bounded.
+// CPU/task fan-out stays separate from the shared source-byte budget and
+// adaptive network concurrency. Prepared results retain their byte reservation.
 const DEFAULT_PUSH_PREPARE_CONCURRENCY = 12;
 
 export interface SyncPushServiceDeps extends SyncContentRuntimeDeps {
@@ -88,11 +87,12 @@ export interface PushPendingMutationsResult {
 
 export class SyncPushService {
   private readonly remotelyStagedBlobIds = new Set<string>();
-  private readonly blobRetryCache = new PushBlobRetryCache();
+  private readonly blobRetryCache: PushBlobRetryCache;
   private readonly contentRuntime: SyncContentRuntime;
 
   constructor(private readonly deps: SyncPushServiceDeps) {
     this.contentRuntime = deps.contentRuntime;
+    this.blobRetryCache = new PushBlobRetryCache(this.contentRuntime);
   }
 
   async pushPendingMutations(
@@ -456,6 +456,12 @@ export class SyncPushService {
         }
       },
       shouldYield,
+      ({ prepared }) => {
+        if (prepared && !("skipped" in prepared)) {
+          prepared.encryptedBytes = null;
+          prepared.release?.();
+        }
+      },
     );
   }
 }

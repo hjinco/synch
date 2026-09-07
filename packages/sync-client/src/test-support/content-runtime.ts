@@ -1,5 +1,5 @@
 import { afterEach } from "vitest";
-import { SyncContentRuntime } from "../sync/core/content-runtime";
+import { SyncContentRuntime, type SyncContentRuntimeOptions } from "../sync/core/content-runtime";
 
 const runtimes = new Set<SyncContentRuntime>();
 
@@ -10,8 +10,8 @@ afterEach(async () => {
 });
 
 /** Standalone service tests own and release their content runtime. */
-export function createTestContentRuntime(): SyncContentRuntime {
-  const runtime = new SyncContentRuntime();
+export function createTestContentRuntime(options: SyncContentRuntimeOptions = {}): SyncContentRuntime {
+  const runtime = new SyncContentRuntime(options);
   runtimes.add(runtime);
   return runtime;
 }

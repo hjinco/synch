@@ -78,6 +78,7 @@ const HIDDEN_FOLDER_RECONCILE_INTERVAL_MS = 60_000;
 export interface SyncEngineDeps {
   /** Caller-owned when supplied; otherwise the engine creates and disposes it. */
   contentRuntime?: SyncContentRuntime;
+  maxBytesInFlight?: number;
   vaultAdapter: SyncVaultAdapter;
   vaultConfigSource: SyncVaultConfigSource;
   httpClient: HttpClient;
@@ -149,7 +150,7 @@ export class SyncEngine {
 
   constructor(private readonly deps: SyncEngineDeps) {
     this.ownsContentRuntime = !deps.contentRuntime;
-    this.contentRuntime = deps.contentRuntime ?? new SyncContentRuntime();
+    this.contentRuntime = deps.contentRuntime ?? new SyncContentRuntime({ maxBytesInFlight: deps.maxBytesInFlight });
     this.vaultAdapter = deps.vaultAdapter;
     this.vaultConfigSource = deps.vaultConfigSource;
     this.syncEventRecorder = new SyncEventRecorder({

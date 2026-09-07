@@ -1,5 +1,6 @@
 import type { Plugin } from "obsidian";
 
+import { getSyncMemoryBudget } from "./device-memory";
 import { defaultHttpClient } from "./http";
 import {
   SyncEngine,
@@ -35,6 +36,7 @@ export function createObsidianSyncEngine(
 
   return new SyncEngine({
     ...deps,
+    maxBytesInFlight: deps.maxBytesInFlight ?? getSyncMemoryBudget(),
     vaultAdapter,
     vaultConfigSource,
     httpClient: defaultHttpClient,

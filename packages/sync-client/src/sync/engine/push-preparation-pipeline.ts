@@ -10,6 +10,7 @@ export async function* preparePushBatches<T extends { entryId: string }, U>(
   concurrency: number,
   prepare: (item: T) => Promise<U>,
   shouldYield: () => boolean,
+  dispose: (value: U) => void = () => {},
 ): AsyncGenerator<U[]> {
   const owned = new Set<string>();
   const waiting: Array<{ item: T; index: number }> = [];
@@ -41,6 +42,7 @@ export async function* preparePushBatches<T extends { entryId: string }, U>(
       const work = waiting.shift()!;
       const job = Promise.resolve().then(() => prepare(work.item)).then(
         (value) => {
+          if (stopped) { dispose(value); return; }
           ready.push({ ...work, value });
           if (timer === undefined && !stopped) {
             timer = setTimeout(() => {
@@ -86,7 +88,11 @@ export async function* preparePushBatches<T extends { entryId: string }, U>(
         flushReady = false;
         ready.sort((left, right) => left.index - right.index);
         const batch = ready.splice(0, MAX_COMMIT_MUTATIONS);
-        yield batch.map(({ value }) => value);
+        try {
+          yield batch.map(({ value }) => value);
+        } finally {
+          for (const { value } of batch) dispose(value);
+        }
         for (const { item } of batch) owned.delete(item.entryId);
         sourceEmpty = false;
         continue;
@@ -102,6 +108,8 @@ export async function* preparePushBatches<T extends { entryId: string }, U>(
     clearTimeout(timer);
     // No cancellation is available on the blob client. Join started operations
     // before the caller disposes crypto or allows pull to mutate the store.
+    // Return ready reservations before joining jobs that may be waiting for them.
+    for (const { value } of ready.splice(0)) dispose(value);
     await Promise.all(jobs);
   }
 }

@@ -91,22 +91,22 @@ describe("PushMutationPreparer retries", () => {
     const fixture = await createRetryFixture("note.md");
     try {
       const bytes = await fixture.crypto.encryptBlob(encodeUtf8("original"), { blobId: "blob" });
-      const cache = new PushBlobRetryCache(bytes.byteLength);
+      const cache = new PushBlobRetryCache(fixture.contentRuntime, bytes.byteLength);
       const mutation = fixture.mutation;
       cache.put(mutation, "vault", bytes);
-      expect(cache.get(mutation, "vault")).toBe(bytes);
+      expect(cache.get(mutation, "vault")).toEqual(bytes);
       expect(cache.get(mutation, "other-vault")).toBeNull();
       expect(cache.get({ ...mutation, encryptedMetadata: "different" }, "vault")).toBeNull();
       const other = { ...mutation, blobId: "other-blob" };
       cache.put(other, "vault", bytes);
       expect(cache.get(mutation, "vault")).toBeNull();
-      expect(cache.get(other, "vault")).toBe(bytes);
+      expect(cache.get(other, "vault")).toEqual(bytes);
       cache.delete(other.blobId);
       expect(cache.get(other, "vault")).toBeNull();
       cache.put(mutation, "vault", new Uint8Array(bytes.byteLength + 1));
       expect(cache.get(mutation, "vault")).toBeNull();
       cache.put(mutation, "vault", bytes);
-      expect(cache.get(mutation, "vault")).toBe(bytes);
+      expect(cache.get(mutation, "vault")).toEqual(bytes);
     } finally {
       await fixture.dispose();
     }
@@ -125,7 +125,7 @@ describe("PushMutationPreparer retries", () => {
           throw new Error("expected prepared mutations");
         }
         if (path.endsWith(".md")) {
-          expect(retry.encryptedBytes).toBe(first.encryptedBytes);
+          expect(retry.encryptedBytes).toEqual(first.encryptedBytes);
           expect(await fixture.crypto.decryptBlob(retry.encryptedBytes!, {
             blobId: fixture.mutation.blobId!,
           })).toEqual(encodeUtf8("original"));
@@ -145,7 +145,7 @@ describe("PushMutationPreparer retries", () => {
   );
 
   it("regenerates a Markdown merge base when the retry cache cannot retain it", async () => {
-    const fixture = await createRetryFixture("note.md", new PushBlobRetryCache(0));
+    const fixture = await createRetryFixture("note.md", 0);
     try {
       await fixture.prepare();
       const retry = await fixture.prepare();
@@ -186,10 +186,11 @@ describe("PushMutationPreparer retries", () => {
   });
 });
 
-async function createRetryFixture(path: string, blobRetryCache = new PushBlobRetryCache()) {
+async function createRetryFixture(path: string, cacheMaxBytes?: number) {
   const store = createTestSyncStore();
   const crypto = createSyncCryptoContext(TEST_VAULT_KEY);
   const contentRuntime = new SyncContentRuntime();
+  const blobRetryCache = new PushBlobRetryCache(contentRuntime, cacheMaxBytes);
   let bytes = encodeUtf8("original");
   const hash = await hashBytes(bytes);
   const mutation: PendingMutationRow = {
@@ -211,7 +212,7 @@ async function createRetryFixture(path: string, blobRetryCache = new PushBlobRet
     remotelyStagedBlobIds: new Set(), blobRetryCache,
   });
   return {
-    store, crypto, mutation, encrypt, upload,
+    store, crypto, mutation, encrypt, upload, contentRuntime,
     changeContents: (updated: Uint8Array) => { bytes = updated; },
     prepare: (maxBytes = 0) => preparer.prepareMutationForCommit(store, createToken(), mutation, maxBytes),
     dispose: async () => {

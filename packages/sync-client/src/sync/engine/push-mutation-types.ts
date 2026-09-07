@@ -58,6 +58,7 @@ export interface PreparedPushMutation {
   metadata: SyncedEntryMetadata;
   localHash: string | null;
   encryptedBytes: Uint8Array | null;
+  release?: () => void;
 }
 
 export interface PushMutationStore

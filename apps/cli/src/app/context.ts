@@ -1,3 +1,5 @@
+import { totalmem } from "node:os";
+import { resolveSyncMemoryBudget } from "@synch/sync-client/core";
 import { AuthClient, AuthManager, type AuthReadiness } from "@synch/sync-client/auth";
 
 import {
@@ -157,6 +159,7 @@ export class CliAppContext {
     });
 
     this.engine = new SyncEngine({
+      maxBytesInFlight: resolveSyncMemoryBudget({ totalMemoryBytes: totalmem(), isMobile: false }),
       vaultAdapter: this.vaultAdapter,
       vaultConfigSource,
       httpClient: defaultHttpClient,

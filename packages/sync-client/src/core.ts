@@ -8,3 +8,4 @@ export * from "./sync/core/reserved-paths";
 export * from "./sync/core/sha256-worker-pool";
 export * from "./sync/core/vault-config-rules";
 export * from "./sync/core/vault-path-policy";
+export * from "./sync/core/sync-memory-policy";

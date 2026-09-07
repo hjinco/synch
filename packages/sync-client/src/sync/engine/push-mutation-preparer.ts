@@ -70,82 +70,89 @@ export class PushMutationPreparer {
     }
 
     const fileSize = await this.getFileSize(store, mutation, metadata.path);
-    const hashed = await this.contentRuntime.readAndHash(
-      fileSize,
-      async () => await this.deps.fileReader.readBytes(metadata.path),
-    );
-    const { bytes, hash: actualHash } = hashed;
-    if (actualHash !== mutation.hash) {
-      await this.requeueChangedUpsert(store, mutation, metadata.path, actualHash);
-      return null;
-    }
-    const blobId = mutation.blobId;
-    const encryptedSizeBytes = encryptedSyncBlobSize(bytes.byteLength);
-    if (maxFileSizeBytes > 0 && encryptedSizeBytes > maxFileSizeBytes) {
-      await this.blockOversizedUpsert(
-        store,
-        mutation,
-        encryptedSizeBytes,
-        maxFileSizeBytes,
+    const reservation = await this.contentRuntime.reserve(fileSize);
+    let retained = false;
+    try {
+      const hashed = await this.contentRuntime.hashAndReturnBytes(
+        await this.deps.fileReader.readBytes(metadata.path),
       );
-      return { skipped: true, reason: "file_too_large" };
-    }
-
-    const staged = this.deps.remotelyStagedBlobIds.has(blobId);
-    const retainEncryptedBytes = isAutoMergeTextPath(metadata.path);
-    // Hash validation above remains mandatory, even when upload can be reused.
-    // Binary payloads have no local consumer after staging; Markdown needs a
-    // merge base, regenerating it only if the bounded retry cache missed.
-    const encryptedBytes = staged && !retainEncryptedBytes
-      ? null
-      : (staged ? this.deps.blobRetryCache?.get(mutation, token.vaultId) : null)
-        ?? await syncCrypto.encryptBlob(bytes, { blobId });
-
-    if (!staged && encryptedBytes) {
-      try {
-        await this.blobClient.uploadBlob(
-          token.vaultId,
-          blobId,
-          encryptedBytes,
-        );
-      } catch (error) {
-        if (isQuotaExceededUploadError(error)) {
-          return {
-            skipped: true,
-            reason: "storage_quota_exceeded",
-          };
-        }
-        if (isFileTooLargeUploadError(error)) {
-          await this.blockOversizedUpsert(
-            store,
-            mutation,
-            encryptedBytes.byteLength,
-            maxFileSizeBytes > 0 ? maxFileSizeBytes : null,
-          );
-          return {
-            skipped: true,
-            reason: "file_too_large",
-          };
-        }
-
-        throw error;
+      const { bytes, hash: actualHash } = hashed;
+      if (actualHash !== mutation.hash) {
+        await this.requeueChangedUpsert(store, mutation, metadata.path, actualHash);
+        return null;
       }
-      this.deps.remotelyStagedBlobIds.add(blobId);
-    }
+      const blobId = mutation.blobId;
+      const encryptedSizeBytes = encryptedSyncBlobSize(bytes.byteLength);
+      if (maxFileSizeBytes > 0 && encryptedSizeBytes > maxFileSizeBytes) {
+        await this.blockOversizedUpsert(
+          store,
+          mutation,
+          encryptedSizeBytes,
+          maxFileSizeBytes,
+        );
+        return { skipped: true, reason: "file_too_large" };
+      }
 
-    if (retainEncryptedBytes && encryptedBytes) {
-      this.deps.blobRetryCache?.put(mutation, token.vaultId, encryptedBytes);
-    }
+      const staged = this.deps.remotelyStagedBlobIds.has(blobId);
+      const retainEncryptedBytes = isAutoMergeTextPath(metadata.path);
+      // Hash validation above remains mandatory, even when upload can be reused.
+      // Binary payloads have no local consumer after staging; Markdown needs a
+      // merge base, regenerating it only if the bounded retry cache missed.
+      const encryptedBytes = staged && !retainEncryptedBytes
+        ? null
+        : (staged ? this.deps.blobRetryCache?.get(mutation, token.vaultId) : null)
+          ?? await syncCrypto.encryptBlob(bytes, { blobId });
 
-    return {
-      commitPayload: toCommitPayload(mutation),
-      metadata,
-      localHash: mutation.hash,
-      // Only Markdown needs the encrypted payload after upload so it can be
-      // retained as a remote merge base. Binary payloads have no local
-      // consumer after the server has staged them.
-      encryptedBytes: retainEncryptedBytes ? encryptedBytes : null,
-    };
+      if (!staged && encryptedBytes) {
+        try {
+          await this.blobClient.uploadBlob(
+            token.vaultId,
+            blobId,
+            encryptedBytes,
+          );
+        } catch (error) {
+          if (isQuotaExceededUploadError(error)) {
+            return {
+              skipped: true,
+              reason: "storage_quota_exceeded",
+            };
+          }
+          if (isFileTooLargeUploadError(error)) {
+            await this.blockOversizedUpsert(
+              store,
+              mutation,
+              encryptedBytes.byteLength,
+              maxFileSizeBytes > 0 ? maxFileSizeBytes : null,
+            );
+            return {
+              skipped: true,
+              reason: "file_too_large",
+            };
+          }
+
+          throw error;
+        }
+        this.deps.remotelyStagedBlobIds.add(blobId);
+      }
+
+      if (retainEncryptedBytes && encryptedBytes) {
+        this.deps.blobRetryCache?.put(mutation, token.vaultId, encryptedBytes);
+      }
+
+      retained = true;
+      return {
+        release: reservation.release,
+        commitPayload: toCommitPayload(mutation),
+        metadata,
+        localHash: mutation.hash,
+        // Only Markdown needs the encrypted payload after upload so it can be
+        // retained as a remote merge base. Binary payloads have no local
+        // consumer after the server has staged them.
+        encryptedBytes: retainEncryptedBytes ? encryptedBytes : null,
+      };
+    } finally {
+      if (!retained) reservation.release();
+    }
   }
 
   private async getFileSize(
