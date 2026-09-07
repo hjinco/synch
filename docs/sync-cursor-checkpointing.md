@@ -73,6 +73,16 @@ The server still returns accepted cursors for commit results because clients nee
 them for local entry state, reporting, and this contiguous-prefix checkpoint
 optimization.
 
+## Partial pull application
+
+Payloads are prepared and applied in dependency groups within a metadata window.
+Each group owns its entry-state rollback boundary. A later group failure leaves
+completed independent groups in place, including any preserved local conflict
+copies, while keeping the cursor at the previous safe checkpoint. Retrying lists
+those states again and skips the download/write for entries already applied to
+the same remote revision and content. A group's completion alone must not advance
+the cursor past unfinished or deferred entries.
+
 ## Future optimization
 
 Further optimizations must preserve the gap-free invariant.

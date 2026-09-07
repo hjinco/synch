@@ -81,7 +81,7 @@ describe("SyncPullService pending upsert rebase conflict resolution", () => {
     });
 
     const service = new SyncPullService({
-      contentRuntime: createTestContentRuntime(),
+      contentRuntime: createTestContentRuntime({ maxBytesInFlight: 1 }),
       getSyncToken: async () => createToken(),
       getSyncStore: () => store,
       getRemoteVaultKey: () => TEST_VAULT_KEY,

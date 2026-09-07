@@ -42,6 +42,7 @@ export function createCommit(
     revision: number;
     baseRevision: number;
     blobId: string | null;
+    blobSize: number | null;
     encryptedMetadata: string;
     committedAt: number;
   }> = {},
@@ -53,6 +54,7 @@ export function createCommit(
     revision: overrides.revision ?? 1,
     baseRevision: overrides.baseRevision ?? 0,
     blobId: overrides.blobId ?? null,
+    ...(overrides.blobSize === undefined ? {} : { blobSize: overrides.blobSize }),
     encryptedMetadata:
       overrides.encryptedMetadata ??
       JSON.stringify({
@@ -269,6 +271,7 @@ export function createRealtimeSession(input: {
           entryId: commit.entryId,
           revision: commit.revision,
           blobId: commit.blobId,
+          blobSize: commit.blobSize,
           encryptedMetadata: commit.encryptedMetadata,
           deleted: commit.op === "delete",
           updatedSeq: commit.cursor,

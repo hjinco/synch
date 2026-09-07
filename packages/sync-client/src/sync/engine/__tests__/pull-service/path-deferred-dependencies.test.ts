@@ -17,7 +17,7 @@ import {
 } from "./helpers";
 
 describe("SyncPullService deferred path dependencies", () => {
-  it("defers cross-window path swaps until both sides are available", async () => {
+  it.each([undefined, 1])("defers cross-window path swaps and completes oversized groups (budget %s)", async (maxBytesInFlight) => {
     const store = createTestSyncStore();
     const adapter = createVaultAdapter({
       "Folder/a.md": "old a",
@@ -57,6 +57,7 @@ describe("SyncPullService deferred path dependencies", () => {
               entryId: "entry-a",
               revision: 2,
               blobId: "blob-a-new",
+              blobSize: 38,
               encryptedMetadata: await encryptRemoteMetadata({
                 entryId: "entry-a",
                 revision: 2,
@@ -89,6 +90,7 @@ describe("SyncPullService deferred path dependencies", () => {
               entryId: "entry-b",
               revision: 2,
               blobId: "blob-b-new",
+              blobSize: 38,
               encryptedMetadata: await encryptRemoteMetadata({
                 entryId: "entry-b",
                 revision: 2,
@@ -111,7 +113,7 @@ describe("SyncPullService deferred path dependencies", () => {
     const conflicts: Array<{ entryId: string; conflictPath: string | null }> = [];
 
     const service = new SyncPullService({
-      contentRuntime: createTestContentRuntime(),
+      contentRuntime: createTestContentRuntime({ maxBytesInFlight }),
       getSyncToken: async () => createToken(),
       getSyncStore: () => store,
       getRemoteVaultKey: () => TEST_VAULT_KEY,

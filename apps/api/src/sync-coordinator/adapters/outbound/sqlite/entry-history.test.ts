@@ -34,6 +34,21 @@ async function commit(
 }
 
 describe("sqlite backend: entry state listing", () => {
+	it("lists stored encrypted blob sizes without dropping entries with no blob", async () => {
+		const { entryStore, blobStore } = await createSqliteCoordinator();
+		blobStore.persistStage("blob-sized", { sizeBytes: 4097, now: 1, deleteAfter: 100 });
+		for (const [index, blobId] of ["blob-sized", null, "missing-blob"].entries()) {
+			entryStore.upsertEntry({
+				entryId: `entry-${index}`, revision: 1, blobId,
+				encryptedMetadata: "encrypted", deleted: index === 1,
+				updatedSeq: index + 1, updatedAt: 1,
+				updatedByUserId: "user", updatedByLocalVaultId: "local", lastMutationId: `mutation-${index}`,
+			});
+		}
+		expect(entryStore.listEntryStates(0, 3, null, 10).map((entry) => entry.blob_size))
+			.toEqual([4097, null, null]);
+	});
+
 	it("pages entries by (updated_seq, entry_id) after the given cursor", async () => {
 		const { mutationService, entryStore } = await createSqliteCoordinator();
 

@@ -163,6 +163,7 @@ export type EntryStatesListedMessage = {
 		entryId: string;
 		revision: number;
 		blobId: string | null;
+		blobSize: number | null;
 		encryptedMetadata: string;
 		deleted: boolean;
 		updatedSeq: number;

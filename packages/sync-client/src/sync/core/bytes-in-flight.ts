@@ -5,6 +5,7 @@ export interface BytesInFlightBudgetLike {
   tryAcquire(bytes: number): boolean;
   acquire(bytes: number): Promise<void>;
   release(bytes: number): void;
+  resizeReservation(previous: number, next: number): void;
   withReservation<T>(bytes: number, work: () => Promise<T>): Promise<T>;
   dispose?(reason?: unknown): void;
 }
@@ -57,6 +58,15 @@ export class BytesInFlightBudget implements BytesInFlightBudgetLike {
       });
       this.drain();
     });
+  }
+
+  /** Account for already admitted work without waiting while it holds buffers.
+   * Unknown sizes and growing local files may exceed the budget; new admission
+   * remains blocked until their owner releases the reservation.
+   */
+  resizeReservation(previous: number, next: number): void {
+    this.reservedBytes += validateByteCount(next) - validateByteCount(previous);
+    this.drain();
   }
 
   release(bytes: number): void {

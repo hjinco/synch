@@ -1,5 +1,6 @@
 import {
   type SyncContentRuntime,
+  type ContentReservation,
 } from "../core/content-runtime";
 import { getAvailableConflictCopyPath } from "../core/conflict-file";
 import {
@@ -42,6 +43,7 @@ export class PullPendingMutationHandler {
     store: PullEntryStateStore,
     plan: PlannedEntryState,
     remoteBlob: PreparedEntryBlob | null,
+    reservation?: ContentReservation,
   ): Promise<PreparedPendingConflict | null> {
     const pending = await this.findConflictingPendingMutation(store, plan);
     if (!pending) {
@@ -60,6 +62,7 @@ export class PullPendingMutationHandler {
         plan,
         this.deps.vaultAdapter,
         this.contentRuntime,
+        reservation,
       )
     ) {
       return {
@@ -87,6 +90,7 @@ export class PullPendingMutationHandler {
       plan,
       entryState,
       remoteBlob,
+      reservation,
     );
     if (merge) {
       return {
@@ -105,6 +109,7 @@ export class PullPendingMutationHandler {
         await this.deps.vaultAdapter.getFileSize(metadata.path),
         async () => await this.deps.vaultAdapter.readBytes(metadata.path),
         async (bytes) => bytes,
+        reservation,
       );
       conflictPath = await getAvailableConflictCopyPath(
         this.deps.vaultAdapter,
@@ -193,6 +198,7 @@ export class PullPendingMutationHandler {
     plan: PlannedEntryState,
     entryState: SyncEntryStateRow | null,
     remoteBlob: PreparedEntryBlob | null,
+    reservation?: ContentReservation,
   ): Promise<PreparedPendingMerge | null> {
     const dirty = entryState?.dirty ?? null;
     const local = entryState?.local ?? null;
@@ -224,6 +230,7 @@ export class PullPendingMutationHandler {
       return null;
     }
 
+    reservation?.retain(cachedBase.encryptedBytes.byteLength * 8);
     const baseBytes = await decryptSyncBlob(
       this.deps.getRemoteVaultKey(),
       cachedBase.encryptedBytes,
@@ -276,6 +283,7 @@ export class PullPendingMutationHandler {
           ),
         };
       },
+      reservation,
     );
   }
 
@@ -322,6 +330,7 @@ async function isSameEntryPendingMutationAlreadyRemote(
   plan: PlannedEntryState,
   vaultAdapter: PullEntryStateVaultAdapter,
   contentRuntime: SyncContentRuntime,
+  reservation?: ContentReservation,
 ): Promise<boolean> {
   if (pending.entryId !== plan.state.entryId) {
     return false;
@@ -348,6 +357,7 @@ async function isSameEntryPendingMutationAlreadyRemote(
     await contentRuntime.readAndHash(
       await vaultAdapter.getFileSize(metadata.path),
       async () => await vaultAdapter.readBytes(metadata.path),
+      reservation,
     )
   ).hash === metadata.hash;
 }

@@ -117,7 +117,7 @@ describe("SyncPullService failure rollback: preparation", () => {
     await store.close();
   });
 
-  it("does not remove pending mutations before every blob is prepared", async () => {
+  it("preserves local conflict copies in completed groups when a later download fails", async () => {
     const store = createTestSyncStore();
     const adapter = createVaultAdapter({
       "Folder/a.md": "local a",
@@ -225,15 +225,13 @@ describe("SyncPullService failure rollback: preparation", () => {
     });
 
     await expect(service.pullOnce(session)).rejects.toThrow("missing blob fixture");
-    expect(adapter.text("Folder/a.md")).toBe("local a");
-    expect(adapter.text("Folder/a.sync-conflict-20260422-101112.md")).toBeNull();
-    expect(await store.listDirtyEntries()).toMatchObject([
-      {
-        mutationId: "mutation-a",
-        entryId: "entry-a",
-      },
-    ]);
-    expect(conflicts).toEqual([]);
+    expect(adapter.text("Folder/a.md")).toBe("new a");
+    expect(adapter.text("Folder/a.sync-conflict-20260422-101112.md")).toBe("local a");
+    expect(await store.listDirtyEntries()).toEqual([]);
+    expect(conflicts).toHaveLength(1);
+    expect(await store.getEntryById("entry-a")).toMatchObject({ revision: 2 });
+    expect(await store.getEntryById("entry-b")).toMatchObject({ revision: 1 });
+    expect(await store.getCursor()).toBe(0);
 
     await store.close();
   });

@@ -1,5 +1,6 @@
 import {
   type SyncContentRuntime,
+  type ContentReservation,
   type SyncContentRuntimeDeps,
 } from "../core/content-runtime";
 import { createSyncCryptoContext, decryptSyncBlob } from "../core/crypto";
@@ -35,6 +36,7 @@ export class PullBlobPreparer {
     store: SyncBlobStore,
     token: SyncTokenResponse,
     plans: PlannedEntryState[],
+    reservation?: ContentReservation,
   ): Promise<PreparedEntryBlob[]> {
     const contentPlans = plans.filter((plan) => {
       if (!plan.finalPath || plan.state.deleted) {
@@ -52,16 +54,16 @@ export class PullBlobPreparer {
 
     const prepared = await mapWithConcurrency(
       contentPlans,
-      this.deps.prepareConcurrency ?? DEFAULT_PREPARE_CONCURRENCY,
+      reservation ? 1 : this.deps.prepareConcurrency ?? DEFAULT_PREPARE_CONCURRENCY,
       async (plan): Promise<PreparedEntryBlob | null> => {
         if (this.canReuseAdoptedLocalContent(plan)) {
-          await this.prepareAdoptedLocalBase(store, plan);
+          await this.prepareAdoptedLocalBase(store, plan, reservation);
           return null;
         }
 
         return {
           plan,
-          bytes: await this.downloadAndVerifyEntryBlob(store, token, plan),
+          bytes: await this.downloadAndVerifyEntryBlob(store, token, plan, reservation),
         };
       },
     );
@@ -81,6 +83,7 @@ export class PullBlobPreparer {
   private async prepareAdoptedLocalBase(
     store: SyncBlobStore,
     plan: PlannedEntryState,
+    reservation?: ContentReservation,
   ): Promise<void> {
     const path = plan.finalPath;
     const expectedHash = plan.hash;
@@ -97,6 +100,7 @@ export class PullBlobPreparer {
     const hashed = await this.contentRuntime.readAndHash(
       await this.deps.vaultAdapter.getFileSize(path),
       async () => await this.deps.vaultAdapter.readBytes(path),
+      reservation,
     );
     if (hashed.hash !== expectedHash) {
       throw new PullLocalSnapshotChangedError(path);
@@ -140,9 +144,16 @@ export class PullBlobPreparer {
     store: SyncBlobStore,
     token: SyncTokenResponse,
     plan: PlannedEntryState,
+    reservation?: ContentReservation,
   ): Promise<Uint8Array> {
     const blobId = requireBlobId(plan.state);
     const encryptedBytes = await this.downloadEntryBlob(token, plan.state);
+    if (plan.state.blobSize != null && encryptedBytes.byteLength !== plan.state.blobSize) {
+      throw new Error(`Entry state ${plan.state.entryId} blob size does not match metadata.`);
+    }
+    // Envelope, plaintext and transient crypto/cache copies. For legacy servers
+    // this updates admission only after the full HTTP body has arrived.
+    reservation?.retain(encryptedBytes.byteLength * 3);
     let bytes = await decryptSyncBlob(
       this.deps.getRemoteVaultKey(),
       encryptedBytes,
