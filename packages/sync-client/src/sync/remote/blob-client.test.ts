@@ -6,6 +6,35 @@ import { SyncAuthorizedRequestClient } from "./request-client";
 
 describe("SyncBlobClient", () => {
   it.each(["upload", "download"] as const)(
+    "applies overload backoff to real %s requests and preserves the HTTP error", async direction => {
+      const pending: Array<(response: HttpResponseLike) => void> = [];
+      const client = new SyncBlobClient(new SyncAuthorizedRequestClient({
+        getApiBaseUrl: () => "https://sync.example",
+        getSyncToken: async () => ({ token: "token", expiresAt: 1_000, vaultId: "v", localVaultId: "l" }),
+        invalidateSyncToken: () => {},
+        httpClient: {
+          request: async () => await new Promise<HttpResponseLike>(resolve => pending.push(resolve)),
+        },
+      }));
+      const bytes = new Uint8Array([1]);
+      const jobs = ["a", "b", "c"].map(id => direction === "upload"
+        ? client.uploadBlob("v", id, bytes)
+        : client.downloadBlob("v", id));
+      const results = Promise.allSettled(jobs);
+      await vi.waitFor(() => expect(pending).toHaveLength(2));
+      pending[0]!({ status: 503, json: { message: "busy" } });
+      await expect(jobs[0]).rejects.toMatchObject({ status: 503, message: "busy" });
+      // Finish microtasks so a wrongly admitted third request would be visible.
+      for (let i = 0; i < 12; i += 1) await Promise.resolve();
+      expect(pending).toHaveLength(2);
+      pending[1]!({ status: 200, arrayBuffer: bytes.buffer });
+      await vi.waitFor(() => expect(pending).toHaveLength(3));
+      pending[2]!({ status: 200, arrayBuffer: bytes.buffer });
+      expect((await results).map(result => result.status)).toEqual(["rejected", "fulfilled", "fulfilled"]);
+    },
+  );
+
+  it.each(["upload", "download"] as const)(
     "refreshes authorization for a %s without changing the blob request",
     async (operation) => {
       const requests: HttpRequestInput[] = [];

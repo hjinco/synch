@@ -31,6 +31,7 @@ import { SyncPullService } from "../engine/pull-service";
 import { SyncPushService } from "../engine/push-service";
 import { SyncAuthorizedRequestClient } from "../remote/request-client";
 import { SyncBlobClient } from "../remote/blob-client";
+import { TransferScheduler } from "../remote/transfer-scheduler";
 import {
   type EntryVersion,
   type DeletedEntryPageCursor,
@@ -138,6 +139,7 @@ export class SyncEngine {
   private readonly syncEventRecorder: SyncEventRecorder;
   private readonly syncRequestClient: SyncAuthorizedRequestClient;
   private readonly syncBlobClient: SyncBlobClient;
+  private readonly transferScheduler = new TransferScheduler();
   private readonly syncPushService: SyncPushService;
   private readonly syncLocalReconcileService: SyncLocalReconcileService;
   private readonly syncAutoLoop: SyncAutoLoop;
@@ -163,7 +165,7 @@ export class SyncEngine {
       invalidateSyncToken: () => this.deps.invalidateSyncToken(),
       httpClient: this.deps.httpClient,
     });
-    this.syncBlobClient = new SyncBlobClient(this.syncRequestClient);
+    this.syncBlobClient = new SyncBlobClient(this.syncRequestClient, this.transferScheduler);
     this.syncPushService = new SyncPushService({
       getSyncToken: async () => await this.deps.getSyncToken(),
       getSyncStore: () => this.syncStore,
@@ -390,6 +392,7 @@ export class SyncEngine {
 
     this.disposed = true;
     this.stopAutoSync();
+    await this.transferScheduler.dispose();
     if (this.ownsContentRuntime) {
       await this.contentRuntime.dispose();
     }

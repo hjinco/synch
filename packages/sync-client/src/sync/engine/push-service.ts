@@ -33,6 +33,9 @@ import {
 } from "./push-mutation-committer";
 import { PushBlobRetryCache } from "./push-blob-retry-cache";
 
+// TODO: Replace this fixed preparation cap with CPU and memory budgets, including
+// prepared payloads waiting for transfer. TransferScheduler controls network
+// concurrency separately; keep this cap until preparation is resource-bounded.
 const DEFAULT_PUSH_PREPARE_CONCURRENCY = 12;
 
 export interface SyncPushServiceDeps extends SyncContentRuntimeDeps {
