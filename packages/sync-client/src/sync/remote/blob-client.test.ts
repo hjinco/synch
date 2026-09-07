@@ -17,20 +17,21 @@ describe("SyncBlobClient", () => {
         },
       }));
       const bytes = new Uint8Array([1]);
-      const jobs = ["a", "b", "c"].map(id => direction === "upload"
+      const jobs = Array.from({ length: 9 }, (_, i) => String(i)).map(id => direction === "upload"
         ? client.uploadBlob("v", id, bytes)
         : client.downloadBlob("v", id));
       const results = Promise.allSettled(jobs);
-      await vi.waitFor(() => expect(pending).toHaveLength(2));
+      await vi.waitFor(() => expect(pending).toHaveLength(8));
       pending[0]!({ status: 503, json: { message: "busy" } });
       await expect(jobs[0]).rejects.toMatchObject({ status: 503, message: "busy" });
-      // Finish microtasks so a wrongly admitted third request would be visible.
+      for (const id of [1, 2, 3]) pending[id]!({ status: 200, arrayBuffer: bytes.buffer });
+      // Four remain active at the reduced limit; the ninth must stay queued.
       for (let i = 0; i < 12; i += 1) await Promise.resolve();
-      expect(pending).toHaveLength(2);
-      pending[1]!({ status: 200, arrayBuffer: bytes.buffer });
-      await vi.waitFor(() => expect(pending).toHaveLength(3));
-      pending[2]!({ status: 200, arrayBuffer: bytes.buffer });
-      expect((await results).map(result => result.status)).toEqual(["rejected", "fulfilled", "fulfilled"]);
+      expect(pending).toHaveLength(8);
+      pending[4]!({ status: 200, arrayBuffer: bytes.buffer });
+      await vi.waitFor(() => expect(pending).toHaveLength(9));
+      for (const id of [5, 6, 7, 8]) pending[id]!({ status: 200, arrayBuffer: bytes.buffer });
+      expect((await results).map(result => result.status)).toEqual(["rejected", ...Array(8).fill("fulfilled")]);
     },
   );
 

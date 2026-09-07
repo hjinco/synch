@@ -3,6 +3,7 @@ import { DEFAULT_SYNC_FILE_RULES, DEFAULT_VAULT_CONFIG_SYNC_RULES } from "@synch
 import { createTestSyncStore } from "@synch/sync-client/testing";
 import type { TestVault } from "@synch/sync-testkit/account";
 import { createTransport } from "@synch/sync-testkit/transport";
+import { SharedBandwidth } from "./bandwidth";
 import { FilesystemVault } from "./vault";
 import { SyncMetrics } from "./metrics";
 import { directScenario, type Scenario } from "./profiles";
@@ -16,6 +17,7 @@ export class Device {
   private deferred = true;
   private measuring = false;
   private localId = "";
+  private bandwidth: SharedBandwidth | undefined;
   private profile: Scenario = directScenario;
   cursor = 0;
   policy: { storageLimitBytes: number; maxFileSizeBytes: number } | undefined;
@@ -64,7 +66,13 @@ export class Device {
     const error = (message: unknown) => { if (this.errors.length < 20) this.errors.push(String(message)); };
     this.engine = new SyncEngine({
       vaultAdapter: this.vault, vaultConfigSource: { listFiles: async () => [] }, changeSource: { start() {} },
-      httpClient: this.transport.httpClient, createWebSocket: this.transport.createWebSocket,
+      httpClient: { request: async input => {
+        const shaped = this.measuring && input.url.includes("/blobs/") ? this.bandwidth : undefined;
+        if (input.method === "PUT" && input.body instanceof ArrayBuffer) await shaped?.transfer(input.body.byteLength);
+        const response = await this.transport.httpClient.request(input);
+        if (input.method !== "PUT" && response.arrayBuffer) await shaped?.transfer(response.arrayBuffer.byteLength);
+        return response;
+      } }, createWebSocket: this.transport.createWebSocket,
       getApiBaseUrl: () => baseUrl, getSyncToken: () => remote.token(this.localId), invalidateSyncToken() {},
       getRemoteVaultKey: () => key, getConfigDir: () => ".obsidian",
       getSyncFileRules: () => ({ ...DEFAULT_SYNC_FILE_RULES, includeOtherFiles: true }),
@@ -112,6 +120,7 @@ export class Device {
   }
   async measure(profile: Scenario) {
     this.profile = profile;
+    this.bandwidth = profile.bandwidth ? new SharedBandwidth(profile.bandwidth) : undefined;
     this.measuring = true;
     this.metrics.start();
     try { await this.sync(); }
