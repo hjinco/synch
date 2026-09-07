@@ -111,11 +111,11 @@ describe("SyncPullService paging", () => {
     expect(progressUpdates[progressUpdates.length - 1]).toEqual({ direction: "pull", totalKnown: true, completedEntries: 2, totalEntries: 2 });
     expect(fileSyncEvents).toEqual([
       "started:upsert:Folder/note-a.md",
-      "started:upsert:Folder/note-b.md",
       "completed:upsert:Folder/note-a.md:1",
+      "started:upsert:Folder/note-b.md",
       "completed:upsert:Folder/note-b.md:1",
     ]);
-    expect(suppressionCalls).toEqual([["Folder/note-a.md", "Folder/note-b.md"]]);
+    expect(suppressionCalls).toEqual([["Folder/note-a.md"], ["Folder/note-b.md"]]);
     await store.close();
   });
 
@@ -449,7 +449,7 @@ describe("SyncPullService paging", () => {
     await store.close();
   });
 
-  it("prepares all blobs before writing a large pull", async () => {
+  it("applies independent groups before downloading the entire page", async () => {
     const store = createTestSyncStore();
     const adapter = createVaultAdapter();
     const events: string[] = [];
@@ -526,7 +526,7 @@ describe("SyncPullService paging", () => {
       filesWritten: 6,
     });
     expect(events.indexOf("write:Folder/note-1.md")).toBeGreaterThan(-1);
-    expect(events.indexOf("download:blob-6")).toBeLessThan(
+    expect(events.indexOf("download:blob-6")).toBeGreaterThan(
       events.indexOf("write:Folder/note-1.md"),
     );
     expect(blobIds.map((_, index) => adapter.text(`Folder/note-${index + 1}.md`))).toEqual(

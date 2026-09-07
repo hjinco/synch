@@ -30,6 +30,7 @@ export class CoordinatorEntryStore {
 				entry_id: string;
 				revision: number;
 				blob_id: string | null;
+				blob_size: number | null;
 				encrypted_metadata: string;
 				deleted: number;
 				updated_seq: number;
@@ -43,7 +44,8 @@ export class CoordinatorEntryStore {
 					encrypted_metadata,
 					deleted,
 					updated_seq,
-					updated_at
+					updated_at,
+					(SELECT size_bytes FROM blobs WHERE blobs.blob_id = entries.blob_id) AS blob_size
 				FROM entries
 				WHERE updated_seq > ?
 					AND updated_seq <= ?
@@ -69,6 +71,7 @@ export class CoordinatorEntryStore {
 			entry_id: row.entry_id,
 			revision: Number(row.revision),
 			blob_id: row.blob_id,
+			blob_size: row.blob_size === null ? null : Number(row.blob_size),
 			encrypted_metadata: row.encrypted_metadata,
 			deleted: Number(row.deleted) !== 0,
 			updated_seq: Number(row.updated_seq),

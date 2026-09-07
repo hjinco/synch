@@ -31,3 +31,14 @@ The v2 HKDF info and AES-GCM additional authenticated data use version `v2`.
 Metadata envelopes remain in the v1 JSON format. This is a separate metadata
 envelope version and does not select or represent the file blob sync format.
 The v2 binary envelope applies only to encrypted file blob payloads.
+
+## Entry-state blob sizes
+
+`entry_states_listed.entries[].blobSize` reports encrypted envelope bytes from
+the server's blob record. It is null for deleted entries or unavailable blob
+records. Older servers omit the field; clients treat both null and omission as
+unknown size and retain parallel downloads with post-receipt byte accounting.
+Clients validate a supplied size against the received body, then perform the
+same AEAD authentication and plaintext hash checks as before. The field is a
+resource-admission hint, not an authenticated content claim. No envelope format
+change or plaintext disclosure is required.

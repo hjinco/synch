@@ -82,6 +82,7 @@ export class EntryService {
 				entryId: entry.entry_id,
 				revision: entry.revision,
 				blobId: entry.blob_id,
+				blobSize: entry.deleted ? null : entry.blob_size ?? null,
 				encryptedMetadata: entry.encrypted_metadata,
 				deleted: entry.deleted,
 				updatedSeq: entry.updated_seq,

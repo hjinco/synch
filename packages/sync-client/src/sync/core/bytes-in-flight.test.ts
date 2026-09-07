@@ -64,6 +64,25 @@ describe("BytesInFlightBudget", () => {
     expect(budget.bytesInFlight).toBe(0);
   });
 
+  it("accounts unknown admitted inputs without deadlocking and blocks new work", async () => {
+    const budget = new BytesInFlightBudget(10);
+    const runtime = new SyncContentRuntime({ byteBudget: budget });
+    const group = await runtime.reserve(0);
+    group.retain(20);
+    const waiting = runtime.reserve(1);
+    expect(budget.bytesInFlight).toBe(20);
+    expect(budget.pendingReservations).toBe(1);
+    group.retain(5);
+    expect(budget.bytesInFlight).toBe(25);
+    group.release();
+    const next = await waiting;
+    expect(budget.bytesInFlight).toBe(1);
+    next.release();
+    expect(() => group.retain(1)).toThrow("released");
+    expect(budget.bytesInFlight).toBe(0);
+    await runtime.dispose();
+  });
+
   it("returns an owned runtime reservation only once", async () => {
     const budget = new BytesInFlightBudget(10);
     const runtime = new SyncContentRuntime({ byteBudget: budget });

@@ -38,6 +38,7 @@ export type EntryVersionListRow = Pick<
 >;
 
 export type EntryStateRow = {
+	blob_size?: number | null;
 	entry_id: string;
 	revision: number;
 	blob_id: string | null;

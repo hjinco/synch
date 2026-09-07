@@ -78,23 +78,37 @@ need a copy.
 
 ### Pull preparation
 
-The pull path has the same class of risk for large remote changes:
+Pull keeps metadata pagination separate from payload lifetime. The planner groups
+changes by both vault paths and entry ownership, including adoption and superseded
+entries. Each group is completely downloaded, authenticated, hashed and prepared
+before its paths are modified. Independent groups prepare concurrently (10 by
+default), apply in plan order, and release payloads and reservations immediately
+after application. A later group failure preserves already completed groups;
+the cursor remains at the previous safe metadata checkpoint for retry.
 
-- the normal pull service prepares up to 10 blobs concurrently;
-- a pull window can contain up to 100 entries;
-- blob preparation downloads, decrypts, and hashes complete files;
-- the current application plan prepares all blobs for the window before
-  writing the vault paths.
+The server's optional `blobSize` field is the encrypted envelope size from its
+existing blob record. Known groups reserve an estimate before download: three
+times remote envelope bytes, plus eight times existing local file bytes for
+potential conflict and text-merge workspace. The latter is conservative even
+when a local file ultimately needs no read. Local reads and cached merge bases
+charge the same group reservation, growing it without waiting if necessary.
+This avoids deadlock from trying to acquire a second reservation while holding
+the group's remote buffers. These estimates do not bound WebCrypto, transport,
+IndexedDB or text-merge heap overhead.
 
-Pull and push now share one `SyncContentRuntime` per `SyncEngine`, so their
-SHA-256 work is served by the same worker pool. Local pending-mutation, merge,
-and conflict-copy reads also use the shared byte budget. Downloaded remote
-blobs are already materialized before verification and remain outside that
-local-read reservation.
+Reservations use the engine's shared `SyncContentRuntime` budget and survive
+through vault writes and store updates. A group whose estimate exceeds the
+budget is admitted only when it can run alone. A FIFO admission queue prevents
+smaller groups from overtaking it. Metadata pages are still checkpointed in
+order, including deferred cross-page path dependencies.
 
-The existing test named `prepares all blobs before writing a large pull` makes
-this behavior explicit. It should become a bounded, per-application-batch
-contract instead.
+Older servers may omit `blobSize` or return null. Those groups retain count-based
+parallel preparation, charging actual remote bytes once their HTTP responses
+arrive. Already admitted work may exceed the budget, but new admission stops
+until space becomes available; unfinished dependencies within an admitted group
+can finish without a second reservation. Advertised sizes must be nonnegative
+safe integers and match received envelope sizes. Authentication and plaintext
+hash verification remain mandatory.
 
 ### Transport boundary
 
@@ -166,7 +180,7 @@ items below are still open.
       one tested byte-aware scheduler.
 - [ ] Refactor push into a bounded producer/consumer pipeline so a whole batch
       does not retain large encrypted payloads.
-- [ ] Refactor pull to prepare and apply one dependency-safe path batch at a
+- [x] Refactor pull to prepare and apply one dependency-safe path batch at a
       time instead of preparing every blob in an apply window up front.
 - [ ] Add cancellation so stopping or disabling sync can release pending work
       promptly.
@@ -201,7 +215,7 @@ The tests should verify behavior rather than implementation details:
       blob encryption.
 - [ ] A completed binary upload does not retain its encrypted payload until an
       unrelated batch finishes.
-- [ ] Pull writes can begin before all blobs in a large remote change set have
+- [x] Pull writes can begin before all blobs in a large remote change set have
       been prepared, subject to path dependencies.
 - [ ] Hashes, encrypted envelope authentication, retries, conflicts, and
       cursor checkpoints remain correct.

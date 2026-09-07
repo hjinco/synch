@@ -148,83 +148,6 @@ export async function mapWithConcurrency<TInput, TOutput>(
   return results;
 }
 
-export function createPathDependencyBatches(
-  plans: ReadonlyArray<PlannedEntryState>,
-): PlannedEntryState[][] {
-  const pathToRoot = new Map<string, string>();
-  const parent = new Map<string, string>();
-  const planRootKeys = new Map<PlannedEntryState, string>();
-
-  for (const [index, plan] of plans.entries()) {
-    const paths = uniqueSyncPaths([
-      ...pathsToRemoveForPlan(plan),
-      ...pathsToWriteForPlan(plan),
-    ]);
-    const rootKey = paths[0] ?? `plan:${index}`;
-    if (!parent.has(rootKey)) {
-      parent.set(rootKey, rootKey);
-    }
-    planRootKeys.set(plan, rootKey);
-
-    for (const path of paths) {
-      const existingRoot = pathToRoot.get(path);
-      if (existingRoot) {
-        union(parent, rootKey, existingRoot);
-      } else {
-        pathToRoot.set(path, rootKey);
-      }
-    }
-  }
-
-  const batches = new Map<string, PlannedEntryState[]>();
-  for (const plan of plans) {
-    const rootKey = planRootKeys.get(plan);
-    if (!rootKey) {
-      continue;
-    }
-    const root = find(parent, rootKey);
-    const batch = batches.get(root) ?? [];
-    batch.push(plan);
-    batches.set(root, batch);
-  }
-
-  return [...batches.values()];
-}
-
-export function packPathDependencyBatches(
-  batches: PlannedEntryState[][],
-  preferredBatchSize: number,
-): PlannedEntryState[][] {
-  const normalizedSize = Number.isFinite(preferredBatchSize)
-    ? Math.max(1, Math.floor(preferredBatchSize))
-    : 1;
-  const packed: PlannedEntryState[][] = [];
-  let current: PlannedEntryState[] = [];
-
-  for (const batch of batches) {
-    if (batch.length >= normalizedSize) {
-      if (current.length > 0) {
-        packed.push(current);
-        current = [];
-      }
-      packed.push(batch);
-      continue;
-    }
-
-    if (current.length + batch.length > normalizedSize) {
-      packed.push(current);
-      current = [];
-    }
-    current.push(...batch);
-  }
-
-  if (current.length > 0) {
-    packed.push(current);
-  }
-
-  return packed;
-}
-
 export function groupPendingConflictsByPlan(
   pendingConflicts: ReadonlyArray<PreparedPendingConflict>,
 ): Map<PlannedEntryState, PreparedPendingConflict[]> {
@@ -266,32 +189,6 @@ export function pathsToRemoveForPlan(
   }
 
   return plan.existing?.path !== plan.finalPath ? [plan.existing?.path] : [];
-}
-
-export function pathsToWriteForPlan(
-  plan: PlannedEntryState,
-): Array<string | null | undefined> {
-  return [plan.finalPath];
-}
-
-function find(parent: Map<string, string>, value: string): string {
-  const next = parent.get(value);
-  if (!next || next === value) {
-    parent.set(value, value);
-    return value;
-  }
-
-  const root = find(parent, next);
-  parent.set(value, root);
-  return root;
-}
-
-function union(parent: Map<string, string>, left: string, right: string): void {
-  const leftRoot = find(parent, left);
-  const rightRoot = find(parent, right);
-  if (leftRoot !== rightRoot) {
-    parent.set(rightRoot, leftRoot);
-  }
 }
 
 export function metadataContextFromRemoteState(state: RemoteEntryState) {

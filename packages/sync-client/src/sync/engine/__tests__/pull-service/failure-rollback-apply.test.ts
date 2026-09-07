@@ -207,7 +207,7 @@ describe("SyncPullService failure rollback: apply", () => {
     await store.close();
   });
 
-  it("does not advance entry rows when a later path batch write fails", async () => {
+  it("preserves completed independent groups when a later group write fails", async () => {
     const store = createTestSyncStore();
     const adapter = createVaultAdapter({
       "Folder/a.md": "old a",
@@ -302,8 +302,8 @@ describe("SyncPullService failure rollback: apply", () => {
     expect(adapter.text("Folder/b.md")).toBe("old b");
     expect(await store.getEntryById("entry-a")).toMatchObject({
       path: "Folder/a.md",
-      revision: 1,
-      blobId: "blob-a-old",
+      revision: 2,
+      blobId: "blob-a-new",
     });
     expect(await store.getEntryById("entry-b")).toMatchObject({
       path: "Folder/b.md",

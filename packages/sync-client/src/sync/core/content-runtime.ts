@@ -10,6 +10,8 @@ import { createSha256ContentHasher as createDefaultSha256ContentHasher } from ".
 
 export interface ContentReservation {
   release(): void;
+  /** Charge another group input against the estimate, growing without waiting. */
+  retain(bytes: number): void;
 }
 
 /** Optional cached content can be discarded to admit active work. */
@@ -50,7 +52,7 @@ export class SyncContentRuntime {
     this.byteBudget = options.byteBudget ?? new BytesInFlightBudget(options.maxBytesInFlight);
   }
 
-  /** Counts source bytes, not the process heap or crypto copies. */
+  /** Reserves caller-estimated bytes; this is not a process heap measurement. */
   async reserve(size: number): Promise<ContentReservation> {
     const admitted = this.byteBudget.acquire(size);
     this.reclaimIdleContent();
@@ -74,7 +76,17 @@ export class SyncContentRuntime {
 
   private ownReservation(size: number): ContentReservation {
     let released = false;
+    let retained = 0;
     return {
+      retain: (bytes) => {
+        if (released) throw new Error("Content reservation was released.");
+        if (!Number.isSafeInteger(bytes) || bytes < 0) throw new Error("Invalid retained byte count.");
+        retained += bytes;
+        if (retained > size) {
+          this.byteBudget.resizeReservation(size, retained);
+          size = retained;
+        }
+      },
       release: () => {
         if (released) return;
         released = true;
@@ -121,17 +133,26 @@ export class SyncContentRuntime {
   async readAndHash(
     size: number,
     readBytes: () => Promise<Uint8Array>,
+    reservation?: ContentReservation,
   ): Promise<HashedBytes> {
-    return await this.withReservation(size, async () => {
-      return await this.hashAndReturnBytes(await readBytes());
-    });
+    return await this.withReadBytes(size, readBytes, async (bytes) =>
+      await this.hashAndReturnBytes(bytes), reservation);
   }
 
   async withReadBytes<T>(
     size: number,
     readBytes: () => Promise<Uint8Array>,
     work: (bytes: Uint8Array) => Promise<T>,
+    reservation?: ContentReservation,
   ): Promise<T> {
+    if (reservation) {
+      // Local conflict/merge input and UTF-16/intermediate working space. This
+      // is an estimate, not a bound on the merge algorithm or process heap.
+      reservation.retain(size * 8);
+      const bytes = await readBytes();
+      if (bytes.byteLength > size) reservation.retain((bytes.byteLength - size) * 8);
+      return await work(bytes);
+    }
     return await this.withReservation(size, async () => {
       return await work(await readBytes());
     });
