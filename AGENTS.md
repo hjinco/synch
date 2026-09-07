@@ -18,6 +18,8 @@ Favor long-term maintainability over quick patches. Do not paper over symptoms w
 - Keep changes scoped, but make the scope large enough to avoid duplicating logic, bypassing invariants, or adding special cases that future work will have to unwind.
 - When a short-term workaround is unavoidable, document the reason, the tradeoff, and the follow-up needed to remove it.
 
+- When a code change is likely to meaningfully affect sync speed, follow [the benchmark README](benchmarks/sync/README.md) to run a before/after benchmark comparison.
+
 ## Package Manager
 
 Use `pnpm`. Do not use `npm` or `yarn`.

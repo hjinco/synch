@@ -45,7 +45,8 @@ from concurrent validation runs or different environments.
 
 `quick` runs the six mixed/pagination profiles. `bandwidth` runs four shared-capacity profiles.
 `full` includes both suites and three bulk scenarios.
-Each profile uses one discarded rehearsal and five measured samples by default.
+Each profile uses no warmup and three measured samples by default.
+Increase `--iterations` when differences are small or sample timings vary widely.
 `--iterations` accepts 1–100; `--warmup` accepts 0–10. A single sample is useful for
 correctness verification, not evidence of a performance improvement.
 
@@ -111,7 +112,7 @@ cursor/pending state. Push verification uses an independent receiving client tha
 fetches and unwraps the key envelope. Verification never constructs an entire vault
 snapshot in memory. Failure invalidates the sample even if the duration was fast.
 
-The isolation policy is `fresh-process/prepared-session`: a rehearsal exercises the
+The isolation policy is `fresh-process/prepared-session`: an optional rehearsal exercises the
 path but does not imply warm JIT state in each fresh measured process. OS disk caches
 are uncontrolled. This suite does not claim cold-disk or steady-state process timing.
 
@@ -135,7 +136,7 @@ All event timestamps are milliseconds since measurement started:
   processes; misses brief peaks and includes retained client runtime allocations.
 
 The console/PR table reports run medians, candidate min/max and successful sample counts. Raw samples
-allow inspecting spread; five runs do not justify a run-level p95. Per-file p95 is
+allow inspecting spread; three runs do not justify a run-level p95. Per-file p95 is
 not a run-level percentile. Missing events are null, not zero. Incomplete results
 never get a percentage speedup. Negative duration change means faster.
 

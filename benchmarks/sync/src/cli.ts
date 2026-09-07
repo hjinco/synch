@@ -14,7 +14,7 @@ export function options(args: string[], compare = false) {
   if (args[0] === "--") args = args.slice(1);
   const { values } = parseArgs({ args, options: {
     runtime: { type: "string", default: "cloudflare" }, suite: { type: "string", default: "quick" },
-    scenario: { type: "string" }, iterations: { type: "string", default: "5" }, warmup: { type: "string", default: "1" },
+    scenario: { type: "string" }, iterations: { type: "string", default: "3" }, warmup: { type: "string", default: "0" },
     output: { type: "string", default: resolve(root, "benchmark-results", compare ? "comparison.json" : "run.json") },
     ...(compare ? { base: { type: "string" as const, default: "origin/main" }, candidate: { type: "string" as const, default: "working-tree" } } : {}),
   } });
