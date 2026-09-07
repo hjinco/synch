@@ -12,7 +12,12 @@ export class R2BlobObjectStorage implements BlobObjectStorage {
 	): Promise<{ size: number; sizeMismatch: boolean }> {
 		const fixed = new FixedLengthStream(declaredSizeBytes);
 		const [uploadResult, pipeResult] = await Promise.allSettled([
-			this.bucket.put(key, fixed.readable),
+			this.bucket.put(key, fixed.readable).catch(async (error: unknown) => {
+				// R2 can reject before it consumes the body (e.g. unavailable storage).
+				// Stop the producer even when the reader was never acquired by R2.
+				if (!fixed.readable.locked) await fixed.readable.cancel(error).catch(() => {});
+				throw error;
+			}),
 			body.pipeTo(fixed.writable),
 		]);
 		if (

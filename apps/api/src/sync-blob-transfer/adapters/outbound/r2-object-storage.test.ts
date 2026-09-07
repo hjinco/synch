@@ -35,6 +35,28 @@ describe("R2BlobObjectStorage", () => {
 		vi.unstubAllGlobals();
 	});
 
+	it("cancels input when R2 rejects before consuming the upload", async () => {
+		const error = new Error("R2 unavailable");
+		const cancel = vi.fn();
+		const storage = new R2BlobObjectStorage({ put: vi.fn(async () => { throw error; }) } as unknown as R2Bucket);
+		const body = new ReadableStream<Uint8Array>({
+			pull(controller) { controller.enqueue(new Uint8Array([1])); }, cancel,
+		});
+		await expect(storage.upload("vault/blob", body, 100)).rejects.toBe(error);
+		expect(cancel).toHaveBeenCalledWith(error);
+	});
+
+	it("propagates a failed source through the R2 consumer", async () => {
+		const error = new Error("client disconnected");
+		const storage = new R2BlobObjectStorage({
+			put: vi.fn(async (_key: string, body: ReadableStream<Uint8Array>) => {
+				await new Response(body).arrayBuffer();
+				return { size: 3 };
+			}),
+		} as unknown as R2Bucket);
+		await expect(storage.upload("vault/blob", new ReadableStream({ start(c) { c.error(error); } }), 3)).rejects.toBe(error);
+	});
+
 	it("deletes all objects under a prefix in R2 list batches", async () => {
 		const bucket = {
 			list: vi

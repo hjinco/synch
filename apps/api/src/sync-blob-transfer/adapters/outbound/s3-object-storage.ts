@@ -37,21 +37,14 @@ export class S3BlobObjectStorage implements BlobObjectStorage {
 		declaredSizeBytes: number,
 	): Promise<{ size: number; sizeMismatch: boolean }> {
 		const limited = limitBodySize(body, declaredSizeBytes);
-		let buffer: ArrayBuffer;
-		let readError: unknown;
-		try {
-			buffer = await new Response(limited.readable).arrayBuffer();
-		} catch (error) {
-			readError = error;
-			buffer = new ArrayBuffer(0);
-		}
-		const sizeMismatch = await limited.sizeMismatch;
-		if (sizeMismatch) {
-			return { size: buffer.byteLength, sizeMismatch: true };
-		}
-		if (readError) {
-			throw readError;
-		}
+		const [readResult, sizeResult] = await Promise.allSettled([
+			new Response(limited.readable).arrayBuffer(),
+			limited.sizeMismatch,
+		]);
+		if (sizeResult.status === "rejected") throw sizeResult.reason;
+		if (sizeResult.value) return { size: 0, sizeMismatch: true };
+		if (readResult.status === "rejected") throw readResult.reason;
+		const buffer = readResult.value;
 		const response = await this.client.fetch(this.objectUrl(key), {
 			method: "PUT",
 			body: buffer,
@@ -61,7 +54,7 @@ export class S3BlobObjectStorage implements BlobObjectStorage {
 				`s3 blob upload failed for ${key}: ${response.status} ${await response.text()}`,
 			);
 		}
-		return { size: buffer.byteLength, sizeMismatch: sizeMismatch || buffer.byteLength !== declaredSizeBytes };
+		return { size: buffer.byteLength, sizeMismatch: false };
 	}
 
 	async download(key: string): Promise<ReadableStream<Uint8Array> | null> {

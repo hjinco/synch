@@ -11,6 +11,14 @@ import {
 } from "./helpers";
 
 describe("SyncRealtimeClient connection health", () => {
+  it.each([1013, 4403])("reports repair pauses over websocket (%i)", async (code) => {
+    const onError = vi.fn();
+    const { socket, session } = await openRealtimeSession({ callbacks: { onError } });
+    socket.emit("close", { code, reason: "sync paused for vault repair" });
+    expect(onError).toHaveBeenCalledWith(expect.objectContaining({ code: "sync_paused" }));
+    session.close();
+  });
+
   it("exposes the server storage and file size policy from hello acknowledgement", async () => {
     const { session } = await openRealtimeSession();
 

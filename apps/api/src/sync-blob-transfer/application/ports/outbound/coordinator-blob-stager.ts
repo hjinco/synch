@@ -7,5 +7,5 @@ export type BlobStageInput = {
 
 export interface CoordinatorBlobStager {
 	stageBlob(input: BlobStageInput): Promise<void>;
-	abortStagedBlob(input: Pick<BlobStageInput, "vaultId" | "blobId" | "token">): Promise<void>;
+	abortStagedBlob(input: Pick<BlobStageInput, "vaultId" | "blobId">): Promise<void>;
 }

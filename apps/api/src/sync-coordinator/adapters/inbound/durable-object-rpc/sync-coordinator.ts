@@ -322,7 +322,7 @@ function formatRequestForLog(request: Request): { method: string; path: string }
 function mapCoordinatorRpcError(error: unknown): unknown {
 	if (!(error instanceof SyncCoordinatorApplicationError)) return error;
 	if (error.code === "sync_paused") {
-		return apiError(403, "forbidden", "vault sync is temporarily paused for repair");
+		return apiError(503, "sync_paused", "vault sync is temporarily paused for repair");
 	}
 	return apiError(
 		rpcErrorStatus(error.code),

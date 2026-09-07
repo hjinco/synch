@@ -49,6 +49,14 @@ describe("SyncAccessClient", () => {
     });
   });
 
+  it.each([[503, "sync_paused"], [403, "forbidden"]])("preserves the vault link on a repair pause (%i)", async (status, code) => {
+    const client = new SyncAccessClient(createMockHttpClient(async () => ({
+      status, json: { error: code, message: "vault sync is temporarily paused for repair" },
+    })));
+    await expect(client.issueSyncToken("http://localhost", "token", { vaultId: "v", localVaultId: "l" }))
+      .rejects.toMatchObject({ name: "ApiRequestError", status, code });
+  });
+
   it("maps forbidden issuance failures to an access-denied vault error", async () => {
     const httpClient = createMockHttpClient(async () => ({
       status: 403,

@@ -21,8 +21,8 @@ export class SyncAccessApplicationError extends Error {
 
 /** Stable public error body for any inbound adapter that surfaces these failures. */
 export type SyncAccessPublicError = {
-	status: 401 | 403;
-	code: "unauthorized" | "forbidden";
+	status: 401 | 403 | 503;
+	code: "unauthorized" | "forbidden" | "sync_paused";
 	message: string;
 };
 
@@ -43,8 +43,8 @@ export const SYNC_ACCESS_PUBLIC_ERROR = {
 		message: "vault access denied",
 	},
 	sync_paused: {
-		status: 403,
-		code: "forbidden",
+		status: 503,
+		code: "sync_paused",
 		message: "vault sync is temporarily paused for repair",
 	},
 } as const satisfies Record<SyncAccessApplicationErrorCode, SyncAccessPublicError>;

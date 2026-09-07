@@ -21,6 +21,15 @@ describe("Node server config", () => {
 		});
 	});
 
+	it("keeps request timeouts finite and below staged GC expiry", () => {
+		expect(parseNodeServerConfig(requiredEnv).requestTimeoutMs).toBe(300_000);
+		expect(parseNodeServerConfig({ ...requiredEnv, REQUEST_TIMEOUT_MS: "900000" }))
+			.toMatchObject({ requestTimeoutMs: 900_000 });
+		for (const value of ["0", "-1", "1500001", "NaN"]) {
+			expect(() => parseNodeServerConfig({ ...requiredEnv, REQUEST_TIMEOUT_MS: value })).toThrow();
+		}
+	});
+
 	it("validates and returns an S3 configuration", () => {
 		const config = parseNodeServerConfig({
 			...requiredEnv,

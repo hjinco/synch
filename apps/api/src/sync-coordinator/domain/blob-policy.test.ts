@@ -15,9 +15,10 @@ const baseInput = {
 };
 
 describe("decideBlobStage", () => {
-	it("pauses sync for a stale staged blob before other checks", () => {
+	it("pauses sync when a stale staged blob is still referenced", () => {
 		const decision = decideBlobStage({
 			...baseInput,
+			isPinned: true,
 			existing: { state: "staged", sizeBytes: 100, createdAt: 1 },
 		});
 
@@ -25,6 +26,11 @@ describe("decideBlobStage", () => {
 			kind: "sync_paused",
 			reason: "staged blob blob-1 remained staged for at least one hour",
 		});
+	});
+
+	it("allows retrying an old unreferenced upload without double charging or pausing", () => {
+		expect(decideBlobStage({ ...baseInput, existing: { state: "staged", sizeBytes: 100, createdAt: 1 } }))
+			.toEqual({ kind: "staged", storageDeltaBytes: 0 });
 	});
 
 	it("rejects a file over the configured maximum", () => {

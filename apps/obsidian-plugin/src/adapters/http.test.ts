@@ -50,6 +50,23 @@ describe("ObsidianHttpClient", () => {
     });
   });
 
+  it.each([[408, ""], [413, "<html>too large</html>"], [502, "bad gateway"]])(
+    "preserves HTTP %i with a non-JSON error body", async (status, body) => {
+      setRequestUrlMock(async () => ({ status, get json() { return JSON.parse(body); } }));
+      const response = await defaultHttpClient.request({ url: "http://localhost/blob" });
+      expect(response.status).toBe(status);
+      expect(response.json).toBeUndefined();
+    },
+  );
+
+  it("leaves successful JSON parsing strict and binary responses lazy", async () => {
+    const bytes = new Uint8Array([1, 2, 3]).buffer;
+    setRequestUrlMock(async () => ({ status: 200, arrayBuffer: bytes, get json() { throw new SyntaxError("invalid JSON"); } }));
+    const response = await defaultHttpClient.request({ url: "http://localhost/blob" });
+    expect(response.arrayBuffer).toBe(bytes);
+    expect(() => response.json).toThrow(SyntaxError);
+  });
+
   it("defaults the method to GET", async () => {
     let capturedRequest: Record<string, unknown> | null = null;
     setRequestUrlMock(async (input) => {

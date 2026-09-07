@@ -21,6 +21,8 @@ export function stageBlobRecord(
 	now: number,
 	deleteAfter: number,
 ) {
+	const pause = stores.state.readSyncPause();
+	if (pause) return { kind: "sync_paused", reason: pause.reason } as const;
 	const blob = stores.blobs.readBlob(blobId);
 	if (!stores.state.readVaultId()) {
 		throw new SyncCoordinatorApplicationError("sync_state_uninitialized", {

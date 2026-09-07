@@ -41,6 +41,7 @@ const SAFE_ERROR_CODES = new Set([
   "quota_exceeded",
   "restore_commit_pending",
   "size_mismatch",
+  "sync_paused",
   "stale_revision",
   "unauthorized",
   "unavailable",

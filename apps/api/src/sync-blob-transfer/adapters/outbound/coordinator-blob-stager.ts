@@ -32,20 +32,17 @@ export class CoordinatorBlobStagerAdapter implements CoordinatorBlobStager {
 	}
 
 	async abortStagedBlob(
-		input: Pick<BlobStageInput, "vaultId" | "blobId" | "token">,
+		input: Pick<BlobStageInput, "vaultId" | "blobId">,
 	): Promise<void> {
-		const headers = new Headers();
-		if (input.token) {
-			headers.set("authorization", `Bearer ${input.token}`);
-		}
-		// The previous proxy deliberately ignored this response. Keep cleanup
-		// best-effort so a failed abort never hides the original upload result.
-		await this.namespace.getByName(input.vaultId).fetch(
+		// Only callable through the internal coordinator namespace. The public
+		// upload was authenticated before staging; compensation outlives its JWT.
+		const response = await this.namespace.getByName(input.vaultId).fetch(
 			new Request(
 				`https://internal/internal/v1/vaults/${encodeURIComponent(input.vaultId)}/blobs/${encodeURIComponent(input.blobId)}/stage`,
-				{ method: "DELETE", headers },
+				{ method: "DELETE" },
 			),
 		);
+		if (!response.ok) throw new Error(`staged upload cleanup failed: ${response.status}`);
 	}
 }
 
