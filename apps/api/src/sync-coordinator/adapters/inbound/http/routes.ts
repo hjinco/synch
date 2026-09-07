@@ -18,7 +18,7 @@ export interface CoordinatorHttpServices {
 		blobId: string,
 		sizeBytes: number,
 	): Promise<void>;
-	abortStagedBlob(token: string | null, vaultId: string, blobId: string): Promise<void>;
+	abortStagedBlob(vaultId: string, blobId: string): Promise<void>;
 	applyVaultPolicy(
 		vaultId: string,
 		limits: VaultStateLimits,
@@ -111,7 +111,7 @@ export function createCoordinatorApp(
 		),
 		async (c) => {
 			const { vaultId, blobId } = c.req.valid("param");
-			await deps.services.abortStagedBlob(readSyncToken(c.req.raw), vaultId, blobId);
+			await deps.services.abortStagedBlob(vaultId, blobId);
 			return new Response(null, { status: 204 });
 		},
 	);

@@ -5,6 +5,17 @@ import { describe, expect, it, vi } from "vitest";
 import { S3BlobObjectStorage, s3DeleteResultErrorKeys } from "./s3-object-storage";
 
 describe("S3BlobObjectStorage", () => {
+	it("settles an interrupted input without issuing an S3 upload", async () => {
+		const fetchMock = vi.fn();
+		vi.stubGlobal("fetch", fetchMock);
+		try {
+			const storage = new S3BlobObjectStorage({ endpoint: "http://localhost:9000", bucket: "test", accessKeyId: "test", secretAccessKey: "test" });
+			const error = new Error("connection reset");
+			await expect(storage.upload("vault/blob", new ReadableStream({ start(c) { c.error(error); } }), 3)).rejects.toBe(error);
+			expect(fetchMock).not.toHaveBeenCalled();
+		} finally { vi.unstubAllGlobals(); }
+	});
+
 	it("rejects traversal keys before issuing a request", async () => {
 		const storage = new S3BlobObjectStorage({
 			endpoint: "http://localhost:9000",

@@ -35,7 +35,7 @@ describe("sqlite backend: blob staging", () => {
 		expect(healthStore.readStorageStatus().storageUsedBytes).toBe(1_000);
 	});
 
-	it("atomically pauses sync when a stale staged blob is retried", async () => {
+	it("retries an unreferenced stale stage without pausing or changing its creation time", async () => {
 		const { unitOfWork, blobStore, cursorStore } =
 			await createSqliteCoordinator();
 		await stage(unitOfWork, "blob-stale", 1_000, 100, 200);
@@ -44,16 +44,13 @@ describe("sqlite backend: blob staging", () => {
 		await expect(
 			stage(unitOfWork, "blob-stale", 1_000, retriedAt, retriedAt + 100),
 		).resolves.toEqual({
-			status: "sync_paused",
+			status: "staged",
 		});
-		expect(cursorStore.readSyncPause()).toMatchObject({
-			pausedAt: retriedAt,
-			reason: expect.stringContaining("blob-stale"),
-		});
+		expect(cursorStore.readSyncPause()).toBeNull();
 		expect(blobStore.readBlob("blob-stale")).toMatchObject({
 			created_at: 100,
-			last_uploaded_at: 100,
-			delete_after: 200,
+			last_uploaded_at: retriedAt,
+			delete_after: retriedAt + 100,
 		});
 	});
 

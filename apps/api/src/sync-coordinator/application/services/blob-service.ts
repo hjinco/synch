@@ -4,7 +4,6 @@ import { isBlobPinned } from "../../domain/blob-gc-policy";
 import {
 	stageBlobRecord,
 	accountForDeletedBlobs,
-	deleteUnreferencedStagedBlob,
 } from "./blob-record-operations";
 import type {
 	BlobObjectKeyBuilder,
@@ -54,7 +53,7 @@ export class BlobService {
 		if (decision.kind === "rejected") throwBlobStageError(blobId, decision);
 
 		if (decision.kind === "sync_paused") {
-			this.socketService.closeAllSockets(4403, "sync paused for vault repair");
+			this.socketService.closeAllSockets(1013, "sync paused for vault repair");
 			throw syncPausedError();
 		}
 
@@ -62,18 +61,20 @@ export class BlobService {
 		this.healthService.notifyStorageStatusChanged();
 	}
 
-	async abortStagedBlob(
-		token: string | null | undefined,
-		vaultId: string,
-		blobId: string,
-	): Promise<void> {
-		await this.syncTokenService.verifySyncToken(token, vaultId);
-		const now = Date.now();
-		this.unitOfWork.run((stores) =>
-			deleteUnreferencedStagedBlob(stores, blobId, now),
-		);
-		await this.healthService.scheduleSummaryFlush();
-		this.healthService.notifyStorageStatusChanged();
+	/** Internal compensation for an already authenticated upload. Revalidating the
+	 * client's short-lived token here would prevent cleanup after slow transfers. */
+	async abortStagedBlob(vaultId: string, blobId: string): Promise<void> {
+		if (this.unitOfWork.stores.state.readVaultId() !== vaultId) {
+			throw new SyncCoordinatorApplicationError("vault_mismatch");
+		}
+		// Another attempt may already have stored this object or still be uploading.
+		// Keep its row, quota reservation, and grace deadline until GC can delete
+		// the unreferenced object and its record together.
+		const blob = this.unitOfWork.stores.blobs.readBlob(blobId);
+		if (blob?.state === "staged" && blob.delete_after !== null) {
+			const now = Date.now();
+			await this.blobGcService.scheduleAt(Math.max(now, blob.delete_after), now);
+		}
 	}
 
 	async deleteBlob(

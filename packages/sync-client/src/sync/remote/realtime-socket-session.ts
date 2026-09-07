@@ -490,6 +490,10 @@ function syncRealtimeErrorFromCloseEvent(event: {
   code: number;
   reason: string;
 }): SyncRealtimeError | null {
+  if ((event.code === 1013 || event.code === 4403) &&
+      event.reason === "sync paused for vault repair") {
+    return new SyncRealtimeError("sync_paused", "vault sync is temporarily paused for repair");
+  }
   if (event.code !== 4409) {
     return null;
   }

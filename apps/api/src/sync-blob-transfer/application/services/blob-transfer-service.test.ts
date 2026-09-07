@@ -57,7 +57,7 @@ describe("blob transfer use cases", () => {
 		expect(blobStorage.upload).toHaveBeenCalledWith("vault-1/blob-1", expect.anything(), 3);
 	});
 
-	it("deletes the object before aborting when the stored size mismatches", async () => {
+	it("leaves partial object cleanup to storage before aborting a size mismatch", async () => {
 		const blobStorage = storage({
 			upload: vi.fn(async () => ({ size: 2, sizeMismatch: true })),
 		});
@@ -77,7 +77,7 @@ describe("blob transfer use cases", () => {
 				body: body("abc"),
 			}),
 		).rejects.toMatchObject({ code: "size_mismatch" });
-		expect(blobStorage.delete).toHaveBeenCalledWith("vault-1/blob-1");
+		expect(blobStorage.delete).not.toHaveBeenCalled();
 		expect(stager.abortStagedBlob).toHaveBeenCalledTimes(1);
 	});
 
@@ -101,6 +101,16 @@ describe("blob transfer use cases", () => {
 			}),
 		).rejects.toBe(uploadError);
 		expect(stager.abortStagedBlob).toHaveBeenCalledTimes(1);
+	});
+
+	it("preserves the upload error when staged cleanup also fails", async () => {
+		const error = new Error("connection aborted");
+		const useCase = new BlobTransferService(
+			{ verifySyncToken: vi.fn(async () => ({}) as never) },
+			{ stageBlob: vi.fn(async () => {}), abortStagedBlob: vi.fn(async () => { throw new Error("expired token"); }) },
+			storage({ upload: vi.fn(async () => { throw error; }) }), objectKeyBuilder,
+		);
+		await expect(useCase.uploadBlob({ vaultId: "v", blobId: "b", declaredSizeBytes: 3, token: "t", body: body("abc") })).rejects.toBe(error);
 	});
 
 	it("verifies before touching storage and rejects unsafe ids", async () => {

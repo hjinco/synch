@@ -41,11 +41,7 @@ export class BlobTransferService implements UploadBlob, DownloadBlob {
 				input.declaredSizeBytes,
 			);
 		} catch (error) {
-			await this.coordinatorBlobStager.abortStagedBlob({
-				vaultId: input.vaultId,
-				blobId: input.blobId,
-				token: input.token,
-			});
+			await this.abortUpload(input);
 			throw error;
 		}
 
@@ -53,18 +49,28 @@ export class BlobTransferService implements UploadBlob, DownloadBlob {
 			uploaded.sizeMismatch ||
 			uploaded.size !== input.declaredSizeBytes
 		) {
-			await this.blobStorage.delete(objectKey).catch(() => {});
-			await this.coordinatorBlobStager.abortStagedBlob({
-				vaultId: input.vaultId,
-				blobId: input.blobId,
-				token: input.token,
-			});
+			await this.abortUpload(input);
 			throw new BlobTransferApplicationError("size_mismatch", {
 				declaredSizeBytes: input.declaredSizeBytes,
 			});
 		}
 
 		return { ok: true, blobId: input.blobId };
+	}
+
+	private async abortUpload(input: BlobUploadInput): Promise<void> {
+		try {
+			await this.coordinatorBlobStager.abortStagedBlob({
+				vaultId: input.vaultId,
+				blobId: input.blobId,
+			});
+		} catch {
+			// GC retains responsibility for leftover stages if the coordinator is
+			// unavailable. Never replace the original transfer error with cleanup.
+			console.warn("[blob-transfer] staged upload cleanup failed", {
+				vaultId: input.vaultId, blobId: input.blobId,
+			});
+		}
 	}
 
 	async downloadBlob(input: BlobDownloadInput): Promise<ReadableStream<Uint8Array> | null> {

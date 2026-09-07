@@ -69,7 +69,7 @@ describe("coordinator blob lifecycle", () => {
 		}
 	});
 
-	it("quarantines a vault when a stale staged blob is retried", async () => {
+	it("quarantines a referenced stale staged blob", async () => {
 		const syncTokenService = {
 			verifySyncToken: vi.fn(async () => ({
 				sub: "user-1",
@@ -91,6 +91,7 @@ describe("coordinator blob lifecycle", () => {
 				delete_after: 1,
 			})),
 			pauseSync,
+			read: vi.fn(() => ({ hasCurrentReference: true, hasRetainedHistory: false })),
 		});
 		const socketService = socketServiceMock();
 		const service = createCoordinatorService({
@@ -108,9 +109,32 @@ describe("coordinator blob lifecycle", () => {
 			expect.stringContaining("blob-stale"),
 		);
 		expect(socketService.closeAllSockets).toHaveBeenCalledWith(
-			4403,
+			1013,
 			"sync paused for vault repair",
 		);
+	});
+
+	it("refuses new stages while a repair pause is active", async () => {
+		const stateRepository = createTestCoordinatorState({
+			readSyncPause: vi.fn(() => ({ pausedAt: 1, reason: "repair in progress" })),
+		});
+		const service = createCoordinatorService({ stateRepository });
+		await expect(service.stageBlob("token", "vault-1", "new-blob", 3))
+			.rejects.toMatchObject({ code: "sync_paused" });
+		expect(stateRepository.persistStage).not.toHaveBeenCalled();
+	});
+
+	it("retains an authenticated upload for GC even after its client token expires", async () => {
+		const verifySyncToken = vi.fn(async () => { throw new Error("expired token"); });
+		const stateRepository = createTestCoordinatorState({
+			readBlob: vi.fn(() => ({ blob_id: "blob", state: "staged" as const, size_bytes: 3, created_at: 1, last_uploaded_at: 1, delete_after: 100 })),
+		});
+		const service = createCoordinatorService({ stateRepository, syncTokenService: { verifySyncToken } as unknown as SyncTokenVerifier });
+		await service.abortStagedBlob("vault-1", "blob");
+		expect(verifySyncToken).not.toHaveBeenCalled();
+		expect(stateRepository.deleteBlobRecord).not.toHaveBeenCalled();
+		expect(stateRepository.adjustStorageUsedBytes).not.toHaveBeenCalled();
+		await expect(service.abortStagedBlob("other-vault", "blob")).rejects.toMatchObject({ code: "vault_mismatch" });
 	});
 
 	it("skips explicit blob deletion when the blob is still referenced", async () => {
@@ -192,7 +216,7 @@ describe("coordinator blob lifecycle", () => {
 			stateRepository,
 		});
 
-		await service.abortStagedBlob("token", "vault-1", "blob-1");
+		await service.abortStagedBlob("vault-1", "blob-1");
 
 		expect(deleteStagedBlob).not.toHaveBeenCalled();
 	});

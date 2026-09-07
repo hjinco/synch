@@ -35,6 +35,14 @@ describe("admin sync repair integration", () => {
 			);
 		});
 
+		const pausedToken = await apiRequest("/v1/sync/token", {
+			method: "POST",
+			headers: { cookie: primary.sessionCookie, "content-type": "application/json" },
+			body: JSON.stringify({ vaultId: primary.vaultId, localVaultId: "repair-device" }),
+		});
+		expect(pausedToken.status).toBe(503);
+		await expect(pausedToken.json()).resolves.toMatchObject({ error: "sync_paused" });
+
 		const repaired = await adminRepairRequest(primary.vaultId);
 		const body = (await repaired.json()) as {
 			status: string;
@@ -67,6 +75,13 @@ describe("admin sync repair integration", () => {
 		}));
 		expect(state.pause).toBeNull();
 		expect(state.blob).toBeUndefined();
+		const renewed = await issueSyncToken(primary.sessionCookie, primary.vaultId, "repair-device");
+		await uploadBlob(primary.vaultId, renewed.token, blobId, "retry after repair");
+		const downloaded = await apiRequest(`/v1/vaults/${primary.vaultId}/blobs/${blobId}`, {
+			headers: { authorization: `Bearer ${renewed.token}` },
+		});
+		expect(await downloaded.text()).toBe("retry after repair");
+
 	});
 });
 

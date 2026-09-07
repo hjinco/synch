@@ -17,8 +17,8 @@ export function mapSyncCoordinatorApplicationError(error: unknown): Response | u
 	if (!(error instanceof SyncCoordinatorApplicationError)) return undefined;
 	if (error.code === "sync_paused") {
 		return response(
-			{ error: "forbidden", message: "vault sync is temporarily paused for repair" },
-			403,
+			{ error: "sync_paused", message: "vault sync is temporarily paused for repair" },
+			503,
 		);
 	}
 	if (error.code === "not_found") {

@@ -1,7 +1,8 @@
 import { serve, type ServerType } from "@hono/node-server";
 import { type ChildProcess, spawn } from "node:child_process";
-import { mkdtempSync, readdirSync, rmSync } from "node:fs";
+import { mkdtempSync, readdirSync, rmSync, mkdirSync, writeFileSync, readFileSync } from "node:fs";
 import { createServer } from "node:net";
+import { request as httpRequest } from "node:http";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -129,7 +130,7 @@ async function waitForHealth(baseUrl: string, deadline = Date.now() + 10_000): P
  * uncheckpointed `-wal` file behind, which is the actual crash-recovery path
  * `locking_mode = EXCLUSIVE` + WAL replay needs to be exercised against.
  */
-async function bootSubprocessServer(dataDir: string): Promise<{ baseUrl: string; child: ChildProcess }> {
+async function bootSubprocessServer(dataDir: string, extraEnv: Record<string, string> = {}): Promise<{ baseUrl: string; child: ChildProcess }> {
 	const port = await reserveFreePort();
 	const baseUrl = `http://127.0.0.1:${port}`;
 	// `detached: true` makes this child the leader of its own process group.
@@ -148,6 +149,7 @@ async function bootSubprocessServer(dataDir: string): Promise<{ baseUrl: string;
 			BETTER_AUTH_SECRET: "test-secret-test-secret-test-secret",
 			AUTH_ALLOWED_EMAILS: SELF_HOST_ALLOWED_EMAIL,
 			SYNC_TOKEN_SECRET: "test-sync-token-secret-test-sync",
+			...extraEnv,
 		},
 		stdio: ["ignore", "pipe", "pipe"],
 		detached: true,
@@ -283,6 +285,95 @@ describe("self-hosted Node runtime: end-to-end sync", () => {
 		}
 		cleanup = [];
 	});
+
+	it("cleans orphaned upload parts before serving after a process crash", async () => {
+		const dataDir = mkdtempSync(path.join(tmpdir(), "synch-orphan-upload-"));
+		cleanup.push(() => rmSync(dataDir, { recursive: true, force: true }));
+		const first = await bootSubprocessServer(dataDir);
+		cleanup.push(() => killAndWaitForExit(first.child));
+		const blobDir = path.join(dataDir, "blobs");
+		mkdirSync(path.join(blobDir, "vault"), { recursive: true });
+		writeFileSync(path.join(blobDir, "vault", "complete"), "good");
+		writeFileSync(path.join(blobDir, ".uploads", "interrupted.part"), "partial");
+		await killAndWaitForExit(first.child);
+		const second = await bootSubprocessServer(dataDir);
+		cleanup.push(() => killAndWaitForExit(second.child));
+		expect(readdirSync(path.join(blobDir, ".uploads")).filter(name => name.endsWith(".part"))).toEqual([]);
+		expect(readFileSync(path.join(blobDir, "vault", "complete"), "utf8")).toBe("good");
+	});
+
+	it.each(["timeout", "disconnect"] as const)("survives five concurrent upload failures (%s), then retries after restart", async (mode) => {
+		const dataDir = mkdtempSync(path.join(tmpdir(), "synch-interrupted-upload-"));
+		cleanup.push(() => rmSync(dataDir, { recursive: true, force: true }));
+		const first = await bootSubprocessServer(dataDir, { REQUEST_TIMEOUT_MS: "2000", SYNC_TOKEN_TTL_SECONDS: "2" });
+		cleanup.push(() => killAndWaitForExit(first.child));
+		const { sessionCookie, vaultId } = await signUpAndCreateVault(first.baseUrl);
+		const token = await issueSyncToken(first.baseUrl, sessionCookie, vaultId, "device-a");
+		const device = await connectSocket(first.baseUrl, vaultId, token);
+		cleanup.push(() => device.close());
+		device.send(JSON.stringify({ type: "hello", requestId: "hello", lastKnownCursor: 0 }));
+		await nextMessage(device, (m) => m.type === "hello_ack");
+		// Internal compensation and administrator repair stay private in self-hosting.
+		expect((await fetch(`${first.baseUrl}/internal/v1/vaults/${vaultId}/blobs/interrupted-0/stage`, { method: "DELETE" })).status).toBe(404);
+		expect((await fetch(`${first.baseUrl}/admin/v1/vaults/${vaultId}/sync-repair`, { method: "POST" })).status).toBe(404);
+		const sizes = [6, 10, 11, 11, 16].map((mb) => mb * 1024 * 1024);
+		const responses = await Promise.all(sizes.map((size, i) => new Promise<number | null>((resolve, reject) => {
+			const req = httpRequest(`${first.baseUrl}/v1/vaults/${vaultId}/blobs/interrupted-${i}`, {
+				method: "PUT", headers: { authorization: `Bearer ${token}`, "content-length": size, "x-blob-size": size },
+			}, (res) => {
+				res.resume();
+				res.on("end", () => resolve(res.statusCode!));
+			});
+			const timer = setInterval(() => req.write(Buffer.alloc(1024)), 50);
+			const disconnectTimer = mode === "disconnect" ? setTimeout(() => req.destroy(), 200) : undefined;
+			req.on("error", (error: NodeJS.ErrnoException) => {
+				if (mode === "disconnect") resolve(null);
+				else if (error.code !== "ECONNRESET") reject(error);
+			});
+			req.on("close", () => { clearInterval(timer); clearTimeout(disconnectTimer); });
+		})));
+		expect(responses).toEqual(sizes.map(() => mode === "timeout" ? 408 : null));
+		await waitForHealth(first.baseUrl);
+		expect(first.child.exitCode).toBeNull();
+		// The failed attempts must remove incomplete files before restart.
+		await expect.poll(() => listPublicFiles(path.join(dataDir, "blobs"))).toEqual([]);
+		await expect.poll(() => readdirSync(path.join(dataDir, "blobs", ".uploads"))).toEqual([]);
+		// Failed uploads retain their quota reservation until staged-blob GC.
+		const observerToken = await issueSyncToken(first.baseUrl, sessionCookie, vaultId, "observer");
+		const observer = await connectSocket(first.baseUrl, vaultId, observerToken);
+		cleanup.push(() => observer.close());
+		observer.send(JSON.stringify({ type: "hello", requestId: "observer-hello", lastKnownCursor: 0 }));
+		expect(await nextMessage(observer, (m) => m.type === "hello_ack"))
+			.toMatchObject({ storageStatus: { storageUsedBytes: sizes.reduce((sum, size) => sum + size, 0) } });
+		await killAndWaitForExit(first.child);
+		const second = await bootSubprocessServer(dataDir);
+		cleanup.push(() => killAndWaitForExit(second.child));
+		const retryToken = await issueSyncToken(second.baseUrl, sessionCookie, vaultId, "device-a");
+		// Retry the same blob IDs with complete bodies, in parallel, at a bounded rate.
+		await Promise.all(sizes.map(async (size, i) => {
+			const payload = Buffer.alloc(size, i + 1);
+			const url = `${second.baseUrl}/v1/vaults/${vaultId}/blobs/interrupted-${i}`;
+			await new Promise<void>((resolve, reject) => {
+				const req = httpRequest(url, { method: "PUT", headers: { authorization: `Bearer ${retryToken}`, "x-blob-size": size, "content-length": size } }, res => {
+					res.resume();
+					res.on("end", () => res.statusCode === 201 ? resolve() : reject(new Error(`upload status ${res.statusCode}`)));
+				});
+				let offset = 0;
+				const timer = setInterval(() => {
+					if (req.writableNeedDrain) return;
+					const end = Math.min(offset + 256 * 1024, size);
+					req.write(payload.subarray(offset, end));
+					offset = end;
+					if (offset === size) { clearInterval(timer); req.end(); }
+				}, 10);
+				req.on("error", reject);
+				req.on("close", () => clearInterval(timer));
+			});
+			const downloaded = await fetch(url, { headers: { authorization: `Bearer ${retryToken}` } });
+			expect(downloaded.status).toBe(200);
+			expect(Buffer.from(await downloaded.arrayBuffer()).equals(payload)).toBe(true);
+		}));
+	}, 40_000);
 
 	it("serves the auth pages Cloudflare would otherwise serve via its assets binding", async () => {
 		// On Cloudflare, wrangler.jsonc's "assets" binding serves apps/api/public/*

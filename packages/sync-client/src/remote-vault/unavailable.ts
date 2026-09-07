@@ -22,6 +22,13 @@ export function remoteVaultUnavailableFromApiError(
     return null;
   }
 
+  // Older servers used a generic 403 for repair pauses. Preserve the link to
+  // the vault so a temporary server condition cannot disconnect local state.
+  if (error.code === "sync_paused" ||
+      (error.code === "forbidden" && error.message === "vault sync is temporarily paused for repair")) {
+    return null;
+  }
+
   if (error.status === 404 || error.code === "not_found") {
     return new RemoteVaultUnavailableError(
       remoteVaultId,
@@ -47,7 +54,7 @@ export function remoteVaultUnavailableFromWebSocketClose(
   event: { code: number; reason: string },
   remoteVaultId: string,
 ): RemoteVaultUnavailableError | null {
-  if (event.code !== 4403) {
+  if (event.code !== 4403 || event.reason === "sync paused for vault repair") {
     return null;
   }
 

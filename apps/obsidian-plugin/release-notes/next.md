@@ -9,3 +9,6 @@
 - Show a clear "checking for changes" status while the vault is being reconciled.
 
 ## Fixed
+
+- Preserve the original HTTP error when an upload fails with an empty or non-JSON response.
+- Keep the vault connected when the server temporarily pauses sync for repair.

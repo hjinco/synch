@@ -41,16 +41,30 @@ export function registerBlobTransferRoutes(
 					400,
 				);
 			}
-			return c.json(
-				await deps.uploadBlob.uploadBlob({
-					vaultId,
-					blobId,
-					declaredSizeBytes,
+			const startedAt = Date.now();
+			let receivedSizeBytes = 0;
+			const body = request.body.pipeThrough(new TransformStream<Uint8Array, Uint8Array>({
+				transform(chunk, controller) {
+					receivedSizeBytes += chunk.byteLength;
+					controller.enqueue(chunk);
+				},
+			}));
+			try {
+				return c.json(await deps.uploadBlob.uploadBlob({
+					vaultId, blobId, declaredSizeBytes,
 					token: parseBearerToken(request.headers.get("authorization")),
-					body: request.body,
-				}),
-				201,
-			);
+					body,
+				}), 201);
+			} catch (error) {
+				console.warn("[blob-transfer] upload failed", {
+					vaultId, blobId, declaredSizeBytes, receivedSizeBytes,
+					durationMs: Date.now() - startedAt,
+				});
+				throw error;
+			} finally {
+				// Pre-storage rejection (auth, quota, staging) must also stop reading.
+				if (!body.locked) await body.cancel().catch(() => {});
+			}
 		},
 	);
 

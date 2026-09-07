@@ -221,6 +221,40 @@ describe("SyncAutoLoop retry flow", () => {
     await store.close();
   });
 
+  it.each([1013, 4403])("retains the vault and reconnects after a repair pause (%i)", async (code) => {
+    vi.useFakeTimers();
+
+    const store = createTestSyncStore();
+    const callbacks: SyncRealtimeCallbacks[] = [];
+    const onRemoteVaultUnavailable = vi.fn();
+    const autoLoop = new SyncAutoLoop({
+      getApiBaseUrl: () => "http://127.0.0.1:8787",
+      getSyncToken: async () => createToken(),
+      getSyncStore: () => store,
+      pushPendingMutations: vi.fn(async () => createPushResult()),
+      pullOnce: vi.fn(async () => {}),
+      realtimeClient: createRealtimeClient((nextCallbacks) => {
+        callbacks.push(nextCallbacks);
+      }),
+      reconnectDelayMs: 1_000,
+      onRemoteVaultUnavailable,
+    });
+
+    await autoLoop.start();
+
+    callbacks[0]?.onClose({
+      code,
+      reason: "sync paused for vault repair",
+    });
+    await vi.advanceTimersByTimeAsync(1_000);
+
+    expect(callbacks).toHaveLength(2);
+    expect(onRemoteVaultUnavailable).not.toHaveBeenCalled();
+
+    autoLoop.stop();
+    await store.close();
+  });
+
   it("reconnects without reporting a realtime connection error", async () => {
     vi.useFakeTimers();
 

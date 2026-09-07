@@ -46,6 +46,9 @@ export function decideBlobStage(input: {
 	maxFileSizeBytes: number;
 }): BlobStageDecision {
 	if (
+		// An unreferenced staged object is an unfinished upload, not evidence of
+		// vault corruption. It can be retried without deleting any shared object.
+		input.isPinned &&
 		input.existing?.state === "staged" &&
 		input.now - input.existing.createdAt >= input.staleAfterMs
 	) {

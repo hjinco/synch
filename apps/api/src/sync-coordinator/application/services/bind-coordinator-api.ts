@@ -24,11 +24,7 @@ export type CoordinatorApi = CoordinatorApplicationPort & {
 		blobId: string,
 		sizeBytes: number,
 	): Promise<void>;
-	abortStagedBlob(
-		token: string | null | undefined,
-		vaultId: string,
-		blobId: string,
-	): Promise<void>;
+	abortStagedBlob(vaultId: string, blobId: string): Promise<void>;
 	deleteBlob(
 		token: string | null | undefined,
 		vaultId: string,
@@ -74,8 +70,8 @@ export function bindCoordinatorApi(services: CoordinatorApiServices): Coordinato
 			services.entryService.purgeDeletedEntries(session, message),
 		stageBlob: (token, vaultId, blobId, sizeBytes) =>
 			services.blobService.stageBlob(token, vaultId, blobId, sizeBytes),
-		abortStagedBlob: (token, vaultId, blobId) =>
-			services.blobService.abortStagedBlob(token, vaultId, blobId),
+		abortStagedBlob: (vaultId, blobId) =>
+			services.blobService.abortStagedBlob(vaultId, blobId),
 		deleteBlob: (token, vaultId, blobId) =>
 			services.blobService.deleteBlob(token, vaultId, blobId),
 		applyVaultPolicy: (vaultId, limits) =>
