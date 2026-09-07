@@ -6,7 +6,9 @@ export interface TransferWindow {
 
 /** Pure controller; the scheduler supplies only sustained, busy observations. */
 export class AdaptiveConcurrencyPolicy {
-  private current = 2;
+  // Short syncs often finish before the first observation. Start below the
+  // preparation ceiling, with enough parallelism to hide request latency.
+  private current = 8;
   private baseline: { rate: number; latency: number; limit: number } | undefined;
   private probing = false;
   private nextProbeAt = 0;
@@ -28,14 +30,16 @@ export class AdaptiveConcurrencyPolicy {
     const rate = window.bytes / window.elapsedMs;
     if (this.probing && this.baseline) {
       // Keep the extra slot only when aggregate throughput improves materially.
-      if (rate < this.baseline.rate * 1.1
-        || window.meanDurationMs > this.baseline.latency * 2) {
+      const improved = rate >= this.baseline.rate * 1.1
+        && window.meanDurationMs <= this.baseline.latency * 2;
+      if (!improved) {
         this.current = this.baseline.limit;
       }
       this.probing = false;
       this.baseline = undefined;
       this.steady = undefined;
-      this.nextProbeAt = now + 10_000;
+      // Cool down after saturation, but keep exploring when capacity is growing.
+      this.nextProbeAt = improved ? now : now + 10_000;
       return;
     }
     if (this.steady && rate < this.steady.rate * 0.7

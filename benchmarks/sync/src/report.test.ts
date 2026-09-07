@@ -25,6 +25,16 @@ describe("durable comparison results", () => {
       expect(() => assertComparable(base, candidate)).toThrow("Incompatible");
     }
   });
+  it("validates bandwidth schedules and rejects comparisons with different capacities", () => {
+    const base = structuredClone(report());
+    base.scenarios[0].scenario.bandwidth = [{ afterMs: 0, bytesPerSecond: 1024 }];
+    expect(() => validateReport(base)).not.toThrow();
+    const candidate = structuredClone(base);
+    candidate.scenarios[0].scenario.bandwidth![0].bytesPerSecond *= 2;
+    expect(() => assertComparable(base, candidate)).toThrow("Incompatible");
+    candidate.scenarios[0].scenario.bandwidth![0].bytesPerSecond = 0;
+    expect(() => validateReport(candidate)).toThrow();
+  });
   it("retains failures without claiming a speedup from remaining samples", () => {
     const base = structuredClone(report()), candidate = structuredClone(base);
     candidate.options.iterations = base.options.iterations = 2;

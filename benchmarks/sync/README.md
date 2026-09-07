@@ -4,7 +4,8 @@ System-level sync measurements against the production API over real HTTP and
 WebSocket. Local Cloudflare is the default; Node measures the self-hosted backend.
 The measured client uses Node, an ordinary filesystem vault and an in-memory sync
 store. Results do not represent deployed Cloudflare latency, Obsidian/Dexie, browser
-workers, mobile performance, or shared network bandwidth.
+workers, mobile performance, or TCP behavior. Bandwidth profiles simulate shared body-byte
+capacity at the client transport boundary; they do not shape the loopback network.
 
 Requires Node 24, `pnpm install --frozen-lockfile`, and permission to listen on
 loopback ports and start child processes. No deployed service, Cloudflare account,
@@ -18,6 +19,7 @@ From the repository root:
 ```sh
 pnpm bench:sync -- --runtime cloudflare --suite quick
 pnpm bench:sync -- --runtime node --suite full
+pnpm bench:sync:compare -- --base origin/main --runtime node --suite bandwidth
 pnpm bench:sync -- --runtime node --scenario pull-notes-no-delay --iterations 1 --warmup 0 --output /tmp/sync-run.json
 pnpm bench:sync:compare -- --base origin/main --runtime cloudflare --suite quick
 ```
@@ -41,7 +43,8 @@ from concurrent validation runs or different environments.
 
 ## Suites and workload recipes
 
-`quick` runs the six mixed/pagination profiles. `full` adds three bulk scenarios.
+`quick` runs the six mixed/pagination profiles. `bandwidth` runs four shared-capacity profiles.
+`full` includes both suites and three bulk scenarios.
 Each profile uses one discarded rehearsal and five measured samples by default.
 `--iterations` accepts 1–100; `--warmup` accepts 0–10. A single sample is useful for
 correctness verification, not evidence of a performance improvement.
@@ -57,6 +60,28 @@ correctness verification, not evidence of a performance improvement.
 | `push-mixed-no-delay` | 240 distinct 4 KiB notes and one 8 MiB attachment, attachment queued first |
 | `push-mixed-latency` | Same mixed data; 40 ms before every upload and commit request |
 | `push-mixed-slow-attachment` | Same delays plus 800 ms before the attachment upload |
+
+Bandwidth profiles use the mixed fixture (240 x 4 KiB notes and one 8 MiB
+attachment) for both push and pull, with a 40 ms pre-request delay per blob:
+
+| Scenario | Aggregate encrypted body capacity |
+| --- | --- |
+| `pull-mixed-bandwidth-2MiB`, `push-mixed-bandwidth-2MiB` | 2 MiB/s throughout |
+| `pull-mixed-bandwidth-drop`, `push-mixed-bandwidth-drop` | 2 MiB/s for the first second, then 512 KiB/s |
+
+One shared budget per measured device covers all concurrent blob bodies. Pending
+bodies share capacity equally, with unused shares redistributed when a body
+finishes. Idle time earns no credit. The model charges upload bytes before issuing
+the real PUT and download bytes after receiving the real response, before returning
+it to the client. It ticks every 10 ms and accounts for capacity transitions using
+elapsed measurement time. Seeding and verification remain unshaped.
+
+This models bandwidth contention as observed by transfer admission, not packet
+loss, TCP congestion windows, socket backpressure, or streaming memory usage.
+Headers, metadata and WebSocket traffic are excluded from the byte budget. Real
+server work does not overlap the simulated body transmission for a given request.
+Use these profiles to compare admission policies under a reproducible capacity
+constraint, alongside the unchanged quick suite for short-sync regressions.
 
 Delays are independent asynchronous waits before actual requests. They model
 scheduling conditions, not actual RTT or shared bandwidth. Responses, validation,

@@ -53,6 +53,11 @@ export function validateReport(input: unknown): asserts input is Report | Compar
   if (new Set(value.scenarios.map((g: any) => g?.scenario?.id)).size !== value.scenarios.length) fail();
   for (const group of value.scenarios) {
     if (!group.scenario || !/^[a-zA-Z0-9-]{1,80}$/.test(group.scenario.id) || !Array.isArray(group.samples) || group.samples.length > 110) fail();
+    const bandwidth = group.scenario.bandwidth;
+    if (bandwidth !== undefined && (!Array.isArray(bandwidth) || !bandwidth.length || bandwidth.length > 20
+      || bandwidth.some((step: any, i: number) => !step || !nonnegative(step.afterMs)
+        || !nonnegative(step.bytesPerSecond) || step.bytesPerSecond === 0
+        || (i === 0 ? step.afterMs !== 0 : step.afterMs <= bandwidth[i - 1].afterMs)))) fail();
     if (group.scenario.version !== 1 || !["bulk", "notes", "mixed"].includes(group.scenario.fixture) || !["pull", "push", "incremental"].includes(group.scenario.operation) || ["pageDelayMs", "downloadDelayMs", "uploadDelayMs", "commitDelayMs", "attachmentDelayMs"].some(k => !nonnegative(group.scenario[k]))) fail();
     for (const sample of group.samples) {
       if (!["passed", "failed"].includes(sample.status) || typeof sample.rehearsal !== "boolean") fail();
