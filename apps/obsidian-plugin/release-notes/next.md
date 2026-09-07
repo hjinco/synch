@@ -4,6 +4,8 @@
 
 ## Changed
 
+- Automatically adjust simultaneous uploads and downloads based on observed transfer performance and server overload.
+
 - Require encrypted sync and conflict recovery checks before publishing plugin releases.
 - Reduce repeated encryption work when retrying uploads after an interrupted sync.
 - Show a clear "checking for changes" status while the vault is being reconciled.

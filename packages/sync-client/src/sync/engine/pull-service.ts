@@ -17,6 +17,9 @@ import {
 
 const DEFAULT_PULL_BATCH = 100;
 const DEFAULT_PULL_APPLY_WINDOW = 100;
+// TODO: Replace this fixed preparation cap with CPU and memory budgets, including
+// downloaded payloads waiting for apply. TransferScheduler controls network
+// concurrency separately; keep this cap until preparation is resource-bounded.
 const DEFAULT_PULL_PREPARE_CONCURRENCY = 10;
 
 export interface SyncPullServiceDeps extends SyncContentRuntimeDeps {
