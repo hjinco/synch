@@ -163,6 +163,65 @@ export class SyncAutoLoop {
     );
   }
 
+  /**
+   * Pull remote changes once without reconciling or uploading local changes.
+   *
+   * This deliberately uses a short-lived realtime session outside the normal
+   * auto-sync drain loop, so pending local mutations are never scheduled for
+   * push. It is intended for read-only replicas such as backup hosts.
+   */
+  async pullOnlyOnce(): Promise<void> {
+    if (this.isActive() || this.connectPromise || this.drainPromise) {
+      throw new Error(
+        "Pull-only sync requires the auto-sync loop and all in-flight sync work to be stopped.",
+      );
+    }
+
+    const store = this.deps.getSyncStore();
+    if (!store) {
+      throw new Error("Sync store is not initialized.");
+    }
+
+    const token = await this.deps.getSyncToken();
+    const cursor = await store.getCursor();
+    let sessionError: Error | null = null;
+    const session = await this.realtimeClient.openSession(
+      this.deps.getApiBaseUrl(),
+      token,
+      cursor,
+      {
+        onCursorAdvanced() {},
+        onStorageStatusUpdated() {},
+        onPolicyUpdated() {},
+        onPresenceUpdated() {},
+        onPresenceCleared() {},
+        onPresenceAvailabilityChanged() {},
+        onClose() {},
+        onError(error) {
+          sessionError ??= error;
+        },
+      },
+    );
+
+    try {
+      if (cursor > session.serverCursor) {
+        throw new SyncRealtimeError(
+          "cursor_ahead_of_server",
+          "This device's sync history no longer matches the remote vault. Reconnect the CLI vault credentials before retrying.",
+        );
+      }
+      if (sessionError) {
+        throw sessionError;
+      }
+      await this.deps.pullOnce(session);
+      if (sessionError) {
+        throw sessionError;
+      }
+    } finally {
+      session.close();
+    }
+  }
+
   requestPull(targetCursor: number | null = null): void {
     if (!this.isActive()) {
       return;

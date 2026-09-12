@@ -3,6 +3,7 @@ import { parseArgs } from "node:util";
 import { CliAppContext, CliUsageError, describeError } from "./app/context";
 import { runLogin } from "./commands/login";
 import { runLogout } from "./commands/logout";
+import { runPull } from "./commands/pull";
 import { runStatus } from "./commands/status";
 import { runSync } from "./commands/sync";
 import { runVaultConnect } from "./commands/vault-connect";
@@ -16,6 +17,7 @@ Usage:
   synch login                                 Sign in with a device code
   synch logout                                Sign out and clear stored keys
   synch vault connect --vault-id <id>         Connect a vault directory to a remote vault
+  synch pull                                  Download remote changes without uploading local changes
   synch sync                                  Synchronize the vault once and exit
   synch watch                                 Keep the vault in sync until interrupted
   synch status                                Show account, vault, and sync state
@@ -55,6 +57,8 @@ async function main(argv: string[]): Promise<number> {
         return await runLogout(ctx);
       case "vault-connect":
         return await runVaultConnect(ctx, values["vault-id"]);
+      case "pull":
+        return await runPull(ctx);
       case "sync":
         return await runSync(ctx);
       case "watch":
@@ -99,6 +103,7 @@ interface CliParseArgsConfig {
 type CliCommand =
   | "login"
   | "logout"
+  | "pull"
   | "vault-connect"
   | "sync"
   | "watch"
@@ -109,6 +114,7 @@ function resolveCommand(positionals: string[]): CliCommand | null {
   switch (first) {
     case "login":
     case "logout":
+    case "pull":
     case "sync":
     case "watch":
     case "status":
