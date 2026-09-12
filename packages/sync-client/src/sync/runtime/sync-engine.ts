@@ -489,6 +489,10 @@ export class SyncEngine {
     return await this.syncAutoLoop.syncNow();
   }
 
+  async pullOnlyOnce(): Promise<void> {
+    await this.syncAutoLoop.pullOnlyOnce();
+  }
+
   async flushDebouncedPushAndWaitForInFlight(): Promise<void> {
     await this.waitForLocalMutationWork();
     this.syncAutoLoop.flushDebouncedPush();
