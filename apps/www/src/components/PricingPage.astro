@@ -3,6 +3,7 @@ import Footer from "./Footer.astro";
 import Header from "./Header.astro";
 import Layout from "../layouts/Layout.astro";
 import { localizedPath, ui, type Locale } from "../i18n";
+import { PLUS_PRICING_USD } from "../billing/pricing";
 
 interface Props {
   locale: Locale;
@@ -159,16 +160,8 @@ const plusFeatures = [
           <div class="mb-8">
             <h3 class="text-zinc-200 font-normal mb-2">{t.pricing.plusPlan}</h3>
             <div class="flex items-baseline gap-1">
-              <span id="plus-price" class="text-2xl text-zinc-200">$5</span>
-              <span id="plus-interval" class="text-xs text-zinc-500">
-                {t.pricing.month}
-              </span>
-              <span
-                id="plus-original-price"
-                class="hidden text-xs text-zinc-600 line-through"
-              >
-                $60
-              </span>
+              <span id="plus-price" class="text-2xl text-zinc-200">${PLUS_PRICING_USD.monthly}</span>
+              <span id="plus-interval" class="text-xs text-zinc-500">{t.pricing.month}</span>
             </div>
           </div>
 
@@ -203,14 +196,15 @@ const plusFeatures = [
           </ul>
 
           <button
+            id="plus-checkout-button"
             type="button"
-            disabled
-            class="w-full py-2 px-4 text-center text-xs bg-zinc-800/50 text-zinc-500 cursor-not-allowed rounded transition-colors"
+            class="w-full cursor-pointer py-2 px-4 text-center text-xs bg-zinc-200 text-[#0a0a0a] hover:bg-white disabled:bg-zinc-800/50 disabled:text-zinc-500 disabled:cursor-not-allowed rounded transition-colors"
           >
-            {t.pricing.comingSoon}
+            {t.home.getStarted}
           </button>
         </div>
       </div>
+      <p id="checkout-error" role="alert" class="mt-6 text-sm text-red-400"></p>
     </main>
 
     <Footer locale={locale} />
@@ -224,17 +218,21 @@ const plusFeatures = [
     billingUrl,
     monthLabel: t.pricing.month,
     yearLabel: t.pricing.year,
+    plusPricing: PLUS_PRICING_USD,
+    billingEmailUnavailable: t.billingSettings.billingEmailUnavailable,
   }}
 >
-  const starterCheckoutButton = document.getElementById(
-    "starter-checkout-button",
-  );
+  const checkoutButtons = ["starter", "plus"].map((planId) => ({
+    planId,
+    button: document.getElementById(`${planId}-checkout-button`),
+  })).filter(({ button }) => button instanceof HTMLButtonElement);
+  let checkoutPending = false;
+  const checkoutError = document.getElementById("checkout-error");
   const starterOriginalPrice = document.getElementById(
     "starter-original-price",
   );
   const starterPrice = document.getElementById("starter-price");
   const starterInterval = document.getElementById("starter-interval");
-  const plusOriginalPrice = document.getElementById("plus-original-price");
   const plusPrice = document.getElementById("plus-price");
   const plusInterval = document.getElementById("plus-interval");
   const billingOptionButtons = Array.from(
@@ -247,15 +245,11 @@ const plusFeatures = [
       price: "$1",
       label: monthLabel,
       originalPrice: "",
-      plusPrice: "$5",
-      plusOriginalPrice: "",
     },
     annual: {
       price: "$10",
       label: yearLabel,
       originalPrice: "$12",
-      plusPrice: "$50",
-      plusOriginalPrice: "$60",
     },
   };
 
@@ -277,11 +271,7 @@ const plusFeatures = [
       starterInterval.textContent = pricing.label;
     }
     if (plusPrice) {
-      plusPrice.textContent = pricing.plusPrice;
-    }
-    if (plusOriginalPrice) {
-      plusOriginalPrice.textContent = pricing.plusOriginalPrice;
-      plusOriginalPrice.classList.toggle("hidden", !pricing.plusOriginalPrice);
+      plusPrice.textContent = `$${plusPricing[billingInterval]}`;
     }
     if (plusInterval) {
       plusInterval.textContent = pricing.label;
@@ -302,9 +292,12 @@ const plusFeatures = [
     });
   }
 
-  if (starterCheckoutButton instanceof HTMLButtonElement) {
-    starterCheckoutButton.addEventListener("click", async () => {
-      starterCheckoutButton.disabled = true;
+  for (const { planId, button } of checkoutButtons) {
+    button.addEventListener("click", async () => {
+      if (checkoutPending) return;
+      checkoutError.textContent = "";
+      checkoutPending = true;
+      for (const { button } of checkoutButtons) button.disabled = true;
 
       try {
         const response = await fetch(`${apiUrl}/v1/billing/checkout`, {
@@ -315,17 +308,23 @@ const plusFeatures = [
             "content-type": "application/json",
           },
           body: JSON.stringify({
-            planId: "starter",
+            organizationId: new URLSearchParams(location.search).get("organizationId") || undefined,
+            planId,
             billingInterval: selectedBillingInterval,
           }),
         });
 
         if (response.status === 401) {
-          window.location.href = signupUrl;
+          const target = new URL(signupUrl); target.searchParams.set("return_to", location.href); window.location.href = target.toString();
           return;
         }
         if (response.status === 409) {
-          window.location.href = billingUrl;
+          const failure = await response.json();
+          if (failure.error === "billing_email_unavailable") {
+            checkoutError.textContent = billingEmailUnavailable;
+            throw new Error("billing email unavailable");
+          }
+          const target = new URL(billingUrl, location.origin); const organizationId = new URLSearchParams(location.search).get("organizationId"); if (organizationId) target.searchParams.set("organizationId", organizationId); window.location.href = target.toString();
           return;
         }
 
@@ -336,7 +335,8 @@ const plusFeatures = [
         const checkout = await response.json();
         window.location.href = checkout.url;
       } catch {
-        starterCheckoutButton.disabled = false;
+        checkoutPending = false;
+        for (const { button } of checkoutButtons) button.disabled = false;
       }
     });
   }

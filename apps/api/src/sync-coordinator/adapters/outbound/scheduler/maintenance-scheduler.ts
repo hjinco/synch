@@ -62,7 +62,9 @@ export class CoordinatorMaintenanceScheduler {
 			}
 
 			try {
-				const nextDueAt = await handlers[job.key](now);
+				const handler = handlers[job.key];
+				if (!handler) throw new Error(`No maintenance handler for ${job.key}`);
+				const nextDueAt = await handler(now);
 				if (nextDueAt === null) {
 					this.deleteJob(job.key);
 				} else {
@@ -230,7 +232,10 @@ export class CoordinatorMaintenanceScheduler {
 }
 
 function isMaintenanceJobKey(value: string): value is MaintenanceJobKey {
-	return value === "blob_gc" || value === "health_summary_flush";
+	return (
+		value === "blob_gc" ||
+		value === "health_summary_flush"
+	);
 }
 
 function maintenanceRetryDelayMs(retryCount: number): number {

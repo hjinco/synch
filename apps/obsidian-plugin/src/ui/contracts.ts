@@ -99,7 +99,7 @@ export type SynchSubscriptionStatus =
     }
   | {
       state: "loaded";
-      planId: "free" | "starter" | "self_hosted";
+      planId: "free" | "starter" | "plus" | "self_hosted";
       billingInterval: "monthly" | "annual" | null;
       active: boolean;
       status: string;

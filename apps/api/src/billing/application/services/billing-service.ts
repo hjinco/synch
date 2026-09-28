@@ -21,6 +21,7 @@ import type { BillingService as BillingServicePort } from "../ports/inbound/bill
 export type BillingServiceConfig = BillingApplicationConfig;
 
 type BillingStatus = {
+	availablePlusIntervals?: SubscriptionBillingInterval[];
 	planId: SubscriptionPlanId;
 	billingInterval: SubscriptionBillingInterval | null;
 	active: boolean;
@@ -43,18 +44,28 @@ export class BillingApplicationService implements BillingServicePort {
 
 	async createCheckout(input: {
 		userId: string;
+		organizationId?: string;
 		email: string;
 		planId: SubscriptionPlanId;
 		billingInterval?: SubscriptionBillingInterval;
 	}): Promise<{ checkoutId: string; url: string }> {
 		const billingInterval = input.billingInterval ?? "monthly";
-		const organizationId = await this.accountStore.readDefaultOrganizationIdForUser(
-			input.userId,
-		);
+		const organizationId =
+			input.organizationId ??
+			(await this.accountStore.readDefaultOrganizationIdForUser(input.userId));
 		if (!organizationId) {
 			throw new BillingApplicationError("organization_required");
 		}
 
+		if (
+			!isBillingManagerRole(
+				await this.accountStore.readOrganizationRoleForUser(
+					input.userId,
+					organizationId,
+				),
+			)
+		)
+			throw new BillingApplicationError("billing_permission_required");
 		if (!isCheckoutPlanId(input.planId)) {
 			throw new BillingApplicationError("plan_not_available");
 		}
@@ -68,7 +79,8 @@ export class BillingApplicationService implements BillingServicePort {
 			);
 		}
 
-		const billingStatus = await this.readOrganizationBillingStatus(organizationId);
+		const billingStatus =
+			await this.readOrganizationBillingStatus(organizationId);
 		if (billingStatus.active) {
 			throw new BillingApplicationError("subscription_already_active");
 		}
@@ -78,6 +90,7 @@ export class BillingApplicationService implements BillingServicePort {
 			billingInterval,
 			productId,
 			organizationId,
+			polarCustomerId: await this.accountStore.readOrganizationPolarCustomerId(organizationId),
 			userId: input.userId,
 			email: input.email,
 		});
@@ -85,17 +98,21 @@ export class BillingApplicationService implements BillingServicePort {
 
 	async changeSubscriptionPlan(input: {
 		userId: string;
+		organizationId?: string;
 		planId: SubscriptionPlanId;
 		billingInterval: SubscriptionBillingInterval;
 	}): Promise<BillingStatus> {
-		const organizationId = await this.accountStore.readDefaultOrganizationIdForUser(
-			input.userId,
-		);
+		const organizationId =
+			input.organizationId ??
+			(await this.accountStore.readDefaultOrganizationIdForUser(input.userId));
 		if (!organizationId) {
 			throw new BillingApplicationError("organization_required");
 		}
 		const organizationRole =
-			await this.accountStore.readOrganizationRoleForUser(input.userId, organizationId);
+			await this.accountStore.readOrganizationRoleForUser(
+				input.userId,
+				organizationId,
+			);
 		if (!isBillingManagerRole(organizationRole)) {
 			throw new BillingApplicationError("billing_permission_required");
 		}
@@ -114,17 +131,23 @@ export class BillingApplicationService implements BillingServicePort {
 		}
 
 		const subscriptions =
-			await this.subscriptionStore.readOrganizationSubscriptionStatuses(organizationId);
+			await this.subscriptionStore.readOrganizationSubscriptionStatuses(
+				organizationId,
+			);
 		const current = subscriptions
 			.map((subscription) => ({
 				subscription,
-				access: this.subscriptionAccessReader.readSubscriptionAccess(subscription, {
-					productIdsByPlanId: this.config.productIdsByPlanId,
-				}),
+				access: this.subscriptionAccessReader.readSubscriptionAccess(
+					subscription,
+					{
+						productIdsByPlanId: this.config.productIdsByPlanId,
+					},
+				),
 			}))
-			.find(({ subscription, access }) =>
-				access !== null
-				&& isChangeableSubscriptionStatus(subscription.status)
+			.find(
+				({ subscription, access }) =>
+					access !== null &&
+					isChangeableSubscriptionStatus(subscription.status),
 			);
 		if (!current) {
 			throw new BillingApplicationError("subscription_not_active");
@@ -134,8 +157,15 @@ export class BillingApplicationService implements BillingServicePort {
 		}
 		// Annual subscriptions cannot move back to monthly billing; the shorter
 		// interval only becomes available again after the subscription ends.
-		if (isAnnualToMonthlyDowngrade(current.access?.billingInterval, input.billingInterval)) {
-			throw new BillingApplicationError("billing_interval_downgrade_not_allowed");
+		if (
+			isAnnualToMonthlyDowngrade(
+				current.access?.billingInterval,
+				input.billingInterval,
+			)
+		) {
+			throw new BillingApplicationError(
+				"billing_interval_downgrade_not_allowed",
+			);
 		}
 
 		const updatedSubscription = await this.provider.updateSubscriptionProduct({
@@ -147,7 +177,9 @@ export class BillingApplicationService implements BillingServicePort {
 		// waiting for the subscription webhook, which stays as an idempotent backup.
 		await this.subscriptionStore.upsertPolarSubscription(updatedSubscription);
 		try {
-			await this.config.onSubscriptionUpsert?.(updatedSubscription.organizationId);
+			await this.config.onSubscriptionUpsert?.(
+				updatedSubscription.organizationId,
+			);
 		} catch (error) {
 			// Polar and the local subscription record are already updated. The
 			// webhook remains responsible for retrying this policy refresh.
@@ -155,35 +187,58 @@ export class BillingApplicationService implements BillingServicePort {
 		}
 
 		return {
-			...await this.readOrganizationBillingStatus(organizationId),
+			...(await this.readOrganizationBillingStatus(organizationId)),
 			canManageBilling: true,
 		};
 	}
 
-	async readBillingStatus(userId: string): Promise<BillingStatus> {
-		const organizationId = await this.accountStore.readDefaultOrganizationIdForUser(userId);
+	async readBillingStatus(
+		userId: string,
+		selectedOrganizationId?: string,
+	): Promise<BillingStatus> {
+		const organizationId =
+			selectedOrganizationId ??
+			(await this.accountStore.readDefaultOrganizationIdForUser(userId));
 		if (!organizationId) {
 			throw new BillingApplicationError("organization_required");
 		}
 
 		const organizationRole =
-			await this.accountStore.readOrganizationRoleForUser(userId, organizationId);
+			await this.accountStore.readOrganizationRoleForUser(
+				userId,
+				organizationId,
+			);
+		if (!organizationRole)
+			throw new BillingApplicationError("billing_permission_required");
 		return {
-			...await this.readOrganizationBillingStatus(organizationId),
+			...(await this.readOrganizationBillingStatus(organizationId)),
 			canManageBilling: isBillingManagerRole(organizationRole),
+			...(this.config.productIdsByPlanId?.plus
+				? {
+						availablePlusIntervals: (["monthly", "annual"] as const).filter(
+							(interval) => this.config.productIdsByPlanId?.plus?.[interval],
+						),
+					}
+				: {}),
 		};
 	}
 
 	async createCustomerPortalSession(
 		userId: string,
 		returnPath = "/billing",
+		selectedOrganizationId?: string,
 	): Promise<{ url: string }> {
-		const organizationId = await this.accountStore.readDefaultOrganizationIdForUser(userId);
+		const organizationId =
+			selectedOrganizationId ??
+			(await this.accountStore.readDefaultOrganizationIdForUser(userId));
 		if (!organizationId) {
 			throw new BillingApplicationError("organization_required");
 		}
 		const organizationRole =
-			await this.accountStore.readOrganizationRoleForUser(userId, organizationId);
+			await this.accountStore.readOrganizationRoleForUser(
+				userId,
+				organizationId,
+			);
 		if (!isBillingManagerRole(organizationRole)) {
 			throw new BillingApplicationError("billing_permission_required");
 		}
@@ -204,30 +259,40 @@ export class BillingApplicationService implements BillingServicePort {
 		organizationId: string,
 	): Promise<OrganizationBillingStatus> {
 		const subscriptions =
-			await this.subscriptionStore.readOrganizationSubscriptionStatuses(organizationId);
+			await this.subscriptionStore.readOrganizationSubscriptionStatuses(
+				organizationId,
+			);
 		const activeSubscription = subscriptions
 			.map((subscription) => ({
 				subscription,
-				access: this.subscriptionAccessReader.readSubscriptionAccess(subscription, {
-					productIdsByPlanId: this.config.productIdsByPlanId,
-				}),
+				access: this.subscriptionAccessReader.readSubscriptionAccess(
+					subscription,
+					{
+						productIdsByPlanId: this.config.productIdsByPlanId,
+					},
+				),
 			}))
 			.find(({ access }) => access !== null);
 		const active = activeSubscription !== undefined;
-		const planId: SubscriptionPlanId = activeSubscription?.access?.planId ?? "free";
+		const planId: SubscriptionPlanId =
+			activeSubscription?.access?.planId ?? "free";
 		return {
 			planId,
 			billingInterval: activeSubscription?.access?.billingInterval ?? null,
 			active,
 			status:
-				activeSubscription?.subscription.status ?? subscriptions[0]?.status ?? "none",
+				activeSubscription?.subscription.status ??
+				subscriptions[0]?.status ??
+				"none",
 			cancelAtPeriodEnd:
-				activeSubscription?.subscription.cancelAtPeriodEnd
-				?? subscriptions[0]?.cancelAtPeriodEnd
-				?? false,
+				activeSubscription?.subscription.cancelAtPeriodEnd ??
+				subscriptions[0]?.cancelAtPeriodEnd ??
+				false,
 			periodEnd:
-				(activeSubscription?.subscription.periodEnd ?? subscriptions[0]?.periodEnd)
-					?.toISOString() ?? null,
+				(
+					activeSubscription?.subscription.periodEnd ??
+					subscriptions[0]?.periodEnd
+				)?.toISOString() ?? null,
 		};
 	}
 }

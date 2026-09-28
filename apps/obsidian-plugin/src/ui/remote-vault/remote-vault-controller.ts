@@ -3,10 +3,12 @@ import type { Plugin } from "obsidian";
 import { getSynchLocale, type SynchErrorContextKey } from "../../i18n";
 import { openExternalUrl } from "../../adapters/external-browser";
 import {
-  openBootstrapRemoteVaultModal,
   openConfirmConnectNonEmptyLocalVaultModal,
   openCreateRemoteVaultModal,
 } from "./remote-vault-modals";
+import { hasExistingVaultFiles } from "../../adapters/local-vault-content";
+import { ConnectVaultFlow, type VaultAccessContext } from "./connect-vault-flow";
+import { openConnectVaultModal } from "./connect-vault-modal";
 import type { RemoteVaultPort } from "./ports";
 import { shouldSyncPath, type SyncFileRules } from "@synch/sync-client/core";
 
@@ -23,6 +25,7 @@ export interface SynchRemoteVaultControllerDeps {
   getApiBaseUrl: () => string;
   getSyncFileRules: () => SyncFileRules;
   getStoredRemoteVaultId: () => string | null;
+  createVaultAccessContext: () => Promise<VaultAccessContext>;
   hasConnectedRemoteVault: () => boolean;
   initializeSyncStoreForActiveRemoteVault: () => Promise<void>;
   ensureAutoSyncState: () => Promise<void>;
@@ -31,15 +34,20 @@ export interface SynchRemoteVaultControllerDeps {
 }
 
 export class SynchRemoteVaultController {
+  private vaultSetupInProgress = false;
+
   constructor(private readonly deps: SynchRemoteVaultControllerDeps) {}
 
   async createRemoteVaultFromPrompt(): Promise<void> {
+    if (this.vaultSetupInProgress) return;
+    this.vaultSetupInProgress = true;
     try {
       if (this.deps.hasConnectedRemoteVault()) {
         throw new Error("Disconnect the current vault before creating another one.");
       }
 
-      const input = await openCreateRemoteVaultModal(this.deps.plugin.app, "");
+      const organizations = await this.deps.remoteVaultManager.listCreatableOrganizations();
+      const input = await openCreateRemoteVaultModal(this.deps.plugin.app, "", organizations);
       if (!input) {
         return;
       }
@@ -49,41 +57,45 @@ export class SynchRemoteVaultController {
       await this.deps.ensureAutoSyncState();
     } catch (error) {
       this.deps.notifyError(error, "error.vaultCreation");
+    } finally {
+      this.vaultSetupInProgress = false;
     }
   }
 
   async connectRemoteVaultFromPrompt(): Promise<void> {
+    if (this.vaultSetupInProgress) return;
+    this.vaultSetupInProgress = true;
     try {
       if (this.deps.hasConnectedRemoteVault()) {
         throw new Error("Disconnect the current vault before connecting another one.");
       }
 
-      if (this.hasSyncableLocalFiles()) {
-        const confirmed = await openConfirmConnectNonEmptyLocalVaultModal(
-          this.deps.plugin.app,
-        );
-        if (!confirmed) {
-          return;
-        }
-      }
-
-      const vaults = await this.deps.remoteVaultManager.listRemoteVaults();
-      const input = await openBootstrapRemoteVaultModal(
+      const context = await this.deps.createVaultAccessContext();
+      const connected = await openConnectVaultModal(
         this.deps.plugin.app,
-        vaults,
+        new ConnectVaultFlow({
+          ...context,
+          listLegacyVaults: () => this.deps.remoteVaultManager.listRemoteVaults(),
+          hasExistingFiles: () => hasExistingVaultFiles(this.deps.plugin.app),
+          confirmPersonalVault: async () => !this.hasSyncableLocalFiles() ||
+            await openConfirmConnectNonEmptyLocalVaultModal(this.deps.plugin.app),
+          bootstrap: (input, beforeActivate) => this.deps.remoteVaultManager.bootstrapRemoteVault(input, async () => {
+            if (this.deps.hasConnectedRemoteVault()) {
+              throw new Error("Disconnect the current vault before connecting another one.");
+            }
+            await beforeActivate();
+          }),
+        }),
         this.deps.getStoredRemoteVaultId(),
-        async (input) => {
-          await this.deps.remoteVaultManager.bootstrapRemoteVault(input);
-        },
       );
-      if (!input) {
-        return;
-      }
+      if (!connected) return;
 
       await this.deps.initializeSyncStoreForActiveRemoteVault();
       await this.deps.ensureAutoSyncState();
     } catch (error) {
       this.deps.notifyError(error, "error.vaultConnection");
+    } finally {
+      this.vaultSetupInProgress = false;
     }
   }
 

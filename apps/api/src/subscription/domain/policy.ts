@@ -1,11 +1,19 @@
 export const BYTES_PER_MB = 1_000_000;
 export const BYTES_PER_GB = 1_000_000_000;
 
-export const SUBSCRIPTION_PLAN_IDS = ["free", "starter", "self_hosted"] as const;
+export const SUBSCRIPTION_PLAN_IDS = [
+	"free",
+	"starter",
+	"plus",
+	"self_hosted",
+] as const;
 export const SUBSCRIPTION_BILLING_INTERVALS = ["monthly", "annual"] as const;
 
 export type SubscriptionPlanId = (typeof SUBSCRIPTION_PLAN_IDS)[number];
-export type PaidSubscriptionPlanId = Exclude<SubscriptionPlanId, "free" | "self_hosted">;
+export type PaidSubscriptionPlanId = Exclude<
+	SubscriptionPlanId,
+	"free" | "self_hosted"
+>;
 export type SubscriptionBillingInterval =
 	(typeof SUBSCRIPTION_BILLING_INTERVALS)[number];
 export type SubscriptionProductIdsByPlanId = Partial<
@@ -23,7 +31,7 @@ export type SubscriptionPlanPolicy = {
 		monthlyUsd: number;
 		annualMonthlyUsd: number;
 		annualUsd: number;
-	};
+	} | null;
 	limits: {
 		syncedVaults: number;
 		storageLimitBytes: number;
@@ -91,6 +99,23 @@ export const SUBSCRIPTION_PLAN_POLICIES = {
 			storageUpgrade: false,
 		},
 	},
+	plus: {
+		id: "plus",
+		name: "Sync Plus",
+		// Flat organization pricing includes up to three members, including the owner.
+		pricing: {
+			monthlyUsd: 9,
+			annualMonthlyUsd: 90 / 12,
+			annualUsd: 90,
+		},
+		limits: {
+			syncedVaults: 3,
+			storageLimitBytes: 2 * BYTES_PER_GB,
+			maxFileSizeBytes: 100 * BYTES_PER_MB,
+			versionHistoryRetentionDays: 365,
+		},
+		features: { snapshots: true, storageUpgrade: false },
+	},
 	self_hosted: {
 		id: "self_hosted",
 		name: "Self Hosted",
@@ -125,8 +150,7 @@ export function applySubscriptionPlanLimitOverrides(
 	return {
 		...policy,
 		limits: {
-			syncedVaults:
-				overrides.syncedVaults ?? policy.limits.syncedVaults,
+			syncedVaults: overrides.syncedVaults ?? policy.limits.syncedVaults,
 			storageLimitBytes: policy.limits.storageLimitBytes,
 			maxFileSizeBytes: policy.limits.maxFileSizeBytes,
 			versionHistoryRetentionDays: policy.limits.versionHistoryRetentionDays,
@@ -148,13 +172,17 @@ export function subscriptionGrantsAccess(
 		return false;
 	}
 	if (ACTIVE_ACCESS_STATUSES.has(subscription.status)) {
-		return !subscription.periodEnd || subscription.periodEnd.getTime() > Date.now();
+		return (
+			!subscription.periodEnd || subscription.periodEnd.getTime() > Date.now()
+		);
 	}
 	if (!PERIOD_ACCESS_STATUSES.has(subscription.status)) {
 		return false;
 	}
 
-	return !!subscription.periodEnd && subscription.periodEnd.getTime() > Date.now();
+	return (
+		!!subscription.periodEnd && subscription.periodEnd.getTime() > Date.now()
+	);
 }
 
 export function subscriptionAccessPlanId(
@@ -180,7 +208,9 @@ export function subscriptionAccess(
 	}
 
 	const productIdsByPlanId = config.productIdsByPlanId ?? {};
-	for (const [planId, productIdsByInterval] of Object.entries(productIdsByPlanId)) {
+	for (const [planId, productIdsByInterval] of Object.entries(
+		productIdsByPlanId,
+	)) {
 		for (const [billingInterval, productId] of Object.entries(
 			productIdsByInterval ?? {},
 		)) {
@@ -194,4 +224,12 @@ export function subscriptionAccess(
 	}
 
 	return null;
+}
+
+/** Organization sharing entitlement; zero member limit means unrestricted. */
+export function organizationSharingPolicy(planId: SubscriptionPlanId) {
+	return {
+		enabled: planId === "plus" || planId === "self_hosted",
+		memberLimit: planId === "self_hosted" ? 0 : 3,
+	};
 }

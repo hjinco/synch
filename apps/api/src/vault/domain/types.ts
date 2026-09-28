@@ -15,6 +15,7 @@ export type VaultKeyWrapMetadata = {
 };
 
 export type VaultKeyEnvelope = {
+	binding?: { vaultId: string; userId: string };
 	version: number;
 	keyVersion: number;
 	kdf: VaultKeyDerivationMetadata;

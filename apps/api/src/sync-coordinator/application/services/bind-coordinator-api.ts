@@ -16,6 +16,7 @@ export type CoordinatorApi = CoordinatorApplicationPort & {
 		vaultId: string,
 	): Promise<SocketSession>;
 	completeSocketOpen(): Promise<void>;
+	assertSessionAccess(session: SocketSession): void;
 	readSyncPause(vaultId: string): SyncPauseState | null;
 	detachLocalVault(session: SocketSession): Promise<void>;
 	stageBlob(
@@ -53,6 +54,7 @@ export function bindCoordinatorApi(services: CoordinatorApiServices): Coordinato
 		prepareSocketSession: (token, vaultId) =>
 			services.socketConnectionService.prepareSocketSession(token, vaultId),
 		completeSocketOpen: () => services.socketConnectionService.completeSocketOpen(),
+		assertSessionAccess: (session) => services.socketConnectionService.assertSessionAccess(session),
 		readSyncPause: (vaultId) => services.vaultService.readSyncPause(vaultId),
 		repairSyncState: (vaultId) => services.vaultService.repairSyncState(vaultId),
 		listEntryStates: (session, message) =>

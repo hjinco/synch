@@ -109,7 +109,7 @@ describe("libSQL app DB", () => {
 			db.insert(schema.vaultMembership).values({
 				vaultId,
 				userId: "user-1",
-				role: "owner",
+				isCreator: true,
 				status: "active",
 			}),
 		]);

@@ -1,3 +1,5 @@
+import { ObsidianKeyReceiverStore } from "../adapters/key-receiver-storage";
+import { SharingModal } from "../ui/sharing/sharing-modal";
 import type { UserVisibleSyncProgress } from "@synch/sync-client/engine";
 import { Notice, type Plugin, TFolder } from "obsidian";
 
@@ -13,6 +15,8 @@ import {
 import { AuthClient, AuthManager, type AuthReadiness } from "@synch/sync-client/auth";
 import {
   RemoteVaultClient,
+  SharingClient,
+  SharingManager,
   SyncAccessClient,
   type SyncTokenResponse,
   SyncTokenManager,
@@ -105,6 +109,7 @@ export class SynchPluginController implements SynchSettingsController {
     },
   });
   private readonly subscriptionService = new SynchSubscriptionService({
+    getOrganizationId: () => this.remoteVaultManager.getActiveSession()?.summary.organizationId,
     getApiBaseUrl: () => this.getApiBaseUrl(),
     hasAuthenticatedSession: () => this.hasAuthenticatedSession(),
     getAuthSessionToken: () => this.authManager.getAuthSessionToken(),
@@ -246,6 +251,7 @@ export class SynchPluginController implements SynchSettingsController {
     getApiBaseUrl: () => this.getApiBaseUrl(),
     getSyncFileRules: () => this.getSyncFileRules(),
     getStoredRemoteVaultId: () => this.sessionStore.getStoredRemoteVaultId(),
+    createVaultAccessContext: () => this.createVaultAccessContext(),
     hasConnectedRemoteVault: () => this.hasConnectedRemoteVault(),
     initializeSyncStoreForActiveRemoteVault: async () => {
       await this.readinessCoordinator.initializeSyncStoreForActiveRemoteVault();
@@ -643,6 +649,31 @@ export class SynchPluginController implements SynchSettingsController {
 
   async connectRemoteVaultFromPrompt(): Promise<void> {
     await this.remoteVaultController.connectRemoteVaultFromPrompt();
+  }
+
+  private async createVaultAccessContext() {
+    const apiBaseUrl = this.getApiBaseUrl();
+    const token = this.authManager.getAuthSessionToken();
+    const isCurrentAccount = () => this.getApiBaseUrl() === apiBaseUrl && this.authManager.getAuthSessionToken() === token;
+    const user = await new AuthClient(defaultHttpClient, "synch-obsidian-plugin").getAuthenticatedUser(apiBaseUrl, token);
+    if (!isCurrentAccount()) throw new Error(t("sharing.accountChanged"));
+    if (!user) throw new Error("Sign in before managing vault access.");
+    const manager = new SharingManager(new SharingClient(defaultHttpClient, apiBaseUrl, token), user.userId, new ObsidianKeyReceiverStore(this.plugin));
+    return { manager, isCurrentAccount };
+  }
+
+  async openVaultSharing(): Promise<void> {
+    try {
+      const { manager, isCurrentAccount } = await this.createVaultAccessContext();
+      const apiBaseUrl = manager.client.apiBaseUrl;
+      new SharingModal(this.plugin.app, manager, () => this.remoteVaultManager.getActiveSession(), isCurrentAccount, () => {
+        const url = new URL("/organizations", apiBaseUrl);
+        const organizationId = this.remoteVaultManager.getActiveSession()?.summary.organizationId;
+        if (organizationId) url.searchParams.set("organizationId", organizationId);
+        url.searchParams.set("lang", getSynchLocale());
+        openExternalUrl(url.toString());
+      }).open();
+    } catch (error) { this.notifyError(error, "error.vaultConnection"); }
   }
 
   openRemoteVaultManagementPage(): void {

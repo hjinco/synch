@@ -1,4 +1,4 @@
-export const BILLING_CHECKOUT_PLAN_IDS = ["starter"] as const;
+export const BILLING_CHECKOUT_PLAN_IDS = ["starter", "plus"] as const;
 
 export type BillingCheckoutPlanId = (typeof BILLING_CHECKOUT_PLAN_IDS)[number];
 

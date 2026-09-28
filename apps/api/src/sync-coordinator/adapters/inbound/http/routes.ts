@@ -4,10 +4,22 @@ import { z } from "zod";
 
 import { onError } from "../../../../errors";
 import { mapSyncCoordinatorApplicationError } from "./error-mapper";
-import { BLOB_SIZE_HEADER, parseBlobSizeHeader } from "../../../../platform/http/blob-size";
-import { parseBearerToken, SYNC_WEBSOCKET_AUTH_PROTOCOL_PREFIX } from "../../../../sync-access/application";
-import type { SyncPauseState, SyncRepairResult } from "../../../application/dto/sync-repair";
-import type { SocketSession, VaultStateLimits } from "../../../application/dto/types";
+import {
+	BLOB_SIZE_HEADER,
+	parseBlobSizeHeader,
+} from "../../../../platform/http/blob-size";
+import {
+	parseBearerToken,
+	SYNC_WEBSOCKET_AUTH_PROTOCOL_PREFIX,
+} from "../../../../sync-access/application";
+import type {
+	SyncPauseState,
+	SyncRepairResult,
+} from "../../../application/dto/sync-repair";
+import type {
+	SocketSession,
+	VaultStateLimits,
+} from "../../../application/dto/types";
 
 export interface CoordinatorHttpServices {
 	repairSyncState(vaultId: string): Promise<SyncRepairResult>;
@@ -24,8 +36,12 @@ export interface CoordinatorHttpServices {
 		limits: VaultStateLimits,
 	): Promise<{ applied: boolean }>;
 	purgeVault(vaultId: string): Promise<void>;
-	prepareSocketSession(token: string | null, vaultId: string): Promise<SocketSession>;
+	prepareSocketSession(
+		token: string | null,
+		vaultId: string,
+	): Promise<SocketSession>;
 	completeSocketOpen(): Promise<void>;
+	assertSessionAccess(session: SocketSession): void;
 }
 
 export type CoordinatorSocketHandshake = {
@@ -38,13 +54,23 @@ const policyLimitsSchema = z.object({
 	versionHistoryRetentionDays: z.number().int().nonnegative(),
 });
 
-export function createCoordinatorApp(
-	deps: {
-		services: CoordinatorHttpServices;
-		socketHandshake: CoordinatorSocketHandshake;
-	},
-) {
+export function createCoordinatorApp(deps: {
+	services: CoordinatorHttpServices;
+	socketHandshake: CoordinatorSocketHandshake;
+	authorize?: (token: string | null, vaultId: string) => Promise<unknown>;
+	refreshSharing?: (vaultId: string) => Promise<void>;
+	canApplyPolicy?: (vaultId: string) => Promise<boolean>;
+}) {
 	const app = new Hono();
+	app.post("/internal/v1/vaults/:vaultId/authorize", async (c) => {
+		if (!deps.authorize) return c.json({ error: "access_unavailable" }, 503);
+		await deps.authorize(readSyncToken(c.req.raw), c.req.param("vaultId"));
+		return c.json({ ok: true });
+	});
+	app.post("/internal/v1/vaults/:vaultId/sharing-refresh", async (c) => {
+		await deps.refreshSharing?.(c.req.param("vaultId"));
+		return c.json({ ok: true });
+	});
 
 	app.post(
 		"/internal/v1/vaults/:vaultId/sync-repair",
@@ -85,7 +111,9 @@ export function createCoordinatorApp(
 		),
 		async (c) => {
 			const { vaultId, blobId } = c.req.valid("param");
-			const sizeBytes = parseBlobSizeHeader(c.req.raw.headers.get(BLOB_SIZE_HEADER));
+			const sizeBytes = parseBlobSizeHeader(
+				c.req.raw.headers.get(BLOB_SIZE_HEADER),
+			);
 			if (sizeBytes === null) {
 				return c.json(
 					{
@@ -95,7 +123,12 @@ export function createCoordinatorApp(
 					400,
 				);
 			}
-			await deps.services.stageBlob(readSyncToken(c.req.raw), vaultId, blobId, sizeBytes);
+			await deps.services.stageBlob(
+				readSyncToken(c.req.raw),
+				vaultId,
+				blobId,
+				sizeBytes,
+			);
 			return new Response(null, { status: 204 });
 		},
 	);
@@ -133,10 +166,10 @@ export function createCoordinatorApp(
 		async (c) => {
 			const { vaultId } = c.req.valid("param");
 			const body = c.req.valid("json");
-			const result = await deps.services.applyVaultPolicy(
-				vaultId,
-				body.limits,
-			);
+			await deps.refreshSharing?.(c.req.param("vaultId"));
+			if (deps.canApplyPolicy && !(await deps.canApplyPolicy(vaultId)))
+				return c.json({ applied: false });
+			const result = await deps.services.applyVaultPolicy(vaultId, body.limits);
 			return c.json(result);
 		},
 	);
@@ -181,6 +214,7 @@ export function createCoordinatorApp(
 				readSyncToken(request),
 				vaultId,
 			);
+			deps.services.assertSessionAccess(session);
 			const response = await deps.socketHandshake.openSocket(request, session);
 			await deps.services.completeSocketOpen();
 			return response;
@@ -196,7 +230,10 @@ export function createCoordinatorApp(
 		),
 	);
 
-	app.onError((error, c) => mapSyncCoordinatorApplicationError(error) ?? onError(error, c));
+	app.onError(
+		(error, c) =>
+			mapSyncCoordinatorApplicationError(error) ?? onError(error, c),
+	);
 
 	return app;
 }

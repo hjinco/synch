@@ -1,17 +1,31 @@
 import type { SyncTokenVerifier } from "../ports/outbound";
 import type { SocketSession } from "../dto/types";
 import type { HealthService } from "./health-service";
+import { SyncAccessApplicationError } from "../../../sync-access/application";
 
 export interface VaultInitializer {
 	ensureVaultState(vaultId: string): Promise<void>;
 }
 
 export class SocketConnectionService {
+	private readonly preparedExpiry = new WeakMap<SocketSession, number>();
+
 	constructor(
 		private readonly syncTokenService: SyncTokenVerifier,
 		private readonly vaultInitializer: VaultInitializer,
 		private readonly healthService: Pick<HealthService, "scheduleSummaryFlush">,
+		private readonly assertCurrentAccess?: (session: SocketSession) => void,
 	) {}
+
+	/** Recheck synchronously immediately before acceptance, without yielding to a revocation. */
+	assertSessionAccess(session: SocketSession): void {
+		const expiresAt = this.preparedExpiry.get(session) ?? 0;
+		if (expiresAt <= Date.now()) {
+			throw new SyncAccessApplicationError("invalid_token");
+		}
+		this.assertCurrentAccess?.(session);
+		this.preparedExpiry.delete(session);
+	}
 
 	/**
 	 * Completes an accepted socket while it is registered with the gateway.
@@ -36,6 +50,9 @@ export class SocketConnectionService {
 		const claims = await this.syncTokenService.verifySyncToken(token, vaultId);
 		await this.vaultInitializer.ensureVaultState(claims.vaultId);
 		const session = {
+			...(claims.accessVersion === undefined
+				? {}
+				: { accessVersion: claims.accessVersion }),
 			userId: claims.sub,
 			localVaultId: claims.localVaultId,
 			vaultId: claims.vaultId,
@@ -45,6 +62,7 @@ export class SocketConnectionService {
 			presenceEntryId: null,
 			presenceWatchEntryIds: [],
 		};
+		this.preparedExpiry.set(session, claims.exp * 1000);
 		return session;
 	}
 }

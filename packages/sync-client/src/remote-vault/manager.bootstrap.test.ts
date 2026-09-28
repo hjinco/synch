@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { createPasswordWrappedRemoteVaultKey } from "@synch/vault-crypto";
 import type { StoredRemoteVaultKeySecret } from "./types";
@@ -79,6 +79,37 @@ describe("RemoteVaultManager bootstrap", () => {
       state: "loaded",
       label: "Remote",
     });
+  });
+
+  it("does not persist or activate a key when host safety changes during bootstrap", async () => {
+    const savedVaults: Array<StoredRemoteVaultKeySecret | null> = [];
+    const refreshUi = vi.fn();
+    const notify = vi.fn();
+    const wrapper = await createPasswordWrappedRemoteVaultKey("vault-password", {
+      kdfOverrides: { memoryKiB: 8, iterations: 1, parallelism: 1 },
+    });
+    const manager = createManager({
+      savedVaults, refreshUi, notify,
+      remoteVaultClient: {
+        getRemoteVaultBootstrap: async () => ({
+          vault: remoteVaultSummary(),
+          wrappers: [{
+            id: "wrapper", vaultId: "vault-remote", keyVersion: 1,
+            kind: "password", userId: "user-1", envelope: wrapper.envelope,
+            createdAt: "2026-04-22T00:00:00.000Z", revokedAt: null,
+          }],
+        }),
+      },
+    });
+    const beforeActivate = vi.fn(async () => { throw new Error("Local vault is no longer empty"); });
+    await expect(manager.bootstrapRemoteVault({
+      vaultId: "vault-remote", password: "vault-password",
+    }, beforeActivate)).rejects.toThrow("Local vault is no longer empty");
+    expect(beforeActivate).toHaveBeenCalledOnce();
+    expect(manager.getActiveSession()).toBeNull();
+    expect(savedVaults).toEqual([]);
+    expect(refreshUi).not.toHaveBeenCalled();
+    expect(notify).not.toHaveBeenCalled();
   });
 
   it("reports a friendly error when the password cannot unwrap the vault key", async () => {

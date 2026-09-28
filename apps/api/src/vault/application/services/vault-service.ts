@@ -1,7 +1,6 @@
 import type { SubscriptionPolicyReader } from "../../../subscription/application";
 import {
 	canAccessVault,
-	canGrantVaultAccess,
 	canManageVault,
 } from "../../domain/policy";
 import type {
@@ -28,6 +27,7 @@ export class VaultApplicationService implements VaultService {
 		private readonly lifecycleStore: VaultLifecycleStore,
 		private readonly policyReader: SubscriptionPolicyReader,
 		private readonly purgeQueue: VaultPurgeQueue,
+		private readonly canCreateInOrganization?: (userId: string, organizationId: string) => Promise<boolean>,
 	) {}
 
 	async listVaults(
@@ -41,12 +41,14 @@ export class VaultApplicationService implements VaultService {
 		userId: string,
 		name: string,
 		initialWrapper: VaultKeyWrapperInput,
+		selectedOrganizationId?: string,
 	): Promise<VaultRecord> {
-		const organizationId = await this.catalogStore.readDefaultOrganizationIdForUser(userId);
+		const organizationId = selectedOrganizationId ?? await this.catalogStore.readDefaultOrganizationIdForUser(userId);
 		if (!organizationId) {
 			throw new VaultApplicationError("organization_required");
 		}
 
+		if (this.canCreateInOrganization && !await this.canCreateInOrganization(userId, organizationId)) throw new VaultApplicationError("forbidden");
 		const policy = await this.policyReader.readOrganizationPolicy(organizationId);
 		const existingVaultCount =
 			await this.catalogStore.countVaultsForOrganization(organizationId);
@@ -74,6 +76,7 @@ export class VaultApplicationService implements VaultService {
 			organizationId,
 			name,
 			initialWrapper,
+            policy.limits.syncedVaults,
 		);
 	}
 
@@ -91,9 +94,11 @@ export class VaultApplicationService implements VaultService {
 		vaultId: string,
 		envelope: VaultKeyEnvelope,
 	): Promise<VaultKeyWrapperRecord> {
-		if (!(await this.userCanManageVault(userId, vaultId))) {
+		if (!(await this.userCanAccessVault(userId, vaultId))) {
 			throw new VaultApplicationError("forbidden");
 		}
+		const vault = await this.catalogStore.readAccessibleVaultForUser(userId, vaultId);
+		if (!vault || envelope.keyVersion !== vault.activeKeyVersion || (envelope.version === 2 && (envelope.binding?.userId !== userId || envelope.binding?.vaultId !== vaultId))) throw new VaultApplicationError("forbidden");
 
 		return await this.keyStore.upsertPasswordWrapperForUser(
 			userId,
@@ -137,43 +142,6 @@ export class VaultApplicationService implements VaultService {
 		}
 
 		return { vaultId, deletionStatus: "queued" };
-	}
-
-	async grantVaultAccess(
-		requesterUserId: string,
-		vaultId: string,
-		input: {
-			userId: string;
-			role: "admin" | "member";
-			memberWrapper: VaultKeyWrapperInput & { kind: "member" };
-		},
-	): Promise<VaultKeyWrapperRecord> {
-		const authorizationFacts =
-			await this.authorizationStore.readVaultAuthorizationFacts(
-				requesterUserId,
-				vaultId,
-			);
-		if (!canGrantVaultAccess(authorizationFacts)) {
-			throw new VaultApplicationError("forbidden");
-		}
-
-		const organizationId = await this.catalogStore.readVaultOrganizationId(vaultId);
-		if (!organizationId) {
-			throw new VaultApplicationError("not_found");
-		}
-
-		if (
-			!(await this.authorizationStore.userIsOrganizationMember(input.userId, organizationId))
-		) {
-			throw new VaultApplicationError("not_organization_member");
-		}
-
-		return await this.keyStore.addVaultMember(
-			vaultId,
-			input.userId,
-			input.role,
-			input.memberWrapper,
-		);
 	}
 
 }

@@ -7,6 +7,32 @@ const OPEN = 1;
 const CLOSED = 3;
 
 describe("CoordinatorSocketService", () => {
+	it("preserves the access version after a socket attachment is restored", () => {
+		const session = testSession({ accessVersion: 3 });
+		let attachment: unknown;
+		const socket = {
+			deserializeAttachment: () => attachment,
+			serializeAttachment: (value: unknown) => { attachment = value; },
+		} as unknown as WebSocket;
+		const state = testDurableObjectState([socket]);
+		const service = new CoordinatorSocketService(state);
+		const connectionId = service.connectionIdFor(socket);
+		service.attachSocketSession(connectionId, session);
+
+		// A fresh adapter has no in-memory connection IDs, as after hibernation.
+		const restored = new CoordinatorSocketService(state);
+		expect(restored.readSocketSession(connectionId)).toEqual(session);
+	});
+
+	it.each([0, -1, 1.5, Number.NaN, "3", null])(
+		"rejects an invalid stored access version: %s",
+		(accessVersion) => {
+			const socket = testSocket({ ...testSession(), accessVersion } as SocketSession);
+			const service = new CoordinatorSocketService(testDurableObjectState([socket]));
+			expect(service.readSocketSession(service.connectionIdFor(socket))).toBeNull();
+		},
+	);
+
 	it("closes superseded sockets even when their final message races with close", () => {
 		const current = testSocket(testSession({ localVaultId: "local-vault-1" }));
 		const superseded = testSocket(testSession({ localVaultId: "local-vault-1" }));

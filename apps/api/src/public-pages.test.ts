@@ -3,7 +3,7 @@ import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
 
-const apiPublicPages = ["device.html", "signin.html", "signup.html", "vaults.html"] as const;
+const apiPublicPages = ["device.html", "signin.html", "signup.html", "vaults.html", "organizations.html", "invitations.html"] as const;
 
 const publicDir = new URL("../public/", import.meta.url);
 

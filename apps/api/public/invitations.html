@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+ <head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width" />
+  <title>Synch invitation</title>
+  <link rel="stylesheet" href="/styles.css" />
+  <link rel="icon" type="image/x-icon" href="/favicon.ico" />
+  <script src="/i18n.js"></script>
+ </head>
+ <body>
+  <main class="page page--wide">
+   <div class="topbar organization-topbar"><a href="https://synch.run/" class="brand">Synch</a><span id="user" class="vault-meta"></span></div>
+   <header class="vaults-header"><div><h1 class="page-title" data-i18n="title">Organization invitation</h1><p class="vaults-subtitle" data-i18n="subtitle">Review the vault access included with your invitation.</p></div></header>
+
+   <p id="status" class="status status--bar" role="status" aria-live="polite">…</p>
+   <div id="detail" class="org-detail"></div>
+  </main>
+  <script>
+const { locale, createTranslator } = window.synchI18n;
+const { t, ready: translationsReady } = createTranslator("invitations", {
+				wrongAccount: "This invitation is unavailable for this account. Sign in with the email address that received the invitation.",
+				switchAccount: "Switch account",
+				organizationRole: "Organization role",
+				owner: "Owner",
+				admin: "Administrator",
+				member: "Member",
+				pending: "Pending",
+				expired: "Expired",
+				canceled: "Canceled",
+				rejected: "Rejected",
+				accepted: "Accepted",
+				failed: "Unable to complete the request.",
+				signIn: "Please sign in.",
+				title: "Organization invitation",
+				subtitle: "Review the vault access included with your invitation.",
+				missing: "Open the invitation link provided by your administrator.",
+				history: "Accepting gives access to retained vault history after key approval.",
+				keyHelp: "After accepting, open Vault sharing and passwords in the Synch Obsidian plugin on the device you will use. Request administrator approval and set your own vault password.",
+				accept: "Accept invitation",
+				reject: "Reject invitation",
+				next: "Invitation accepted. Continue key setup in Obsidian.",
+				organizations: "Manage organization",
+			});
+const params = new URLSearchParams(location.search);
+const id = params.get('invitationId');
+const status = document.querySelector('#status');
+const content = document.querySelector('#detail');
+function localUrl(path, values = {}) { const url = new URL(path, location.origin); url.searchParams.set('lang', locale); for (const [key, value] of Object.entries(values)) url.searchParams.set(key, value); return url.toString(); }
+async function api(suffix = '', method = 'GET') {
+  const response = await fetch(`/v1/invitations/${encodeURIComponent(id)}${suffix}`, { method, credentials: 'include' });
+  if (response.status === 401) { location.assign(localUrl('/signin', { return_to: location.href })); throw new Error(t('signIn')); }
+  if (!suffix && response.status === 403) throw new Error(t('wrongAccount'));
+  const value = await response.json(); if (!response.ok) throw new Error(value.message || t('failed')); return value;
+}
+function el(tag, text) { const node = document.createElement(tag); node.textContent = text; return node; }
+async function initialize() {
+  await translationsReady; for (const node of document.querySelectorAll('[data-i18n]')) node.textContent = t(node.dataset.i18n);
+  document.title = `Synch · ${t('title')}`; if (!id) throw new Error(t('missing'));
+  const session = await fetch('/api/auth/get-session', { credentials: 'include' }).then(response => response.ok ? response.json() : null);
+  if (session?.user) {
+    document.querySelector('#user').textContent = session.user.email;
+    const switchButton = el('button', t('switchAccount')); switchButton.className = 'signout-button'; switchButton.type = 'button';
+    switchButton.addEventListener('click', async () => {
+      switchButton.disabled = true;
+      try {
+        const response = await fetch('/api/auth/sign-out', { method: 'POST', credentials: 'include', headers: { 'content-type': 'application/json' }, body: '{}' });
+        if (!response.ok) throw new Error(t('failed'));
+        content.replaceChildren(); document.querySelector('#user').textContent = '';
+        location.assign(localUrl('/signin', { return_to: location.href }));
+      } catch (error) { switchButton.disabled = false; status.textContent = error.message || t('failed'); }
+    });
+    document.querySelector('.topbar').append(switchButton);
+  }
+  const invitation = await api();
+  content.append(el('h2', invitation.organizationName), el('p', `${t('organizationRole')}: ${t(invitation.role)}`));
+  const list = el('ul', ''); for (const vault of invitation.vaults) list.append(el('li', vault.name)); content.append(list);
+  status.textContent = t(invitation.status);
+  if (invitation.status === 'pending') {
+    content.append(el('p', t('history')), el('p', t('keyHelp')));
+    const actions = el('div', ''); actions.className = 'org-inline';
+    for (const action of ['accept', 'reject']) {
+      const button = el('button', t(action)); button.className = `btn ${action === 'accept' ? 'btn--primary' : 'btn--secondary'}`; button.type = 'button';
+      button.addEventListener('click', async () => { for (const node of actions.querySelectorAll('button')) node.disabled = true; try { const result = await api(`/${action}`, 'POST'); status.textContent = t(action === 'accept' ? 'next' : 'rejected'); actions.replaceChildren(); if (action === 'accept') { const link = el('a', t('organizations')); link.href = localUrl('/organizations', { organizationId: result.organizationId }); actions.append(link); } } catch (error) { status.textContent = error.message; for (const node of actions.querySelectorAll('button')) node.disabled = false; } }); actions.append(button);
+    }
+    content.append(actions);
+  } else if (invitation.status === 'accepted') { const link = el('a', t('organizations')); link.href = localUrl('/organizations', { organizationId: invitation.organizationId }); content.append(link); }
+}
+void initialize().catch(error => { status.textContent = error.message || t('failed'); });
+
+  </script>
+ </body>
+</html>

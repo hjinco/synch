@@ -209,6 +209,9 @@ export function buildSynchSettingDefinitions(
     },
   });
 
+  // Onboarding follows the current connection state, including after disconnect.
+  if (!hasConnectedRemoteVault) return definitions;
+
   if (isOfficialCloud) {
     definitions.push({
       name: t("subscription.label"),

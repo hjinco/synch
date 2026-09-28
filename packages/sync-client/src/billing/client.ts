@@ -1,6 +1,6 @@
 import { stripTrailingSlash, type HttpClient } from "../http/request";
 
-export type BillingPlanId = "free" | "starter" | "self_hosted";
+export type BillingPlanId = "free" | "starter" | "plus" | "self_hosted";
 export type BillingInterval = "monthly" | "annual";
 
 export interface BillingStatus {
@@ -18,9 +18,12 @@ export class BillingClient {
   async readBillingStatus(
     apiBaseUrl: string,
     sessionToken: string,
+    organizationId?: string,
   ): Promise<BillingStatus> {
+    const url = new URL(`${stripTrailingSlash(apiBaseUrl)}/v1/billing/status`);
+    if (organizationId) url.searchParams.set("organizationId", organizationId);
     const response = await this.httpClient.request({
-      url: `${stripTrailingSlash(apiBaseUrl)}/v1/billing/status`,
+      url: url.toString(),
       method: "GET",
       headers: {
         accept: "application/json",
@@ -64,7 +67,7 @@ export function parseBillingStatus(value: unknown): BillingStatus {
 }
 
 function isBillingPlanId(value: unknown): value is BillingPlanId {
-  return value === "free" || value === "starter" || value === "self_hosted";
+  return value === "free" || value === "starter" || value === "plus" || value === "self_hosted";
 }
 
 function isBillingIntervalOrNull(value: unknown): value is BillingInterval | null {

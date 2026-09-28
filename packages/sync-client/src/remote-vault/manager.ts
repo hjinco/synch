@@ -5,6 +5,7 @@ import {
   type VaultPasswordValidation,
 } from "@synch/vault-crypto";
 import { RemoteVaultClient } from "./client";
+import { OrganizationApiUnavailableError } from "../sharing/client";
 import type {
   RemoteVaultBootstrapResponse,
   RemoteVaultKeyWrapperRecord,
@@ -15,6 +16,7 @@ import type {
 } from "./types";
 
 export interface CreateRemoteVaultInput {
+  organizationId?: string;
   name: string;
   password: string;
   confirmPassword: string;
@@ -142,6 +144,7 @@ export class RemoteVaultManager {
     this.session = {
       summary: {
         vaultId: bootstrap.vault.id,
+        organizationId: bootstrap.vault.organizationId,
         vaultName: bootstrap.vault.name,
         activeKeyVersion: bootstrap.vault.activeKeyVersion,
         bootstrappedAt: new Date().toISOString(),
@@ -162,6 +165,19 @@ export class RemoteVaultManager {
     return listed.vaults;
   }
 
+  async listCreatableOrganizations(): Promise<{ id: string; name: string }[]> {
+    this.ensureAuthenticated();
+    try {
+      return (await this.remoteVaultClient.listOrganizations(
+        this.deps.getApiBaseUrl(), this.deps.getAuthSessionToken(),
+      )).filter(org => org.role === "owner" || org.role === "admin");
+    } catch (error) {
+      // Older servers choose the user's default organization when none is sent.
+      if (error instanceof OrganizationApiUnavailableError) return [];
+      throw error;
+    }
+  }
+
   async createRemoteVault(input: CreateRemoteVaultInput): Promise<RemoteVaultSessionSummary> {
     this.ensureAuthenticated();
     validateCreateInput(input);
@@ -172,6 +188,7 @@ export class RemoteVaultManager {
       this.deps.getAuthSessionToken(),
       {
         name: input.name.trim(),
+        ...(input.organizationId ? { organizationId: input.organizationId } : {}),
         initialWrapper: {
           kind: "password",
           envelope: wrapper.envelope,
@@ -191,7 +208,10 @@ export class RemoteVaultManager {
     return summary;
   }
 
-  async bootstrapRemoteVault(input: BootstrapRemoteVaultInput): Promise<RemoteVaultSessionSummary> {
+  async bootstrapRemoteVault(
+    input: BootstrapRemoteVaultInput,
+    beforeActivate?: () => Promise<void>,
+  ): Promise<RemoteVaultSessionSummary> {
     this.ensureAuthenticated();
 
     const vaultId = input.vaultId.trim();
@@ -209,7 +229,7 @@ export class RemoteVaultManager {
       this.deps.getAuthSessionToken(),
       vaultId,
     );
-    await this.loadBootstrapRemoteVaultSession(bootstrap, password);
+    await this.loadBootstrapRemoteVaultSession(bootstrap, password, beforeActivate);
 
     const summary = this.requireSession().summary;
     this.notify({ type: "connected", label: summary.vaultName });
@@ -219,11 +239,21 @@ export class RemoteVaultManager {
   private async loadBootstrapRemoteVaultSession(
     bootstrap: RemoteVaultBootstrapResponse,
     password: string,
+    beforeActivate?: () => Promise<void>,
   ): Promise<void> {
     const wrapper = findPasswordWrapper(bootstrap.wrappers);
-    const remoteVaultKey = await unwrapRemoteVaultKey(password, wrapper.envelope);
+    const remoteVaultKey = await unwrapRemoteVaultKey(password, wrapper.envelope, { vaultId: bootstrap.vault.id, userId: wrapper.userId ?? "" });
+    // Network and password derivation may take time. Let the host revalidate
+    // local-vault safety and account identity before storing a key or syncing.
+    try {
+      await beforeActivate?.();
+    } catch (error) {
+      remoteVaultKey.fill(0);
+      throw error;
+    }
     const summary: RemoteVaultSessionSummary = {
       vaultId: bootstrap.vault.id,
+        organizationId: bootstrap.vault.organizationId,
       vaultName: bootstrap.vault.name,
       activeKeyVersion: bootstrap.vault.activeKeyVersion,
       bootstrappedAt: new Date().toISOString(),
@@ -261,9 +291,10 @@ export class RemoteVaultManager {
 async function unwrapRemoteVaultKey(
   password: string,
   envelope: RemoteVaultBootstrapResponse["wrappers"][number]["envelope"],
+  binding: { vaultId: string; userId: string },
 ): Promise<Uint8Array> {
   try {
-    return await unwrapRemoteVaultKeyWithPassword(password, envelope);
+    return await unwrapRemoteVaultKeyWithPassword(password, envelope, binding);
   } catch (error) {
     if (isCryptoOperationError(error)) {
       throw new Error("Unable to unlock vault. Check the password and try again.");

@@ -9,6 +9,7 @@ import type { SynchSubscriptionStatus } from "../ui/contracts";
 const SUBSCRIPTION_STATUS_CHECK_INTERVAL_MS = 30 * 1000;
 
 export interface SynchSubscriptionServiceDeps {
+  getOrganizationId?: () => string | undefined;
   getApiBaseUrl: () => string;
   hasAuthenticatedSession: () => boolean;
   getAuthSessionToken: () => string;
@@ -17,6 +18,7 @@ export interface SynchSubscriptionServiceDeps {
 
 export class SynchSubscriptionService {
   private readonly billingClient = new BillingClient(defaultHttpClient);
+  private contextKey = "";
   private subscriptionStatusCheckPromise: Promise<void> | null = null;
   private subscriptionStatusCheckedAt = 0;
   private subscriptionStatus: SynchSubscriptionStatus = {
@@ -26,10 +28,12 @@ export class SynchSubscriptionService {
   constructor(private readonly deps: SynchSubscriptionServiceDeps) {}
 
   getSubscriptionStatus(): SynchSubscriptionStatus {
+    this.checkContext();
     return this.subscriptionStatus;
   }
 
   async ensureSubscriptionStatusCheck(): Promise<void> {
+    this.checkContext();
     if (
       !this.deps.hasAuthenticatedSession() ||
       getServerDeployment(this.deps.getApiBaseUrl()) !== "official_cloud"
@@ -55,6 +59,7 @@ export class SynchSubscriptionService {
   }
 
   async retrySubscriptionStatusCheck(): Promise<void> {
+    this.checkContext();
     if (
       !this.deps.hasAuthenticatedSession() ||
       getServerDeployment(this.deps.getApiBaseUrl()) !== "official_cloud"
@@ -86,7 +91,23 @@ export class SynchSubscriptionService {
       page,
       getSynchLocale(),
     );
-    openExternalUrl(url);
+    const scopedUrl = new URL(url);
+    const organizationId = this.deps.getOrganizationId?.();
+    if (organizationId)
+      scopedUrl.searchParams.set("organizationId", organizationId);
+    openExternalUrl(scopedUrl.toString());
+  }
+
+  private checkContext(): void {
+    const next = JSON.stringify([
+      this.deps.getApiBaseUrl(),
+      this.deps.getAuthSessionToken(),
+      this.deps.getOrganizationId?.(),
+    ]);
+    if (next !== this.contextKey) {
+      this.contextKey = next;
+      this.clearSubscriptionStatus();
+    }
   }
 
   private async checkSubscriptionStatus(): Promise<void> {
@@ -101,22 +122,30 @@ export class SynchSubscriptionService {
       return;
     }
 
+    const contextKey = this.contextKey;
     this.subscriptionStatus = { state: "checking" };
     this.subscriptionStatusCheckPromise = this.billingClient
-      .readBillingStatus(this.deps.getApiBaseUrl(), sessionToken)
+      .readBillingStatus(
+        this.deps.getApiBaseUrl(),
+        sessionToken,
+        this.deps.getOrganizationId?.(),
+      )
       .then((status) => {
+        if (contextKey !== this.contextKey) return;
         this.subscriptionStatus = {
           state: "loaded",
           ...status,
         };
       })
       .catch((error) => {
+        if (contextKey !== this.contextKey) return;
         this.subscriptionStatus = {
           state: "failed",
           error: error instanceof Error ? error.message : String(error),
         };
       })
       .finally(() => {
+        if (contextKey !== this.contextKey) return;
         this.subscriptionStatusCheckedAt = Date.now();
         this.subscriptionStatusCheckPromise = null;
         this.deps.refreshUi();

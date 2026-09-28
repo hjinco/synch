@@ -16,6 +16,7 @@ export interface VaultService {
 		userId: string,
 		name: string,
 		initialWrapper: VaultKeyWrapperInput,
+		selectedOrganizationId?: string,
 	): Promise<VaultRecord>;
 	getVaultBootstrap(userId: string, vaultId: string): Promise<VaultBootstrapRecord>;
 	replacePasswordWrapper(
@@ -27,13 +28,4 @@ export interface VaultService {
 	getAccessibleVault(userId: string, vaultId: string): Promise<VaultRecord | null>;
 	userCanManageVault(userId: string, vaultId: string): Promise<boolean>;
 	deleteVault(userId: string, vaultId: string): Promise<VaultPurgeResult>;
-	grantVaultAccess(
-		requesterUserId: string,
-		vaultId: string,
-		input: {
-			userId: string;
-			role: "admin" | "member";
-			memberWrapper: VaultKeyWrapperInput & { kind: "member" };
-		},
-	): Promise<VaultKeyWrapperRecord>;
 }

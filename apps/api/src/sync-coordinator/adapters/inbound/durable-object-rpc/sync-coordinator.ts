@@ -1,3 +1,7 @@
+import type {
+	VerifiedVaultAccess,
+	VaultAccessDecision,
+} from "../../../application/services/sync-access-service";
 import { DurableObject } from "cloudflare:workers";
 import { apiError } from "../../../../errors";
 import type {
@@ -32,20 +36,34 @@ import {
 const ALARM_FAILURE_RETRY_MS = 30 * 1000;
 
 export class SyncCoordinator extends DurableObject {
+	private readonly authorizeVerified: ReturnType<
+		typeof createCoordinatorRuntime
+	>["authorizeSyncAccess"];
 	private readonly app: ReturnType<typeof createCoordinatorRuntime>["app"];
 	private readonly services: CoordinatorApplicationPort;
 	private readonly socketMessageHandler: CoordinatorSocketMessageHandler;
-	private readonly socketGateway: ReturnType<typeof createCoordinatorRuntime>["socketGateway"];
+	private readonly socketGateway: ReturnType<
+		typeof createCoordinatorRuntime
+	>["socketGateway"];
 	private readonly ready: Promise<void>;
 
 	constructor(ctx: DurableObjectState, env: Env) {
 		super(ctx, env);
 		const runtime = createCoordinatorRuntime(ctx, env);
 		this.app = runtime.app;
+		this.authorizeVerified = runtime.authorizeSyncAccess;
 		this.services = runtime.services;
 		this.socketMessageHandler = runtime.socketMessageHandler;
 		this.socketGateway = runtime.socketGateway;
 		this.ready = runtime.ready;
+	}
+
+	// This method is exposed only on the internal namespace binding, never HTTP.
+	async authorizeSyncAccess(
+		input: VerifiedVaultAccess,
+	): Promise<VaultAccessDecision> {
+		await this.ready;
+		return this.authorizeVerified(input);
 	}
 
 	async fetch(request: Request): Promise<Response> {
@@ -58,7 +76,10 @@ export class SyncCoordinator extends DurableObject {
 		}
 	}
 
-	async webSocketMessage(ws: WebSocket, message: string | ArrayBuffer): Promise<void> {
+	async webSocketMessage(
+		ws: WebSocket,
+		message: string | ArrayBuffer,
+	): Promise<void> {
 		let connectionId: string | null = null;
 		try {
 			connectionId = this.socketGateway.connectionIdFor(ws);
@@ -177,9 +198,7 @@ export class SyncCoordinator extends DurableObject {
 		await this.withRpcError("runGc", () => this.services.runGc());
 	}
 
-	async repairSyncState(
-		vaultId: string,
-	): Promise<SyncRepairResult> {
+	async repairSyncState(vaultId: string): Promise<SyncRepairResult> {
 		return await this.withRpcError("repairSyncState", () =>
 			this.services.repairSyncState(vaultId),
 		);
@@ -204,15 +223,21 @@ export class SyncCoordinator extends DurableObject {
 			try {
 				const retryAt = Date.now() + ALARM_FAILURE_RETRY_MS;
 				await this.ctx.storage.setAlarm(retryAt);
-				console.error("[sync-coordinator] durable object alarm retry scheduled", {
-					objectId: this.ctx.id.toString(),
-					retryAt,
-				});
+				console.error(
+					"[sync-coordinator] durable object alarm retry scheduled",
+					{
+						objectId: this.ctx.id.toString(),
+						retryAt,
+					},
+				);
 			} catch (retryError) {
-				console.error("[sync-coordinator] durable object alarm retry scheduling failed", {
-					objectId: this.ctx.id.toString(),
-					error: formatLogError(retryError),
-				});
+				console.error(
+					"[sync-coordinator] durable object alarm retry scheduling failed",
+					{
+						objectId: this.ctx.id.toString(),
+						error: formatLogError(retryError),
+					},
+				);
 				throw error;
 			}
 		}
@@ -311,7 +336,10 @@ function internalErrorResponse(): Response {
 	);
 }
 
-function formatRequestForLog(request: Request): { method: string; path: string } {
+function formatRequestForLog(request: Request): {
+	method: string;
+	path: string;
+} {
 	const url = new URL(request.url);
 	return {
 		method: request.method,
@@ -322,7 +350,11 @@ function formatRequestForLog(request: Request): { method: string; path: string }
 function mapCoordinatorRpcError(error: unknown): unknown {
 	if (!(error instanceof SyncCoordinatorApplicationError)) return error;
 	if (error.code === "sync_paused") {
-		return apiError(503, "sync_paused", "vault sync is temporarily paused for repair");
+		return apiError(
+			503,
+			"sync_paused",
+			"vault sync is temporarily paused for repair",
+		);
 	}
 	return apiError(
 		rpcErrorStatus(error.code),

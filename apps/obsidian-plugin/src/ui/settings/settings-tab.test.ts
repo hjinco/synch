@@ -309,10 +309,11 @@ describe("SynchSettingTab", () => {
     expect(updateApiBaseUrl).not.toHaveBeenCalled();
   });
 
-  it("shows subscription status after sign-in", () => {
+  it("shows subscription status after vault connection", () => {
     const ensureSubscriptionStatusCheck = vi.fn(async () => {});
     const tab = createSettingsTab({
       hasAuthenticatedSession: () => true,
+      hasConnectedRemoteVault: () => true,
       ensureSubscriptionStatusCheck,
     });
 
@@ -327,6 +328,7 @@ describe("SynchSettingTab", () => {
     const ensureSubscriptionStatusCheck = vi.fn(async () => {});
     const tab = createSettingsTab({
       hasAuthenticatedSession: () => true,
+      hasConnectedRemoteVault: () => true,
       getApiBaseUrl: () => "https://custom.synch.test",
       ensureSubscriptionStatusCheck,
     });
@@ -342,6 +344,7 @@ describe("SynchSettingTab", () => {
     const openPricingPage = vi.fn();
     const tab = createSettingsTab({
       hasAuthenticatedSession: () => true,
+      hasConnectedRemoteVault: () => true,
       getSubscriptionStatus: () => ({
         state: "loaded",
         planId: "free",
@@ -369,6 +372,7 @@ describe("SynchSettingTab", () => {
     const openBillingManagementPage = vi.fn();
     const tab = createSettingsTab({
       hasAuthenticatedSession: () => true,
+      hasConnectedRemoteVault: () => true,
       getSubscriptionStatus: () => ({
         state: "loaded",
         planId: "starter",
@@ -395,6 +399,7 @@ describe("SynchSettingTab", () => {
   it("shows canceling paid subscription period end", () => {
     const tab = createSettingsTab({
       hasAuthenticatedSession: () => true,
+      hasConnectedRemoteVault: () => true,
       getSubscriptionStatus: () => ({
         state: "loaded",
         planId: "starter",
@@ -420,6 +425,7 @@ describe("SynchSettingTab", () => {
     const retrySubscriptionStatusCheck = vi.fn(async () => {});
     const tab = createSettingsTab({
       hasAuthenticatedSession: () => true,
+      hasConnectedRemoteVault: () => true,
       getSubscriptionStatus: () => ({
         state: "failed",
         error: "offline",

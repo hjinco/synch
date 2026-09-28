@@ -1,4 +1,5 @@
 export type SyncTokenClaimValues = {
+	accessVersion?: number;
 	sub: string;
 	vaultId: string;
 	localVaultId: string;
@@ -42,7 +43,9 @@ export function parseSyncTokenClaimValues(value: unknown): SyncTokenClaimValues 
 		return null;
 	}
 
+	if (claims.accessVersion !== undefined && (typeof claims.accessVersion !== "number" || !Number.isSafeInteger(claims.accessVersion) || claims.accessVersion < 1)) return null;
 	return {
+		...(claims.accessVersion === undefined ? {} : { accessVersion: claims.accessVersion as number }),
 		sub,
 		vaultId,
 		localVaultId,

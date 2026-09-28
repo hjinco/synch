@@ -14,6 +14,8 @@ export interface BillingProvider {
 		billingInterval: SubscriptionBillingInterval;
 		productId: string;
 		organizationId: string;
+		/** Existing customer bound to this organization, including legacy user-based IDs. */
+		polarCustomerId?: string | null;
 		userId: string;
 		email: string;
 	}): Promise<CheckoutResult>;

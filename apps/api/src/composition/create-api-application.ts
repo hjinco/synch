@@ -1,3 +1,6 @@
+import { DrizzleSharingStore } from "../sharing/adapters/drizzle-sharing-store";
+import { SharingService } from "../sharing/application/service";
+import { SharingAccess } from "../sharing/application/access";
 import { createApp } from "../app";
 import type { AuthFeatureConfig } from "../auth/better-auth";
 import type { BillingApplicationConfig } from "../billing/application";
@@ -19,7 +22,10 @@ import {
 	type CoordinatorNamespace,
 } from "../sync-coordinator/adapters/outbound/durable-object-rpc/coordinator-proxy-repository";
 import type { BlobObjectStorage } from "../sync-blob-transfer/application/ports/outbound/blob-object-storage";
-import { blobObjectKey, blobObjectKeyPrefix } from "../platform/blob/object-key";
+import {
+	blobObjectKey,
+	blobObjectKeyPrefix,
+} from "../platform/blob/object-key";
 import type { VaultPurgeMessage } from "../vault/application";
 
 export type ApiApplicationDependencies = {
@@ -72,12 +78,35 @@ export function createApiApplication(
 		productIdsByPlanId: config.productIdsByPlanId,
 		subscriptionAccessReader: subscriptionFeature.accessReader,
 	});
-	const authFeature = createAuthFeature(deps.db, {
-		...config.auth,
-		emailVerification: capabilities.emailVerification,
-	}, billingFeature.authPlugin ? [billingFeature.authPlugin] : []);
+	const authFeature = createAuthFeature(
+		deps.db,
+		{
+			...config.auth,
+			emailVerification: capabilities.emailVerification,
+		},
+		billingFeature.authPlugin ? [billingFeature.authPlugin] : [],
+	);
+	const sharingStore = new DrizzleSharingStore(deps.db);
+	const sharingAccess = new SharingAccess(
+		sharingStore,
+		subscriptionFeature.policyReader,
+	);
+	const sharing = new SharingService(
+		sharingStore,
+		subscriptionFeature.policyReader,
+		coordinatorProxyRepository,
+		{
+			...config.auth,
+			billingBaseURL: config.billing?.wwwBaseUrl,
+			requireVerifiedEmail:
+				capabilities.emailVerification === "required" && !config.auth.devMode,
+		},
+	);
 	const syncAccessFeature = createSyncAccessFeature({
 		vaultService: vaultFeature.service,
+		accessReader: (userId, vaultId) => sharingAccess.require(userId, vaultId),
+		accessVerifier: async (claims, token) =>
+			coordinatorProxyRepository.authorizeSync(claims.vaultId, token, claims),
 		coordinatorNamespace: deps.coordinatorNamespace,
 		syncTokenSecret: config.syncTokenSecret,
 		syncTokenTtlSeconds: config.syncTokenTtlSeconds,
@@ -89,8 +118,10 @@ export function createApiApplication(
 		objectKeyBuilder: { blobObjectKey, blobObjectKeyPrefix },
 	});
 	return {
+		flushSharingRefreshes: () => sharing.flushRefreshes(),
 		app: createApp(
 			{
+				sharing,
 				authHttpHandler: authFeature.authHttpHandler,
 				sessionReader: authFeature.sessionReader,
 				syncTokenIssuer: syncAccessFeature.tokenIssuer,

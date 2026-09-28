@@ -44,6 +44,7 @@ export interface CreateRemoteVaultResponse {
 }
 
 export interface RemoteVaultSessionSummary {
+  organizationId?: string;
   vaultId: string;
   vaultName: string;
   activeKeyVersion: number;

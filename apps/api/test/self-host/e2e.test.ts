@@ -1,3 +1,7 @@
+import { createPasswordWrappedRemoteVaultKey, unwrapRemoteVaultKeyWithPassword } from "../../../../packages/vault-crypto/src/crypto";
+import { SharingClient } from "../../../../packages/sync-client/src/sharing/client";
+import { SharingManager, type StoredKeyReceiver } from "../../../../packages/sync-client/src/sharing/manager";
+import type { HttpClient } from "../../../../packages/sync-client/src/http/request";
 import { serve, type ServerType } from "@hono/node-server";
 import { type ChildProcess, spawn } from "node:child_process";
 import { mkdtempSync, readdirSync, rmSync, mkdirSync, writeFileSync, readFileSync } from "node:fs";
@@ -88,7 +92,7 @@ async function bootServer(existingDataDir?: string) {
 		dataDir,
 		publicUrl: baseUrl,
 		betterAuthSecret: "test-secret-test-secret-test-secret",
-		authAllowedEmails: SELF_HOST_ALLOWED_EMAIL,
+		authAllowedEmails: `${SELF_HOST_ALLOWED_EMAIL},member@test.invalid`,
 		syncTokenSecret: "test-sync-token-secret-test-sync",
 		blobStorage: new LocalDiskBlobObjectStorage(path.join(dataDir, "blobs")),
 	});
@@ -285,6 +289,89 @@ describe("self-hosted Node runtime: end-to-end sync", () => {
 		}
 		cleanup = [];
 	});
+
+    it("shares retained history through personal passwords, recovers with approval, and closes revoked sockets", async () => {
+      const { baseUrl, dataDir, runtime, server, wss } = await bootServer();
+      cleanup.push(() => rmSync(dataDir, { recursive: true, force: true }));
+      cleanup.push(() => runtime.dispose());
+      cleanup.push(() => closeServer(server, wss));
+      const owner = await signUpAndCreateVault(baseUrl);
+      const signed = await fetch(`${baseUrl}/api/auth/sign-up/email`, { method: "POST", headers: { "content-type": "application/json", origin: baseUrl }, body: JSON.stringify({ email: "member@test.invalid", password: "another correct horse battery", name: "Member" }) });
+      expect(signed.status).toBe(200);
+      const memberCookie = signed.headers.get("set-cookie")!.split(";")[0];
+      const signup = await signed.json() as { user: { id: string } };
+      const userId = signup.user.id;
+      const request = async (cookie: string, path: string, method = "GET", body?: unknown) => {
+        const response = await fetch(`${baseUrl}${path}`, { method, headers: { cookie, origin: baseUrl, "content-type": "application/json" }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
+        return { response, json: await response.json() as Record<string, any> };
+      };
+      const ownerIdentity = await request(owner.sessionCookie, "/api/auth/get-session");
+      const organizationId = (await request(owner.sessionCookie, "/v1/organizations")).json.organizations[0].id as string;
+      const wrapped = await createPasswordWrappedRemoteVaultKey("owner keeps a private passphrase");
+      const created = await request(owner.sessionCookie, "/v1/vaults", "POST", { name: "Shared history", organizationId, initialWrapper: { kind: "password", envelope: wrapped.envelope } });
+      expect(created.response.status).toBe(201);
+      const vaultId = created.json.vault.id as string;
+      const ownerToken = await issueSyncToken(baseUrl, owner.sessionCookie, vaultId, "owner-device");
+      const ownerSocket = await connectSocket(baseUrl, vaultId, ownerToken); cleanup.push(() => ownerSocket.terminate());
+      ownerSocket.send(JSON.stringify({ type: "hello", requestId: "hello-owner", lastKnownCursor: 0 })); await nextMessage(ownerSocket, message => message.type === "hello_ack");
+      for (let revision = 0; revision < 2; revision++) {
+        await uploadBlob(baseUrl, ownerToken, vaultId, `history-${revision}`, `encrypted historical content ${revision}`);
+        ownerSocket.send(JSON.stringify({ type: "commit_mutations", requestId: `commit-${revision}`, mutations: [{ mutationId: `mutation-${revision}`, entryId: "shared-file", op: "upsert", baseRevision: revision, blobId: `history-${revision}`, encryptedMetadata: `metadata-${revision}` }] }));
+        await nextMessage(ownerSocket, message => message.type === "commit_mutations_committed");
+      }
+      const invite = await request(owner.sessionCookie, `/v1/organizations/${organizationId}/invitations`, "POST", { email: "member@test.invalid", role: "member", vaults: [{ vaultId }] });
+      expect(invite.response.status).toBe(201);
+      expect((await request(memberCookie, `/v1/invitations/${invite.json.id}/accept`, "POST")).response.status).toBe(200);
+      expect((await request(memberCookie, `/v1/vaults/${vaultId}/bootstrap`)).response.status).toBe(403);
+      expect((await request(memberCookie, `/v1/vaults/${owner.vaultId}/bootstrap`)).response.status).toBe(403);
+      let loseCompleteResponse = true;
+      const http = (cookie: string): HttpClient => ({ request: async input => {
+        const headers = new Headers(input.headers); headers.delete("authorization"); headers.set("cookie", cookie); headers.set("origin", baseUrl);
+        const response = await fetch(input.url, { method: input.method, headers, body: input.body });
+        const json = await response.json();
+        if (cookie === memberCookie && input.url.endsWith("/complete") && loseCompleteResponse && response.ok) { loseCompleteResponse = false; throw new Error("response lost"); }
+        return { status: response.status, json };
+      } });
+      const secrets = new Map<string, StoredKeyReceiver>();
+      const secretStore = { read: async (scope: string) => secrets.get(scope) ?? null, write: async (scope: string, value: StoredKeyReceiver | null) => { if (value) secrets.set(scope, value); else secrets.delete(scope); } };
+      const memberClient = new SharingClient(http(memberCookie), baseUrl, "cookie-auth");
+      let receiver = new SharingManager(memberClient, userId, secretStore);
+      const sender = new SharingManager(new SharingClient(http(owner.sessionCookie), baseUrl, "cookie-auth"), ownerIdentity.json.user.id, secretStore);
+      const pending = await receiver.begin(vaultId);
+      await expect(sender.approve(pending, wrapped.remoteVaultKey, "wrong-code")).rejects.toThrow("verification code");
+      await sender.approve(pending, wrapped.remoteVaultKey, await receiver.verificationCode(pending));
+      const password = "member has a separate passphrase";
+      await expect(receiver.receive(vaultId, password, password)).rejects.toThrow("response lost");
+      // Recreate the manager to model a device restart after an ambiguous response.
+      receiver = new SharingManager(memberClient, userId, secretStore);
+      await receiver.receive(vaultId, password, password);
+      expect(secrets.size).toBe(0);
+      const bootstrap = (await request(memberCookie, `/v1/vaults/${vaultId}/bootstrap`)).json;
+      expect(bootstrap.wrappers).toHaveLength(1); expect(bootstrap.wrappers[0].userId).toBe(userId);
+      expect(await unwrapRemoteVaultKeyWithPassword(password, bootstrap.wrappers[0].envelope, { vaultId, userId })).toEqual(wrapped.remoteVaultKey);
+      const recovery = await receiver.begin(vaultId); expect(recovery.purpose).toBe("recovery");
+      await sender.approve(recovery, wrapped.remoteVaultKey, await receiver.verificationCode(recovery));
+      const recoveredPassword = "a freshly recovered personal phrase";
+      await receiver.receive(vaultId, recoveredPassword, recoveredPassword);
+      await receiver.changePassword(vaultId, wrapped.remoteVaultKey, "another personally chosen phrase", "another personally chosen phrase");
+      const ownerBootstrap = (await request(owner.sessionCookie, `/v1/vaults/${vaultId}/bootstrap`)).json;
+      expect(ownerBootstrap.wrappers[0].envelope).toEqual(wrapped.envelope);
+      const token = await issueSyncToken(baseUrl, memberCookie, vaultId, "member-device");
+      const memberSocket = await connectSocket(baseUrl, vaultId, token); cleanup.push(() => memberSocket.terminate());
+      memberSocket.send(JSON.stringify({ type: "hello", requestId: "hello-member", lastKnownCursor: 0 })); await nextMessage(memberSocket, message => message.type === "hello_ack");
+      memberSocket.send(JSON.stringify({ type: "list_entry_versions", requestId: "history", entryId: "shared-file", before: null, limit: 10 }));
+      const history = await nextMessage(memberSocket, message => message.type === "entry_versions_listed");
+      expect(history).toMatchObject({ versions: expect.arrayContaining([expect.objectContaining({ blobId: "history-1" })]) });
+      const closed = new Promise<number>(resolve => memberSocket.once("close", code => resolve(code)));
+      expect((await request(owner.sessionCookie, `/v1/vaults/${vaultId}/members/${userId}`, "DELETE")).response.status).toBe(200);
+      expect(await closed).toBe(1012);
+      const deniedBlob = await fetch(`${baseUrl}/v1/vaults/${vaultId}/blobs/history-1`, { headers: { authorization: `Bearer ${token}` } });
+      expect(deniedBlob.status).toBe(403);
+      expect((await request(memberCookie, "/v1/sync/token", "POST", { vaultId, localVaultId: "member-device" })).response.status).toBe(403);
+      expect((await request(memberCookie, `/v1/invitations/${invite.json.id}/accept`, "POST")).response.status).toBe(200);
+      expect((await request(memberCookie, `/v1/vaults/${vaultId}/bootstrap`)).response.status).toBe(403);
+      for (const page of ["organizations", "invitations"]) expect((await fetch(`${baseUrl}/${page}`)).status).toBe(200);
+    }, 20000);
 
 	it("cleans orphaned upload parts before serving after a process crash", async () => {
 		const dataDir = mkdtempSync(path.join(tmpdir(), "synch-orphan-upload-"));

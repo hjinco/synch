@@ -23,6 +23,7 @@ export default defineConfig({
 					},
 					bindings: {
 						BETTER_AUTH_URL: process.env.BETTER_AUTH_URL,
+                        POLAR_PLUS_MONTHLY_PRODUCT_ID: "test-plus-monthly",
 						WWW_BASE_URL: process.env.WWW_BASE_URL ?? "http://localhost:4321",
 						BETTER_AUTH_SECRET: process.env.BETTER_AUTH_SECRET,
 						SYNC_TOKEN_SECRET: process.env.SYNC_TOKEN_SECRET,

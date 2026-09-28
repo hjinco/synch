@@ -46,7 +46,7 @@ function setup(overrides: Record<string, unknown> = {}) {
 		})),
 		readVaultAuthorizationFacts: vi.fn(async () => ({
 			vault: { organizationId: "org-1", deleted: false },
-			vaultMembership: { role: "owner", status: "active" },
+			vaultMembership: { status: "active" },
 			organizationRole: "owner",
 		})),
 		markVaultDeletionQueued: vi.fn(async () => true),
@@ -87,6 +87,7 @@ describe("VaultApplicationService", () => {
 			"org-1",
 			"Personal",
 			INITIAL_WRAPPER,
+            1,
 		);
 	});
 

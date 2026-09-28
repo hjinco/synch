@@ -53,10 +53,29 @@ describe("BillingApplicationService", () => {
 				billingInterval: "monthly",
 				productId: "starter-monthly-product",
 				organizationId: "org-1",
+				polarCustomerId: null,
 				userId: "user-1",
 				email: "user@example.com",
 			},
 		);
+	});
+
+	it("uses the selected organization's existing customer when another admin renews", async () => {
+		polarMocks.createPolarCheckout.mockResolvedValueOnce({ checkoutId: "checkout-2", url: "https://polar.example/checkout-2" });
+		const repository = fakeBillingRepository({
+			defaultOrganizationId: "org-1",
+			polarCustomerId: "legacy-org-2-customer",
+			subscriptions: [],
+		});
+		const service = createBillingService(repository);
+
+		await service.createCheckout({ userId: "new-admin", organizationId: "org-2", email: "new-admin@example.com", planId: "starter" });
+
+		expect(repository.readDefaultOrganizationIdForUser).not.toHaveBeenCalled();
+		expect(repository.readOrganizationPolarCustomerId).toHaveBeenCalledWith("org-2");
+		expect(polarMocks.createPolarCheckout).toHaveBeenCalledWith(expect.objectContaining({
+			organizationId: "org-2", polarCustomerId: "legacy-org-2-customer",
+		}));
 	});
 
 	it("creates annual starter checkout for the user's default organization", async () => {

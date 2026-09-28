@@ -168,6 +168,7 @@ export function createSettingsTab(
     signOutDevice: vi.fn(async () => {}),
     createRemoteVaultFromPrompt: vi.fn(async () => {}),
     connectRemoteVaultFromPrompt: vi.fn(async () => {}),
+    openVaultSharing: vi.fn(async () => {}),
     openRemoteVaultManagementPage: vi.fn(() => {}),
     disconnectRemoteVault: vi.fn(async () => {}),
     updateApiBaseUrl: vi.fn(async () => {}),

@@ -57,6 +57,13 @@
       "when": 1786857725150,
       "tag": "0007_aberrant_logan",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1790557279952,
+      "tag": "0008_sync_access_revocations",
+      "breakpoints": true
     }
   ]
 }

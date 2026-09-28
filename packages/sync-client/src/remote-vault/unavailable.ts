@@ -24,7 +24,7 @@ export function remoteVaultUnavailableFromApiError(
 
   // Older servers used a generic 403 for repair pauses. Preserve the link to
   // the vault so a temporary server condition cannot disconnect local state.
-  if (error.code === "sync_paused" ||
+  if (error.code === "sync_paused" || error.code === "sharing_suspended" || error.code === "access_unavailable" ||
       (error.code === "forbidden" && error.message === "vault sync is temporarily paused for repair")) {
     return null;
   }

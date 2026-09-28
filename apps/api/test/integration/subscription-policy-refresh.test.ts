@@ -8,8 +8,31 @@ import {
 	type SubscriptionPlanPolicy,
 } from "../../src/subscription/domain/policy";
 import { signUpAndCreateVault } from "../helpers/api";
+import { createDb } from "../../src/db/client";
+import { DrizzleBillingStore } from "../../src/billing/adapters/outbound/drizzle-billing-store";
 
 describe("subscription policy refresh integration", () => {
+	it("rolls back a subscription when its billing customer belongs to another organization", async () => {
+		const first = await signUpAndCreateVault();
+		const second = await signUpAndCreateVault();
+		const store = new DrizzleBillingStore(createDb(env.DB));
+		const input = {
+			id: "isolated-sub-1", productId: "test-plus-monthly", organizationId: first.organizationId,
+			polarCustomerId: "isolated-customer", polarSubscriptionId: "isolated-polar-sub-1",
+			polarCheckoutId: null, status: "active", periodStart: new Date(),
+			periodEnd: new Date(Date.now() + 86400000), cancelAtPeriodEnd: false,
+		};
+		await store.upsertPolarSubscription(input);
+
+		await expect(store.upsertPolarSubscription({
+			...input, id: "isolated-sub-2", polarSubscriptionId: "isolated-polar-sub-2", organizationId: second.organizationId,
+		})).rejects.toThrow();
+
+		expect(await store.readOrganizationSubscriptionStatuses(second.organizationId)).toEqual([]);
+		expect(await store.readOrganizationPolarCustomerId(second.organizationId)).toBeNull();
+		expect(await store.readOrganizationPolarCustomerId(first.organizationId)).toBe("isolated-customer");
+	});
+
 	it("applies changed subscription policy limits to active vault durable object state", async () => {
 		const starterProductId = "polar-product-starter";
 		const primary = await signUpAndCreateVault("Policy refresh vault");

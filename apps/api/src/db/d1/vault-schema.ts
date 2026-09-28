@@ -19,6 +19,7 @@ export const vault = sqliteTable("vault", {
 		.notNull()
 		.references(() => organization.id, { onDelete: "cascade" }),
 	name: text("name").notNull(),
+	sharedAt: integer("shared_at", { mode: "timestamp_ms" }),
 	activeKeyVersion: integer("active_key_version").notNull(),
 	createdAt: integer("created_at", { mode: "timestamp_ms" })
 		.default(sqliteEpochMsNow)
@@ -43,7 +44,11 @@ export const vaultMembership = sqliteTable(
 		userId: text("user_id")
 			.notNull()
 			.references(() => user.id, { onDelete: "cascade" }),
-		role: text("role").notNull(),
+		accessVersion: integer("access_version").notNull().default(1),
+		// Creation provenance preserves the existing local-vault connection flow.
+		// It never grants management authority.
+		isCreator: integer("is_creator", { mode: "boolean" }).notNull().default(false),
+		explicitAccess: integer("explicit_access", { mode: "boolean" }).notNull().default(true),
 		status: text("status").notNull(),
 		joinedAt: integer("joined_at", { mode: "timestamp_ms" })
 			.default(sqliteEpochMsNow)

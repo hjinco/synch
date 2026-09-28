@@ -1,3 +1,4 @@
+import type { VerifiedVaultAccess } from "../sync-coordinator/application/services/sync-access-service";
 import type Database from "better-sqlite3";
 
 import { createCoordinatorApplication } from "../composition/create-coordinator-application";
@@ -11,6 +12,7 @@ import { SqliteCoordinatorStorageHandle } from "../sync-coordinator/adapters/out
 import { SqliteCoordinatorStorage } from "../sync-coordinator/adapters/outbound/sqlite/storage-lifecycle";
 import { VaultLockRegistry } from "../sync-coordinator/adapters/outbound/sqlite/vault-lock";
 import type { ClientControlMessage } from "../sync-coordinator/application/dto/protocol-types";
+import type { SocketSession } from "../sync-coordinator/application/dto/types";
 
 const ALARM_FAILURE_RETRY_MS = 30 * 1000;
 
@@ -18,6 +20,7 @@ export interface NodeCoordinatorSharedDeps {
 	db: AppDb;
 	blobStorage: BlobObjectStorage;
 	syncTokenSecret: string;
+	syncTokenTtlSeconds?: number;
 	profile: Extract<DeploymentProfile, { platform: "node" }>;
 	productIdsByPlanId: SubscriptionProductIdsByPlanId;
 }
@@ -31,7 +34,7 @@ export interface NodeCoordinatorSharedDeps {
  * A Durable Object also serializes every request to a given instance via
  * input gates - two concurrent requests for the same vault never interleave
  * their storage access. A Node process has no such guarantee, so every
- * public entry point into this runtime (HTTP requests, socket messages, and
+ * coordinator SQLite entry point (HTTP requests, socket messages, and
  * the socket connect/close lifecycle) is funneled through `vaultLock` to
  * reproduce that serialization. See `VaultLockRegistry` for why this is
  * necessary and what it doesn't cover (cross-process races, handled instead
@@ -51,17 +54,23 @@ export function createNodeCoordinatorRuntime(
 	// but the scheduler needs a callback now - same forward-reference-via-
 	// closure pattern the coordinator's own test helpers use for the DO path.
 	let application: ReturnType<typeof createCoordinatorApplication>;
-	const maintenanceScheduler = new NodeMaintenanceScheduler(storageHandle, async () => {
-		try {
-			await vaultLock.run(vaultId, () => application.services.handleAlarm());
-		} catch (error) {
-			// Mirrors `SyncCoordinator.alarm()`'s catch: an unhandled rejection
-			// here would crash the whole Node process (unlike a DO, where a
-			// failed alarm invocation only affects that one object).
-			console.error("[node-coordinator] maintenance alarm failed", formatLogError(error));
-			maintenanceScheduler.retryAfter(ALARM_FAILURE_RETRY_MS);
-		}
-	});
+	const maintenanceScheduler = new NodeMaintenanceScheduler(
+		storageHandle,
+		async () => {
+			try {
+				await vaultLock.run(vaultId, () => application.services.handleAlarm());
+			} catch (error) {
+				// Mirrors `SyncCoordinator.alarm()`'s catch: an unhandled rejection
+				// here would crash the whole Node process (unlike a DO, where a
+				// failed alarm invocation only affects that one object).
+				console.error(
+					"[node-coordinator] maintenance alarm failed",
+					formatLogError(error),
+				);
+				maintenanceScheduler.retryAfter(ALARM_FAILURE_RETRY_MS);
+			}
+		},
+	);
 	application = createCoordinatorApplication(
 		{
 			db: deps.db,
@@ -76,6 +85,7 @@ export function createNodeCoordinatorRuntime(
 			profile: deps.profile,
 			productIdsByPlanId: deps.productIdsByPlanId,
 			syncTokenSecret: deps.syncTokenSecret,
+			syncTokenTtlSeconds: deps.syncTokenTtlSeconds,
 		},
 	);
 
@@ -85,6 +95,9 @@ export function createNodeCoordinatorRuntime(
 	})();
 
 	return {
+		// Authorization reads only local revocations without queuing behind blob writes.
+		authorizeSyncAccess: (input: VerifiedVaultAccess) =>
+			ready.then(() => application.authorizeSyncAccess(input)),
 		app: {
 			fetch: (request: Request) =>
 				vaultLock.run(vaultId, () => application.app.fetch(request)),
@@ -104,6 +117,9 @@ export function createNodeCoordinatorRuntime(
 				}),
 		},
 		socketConnectionService: {
+			// No await/lock queue between this local check and native socket acceptance.
+			assertSessionAccess: (session: SocketSession) =>
+				application.socketConnectionService.assertSessionAccess(session),
 			prepareSocketSession: (token: string | null, id: string) =>
 				vaultLock.run(vaultId, () =>
 					application.socketConnectionService.prepareSocketSession(token, id),
@@ -123,11 +139,18 @@ export function createNodeCoordinatorRuntime(
 	};
 }
 
-export type NodeCoordinatorRuntime = ReturnType<typeof createNodeCoordinatorRuntime>;
+export type NodeCoordinatorRuntime = ReturnType<
+	typeof createNodeCoordinatorRuntime
+>;
 
 function formatLogError(error: unknown): Record<string, unknown> {
 	if (error instanceof Error) {
-		return { name: error.name, message: error.message, stack: error.stack, cause: error.cause };
+		return {
+			name: error.name,
+			message: error.message,
+			stack: error.stack,
+			cause: error.cause,
+		};
 	}
 	return { message: String(error) };
 }

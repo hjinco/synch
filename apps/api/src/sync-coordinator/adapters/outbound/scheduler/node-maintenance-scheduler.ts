@@ -65,7 +65,9 @@ export class NodeMaintenanceScheduler implements MaintenanceScheduler, Maintenan
 			}
 
 			try {
-				const nextDueAt = await handlers[job.key](now);
+				const handler = handlers[job.key];
+                if (!handler) throw new Error(`No maintenance handler for ${job.key}`);
+                const nextDueAt = await handler(now);
 				if (nextDueAt === null) {
 					this.deleteJob(job.key);
 				} else {

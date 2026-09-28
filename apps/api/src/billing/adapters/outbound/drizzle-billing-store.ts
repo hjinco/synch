@@ -75,7 +75,7 @@ export class DrizzleBillingStore implements BillingAccountStore, BillingSubscrip
 	}
 
 	async upsertPolarSubscription(input: PolarSubscriptionUpsertInput): Promise<void> {
-		await this.db
+		const upsertSubscription = this.db
 			.insert(schema.polarSubscription)
 			.values({
 				id: input.id,
@@ -104,12 +104,16 @@ export class DrizzleBillingStore implements BillingAccountStore, BillingSubscrip
 				},
 			});
 
-		await this.db
+		const bindCustomer = this.db
 			.update(schema.organization)
 			.set({
 				polarCustomerId: input.polarCustomerId,
 			})
 			.where(eq(schema.organization.id, input.organizationId));
+
+		// organization.polarCustomerId is unique. If another organization already
+		// owns it, roll back the subscription write too instead of granting access.
+		await this.db.batch([upsertSubscription, bindCustomer]);
 	}
 
 }

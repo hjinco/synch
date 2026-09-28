@@ -50,6 +50,7 @@ export class BlobGcService {
 			HealthService,
 			"scheduleSummaryFlush" | "notifyStorageStatusChanged"
 		>,
+		private readonly mayCollect?: (vaultId: string) => Promise<boolean>,
 	) {}
 
 	async scheduleAt(dueAt: number, now = Date.now()): Promise<void> {
@@ -84,6 +85,11 @@ export class BlobGcService {
 			return null;
 		}
 
+		if (this.mayCollect && !(await this.mayCollect(effectiveVaultId))) {
+			const retryAt = (options.now ?? Date.now()) + 60 * 60 * 1000;
+			await this.scheduleAt(retryAt);
+			return retryAt;
+		}
 		const now = options.now ?? Date.now();
 		this.unitOfWork.stores.versions.expireEntryVersions(now);
 		const due = this.unitOfWork.stores.gc.listCollectibleBlobs(
@@ -126,6 +132,7 @@ export class BlobGcService {
 		vaultId: string,
 		blobIds: readonly string[],
 	): Promise<void> {
+		if (this.mayCollect && !(await this.mayCollect(vaultId))) return;
 		const uniqueBlobIds = [...new Set(blobIds)];
 		if (uniqueBlobIds.length === 0) {
 			return;

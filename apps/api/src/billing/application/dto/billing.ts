@@ -40,6 +40,7 @@ export type PolarSubscriptionUpsertInput = {
 };
 
 export type BillingStatus = {
+  availablePlusIntervals?: SubscriptionBillingInterval[];
 	planId: SubscriptionPlanId;
 	billingInterval: SubscriptionBillingInterval | null;
 	active: boolean;

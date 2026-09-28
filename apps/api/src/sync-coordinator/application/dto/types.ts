@@ -335,6 +335,7 @@ export type ServerControlMessage =
 	| PresenceAvailabilityMessage;
 
 export type SocketSession = {
+	accessVersion?: number;
 	userId: string;
 	localVaultId: string;
 	vaultId: string;

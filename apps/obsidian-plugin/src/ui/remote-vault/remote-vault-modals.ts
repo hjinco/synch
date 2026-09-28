@@ -3,27 +3,16 @@ import { App, Modal, Setting } from "obsidian";
 import { formatVaultPasswordValidationError, t } from "../../i18n";
 import { submitOnEnter } from "../keyboard";
 import type {
-  BootstrapRemoteVaultInput,
   CreateRemoteVaultInput,
-  RemoteVaultRecord,
 } from "@synch/sync-client/remote";
 import { validateVaultPassword } from "@synch/vault-crypto";
 
 export async function openCreateRemoteVaultModal(
   app: App,
   initialVaultName: string,
+  organizations: { id: string; name: string }[] = [],
 ): Promise<CreateRemoteVaultInput | null> {
-  const modal = new CreateRemoteVaultModal(app, initialVaultName);
-  return await modal.openAndWait();
-}
-
-export async function openBootstrapRemoteVaultModal(
-  app: App,
-  vaults: RemoteVaultRecord[],
-  preferredVaultId: string | null,
-  onConnect?: (input: BootstrapRemoteVaultInput) => Promise<void>,
-): Promise<BootstrapRemoteVaultInput | null> {
-  const modal = new BootstrapRemoteVaultModal(app, vaults, preferredVaultId, onConnect);
+  const modal = new CreateRemoteVaultModal(app, initialVaultName, organizations);
   return await modal.openAndWait();
 }
 
@@ -38,13 +27,15 @@ class CreateRemoteVaultModal extends Modal {
   private resolver: ((value: CreateRemoteVaultInput | null) => void) | null = null;
   private result: CreateRemoteVaultInput | null = null;
   private vaultName: string;
+  private organizationId: string | undefined;
   private password = "";
   private confirmPassword = "";
   private submitting = false;
 
-  constructor(app: App, initialVaultName: string) {
+  constructor(app: App, initialVaultName: string, private readonly organizations: { id: string; name: string }[]) {
     super(app);
     this.vaultName = initialVaultName;
+    this.organizationId = organizations[0]?.id;
   }
 
   async openAndWait(): Promise<CreateRemoteVaultInput | null> {
@@ -88,6 +79,7 @@ class CreateRemoteVaultModal extends Modal {
 
       this.result = {
         name: this.vaultName,
+        ...(this.organizationId ? { organizationId: this.organizationId } : {}),
         password: this.password,
         confirmPassword: this.confirmPassword,
       };
@@ -98,6 +90,11 @@ class CreateRemoteVaultModal extends Modal {
     contentEl.createEl("p", {
       cls: "synch-modal-hint",
       text: t("vault.createHint"),
+    });
+
+    if (this.organizations.length > 0) new Setting(contentEl).setName(t("sharing.organization")).addDropdown(dropdown => {
+      for (const org of this.organizations) dropdown.addOption(org.id, org.name);
+      dropdown.setValue(this.organizationId ?? "").onChange(value => { this.organizationId = value; });
     });
 
     new Setting(contentEl)
@@ -293,190 +290,4 @@ class ConfirmConnectNonEmptyLocalVaultModal extends Modal {
     this.resolver?.(this.confirmed);
     this.resolver = null;
   }
-}
-
-class BootstrapRemoteVaultModal extends Modal {
-  private resolver: ((value: BootstrapRemoteVaultInput | null) => void) | null = null;
-  private result: BootstrapRemoteVaultInput | null = null;
-  private readonly vaults: RemoteVaultRecord[];
-  private selectedVaultId: string;
-  private password = "";
-  private submitting = false;
-  private allowSubmittingClose = false;
-
-  constructor(
-    app: App,
-    vaults: RemoteVaultRecord[],
-    preferredVaultId: string | null,
-    private readonly onConnect?: (input: BootstrapRemoteVaultInput) => Promise<void>,
-  ) {
-    super(app);
-    this.vaults = vaults;
-    this.selectedVaultId =
-      preferredVaultId && vaults.some((vault) => vault.id === preferredVaultId)
-        ? preferredVaultId
-        : vaults[0]?.id ?? "";
-  }
-
-  async openAndWait(): Promise<BootstrapRemoteVaultInput | null> {
-    return await new Promise<BootstrapRemoteVaultInput | null>((resolve) => {
-      this.resolver = resolve;
-      this.open();
-    });
-  }
-
-  onOpen(): void {
-    const { contentEl } = this;
-    contentEl.empty();
-
-    new Setting(contentEl).setName(t("vault.connect")).setHeading();
-    let errorEl: { setText(value: string): unknown } | null = null;
-    let cancelButton: { setDisabled(value: boolean): unknown } | null = null;
-    let connectButton: {
-      setButtonText(value: string): unknown;
-      setDisabled(value: boolean): unknown;
-    } | null = null;
-    const setError = (message: string): void => {
-      errorEl?.setText(message);
-    };
-    const setSubmitting = (value: boolean): void => {
-      this.submitting = value;
-      cancelButton?.setDisabled(value);
-      connectButton?.setDisabled(value);
-      connectButton?.setButtonText(value ? t("vault.connecting") : t("vault.connect"));
-    };
-    const submitConnect = async (): Promise<void> => {
-      if (this.submitting) {
-        return;
-      }
-
-      const input = {
-        vaultId: this.selectedVaultId,
-        password: this.password,
-      };
-
-      setError("");
-      setSubmitting(true);
-      try {
-        await this.onConnect?.(input);
-        this.result = input;
-        this.allowSubmittingClose = true;
-        this.close();
-      } catch (error) {
-        setError(formatErrorMessage(error));
-        setSubmitting(false);
-      }
-    };
-
-    contentEl.createEl("p", {
-      cls: "synch-modal-hint",
-      text: t("vault.connectHint"),
-    });
-
-    if (this.vaults.length === 0) {
-      contentEl.createEl("p", {
-        cls: "synch-modal-empty",
-        text: t("vault.noVaults"),
-      });
-
-      new Setting(contentEl).addButton((button) => {
-        button.setButtonText(t("close")).setCta().onClick(() => {
-          this.close();
-        });
-      });
-      return;
-    }
-
-    const selectedLabel = contentEl.createEl("p", {
-      cls: "synch-modal-selected",
-      text: t("vault.selected", { label: this.getSelectedVaultLabel() }),
-    });
-    const vaultList = contentEl.createDiv({
-      cls: "synch-vault-list",
-    });
-    this.renderVaultButtons(vaultList, selectedLabel);
-
-    new Setting(contentEl)
-      .setName(t("vault.password"))
-      .setDesc(t("vault.passwordDescConnect"))
-      .addText((text) => {
-        text.inputEl.type = "password";
-        text.inputEl.autocomplete = "current-password";
-        text.setPlaceholder(t("vault.passwordPlaceholder")).onChange((value) => {
-          this.password = value;
-          setError("");
-        });
-        submitOnEnter(text.inputEl, submitConnect);
-      });
-
-    errorEl = contentEl.createEl("p", {
-      cls: "synch-modal-error",
-    });
-
-    new Setting(contentEl)
-      .addButton((button) => {
-        button.setButtonText(t("cancel")).onClick(() => {
-          this.close();
-        });
-        cancelButton = button;
-      })
-      .addButton((button) => {
-        button.setButtonText(t("vault.connect")).setCta().onClick(submitConnect);
-        connectButton = button;
-      });
-  }
-
-  close(): void {
-    if (this.submitting && !this.allowSubmittingClose) {
-      return;
-    }
-
-    super.close();
-  }
-
-  onClose(): void {
-    this.contentEl.empty();
-    this.resolver?.(this.result);
-    this.resolver = null;
-  }
-
-  private renderVaultButtons(containerEl: HTMLElement, selectedLabel: HTMLParagraphElement): void {
-    containerEl.empty();
-
-    for (const vault of this.vaults) {
-      const button = containerEl.createEl("button", {
-        cls: "synch-vault-option",
-        text: vault.name,
-      });
-      button.type = "button";
-
-      if (vault.id === this.selectedVaultId) {
-        button.addClass("is-selected");
-      }
-
-      button.addEventListener("click", () => {
-        this.selectedVaultId = vault.id;
-        selectedLabel.setText(t("vault.selected", { label: this.getSelectedVaultLabel() }));
-        this.renderVaultButtons(containerEl, selectedLabel);
-      });
-
-    }
-  }
-
-  private getSelectedVaultLabel(): string {
-    const selectedVault = this.vaults.find((vault) => vault.id === this.selectedVaultId);
-    if (!selectedVault) {
-      return t("vault.none");
-    }
-
-    return selectedVault.name;
-  }
-}
-
-function formatErrorMessage(error: unknown): string {
-  if (error instanceof Error && error.message) {
-    return error.message;
-  }
-
-  return String(error);
 }

@@ -72,6 +72,8 @@ function formatSubscriptionDescription(
 
 function formatSubscriptionPlanName(planId: string): string {
   switch (planId) {
+    case "plus":
+      return "Sync Plus";
     case "starter":
       return t("subscription.starterPlan");
     default:

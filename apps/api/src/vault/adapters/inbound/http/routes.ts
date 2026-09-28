@@ -38,6 +38,7 @@ export function registerVaultRoutes(
 		zValidator(
 			"json",
 			z.object({
+				organizationId: z.string().min(1).optional(),
 				name: z.string().trim().min(1),
 				initialWrapper: z.object({
 					kind: z.literal("password"),
@@ -48,7 +49,7 @@ export function registerVaultRoutes(
 		async (c) => {
 			const user = c.var.user;
 			const body = c.req.valid("json");
-			const created = await deps.vaultService.createVault(user.id, body.name, body.initialWrapper);
+			const created = await deps.vaultService.createVault(user.id, body.name, body.initialWrapper, body.organizationId);
 
 			return c.json(
 				{
@@ -167,47 +168,4 @@ export function registerVaultRoutes(
 		},
 	);
 
-	app.post(
-		"/v1/vaults/:vaultId/members",
-		ensureAuthenticatedSession,
-		zValidator(
-			"param",
-			z.object({
-				vaultId: z.string().trim().min(1),
-			}),
-		),
-		zValidator(
-			"json",
-			z.object({
-				userId: z.string().trim().min(1),
-				role: z.enum(["admin", "member"]),
-				memberWrapper: z.object({
-					kind: z.literal("member"),
-					envelope: vaultKeyEnvelopeSchema,
-				}),
-			}),
-		),
-		async (c) => {
-			const user = c.var.user;
-			const { vaultId } = c.req.valid("param");
-			const body = c.req.valid("json");
-			const wrapper = await deps.vaultService.grantVaultAccess(user.id, vaultId, body);
-
-			return c.json(
-				{
-					wrapper: {
-						id: wrapper.id,
-						vaultId: wrapper.vaultId,
-						keyVersion: wrapper.keyVersion,
-						kind: wrapper.kind,
-						userId: wrapper.userId,
-						envelope: wrapper.envelope,
-						createdAt: wrapper.createdAt.toISOString(),
-						revokedAt: wrapper.revokedAt?.toISOString() ?? null,
-					},
-				},
-				201,
-			);
-		},
-	);
 }

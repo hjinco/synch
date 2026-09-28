@@ -3,40 +3,30 @@ import type { Subscription } from "@polar-sh/sdk/models/components/subscription"
 import { AlreadyCanceledSubscription } from "@polar-sh/sdk/models/errors/alreadycanceledsubscription";
 import { PaymentFailed } from "@polar-sh/sdk/models/errors/paymentfailed";
 import { SubscriptionLocked } from "@polar-sh/sdk/models/errors/subscriptionlocked";
+import { ResourceNotFound } from "@polar-sh/sdk/models/errors/resourcenotfound";
+import { HTTPValidationError } from "@polar-sh/sdk/models/errors/httpvalidationerror";
 
-import type {
-	BillingProvider,
-	} from "../../application/ports/outbound/billing-provider";
+import type { BillingProvider } from "../../application/ports/outbound/billing-provider";
 import type {
 	BillingProviderConfig,
 	PolarSubscriptionUpsertInput,
 } from "../../application/dto/billing";
 import { BillingApplicationError } from "../../application/errors/billing-errors";
-import type {
-	PaidSubscriptionPlanId,
-	SubscriptionBillingInterval,
-} from "../../../subscription/application";
 
 export class PolarBillingProvider implements BillingProvider {
 	constructor(private readonly config: BillingProviderConfig) {}
 
-	async createCheckout(input: {
-		planId: PaidSubscriptionPlanId;
-		billingInterval: SubscriptionBillingInterval;
-		productId: string;
-		organizationId: string;
-		userId: string;
-		email: string;
-	}): Promise<{ checkoutId: string; url: string }> {
+	async createCheckout(input: Parameters<BillingProvider["createCheckout"]>[0]): Promise<{ checkoutId: string; url: string }> {
 		if (!this.config.accessToken) {
 			throw new Error("POLAR_ACCESS_TOKEN is not configured");
 		}
-		const checkout = await this.client().checkouts.create({
+		const client = this.client();
+		const customerId = await this.checkoutCustomerId(client, input);
+		const checkout = await client.checkouts.create({
 			products: [input.productId],
-			externalCustomerId: input.userId,
-			customerEmail: input.email,
+			customerId,
 			successUrl: new URL(
-				"/billing/success?checkout_id={CHECKOUT_ID}",
+				`/billing/success?checkout_id={CHECKOUT_ID}&organizationId=${encodeURIComponent(input.organizationId)}`,
 				this.config.wwwBaseUrl,
 			).toString(),
 			metadata: {
@@ -48,6 +38,45 @@ export class PolarBillingProvider implements BillingProvider {
 			},
 		});
 		return { checkoutId: checkout.id, url: checkout.url };
+	}
+
+	private async checkoutCustomerId(
+		client: Polar,
+		input: Parameters<BillingProvider["createCheckout"]>[0],
+	): Promise<string> {
+		// The persisted binding also preserves customers created before external
+		// customer IDs changed from user IDs to organization IDs.
+		if (input.polarCustomerId) return input.polarCustomerId;
+		const existing = await this.findOrganizationCustomerId(client, input.organizationId);
+		if (existing) return existing;
+
+		// An unbound checkout falls back to email matching in Polar. Create the
+		// customer first so a duplicate email fails before any checkout is opened.
+		try {
+			const customer = await client.customers.create({
+				externalId: input.organizationId,
+				email: input.email,
+			});
+			return customer.id;
+		} catch (error) {
+			if (!(error instanceof HTTPValidationError)) throw error;
+			// Another request may have just created this same organization's customer.
+			const concurrent = await this.findOrganizationCustomerId(client, input.organizationId);
+			if (concurrent) return concurrent;
+			if (error.detail?.some((detail) => detail.loc.join(".") === "body.email")) {
+				throw new BillingApplicationError("billing_email_unavailable");
+			}
+			throw error;
+		}
+	}
+
+	private async findOrganizationCustomerId(client: Polar, organizationId: string): Promise<string | null> {
+		try {
+			return (await client.customers.getExternal({ externalId: organizationId })).id;
+		} catch (error) {
+			if (error instanceof ResourceNotFound) return null;
+			throw error;
+		}
 	}
 
 	async updateSubscriptionProduct(input: {

@@ -7,6 +7,12 @@ import {
 	uniqueIndex,
 } from "drizzle-orm/sqlite-core";
 
+export const syncAccessRevocations = sqliteTable("sync_access_revocations", {
+	key: text("key").primaryKey(),
+	minimumVersion: integer("minimum_version"),
+	expiresAt: integer("expires_at").notNull(),
+});
+
 export const entries = sqliteTable(
 	"entries",
 	{

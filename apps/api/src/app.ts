@@ -1,3 +1,5 @@
+import type { SharingService } from "./sharing/application/service";
+import { registerSharingRoutes } from "./sharing/adapters/routes";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 
@@ -14,7 +16,10 @@ import type { SubscriptionPolicyReader } from "./subscription/application";
 import type { IssueSyncToken } from "./sync-access/application";
 import { mapSyncAccessApplicationError } from "./sync-access/adapters/inbound/http/error-mapper";
 import { registerSyncAccessRoutes } from "./sync-access/adapters/inbound/http/routes";
-import type { DownloadBlob, UploadBlob } from "./sync-blob-transfer/application";
+import type {
+	DownloadBlob,
+	UploadBlob,
+} from "./sync-blob-transfer/application";
 import { mapBlobTransferApplicationError } from "./sync-blob-transfer/adapters/inbound/http/error-mapper";
 import { registerBlobTransferRoutes } from "./sync-blob-transfer/adapters/inbound/http/routes";
 import { registerCoordinatorAdminRoutes } from "./sync-coordinator/adapters/inbound/http/admin-routes";
@@ -28,6 +33,7 @@ import { mapVaultApplicationError } from "./vault/adapters/inbound/http/error-ma
 import type { VaultService } from "./vault/application";
 
 export type AppDependencies = {
+	sharing?: SharingService;
 	authHttpHandler: AuthHttpHandler;
 	sessionReader: SessionReader;
 	syncTokenIssuer: IssueSyncToken;
@@ -72,6 +78,12 @@ export function createApp(deps: AppDependencies, config: AppConfig): Hono {
 		syncTokenIssuer: deps.syncTokenIssuer,
 		sessionReader: deps.sessionReader,
 	});
+	if (deps.sharing)
+		registerSharingRoutes(app, {
+			sharing: deps.sharing,
+			sessionReader: deps.sessionReader,
+			trustedOrigins: [new URL(config.authBaseUrl).origin, config.corsOrigin],
+		});
 	registerVaultRoutes(app, deps);
 	if (deps.billingService) {
 		registerBillingRoutes(app, {
@@ -102,12 +114,13 @@ export function createApp(deps: AppDependencies, config: AppConfig): Hono {
 		),
 	);
 
-	app.onError((error, c) =>
-		mapSyncAccessApplicationError(error) ??
-		mapBlobTransferApplicationError(error) ??
-		mapVaultApplicationError(error) ??
-		mapBillingApplicationError(error) ??
-		onError(error, c),
+	app.onError(
+		(error, c) =>
+			mapSyncAccessApplicationError(error) ??
+			mapBlobTransferApplicationError(error) ??
+			mapVaultApplicationError(error) ??
+			mapBillingApplicationError(error) ??
+			onError(error, c),
 	);
 
 	return app;

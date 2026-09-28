@@ -3,7 +3,10 @@ import path from "node:path";
 
 import { openExclusiveSqliteConnection } from "../sync-coordinator/adapters/outbound/sqlite/storage-handle";
 import type { CoordinatorStub } from "../sync-coordinator/adapters/outbound/durable-object-rpc/coordinator-proxy-repository";
-import { createNodeCoordinatorRuntime, type NodeCoordinatorSharedDeps } from "./node-coordinator";
+import {
+	createNodeCoordinatorRuntime,
+	type NodeCoordinatorSharedDeps,
+} from "./node-coordinator";
 import type { NodeCoordinatorRuntime } from "./node-coordinator";
 
 const VAULT_ID_PATTERN = /^[a-zA-Z0-9_-]+$/;
@@ -27,6 +30,11 @@ export class NodeCoordinatorNamespace {
 
 	getByName(vaultId: string): CoordinatorStub {
 		return {
+			authorizeSyncAccess: async (input) => {
+				const runtime = this.getOrCreateRuntime(vaultId);
+				await runtime.ready;
+				return runtime.authorizeSyncAccess(input);
+			},
 			fetch: async (request: Request) => {
 				const runtime = this.getOrCreateRuntime(vaultId);
 				await runtime.ready;
@@ -56,7 +64,9 @@ export class NodeCoordinatorNamespace {
 
 	private vaultFilePath(vaultId: string): string {
 		if (!VAULT_ID_PATTERN.test(vaultId)) {
-			throw new Error(`refusing to derive a filesystem path from vault id: ${vaultId}`);
+			throw new Error(
+				`refusing to derive a filesystem path from vault id: ${vaultId}`,
+			);
 		}
 		return path.join(this.dataDir, "vaults", `${vaultId}.sqlite`);
 	}

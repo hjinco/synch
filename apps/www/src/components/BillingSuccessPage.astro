@@ -40,12 +40,15 @@ const vaultsUrl = new URL("/vaults", apiUrl || Astro.url.origin).toString();
   const actions = document.getElementById("actions");
   const spinner = document.getElementById("spinner");
 
+  const organizationId = new URLSearchParams(location.search).get("organizationId");
+  const destination = new URL(vaultsUrl, location.origin); if (organizationId) destination.searchParams.set("organizationId", organizationId);
+  document.querySelector("#actions a").href = destination.toString();
   let startedAt = Date.now();
   let fallbackShown = false;
   let stopped = false;
 
   async function fetchStatus() {
-    const response = await fetch(`${apiUrl}/v1/billing/status`, {
+    const response = await fetch(`${apiUrl}/v1/billing/status${organizationId ? `?organizationId=${encodeURIComponent(organizationId)}` : ""}`, {
       credentials: "include",
       headers: { accept: "application/json" },
     });
@@ -64,7 +67,7 @@ const vaultsUrl = new URL("/vaults", apiUrl || Astro.url.origin).toString();
       const status = await fetchStatus();
       if (status.active) {
         stopped = true;
-        window.location.href = vaultsUrl;
+        window.location.href = destination.toString();
         return;
       }
     } catch {

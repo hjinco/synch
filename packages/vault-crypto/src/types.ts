@@ -12,7 +12,13 @@ export interface RemoteVaultKeyWrapMetadata {
   ciphertext: string;
 }
 
+export interface VaultKeyBinding {
+  vaultId: string;
+  userId: string;
+}
+
 export interface RemoteVaultKeyEnvelope {
+  binding?: VaultKeyBinding;
   version: number;
   keyVersion: number;
   kdf: RemoteVaultKeyDerivationMetadata;

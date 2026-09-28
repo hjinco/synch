@@ -11,16 +11,11 @@ export interface VaultKeyStore {
 		organizationId: string,
 		name: string,
 		initialWrapper: VaultKeyWrapperInput,
+        maxVaults?: number,
 	): Promise<VaultRecord>;
 	upsertPasswordWrapperForUser(
 		userId: string,
 		vaultId: string,
 		envelope: VaultKeyEnvelope,
-	): Promise<VaultKeyWrapperRecord>;
-	addVaultMember(
-		vaultId: string,
-		userId: string,
-		role: "admin" | "member",
-		wrapper: VaultKeyWrapperInput,
 	): Promise<VaultKeyWrapperRecord>;
 }

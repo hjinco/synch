@@ -9,10 +9,27 @@ import type { SessionReader } from "../../../../auth/session";
 import { apiError, onError } from "../../../../errors";
 import { registerBillingRoutes } from "./routes";
 import type { BillingService } from "../../../application";
+import { BillingApplicationError } from "../../../application/errors/billing-errors";
+import { mapBillingApplicationError } from "./error-mapper";
 
 describe("billing routes", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
+	});
+
+	it("explains why checkout needs a different billing email", async () => {
+		authMocks.readSession.mockResolvedValueOnce({ user: { id: "user-1", email: "user@example.com" } });
+		const app = createTestApp(fakeBillingService({
+			createCheckout: vi.fn(async () => { throw new BillingApplicationError("billing_email_unavailable"); }),
+		}));
+
+		const response = await app.request("/v1/billing/checkout", { method: "POST" });
+
+		expect(response.status).toBe(409);
+		await expect(response.json()).resolves.toMatchObject({
+			error: "billing_email_unavailable",
+			message: expect.stringContaining("different email"),
+		});
 	});
 
 	it("requires authentication for customer portal sessions", async () => {
@@ -46,6 +63,7 @@ describe("billing routes", () => {
 			},
 			body: JSON.stringify({
 				returnPath: "/ko/billing",
+            undefined,
 			}),
 		});
 
@@ -56,6 +74,7 @@ describe("billing routes", () => {
 		expect(billingService.createCustomerPortalSession).toHaveBeenCalledWith(
 			"user-1",
 			"/ko/billing",
+            undefined,
 		);
 	});
 
@@ -183,7 +202,7 @@ function createTestApp(billingService = fakeBillingService()): Hono {
 		sessionReader: authMocks as unknown as SessionReader,
 		billingService,
 	});
-	app.onError(onError);
+	app.onError((error, c) => mapBillingApplicationError(error) ?? onError(error, c));
 	return app;
 }
 

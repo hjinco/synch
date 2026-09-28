@@ -29,6 +29,8 @@ export type CloudflareRuntimeEnv = Omit<
 	WWW_BASE_URL?: string;
 	POLAR_ACCESS_TOKEN?: string;
 	POLAR_WEBHOOK_SECRET?: string;
+	POLAR_PLUS_MONTHLY_PRODUCT_ID?: string;
+	POLAR_PLUS_ANNUAL_PRODUCT_ID?: string;
 	POLAR_STARTER_MONTHLY_PRODUCT_ID?: string;
 	POLAR_STARTER_ANNUAL_PRODUCT_ID?: string;
 	POLAR_SANDBOX?: string;

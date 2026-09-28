@@ -3,6 +3,7 @@ import Footer from "./Footer.astro";
 import Header from "./Header.astro";
 import Layout from "../layouts/Layout.astro";
 import { localizedPath, ui, type Locale } from "../i18n";
+import { PLUS_PRICING_USD } from "../billing/pricing";
 
 interface Props {
   locale: Locale;
@@ -44,6 +45,9 @@ const pricingUrl = localizedPath(locale, "/pricing");
         </div>
 
         <div id="billing-content" class="hidden space-y-8">
+          <label class="block text-sm text-zinc-400"><span id="organization-label"></span><select id="billing-organization" class="mt-2 block w-full rounded border border-zinc-700 bg-zinc-950 px-3 py-2"></select></label>
+          <div id="plus-checkout" class="flex flex-wrap gap-3"></div>
+          <p id="plus-pricing-note" class="hidden text-xs leading-relaxed text-zinc-400">{t.pricing.plusOrganizationPrice}</p>
           <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
             <div>
               <p class="mb-2 text-xs text-zinc-600">{t.billingSettings.currentPlan}</p>
@@ -54,6 +58,7 @@ const pricingUrl = localizedPath(locale, "/pricing");
                   class="rounded border border-zinc-700 bg-zinc-950/60 px-2 py-1 text-[11px] font-medium text-zinc-400"
                 ></span>
               </div>
+              <p id="billing-price" class="hidden mt-2 text-sm text-zinc-400"></p>
             </div>
             <div id="billing-period-group" class="text-left sm:text-right">
               <p id="billing-period-label" class="mb-2 text-xs text-zinc-600">
@@ -103,7 +108,7 @@ const pricingUrl = localizedPath(locale, "/pricing");
         </div>
 
         <div id="billing-error" class="hidden space-y-5">
-          <p class="text-sm leading-relaxed text-zinc-500">
+          <p id="billing-error-message" class="text-sm leading-relaxed text-zinc-500">
             {t.billingSettings.error}
           </p>
           <button
@@ -128,6 +133,10 @@ const pricingUrl = localizedPath(locale, "/pricing");
     returnPath: localizedPath(locale, "/billing"),
     signupUrl: signupUrl.toString(),
     locale,
+    plusPricing: PLUS_PRICING_USD,
+    monthLabel: t.pricing.month,
+    yearLabel: t.pricing.year,
+    plusOrganizationPrice: t.pricing.plusOrganizationPrice,
   }}
 >
   const loading = document.getElementById("billing-loading");
@@ -136,6 +145,7 @@ const pricingUrl = localizedPath(locale, "/pricing");
   const error = document.getElementById("billing-error");
   const plan = document.getElementById("billing-plan");
   const badge = document.getElementById("billing-badge");
+  const price = document.getElementById("billing-price");
   const periodGroup = document.getElementById("billing-period-group");
   const periodLabel = document.getElementById("billing-period-label");
   const period = document.getElementById("billing-period");
@@ -146,12 +156,32 @@ const pricingUrl = localizedPath(locale, "/pricing");
   const retryButton = document.getElementById("retry-button");
 
   let currentStatus = null;
+  let billingActionPending = false;
+  const organizationPicker = document.getElementById("billing-organization");
+  const organizationNames = { en: "Organization", ko: "조직", ja: "組織", de: "Organisation", "zh-cn": "组织", "zh-tw": "組織" };
+  document.getElementById("organization-label").textContent = organizationNames[locale];
+  let organizationId = new URLSearchParams(location.search).get("organizationId") || "";
+  const returnUrl = new URL(signupUrl); returnUrl.searchParams.set("return_to", location.href);
+  document.querySelector("#billing-auth a").href = returnUrl.toString();
+  function withOrganization(url) { const value = new URL(url, location.origin); if (organizationId) value.searchParams.set("organizationId", organizationId); return value.toString(); }
+  async function loadOrganizations() {
+    if (organizationPicker.options.length) return;
+    const response = await fetch(`${apiUrl}/v1/organizations`, { credentials: "include" });
+    if (!response.ok) return;
+    const { organizations } = await response.json();
+    for (const org of organizations) { const option = document.createElement("option"); option.value = org.id; option.textContent = org.name; organizationPicker.append(option); }
+    if (organizations.some(org => org.id === organizationId)) organizationPicker.value = organizationId;
+    organizationId = organizationPicker.value;
+    upgradeLink.href = withOrganization(upgradeLink.href);
+  }
+  organizationPicker.addEventListener("change", () => { organizationId = organizationPicker.value; history.replaceState(null, "", withOrganization(location.href)); upgradeLink.href = withOrganization(upgradeLink.href); void load(); });
 
-  function show(panel) {
+  function show(panel, errorMessage = labels.error) {
     loading?.classList.toggle("hidden", panel !== "loading");
     content?.classList.toggle("hidden", panel !== "content");
     auth?.classList.toggle("hidden", panel !== "auth");
     error?.classList.toggle("hidden", panel !== "error");
+    if (panel === "error") document.getElementById("billing-error-message").textContent = errorMessage;
   }
 
   function formatPeriod(value) {
@@ -167,6 +197,14 @@ const pricingUrl = localizedPath(locale, "/pricing");
     }).format(date);
   }
 
+  function formatPlusPrice(billingInterval) {
+    return `$${plusPricing[billingInterval]} ${billingInterval === "annual" ? yearLabel : monthLabel}`;
+  }
+
+  function plusChangeConfirmation(billingInterval) {
+    return `${labels.plusUpgradeConfirm.replace("{price}", formatPlusPrice(billingInterval))}\n\n${plusOrganizationPrice}`;
+  }
+
   function renderStatus(status) {
     currentStatus = status;
     const isActive = Boolean(status.active);
@@ -180,8 +218,12 @@ const pricingUrl = localizedPath(locale, "/pricing");
         : labels.freeInterval;
 
     if (plan) {
-      plan.textContent = isStarter ? labels.starterPlan : labels.freePlan;
+      plan.textContent = status.planId === "plus" ? "Sync Plus" : isStarter ? labels.starterPlan : labels.freePlan;
     }
+    price.classList.toggle("hidden", status.planId !== "plus" || !status.billingInterval);
+    price.textContent = status.planId === "plus" && status.billingInterval
+      ? formatPlusPrice(status.billingInterval)
+      : "";
     if (badge) {
       badge.textContent = isCanceled
         ? labels.canceled
@@ -220,22 +262,49 @@ const pricingUrl = localizedPath(locale, "/pricing");
     const canManageBilling = status.canManageBilling === true;
     manageButton?.classList.toggle("hidden", !isActive || !canManageBilling);
     const isChangeable = status.status === "active" || status.status === "trialing";
-    const canSwitchToAnnual = isActive
+    const canChangePlan = isActive
       && isChangeable
       && !isCanceling
-      && canManageBilling
-      && status.billingInterval === "monthly";
+      && canManageBilling;
+    const canSwitchToAnnual = canChangePlan
+      && status.billingInterval === "monthly"
+      && (status.planId !== "plus" || status.availablePlusIntervals?.includes("annual"));
     if (switchIntervalButton instanceof HTMLButtonElement) {
       switchIntervalButton.textContent = labels.switchToAnnual;
       switchIntervalButton.disabled = false;
       switchIntervalButton.classList.toggle("hidden", !canSwitchToAnnual);
     }
     upgradeLink?.classList.toggle("hidden", isActive);
+    const plusCheckout = document.getElementById("plus-checkout");
+    const plusPricingNote = document.getElementById("plus-pricing-note");
+    plusCheckout.replaceChildren();
+    plusPricingNote.classList.add("hidden");
+    const canUpgradeToPlus = isStarter && canChangePlan;
+    if ((!isActive && canManageBilling) || canUpgradeToPlus) {
+      for (const billingInterval of status.availablePlusIntervals || []) {
+        // An active annual subscription cannot move back to monthly billing.
+        if (isActive && status.billingInterval === "annual" && billingInterval === "monthly") continue;
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "rounded border border-zinc-700 px-4 py-2 text-sm text-zinc-200 disabled:cursor-not-allowed disabled:opacity-50";
+        button.textContent = `${canUpgradeToPlus ? labels.upgradeToPlus : "Sync Plus"} · ${formatPlusPrice(billingInterval)}`;
+        button.addEventListener("click", async () => {
+          if (billingActionPending) return;
+          if (canUpgradeToPlus && !window.confirm(plusChangeConfirmation(billingInterval))) return;
+          await submitBillingAction(canUpgradeToPlus ? "change" : "checkout", "plus", billingInterval, button);
+        });
+        plusCheckout.append(button);
+        plusPricingNote.classList.remove("hidden");
+      }
+    }
+    if (status.planId === "plus") plusPricingNote.classList.remove("hidden");
     show("content");
   }
 
   async function fetchStatus() {
-    const response = await fetch(`${apiUrl}/v1/billing/status`, {
+    await loadOrganizations();
+    const requestedOrganization = organizationId;
+    const response = await fetch(withOrganization(`${apiUrl}/v1/billing/status`), {
       credentials: "include",
       headers: { accept: "application/json" },
     });
@@ -246,7 +315,8 @@ const pricingUrl = localizedPath(locale, "/pricing");
     if (!response.ok) {
       throw new Error("billing status failed");
     }
-    renderStatus(await response.json());
+    const status = await response.json();
+    if (requestedOrganization === organizationId) renderStatus(status);
   }
 
   async function openPortal() {
@@ -263,10 +333,10 @@ const pricingUrl = localizedPath(locale, "/pricing");
           accept: "application/json",
           "content-type": "application/json",
         },
-        body: JSON.stringify({ returnPath }),
+        body: JSON.stringify({ returnPath: new URL(withOrganization(returnPath)).pathname + new URL(withOrganization(returnPath)).search, organizationId }),
       });
       if (response.status === 401) {
-        window.location.href = signupUrl;
+        window.location.href = returnUrl.toString();
         return;
       }
       if (!response.ok) {
@@ -282,20 +352,30 @@ const pricingUrl = localizedPath(locale, "/pricing");
   }
 
   async function switchToAnnualBilling() {
-    if (!(switchIntervalButton instanceof HTMLButtonElement) || !currentStatus) {
+    if (billingActionPending || !(switchIntervalButton instanceof HTMLButtonElement) || !currentStatus) {
       return;
     }
     if (currentStatus.billingInterval !== "monthly") {
       return;
     }
-    if (!window.confirm(labels.switchConfirm)) {
+    if (!window.confirm(currentStatus.planId === "plus" ? plusChangeConfirmation("annual") : labels.switchConfirm)) {
       return;
     }
-    switchIntervalButton.disabled = true;
-    switchIntervalButton.textContent = labels.switching;
+    await submitBillingAction("change", currentStatus.planId, "annual", switchIntervalButton);
+  }
+
+  async function submitBillingAction(action, planId, billingInterval, button) {
+    if (billingActionPending) return;
+    const requestedOrganization = organizationId;
+    const previousStatus = currentStatus;
+    const originalLabel = button.textContent;
+    billingActionPending = true;
+    organizationPicker.disabled = true;
+    content.querySelectorAll("button").forEach((control) => { control.disabled = true; });
+    button.textContent = labels.switching;
 
     try {
-      const response = await fetch(`${apiUrl}/v1/billing/change`, {
+      const response = await fetch(`${apiUrl}/v1/billing/${action}`, {
         method: "POST",
         credentials: "include",
         headers: {
@@ -303,23 +383,40 @@ const pricingUrl = localizedPath(locale, "/pricing");
           "content-type": "application/json",
         },
         body: JSON.stringify({
-          planId: currentStatus.planId,
-          billingInterval: "annual",
+          organizationId: requestedOrganization,
+          planId,
+          billingInterval,
         }),
       });
+      if (requestedOrganization !== organizationId) return;
       if (response.status === 401) {
-        window.location.href = signupUrl;
+        window.location.href = returnUrl.toString();
         return;
       }
       if (!response.ok) {
+        const failure = await response.json().catch(() => null);
+        if (failure?.error === "billing_email_unavailable") {
+          show("error", labels.billingEmailUnavailable);
+          return;
+        }
         throw new Error("billing change failed");
       }
 
-      renderStatus(await response.json());
+      const result = await response.json();
+      if (requestedOrganization !== organizationId) return;
+      if (action === "checkout") {
+        location.assign(result.url);
+      } else {
+        // Change responses omit the configured Plus intervals returned by status.
+        renderStatus({ ...previousStatus, ...result });
+      }
     } catch {
-      switchIntervalButton.disabled = false;
-      switchIntervalButton.textContent = labels.switchToAnnual;
-      show("error");
+      if (requestedOrganization === organizationId) show("error");
+    } finally {
+      billingActionPending = false;
+      organizationPicker.disabled = false;
+      content.querySelectorAll("button").forEach((control) => { control.disabled = false; });
+      button.textContent = originalLabel;
     }
   }
 

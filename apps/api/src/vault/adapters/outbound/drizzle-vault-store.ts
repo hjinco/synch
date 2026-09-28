@@ -1,3 +1,4 @@
+import { VaultApplicationError } from "../../application/errors/vault-errors";
 import { and, asc, eq, gt, isNotNull, isNull, lte, or, sql } from "drizzle-orm";
 
 import type { AppDb } from "../../../db/client";
@@ -36,7 +37,6 @@ export class DrizzleVaultStore
 				vaultId: schema.vault.id,
 				organizationId: schema.vault.organizationId,
 				deletedAt: schema.vault.deletedAt,
-				vaultMembershipRole: schema.vaultMembership.role,
 				vaultMembershipStatus: schema.vaultMembership.status,
 				organizationRole: schema.member.role,
 			})
@@ -55,9 +55,7 @@ export class DrizzleVaultStore
 					eq(schema.member.userId, userId),
 				),
 			)
-			.where(
-				eq(schema.vault.id, vaultId),
-			)
+			.where(eq(schema.vault.id, vaultId))
 			.limit(1);
 
 		const row = rows[0];
@@ -69,12 +67,9 @@ export class DrizzleVaultStore
 					}
 				: null,
 			vaultMembership:
-				row?.vaultMembershipRole !== null &&
-				row?.vaultMembershipRole !== undefined &&
 				row?.vaultMembershipStatus !== null &&
 				row?.vaultMembershipStatus !== undefined
 					? {
-							role: row.vaultMembershipRole,
 							status: row.vaultMembershipStatus,
 						}
 					: null,
@@ -95,21 +90,24 @@ export class DrizzleVaultStore
 				organizationId: schema.vault.organizationId,
 				name: schema.vault.name,
 				activeKeyVersion: schema.vault.activeKeyVersion,
+				sharedAt: schema.vault.sharedAt,
 				createdAt: schema.vault.createdAt,
 				deletedAt: schema.vault.deletedAt,
 				purgeStatus: schema.vault.purgeStatus,
 				purgeError: schema.vault.purgeError,
 			})
 			.from(schema.vault)
-			.innerJoin(
+			.leftJoin(
 				schema.vaultMembership,
-				eq(schema.vaultMembership.vaultId, schema.vault.id),
+				and(eq(schema.vaultMembership.vaultId, schema.vault.id), eq(schema.vaultMembership.userId, userId)),
 			)
-			.innerJoin(schema.member, eq(schema.member.organizationId, schema.vault.organizationId))
+			.innerJoin(
+				schema.member,
+				eq(schema.member.organizationId, schema.vault.organizationId),
+			)
 			.where(
 				and(
-					eq(schema.vaultMembership.userId, userId),
-					eq(schema.vaultMembership.status, "active"),
+					or(eq(schema.vaultMembership.status, "active"), sql`${schema.member.role} in ('owner','admin')`),
 					eq(schema.member.userId, userId),
 					deletionFilter,
 				),
@@ -142,7 +140,9 @@ export class DrizzleVaultStore
 		return rows.length;
 	}
 
-	async listActiveVaultIdsForOrganization(organizationId: string): Promise<string[]> {
+	async listActiveVaultIdsForOrganization(
+		organizationId: string,
+	): Promise<string[]> {
 		const rows = await this.db
 			.select({
 				id: schema.vault.id,
@@ -185,50 +185,43 @@ export class DrizzleVaultStore
 		organizationId: string,
 		name: string,
 		initialWrapper: VaultKeyWrapperInput,
+		maxVaults = 0,
 	): Promise<VaultRecord> {
 		const vaultId = crypto.randomUUID();
-		const wrapperId = crypto.randomUUID();
-		// `.batch()`, not `.transaction()`: D1 rejects real SQL
-		// BEGIN/SAVEPOINT transactions at runtime (it requires its own
-		// storage-level transaction API instead), so drizzle's `.transaction()`
-		// - despite type-checking fine - throws against real D1. `.batch()` is
-		// the one atomic multi-write primitive both D1 and libSQL genuinely
-		// support with the same signature.
+		const now = Date.now();
+		// D1/libSQL batch is atomic; the conditional INSERT reserves the quota slot.
+		// Dependent writes select that row, so a failed reservation creates nothing.
 		const [rows] = await this.db.batch([
 			this.db
 				.insert(schema.vault)
-				.values({
-					id: vaultId,
-					organizationId,
-					name,
-					activeKeyVersion: initialWrapper.envelope.keyVersion,
-				})
+				.select(
+					sql`SELECT ${vaultId}, ${organizationId}, ${name}, null, ${initialWrapper.envelope.keyVersion}, ${now}, null, null, null
+          WHERE (${maxVaults}=0 OR (SELECT count(*) FROM vault WHERE organization_id=${organizationId} AND deleted_at IS NULL)<${maxVaults})
+          AND EXISTS (SELECT 1 FROM member WHERE organization_id=${organizationId} AND user_id=${userId} AND role IN ('owner','admin'))`,
+				)
 				.returning(),
-			this.db.insert(schema.vaultKeyWrapper).values({
-				id: wrapperId,
-				vaultId,
-				keyVersion: initialWrapper.envelope.keyVersion,
-				kind: initialWrapper.kind,
-				userId,
-				envelopeJson: initialWrapper.envelope,
-			}),
-			this.db.insert(schema.vaultMembership).values({
-				vaultId,
-				userId,
-				role: "owner",
-				status: "active",
-			}),
+			this.db
+				.insert(schema.vaultKeyWrapper)
+				.select(
+					sql`SELECT ${crypto.randomUUID()}, ${vaultId}, ${initialWrapper.envelope.keyVersion}, ${initialWrapper.kind}, ${userId}, ${JSON.stringify(initialWrapper.envelope)}, ${now}, null FROM vault WHERE id=${vaultId}`,
+				),
+			this.db
+				.insert(schema.vaultMembership)
+				.select(
+					sql`SELECT ${vaultId}, ${userId}, 1, 1, 0, 'active', ${now}, null FROM vault WHERE id=${vaultId}`,
+				),
 		]);
-
-		const created = rows[0];
-		if (!created) {
-			throw new Error("vault was not created");
-		}
-
-		return toVaultRecord(created);
+		if (!rows[0])
+			throw new VaultApplicationError("vault_limit_exceeded", {
+				planName: "Organization",
+				limit: maxVaults,
+			});
+		return toVaultRecord(rows[0]);
 	}
 
-	async readDefaultOrganizationIdForUser(userId: string): Promise<string | null> {
+	async readDefaultOrganizationIdForUser(
+		userId: string,
+	): Promise<string | null> {
 		const rows = await this.db
 			.select({
 				organizationId: schema.member.organizationId,
@@ -241,7 +234,10 @@ export class DrizzleVaultStore
 		return rows[0]?.organizationId ?? null;
 	}
 
-	async userIsOrganizationMember(userId: string, organizationId: string): Promise<boolean> {
+	async userIsOrganizationMember(
+		userId: string,
+		organizationId: string,
+	): Promise<boolean> {
 		const rows = await this.db
 			.select({
 				userId: schema.member.userId,
@@ -308,10 +304,10 @@ export class DrizzleVaultStore
 			})
 			.from(schema.vault)
 			.innerJoin(
-				schema.vaultMembership,
-				eq(schema.vaultMembership.vaultId, schema.vault.id),
+				schema.member,
+				eq(schema.member.organizationId, schema.vault.organizationId),
 			)
-			.innerJoin(schema.user, eq(schema.user.id, schema.vaultMembership.userId))
+			.innerJoin(schema.user, eq(schema.user.id, schema.member.userId))
 			.leftJoin(
 				schema.vaultSyncStatus,
 				eq(schema.vaultSyncStatus.vaultId, schema.vault.id),
@@ -319,8 +315,8 @@ export class DrizzleVaultStore
 			.where(
 				and(
 					isNull(schema.vault.deletedAt),
-					eq(schema.vaultMembership.role, "owner"),
-					eq(schema.vaultMembership.status, "active"),
+					isNull(schema.vault.sharedAt),
+					eq(schema.member.role, "owner"),
 					lte(
 						sql`coalesce(${schema.vaultSyncStatus.lastCommitAt}, ${schema.vault.createdAt})`,
 						inactiveSince,
@@ -341,7 +337,9 @@ export class DrizzleVaultStore
 				purgeStatus: "running",
 				purgeError: null,
 			})
-			.where(and(eq(schema.vault.id, vaultId), isNotNull(schema.vault.deletedAt)));
+			.where(
+				and(eq(schema.vault.id, vaultId), isNotNull(schema.vault.deletedAt)),
+			);
 	}
 
 	async markVaultPurgeFailed(vaultId: string, message: string): Promise<void> {
@@ -351,10 +349,15 @@ export class DrizzleVaultStore
 				purgeStatus: "failed",
 				purgeError: message,
 			})
-			.where(and(eq(schema.vault.id, vaultId), isNotNull(schema.vault.deletedAt)));
+			.where(
+				and(eq(schema.vault.id, vaultId), isNotNull(schema.vault.deletedAt)),
+			);
 	}
 
-	async markVaultDeletionQueueFailed(vaultId: string, message: string): Promise<void> {
+	async markVaultDeletionQueueFailed(
+		vaultId: string,
+		message: string,
+	): Promise<void> {
 		await this.db
 			.update(schema.vault)
 			.set({
@@ -367,63 +370,6 @@ export class DrizzleVaultStore
 
 	async hardDeleteVault(vaultId: string): Promise<void> {
 		await this.db.delete(schema.vault).where(eq(schema.vault.id, vaultId));
-	}
-
-	async addVaultMember(
-		vaultId: string,
-		userId: string,
-		role: "admin" | "member",
-		wrapper: VaultKeyWrapperInput,
-	): Promise<VaultKeyWrapperRecord> {
-		const rows = await this.db
-			.insert(schema.vaultKeyWrapper)
-			.values({
-				id: crypto.randomUUID(),
-				vaultId,
-				keyVersion: wrapper.envelope.keyVersion,
-				kind: wrapper.kind,
-				userId,
-				envelopeJson: wrapper.envelope,
-				revokedAt: null,
-			})
-			.onConflictDoUpdate({
-				target: [
-					schema.vaultKeyWrapper.vaultId,
-					schema.vaultKeyWrapper.kind,
-					schema.vaultKeyWrapper.userId,
-				],
-				set: {
-					keyVersion: wrapper.envelope.keyVersion,
-					envelopeJson: wrapper.envelope,
-					revokedAt: null,
-				},
-			})
-			.returning();
-
-		const created = rows[0];
-		if (!created) {
-			throw new Error(`member wrapper for vault ${vaultId} was not written`);
-		}
-
-		await this.db
-			.insert(schema.vaultMembership)
-			.values({
-				vaultId,
-				userId,
-				role,
-				status: "active",
-				revokedAt: null,
-			})
-			.onConflictDoUpdate({
-				target: [schema.vaultMembership.vaultId, schema.vaultMembership.userId],
-				set: {
-					role,
-					status: "active",
-					revokedAt: null,
-				},
-			});
-
-		return toVaultKeyWrapperRecord(created);
 	}
 
 	async readVaultBootstrapForUser(
@@ -444,7 +390,10 @@ export class DrizzleVaultStore
 					isNull(schema.vaultKeyWrapper.revokedAt),
 					or(
 						eq(schema.vaultKeyWrapper.userId, userId),
-						isNull(schema.vaultKeyWrapper.userId),
+						and(
+							isNull(schema.vaultKeyWrapper.userId),
+							sql`${vault.sharedAt === null}`,
+						),
 					),
 				),
 			)
@@ -461,44 +410,37 @@ export class DrizzleVaultStore
 		vaultId: string,
 		envelope: VaultKeyEnvelope,
 	): Promise<VaultKeyWrapperRecord> {
-		const rows = await this.db
-			.insert(schema.vaultKeyWrapper)
-			.values({
-				id: crypto.randomUUID(),
-				vaultId,
-				keyVersion: envelope.keyVersion,
-				kind: "password",
-				userId,
-				envelopeJson: envelope,
-				revokedAt: null,
-			})
-			.onConflictDoUpdate({
-				target: [
-					schema.vaultKeyWrapper.vaultId,
-					schema.vaultKeyWrapper.kind,
-					schema.vaultKeyWrapper.userId,
-				],
-				set: {
-					keyVersion: envelope.keyVersion,
-					envelopeJson: envelope,
-					revokedAt: null,
-				},
-			})
-			.returning();
-
-		const wrapper = rows[0];
-		if (!wrapper) {
-			throw new Error(`password wrapper for vault ${vaultId} was not written`);
-		}
-
-		await this.db
-			.update(schema.vault)
-			.set({
-				activeKeyVersion: envelope.keyVersion,
-			})
-			.where(and(eq(schema.vault.id, vaultId), isNull(schema.vault.deletedAt)));
-
-		return toVaultKeyWrapperRecord(wrapper);
+		const authorized = sql`exists (select 1 from vault v join vault_membership m on m.vault_id=v.id join member o on o.organization_id=v.organization_id and o.user_id=m.user_id where v.id=${vaultId} and v.deleted_at is null and m.user_id=${userId} and m.status='active' and v.active_key_version=${envelope.keyVersion})`;
+		const [rows] = await this.db.batch([
+			this.db
+				.insert(schema.vaultKeyWrapper)
+				.select(
+					sql`select ${crypto.randomUUID()}, ${vaultId}, ${envelope.keyVersion}, 'password', ${userId}, ${JSON.stringify(envelope)}, ${Date.now()}, null where ${authorized}`,
+				)
+				.onConflictDoUpdate({
+					target: [
+						schema.vaultKeyWrapper.vaultId,
+						schema.vaultKeyWrapper.kind,
+						schema.vaultKeyWrapper.userId,
+					],
+					set: { envelopeJson: envelope, revokedAt: null },
+				})
+				.returning(),
+			// An older recovery must not overwrite a password that was just changed.
+			this.db
+				.update(schema.vaultKeyRequest)
+				.set({ status: "canceled", envelopeJson: null })
+				.where(
+					and(
+						eq(schema.vaultKeyRequest.vaultId, vaultId),
+						eq(schema.vaultKeyRequest.userId, userId),
+						sql`${schema.vaultKeyRequest.status} in ('pending','approved')`,
+						authorized,
+					),
+				),
+		]);
+		if (!rows[0]) throw new VaultApplicationError("forbidden");
+		return toVaultKeyWrapperRecord(rows[0]);
 	}
 
 	private async readAccessibleVaultRowForUser(
@@ -511,6 +453,7 @@ export class DrizzleVaultStore
 				organizationId: schema.vault.organizationId,
 				name: schema.vault.name,
 				activeKeyVersion: schema.vault.activeKeyVersion,
+				sharedAt: schema.vault.sharedAt,
 				createdAt: schema.vault.createdAt,
 				deletedAt: schema.vault.deletedAt,
 				purgeStatus: schema.vault.purgeStatus,
@@ -521,7 +464,10 @@ export class DrizzleVaultStore
 				schema.vaultMembership,
 				eq(schema.vaultMembership.vaultId, schema.vault.id),
 			)
-			.innerJoin(schema.member, eq(schema.member.organizationId, schema.vault.organizationId))
+			.innerJoin(
+				schema.member,
+				eq(schema.member.organizationId, schema.vault.organizationId),
+			)
 			.where(
 				and(
 					eq(schema.vault.id, vaultId),
@@ -550,8 +496,15 @@ function toVaultRecord(row: typeof schema.vault.$inferSelect): VaultRecord {
 	};
 }
 
-function isVaultPurgeStatus(value: unknown): value is VaultRecord["purgeStatus"] {
-	return value === "queued" || value === "running" || value === "failed" || value === null;
+function isVaultPurgeStatus(
+	value: unknown,
+): value is VaultRecord["purgeStatus"] {
+	return (
+		value === "queued" ||
+		value === "running" ||
+		value === "failed" ||
+		value === null
+	);
 }
 
 function toVaultKeyWrapperRecord(

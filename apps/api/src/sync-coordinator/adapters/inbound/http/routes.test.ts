@@ -20,6 +20,7 @@ function appWithStageError(error: SyncAccessApplicationError) {
 		purgeVault: unused,
 		prepareSocketSession: unused,
 		completeSocketOpen: unused,
+		assertSessionAccess: unused,
 	} satisfies CoordinatorHttpServices;
 	return {
 		app: createCoordinatorApp({

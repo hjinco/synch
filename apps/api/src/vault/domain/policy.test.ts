@@ -9,7 +9,7 @@ import {
 
 const activeMember: VaultAuthorizationFacts = {
 	vault: { organizationId: "org-1", deleted: false },
-	vaultMembership: { role: "member", status: "active" },
+	vaultMembership: { status: "active" },
 	organizationRole: "member",
 };
 
@@ -20,11 +20,12 @@ describe("vault authorization policy", () => {
 		expect(canGrantVaultAccess(activeMember)).toBe(false);
 	});
 
-	it("allows active vault owners and admins to manage and grant access", () => {
+	it("allows organization owners and admins to manage and grant access", () => {
 		for (const role of ["owner", "admin"]) {
 			const facts = {
 				...activeMember,
-				vaultMembership: { role, status: "active" },
+				organizationRole: role,
+				vaultMembership: null,
 			} satisfies VaultAuthorizationFacts;
 
 			expect(canManageVault(facts)).toBe(true);
@@ -40,7 +41,7 @@ describe("vault authorization policy", () => {
 		} satisfies VaultAuthorizationFacts;
 
 		expect(canAccessVault(facts)).toBe(false);
-		expect(canManageVault(facts)).toBe(false);
+		expect(canManageVault(facts)).toBe(true);
 		expect(canGrantVaultAccess(facts)).toBe(true);
 	});
 
@@ -48,7 +49,7 @@ describe("vault authorization policy", () => {
 		const facts = {
 			...activeMember,
 			vault: { organizationId: "org-1", deleted: true },
-			vaultMembership: { role: "owner", status: "active" },
+			vaultMembership: { status: "active" },
 			organizationRole: "owner",
 		} satisfies VaultAuthorizationFacts;
 

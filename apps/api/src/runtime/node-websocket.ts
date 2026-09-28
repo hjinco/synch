@@ -75,6 +75,7 @@ export function createNodeWebSocketUpgradeHandler(runtime: NodeRuntime, publicUr
 				readSyncToken(request),
 				vaultId,
 			);
+			coordinator.socketConnectionService.assertSessionAccess(session);
 		} catch {
 			socket.write("HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n");
 			socket.destroy();

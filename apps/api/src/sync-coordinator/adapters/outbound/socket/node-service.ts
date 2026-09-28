@@ -53,10 +53,15 @@ export class NodeSocketGateway implements SocketGateway {
 	}
 
 	readSocketSession(connectionId: string): SocketSession | null {
-		for (const record of this.sockets.values()) {
-			if (record.id === connectionId) return record.session;
+		for (const [socket, record] of this.sockets) {
+			if (record.id === connectionId && socket.readyState === socket.OPEN) return record.session;
 		}
 		return null;
+	}
+
+	listSocketSessions(): { connectionId: string; session: SocketSession }[] {
+		return [...this.sockets].filter(([socket]) => socket.readyState === socket.OPEN)
+			.map(([, record]) => ({ connectionId: record.id, session: record.session }));
 	}
 
 	sendSocketMessage(connectionId: string, message: ServerControlMessage): boolean {

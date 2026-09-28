@@ -23,31 +23,39 @@ describe("SynchSettingTab remote vault settings", () => {
   const getLatestButton = (text: string) =>
     [...getButtonComponents()].reverse().find((button) => button.text === text);
 
-  it("shows a remote vault management button after sign-in", () => {
+  it("shows a remote vault management button after connection", () => {
     const tab = createSettingsTab({
       hasAuthenticatedSession: () => true,
+      hasConnectedRemoteVault: () => true,
     });
-
     tab.open();
-
-    const buttonTexts = getButtonComponents().map((button) => button.text);
-    expect(buttonTexts).toContain(t("vault.manageRemote"));
+    expect(getButtonComponents().map((button) => button.text)).toContain(t("vault.manageRemote"));
   });
 
-  it("places remote vault management below authentication when no vault is connected", () => {
+  it("only offers create, connect, and sign out before connection", () => {
+    const tab = createSettingsTab({ hasAuthenticatedSession: () => true });
+    tab.open();
+    expect(getButtonComponents().map((button) => button.text)).toEqual([
+      t("vault.create"), t("vault.connect"), t("auth.signOut"),
+    ]);
+    expect(getSettingNames()).not.toContain(t("fileSync.header"));
+    expect(getSettingNames()).not.toContain(t("subscription.label"));
+    expect(getSettingNames()).not.toContain(t("diagnostics.header"));
+  });
+
+  it("returns to create and connect after disconnection", async () => {
+    let connected = true;
     const tab = createSettingsTab({
       hasAuthenticatedSession: () => true,
-      isDeviceLoginInProgress: () => false,
+      hasConnectedRemoteVault: () => connected,
+      disconnectRemoteVault: async () => { connected = false; },
     });
-
     tab.open();
-
-    const buttonTexts = getButtonComponents().map((button) => button.text);
-    expect(buttonTexts.slice(0, 4)).toEqual([
-      t("vault.create"),
-      t("vault.connect"),
-      t("auth.signOut"),
-      t("vault.manageRemote"),
+    await getLatestButton(t("vault.disconnect"))?.click();
+    resetObsidianMocks();
+    tab.open();
+    expect(getButtonComponents().map((button) => button.text)).toEqual([
+      t("vault.create"), t("vault.connect"), t("auth.signOut"),
     ]);
   });
 
@@ -59,7 +67,7 @@ describe("SynchSettingTab remote vault settings", () => {
 
     disconnected.open();
 
-    expect(getSettingNames()).toContain(t("vault.manage"));
+    expect(getSettingNames()).not.toContain(t("vault.manage"));
     expect(getSettingNames()).not.toContain(t("vault.setting"));
 
     resetObsidianMocks();

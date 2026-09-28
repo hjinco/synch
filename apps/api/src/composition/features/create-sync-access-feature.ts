@@ -1,3 +1,4 @@
+import type { SyncTokenClaims } from "../../sync-access/application/dto/token";
 import type { VaultService } from "../../vault/application";
 import type { IssueSyncToken, VerifySyncToken } from "../../sync-access/application";
 import { CoordinatorSyncPauseReader, type CoordinatorNamespace } from "../../sync-access/adapters/outbound/coordinator-sync-pause-reader";
@@ -22,8 +23,10 @@ export function createSyncAccessFeature(config: {
 	coordinatorNamespace: CoordinatorNamespace;
 	syncTokenSecret: string;
 	syncTokenTtlSeconds?: number;
+	accessReader?: (userId: string, vaultId: string) => Promise<number>;
+	accessVerifier?: (claims: SyncTokenClaims, token: string) => Promise<unknown>;
 }): SyncAccessFeature {
-	const tokenFeature = createSyncTokenFeature({ syncTokenSecret: config.syncTokenSecret });
+	const tokenFeature = createSyncTokenFeature({ syncTokenSecret: config.syncTokenSecret, accessVerifier: config.accessVerifier });
 	const pauseReader = new CoordinatorSyncPauseReader(config.coordinatorNamespace);
 	return {
 		...tokenFeature,
@@ -32,15 +35,17 @@ export function createSyncAccessFeature(config: {
 			tokenFeature.codec,
 			pauseReader,
 			config.syncTokenTtlSeconds,
+			config.accessReader,
 		),
 	};
 }
 
 export function createSyncTokenFeature(config: {
 	syncTokenSecret: string;
+	accessVerifier?: (claims: SyncTokenClaims, token: string) => Promise<unknown>;
 }): SyncTokenFeature & { codec: JoseSyncTokenCodec } {
 	const codec = new JoseSyncTokenCodec(config.syncTokenSecret);
-	const tokenVerifier = new VerifySyncTokenService(codec);
+	const tokenVerifier = new VerifySyncTokenService(codec, config.accessVerifier);
 	return {
 		codec,
 		tokenVerifier,

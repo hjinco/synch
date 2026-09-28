@@ -151,8 +151,16 @@ export class CoordinatorSocketService implements SocketGateway {
 
 	readSocketSession(connectionId: string): SocketSession | null {
 		const socket = this.findSocket(connectionId);
-		if (!socket) return null;
+		if (!socket || socket.readyState === WebSocket.CLOSING || socket.readyState === WebSocket.CLOSED) return null;
 		return this.readSocketSessionFromSocket(socket, connectionId);
+	}
+
+	listSocketSessions(): { connectionId: string; session: SocketSession }[] {
+		return this.ctx.getWebSockets().flatMap((socket) => {
+			const connectionId = this.connectionIdFor(socket);
+			const session = this.readSocketSession(connectionId);
+			return session ? [{ connectionId, session }] : [];
+		});
 	}
 
 	private readSocketSessionFromSocket(
@@ -168,25 +176,30 @@ export class CoordinatorSocketService implements SocketGateway {
 			typeof maybeSession.localVaultId !== "string" ||
 			typeof maybeSession.vaultId !== "string"
 		) return null;
-			return {
-				userId: maybeSession.userId,
-				localVaultId: maybeSession.localVaultId,
-				vaultId: maybeSession.vaultId,
-				displayName: typeof maybeSession.displayName === "string" ? maybeSession.displayName : "",
-				wantsStorageStatus: maybeSession.wantsStorageStatus === true,
-				wantsPresence: maybeSession.wantsPresence === true,
-				presenceEntryId:
-					typeof maybeSession.presenceEntryId === "string"
-						? maybeSession.presenceEntryId
-						: null,
-				presenceWatchEntryIds: Array.isArray(maybeSession.presenceWatchEntryIds)
-					? maybeSession.presenceWatchEntryIds.filter(
-							(entryId): entryId is string =>
-								typeof entryId === "string" && entryId.trim().length > 0,
-						)
-					: [],
-			};
-		}
+		if (
+			maybeSession.accessVersion !== undefined &&
+			(!Number.isSafeInteger(maybeSession.accessVersion) || maybeSession.accessVersion < 1)
+		) return null;
+		return {
+			userId: maybeSession.userId,
+			localVaultId: maybeSession.localVaultId,
+			vaultId: maybeSession.vaultId,
+			...(maybeSession.accessVersion === undefined ? {} : { accessVersion: maybeSession.accessVersion }),
+			displayName: typeof maybeSession.displayName === "string" ? maybeSession.displayName : "",
+			wantsStorageStatus: maybeSession.wantsStorageStatus === true,
+			wantsPresence: maybeSession.wantsPresence === true,
+			presenceEntryId:
+				typeof maybeSession.presenceEntryId === "string"
+					? maybeSession.presenceEntryId
+					: null,
+			presenceWatchEntryIds: Array.isArray(maybeSession.presenceWatchEntryIds)
+				? maybeSession.presenceWatchEntryIds.filter(
+						(entryId): entryId is string =>
+							typeof entryId === "string" && entryId.trim().length > 0,
+					)
+				: [],
+		};
+	}
 
 	private findSocket(connectionId: string): WebSocket | null {
 		for (const socket of this.ctx.getWebSockets()) {

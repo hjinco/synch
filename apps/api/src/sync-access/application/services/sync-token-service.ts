@@ -23,6 +23,7 @@ export class IssueSyncTokenService implements IssueSyncToken {
 		private readonly syncTokenCodec: Pick<SyncTokenCodec, "signSyncToken">,
 		private readonly syncPauseReader: SyncPauseReader,
 		syncTokenTtlSeconds = DEFAULT_SYNC_TOKEN_TTL_SECONDS,
+		private readonly accessReader?: (userId: string, vaultId: string) => Promise<number>,
 	) {
 		this.syncTokenTtlSeconds = syncTokenTtlSeconds;
 	}
@@ -39,7 +40,9 @@ export class IssueSyncTokenService implements IssueSyncToken {
 		}
 
 		const now = Math.floor(Date.now() / 1000);
+		const accessVersion = await this.accessReader?.(input.userId, input.vaultId);
 		const claims = {
+			...(accessVersion === undefined ? {} : { accessVersion }),
 			sub: input.userId,
 			vaultId: input.vaultId,
 			localVaultId: input.localVaultId,
@@ -61,7 +64,7 @@ export class IssueSyncTokenService implements IssueSyncToken {
 }
 
 export class VerifySyncTokenService implements VerifySyncToken {
-	constructor(private readonly syncTokenCodec: Pick<SyncTokenCodec, "verifySyncToken">) {}
+	constructor(private readonly syncTokenCodec: Pick<SyncTokenCodec, "verifySyncToken">, private readonly accessVerifier?: (claims: SyncTokenClaims, token: string) => Promise<unknown>) {}
 
 	async verifySyncToken(
 		token: string | null | undefined,
@@ -78,6 +81,7 @@ export class VerifySyncTokenService implements VerifySyncToken {
 		if (expectedVaultId && claims.vaultId !== expectedVaultId) {
 			throw new SyncAccessApplicationError("vault_mismatch");
 		}
+		await this.accessVerifier?.(claims, token);
 		return claims;
 	}
 }

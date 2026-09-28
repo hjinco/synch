@@ -163,6 +163,7 @@ export function createMockCoordinatorSocketService(
 ): SocketGateway {
 	return {
 		readSocketSession: vi.fn(() => null),
+		listSocketSessions: vi.fn(() => []),
 		attachSocketSession: vi.fn(),
 		sendSocketMessage: vi.fn(() => true),
 		broadcastStorageStatus: vi.fn(),

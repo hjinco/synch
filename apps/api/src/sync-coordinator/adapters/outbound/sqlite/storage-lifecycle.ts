@@ -25,6 +25,7 @@ export class SqliteCoordinatorStorage implements CoordinatorStorageLifecycle {
 			DELETE FROM entries;
 			DELETE FROM blobs;
 			DELETE FROM maintenance_jobs;
+			DELETE FROM sync_access_revocations;
 			DELETE FROM local_vault_connections;
 			DELETE FROM coordinator_state;
 		`);

@@ -11,6 +11,7 @@ export function populateVaultManageSetting(
   setting
     .setName(t("vault.manage"))
     .setDesc(t("vault.manageDesc"))
+    .addButton(button => button.setButtonText(t("sharing.title")).onClick(() => { void controller.openVaultSharing(); }))
     .addButton((button) =>
       button.setButtonText(t("vault.manageRemote")).onClick(() => {
         controller.openRemoteVaultManagementPage();

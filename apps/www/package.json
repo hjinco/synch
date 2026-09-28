@@ -8,6 +8,7 @@
   "scripts": {
     "dev": "astro dev",
     "build": "astro build",
+    "test:billing": "node --test test/billing-settings.test.mjs test/pricing-checkout.test.mjs",
     "preview": "astro preview",
     "preview:cloudflare": "pnpm build && wrangler dev",
     "deploy": "pnpm build && wrangler deploy",

@@ -17,3 +17,6 @@ export type {
   WebSocketFactory,
 } from "./sync/remote/realtime-types";
 export * from "./sync/remote/token-manager";
+
+export * from "./sharing/client";
+export * from "./sharing/manager";

@@ -7,6 +7,7 @@
 		<link rel="stylesheet" href="/styles.css" />
 		<link rel="icon" type="image/x-icon" href="/favicon.ico" />
 		<script src="/i18n.js"></script>
+		<script src="/organization-ui.js"></script>
 	</head>
 	<body>
 		<div class="page page--wide">
@@ -28,6 +29,7 @@
 				</div>
 			</header>
 
+			<div id="organization-toolbar" class="org-toolbar hidden"><label for="organization" class="label" data-i18n="organization">Organization</label><select id="organization" class="input"></select><a id="organizations-link" class="hidden" href="/organizations" data-i18n="organizations">Manage organizations</a></div>
 			<div class="vaults-toolbar">
 				<div id="status" class="status status--bar" aria-live="polite" data-i18n="loading">Loading vaults...</div>
 				<div class="vaults-actions">
@@ -64,7 +66,7 @@
 							<input id="create-password-confirm" type="password" autocomplete="new-password" class="input" />
 						</div>
 						<p id="create-error" class="form-error hidden" aria-live="polite"></p>
-						<p class="form-hint" data-i18n="createPasswordHint">The password cannot be recovered, so store it somewhere safe. You will enter the same password when connecting this vault from Obsidian.</p>
+						<p class="form-hint" data-i18n="createPasswordHint">Keep this password safe. If it is lost, recovery requires another vault administrator who still has the vault key.</p>
 					</div>
 				</div>
 				<div class="dialog-footer">
@@ -108,6 +110,8 @@
 			const { locale, createTranslator } = window.synchI18n;
 			const { t, ready: translationsReady } = createTranslator("vaults", {
 				title: "Remote vaults",
+				organization: "Organization",
+				organizations: "Manage organizations",
 				subtitle: "Manage the encrypted vaults attached to this Synch account. Deleting a remote vault does not delete local Obsidian files.",
 				signOut: "Sign out",
 				signedIn: "Signed in",
@@ -119,7 +123,7 @@
 				createNameLabel: "Vault name",
 				createPasswordLabel: "Vault password",
 				createConfirmPasswordLabel: "Confirm vault password",
-				createPasswordHint: "The password cannot be recovered, so store it somewhere safe. You will enter the same password when connecting this vault from Obsidian.",
+				createPasswordHint: "Keep this password safe. If it is lost, recovery requires another vault administrator who still has the vault key.",
 				createConfirm: "Create vault",
 				creating: "Creating...",
 				createdVault: "{name} created. Connect it from Obsidian with the same vault password.",
@@ -187,7 +191,24 @@
 			const createErrorEl = document.querySelector("#create-error");
 			const confirmCreateButton = document.querySelector("#confirm-create");
 			const confirmCreateLabel = document.querySelector("#confirm-create-label");
-			let selectedVault = null;
+			const organizationPicker = document.querySelector("#organization");
+            const organizationsLink = document.querySelector("#organizations-link");
+            let currentOrganization = null;
+            organizationPicker.addEventListener("change", () => { void loadVaults(); });
+            async function loadOrganizations() {
+              const selected = organizationPicker.value || new URLSearchParams(location.search).get("organizationId");
+              const response = await fetch("/v1/organizations", { credentials: "include" });
+              if (response.status === 401) { redirectToLogin(); return; }
+              if (!response.ok) throw new Error("Unable to load organizations");
+              const { organizations } = await response.json();
+              // Owners and administrators can manage organizations on every plan.
+              const visible = organizations.filter(window.synchOrganizationUI.canManage);
+              organizationPicker.replaceChildren();
+              for (const org of visible) { const option = document.createElement("option"); option.value = org.id; option.textContent = org.name; organizationPicker.append(option); }
+              if (visible.some(org => org.id === selected)) organizationPicker.value = selected;
+              document.querySelector("#organization-toolbar").classList.toggle("hidden", !organizations.some(window.synchOrganizationUI.canManage));
+            }
+            let selectedVault = null;
 			let creatingVault = false;
 
 			refreshButton.addEventListener("click", () => {
@@ -300,9 +321,29 @@
 
 			async function loadVaults() {
 				setStatus(t("loading"));
+                document.querySelector("#organization-toolbar").classList.add("hidden");
+                organizationsLink.classList.add("hidden");
+                createVaultButton.disabled = true;
+                listEl.replaceChildren();
 				refreshButton.disabled = true;
 				try {
-					const response = await fetch("/v1/vaults?includeDeleting=true", {
+					await loadOrganizations();
+                    const organizationId = organizationPicker.value;
+                    if (!organizationId) { currentOrganization = null; renderVaults([]); return; }
+                    const orgResponse = await fetch(`/v1/organizations/${encodeURIComponent(organizationId)}`, { credentials: "include" });
+                    if (!orgResponse.ok) throw new Error("Unable to load organization");
+                    currentOrganization = await orgResponse.json();
+                    const canManageOrganization = window.synchOrganizationUI.canManage(currentOrganization);
+                    if (!canManageOrganization) {
+                      currentOrganization = null;
+                      document.querySelector("#organization-toolbar").classList.add("hidden");
+                      renderVaults([]);
+                      return;
+                    }
+                    organizationsLink.classList.toggle("hidden", !canManageOrganization);
+                    createVaultButton.disabled = !canManageOrganization;
+                    const organizationUrl = new URL("/organizations", location.origin); organizationUrl.searchParams.set("organizationId", organizationId); organizationUrl.searchParams.set("lang", locale); organizationsLink.href = organizationUrl.toString();
+                    const response = await fetch("/v1/vaults?includeDeleting=true", {
 						credentials: "include",
 					});
 					if (response.status === 401) {
@@ -314,7 +355,7 @@
 						return;
 					}
 					const json = await response.json();
-					renderVaults(Array.isArray(json.vaults) ? json.vaults : []);
+					renderVaults(Array.isArray(json.vaults) ? json.vaults.filter(vault => vault.organizationId === organizationId) : []);
 				} catch {
 					setStatus(t("apiUnavailable"));
 				} finally {
@@ -361,7 +402,8 @@
 						openDeleteDialog(vault);
 					});
 
-					row.append(details, button);
+					row.append(details);
+					if (window.synchOrganizationUI.canManage(currentOrganization)) row.append(button);
 					listEl.append(row);
 				}
 
@@ -559,6 +601,7 @@
 						},
 						body: JSON.stringify({
 							name,
+                            organizationId: organizationPicker.value,
 							initialWrapper: { kind: "password", envelope },
 						}),
 					});

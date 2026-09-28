@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="en">
+ <head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width" />
+  <title>Synch organizations</title>
+  <link rel="stylesheet" href="/styles.css" />
+  <link rel="icon" type="image/x-icon" href="/favicon.ico" />
+  <script src="/i18n.js"></script>
+  <script src="/organization-ui.js"></script>
+ </head>
+ <body class="organizations-page">
+  <main class="page page--wide organization-page">
+   <div class="topbar organization-topbar"><a href="https://synch.run/" class="brand">Synch</a><a id="vaults-link" href="/vaults" data-i18n="vaults">Remote vaults</a></div>
+   <header id="organization-header" class="vaults-header hidden"><div><h1 class="page-title" data-i18n="title">Organizations</h1></div></header>
+   <div id="organization-toolbar" class="org-toolbar hidden"><label for="organization" class="label" data-i18n="organization">Organization</label><select id="organization" class="input"></select></div><div id="invite-result" class="org-panel hidden"></div>
+   <p id="status" class="status status--bar" role="status" aria-live="polite">…</p>
+   <div id="detail" class="org-detail"></div>
+  </main>
+  <script>
+const { locale, createTranslator } = window.synchI18n;
+const { t, ready: translationsReady } = createTranslator("organizations", {
+				title: "Organizations",
+				subtitle: "Manage members, invitations, and access to encrypted vaults.",
+				name: "Organization name",
+				rename: "Rename",
+				organizationRole: "Organization role",
+				role: "Role",
+				email: "Email address",
+				invite: "Invite member",
+				inviteHelp: "Choose the vaults this member can access and edit. Owners and administrators can access and manage all vaults. Pending invitations reserve member seats.",
+				selectVault: "Select at least one vault.",
+				sent: "Invitation email sent.",
+				copyLink: "Copy this invitation link and share it with the invited person. They must sign in with the invited email address.",
+				inviteLink: "Invitation link",
+				invitations: "Invitations",
+				members: "Members",
+				remove: "Remove member",
+				revoke: "Revoke access",
+				grant: "Grant access",
+				leave: "Leave organization",
+				removeConfirm: "Stop this person’s sync access? Files already downloaded to their devices remain there.",
+				pendingRefresh: "Access is revoked. Existing connections are being closed; refresh to check again.",
+				noAccess: "No access",
+				yourAccess: "Your access",
+				owner: "Owner",
+				admin: "Administrator",
+				member: "Member",
+				active: "Active",
+				pending_key: "Awaiting key setup",
+				revoked: "Revoked",
+				pending: "Pending",
+				expired: "Expired",
+				canceled: "Canceled",
+				rejected: "Rejected",
+				accepted: "Accepted",
+				refresh: "Refresh",
+				working: "Saving…",
+				saved: "Saved.",
+				failed: "Unable to complete the request.",
+				signIn: "Please sign in.",
+				loaded: "Organization loaded.",
+				noOrganizations: "No organizations found.",
+				noVaults: "No vaults available. Create a vault from Remote vaults, or ask an administrator for access.",
+				sharingRequired: "Organization sharing is available with Plus or on self-hosted servers.",
+				suspended: "Shared sync is paused. Data is preserved and access resumes when Plus is renewed.",
+				keyHelp: "In Obsidian, open Synch → Vault sharing and passwords to request or approve access and set your personal vault password. Retained history is shared too.",
+				plusLimits: "Plus: 3 members including the owner · 3 vaults · 2 GB per vault · 100 MB per file · 1 year of history",
+				cancel: "Cancel invitation",
+				resend: "Resend",
+				vaults: "Remote vaults",
+				organization: "Organization",
+				billing: "Manage billing",
+			});
+const $ = selector => document.querySelector(selector);
+let currentUser, organization, organizations = [], busy = false;
+const params = new URLSearchParams(location.search);
+const isManager = role => role === 'owner' || role === 'admin';
+const localUrl = (path, values = {}) => { const url = new URL(path, location.origin); url.searchParams.set('lang', locale); for (const [key, value] of Object.entries(values)) url.searchParams.set(key, value); return url.toString(); };
+function el(tag, text, className) { const node = document.createElement(tag); if (text) node.textContent = text; if (className) node.className = className; return node; }
+function button(label, action, danger = false) { const node = el('button', label, `btn btn--compact ${danger ? 'btn--danger' : 'btn--secondary'}`); node.type = 'button'; node.addEventListener('click', () => void perform(action)); return node; }
+function select(label, values, selected) { const node = el('select', '', 'input'); node.setAttribute('aria-label', label); for (const [value, text] of values) { const option = el('option', text); option.value = value; node.append(option); } if (selected) node.value = selected; return node; }
+function field(label, input) { const node = el('label', '', 'org-field'); node.append(el('span', label, 'label'), input); return node; }
+function setStatus(message, kind = 'info') { $('#status').dataset.kind = kind; $('#status').textContent = message; }
+async function api(path, method = 'GET', body) {
+  const response = await fetch(path, { method, credentials: 'include', headers: body === undefined ? {} : { 'content-type': 'application/json' }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
+  if (response.status === 401) { location.assign(localUrl('/signin', { return_to: location.href })); throw new Error(t('signIn')); }
+  const value = await response.json();
+  if (!response.ok) throw new Error(value.message || value.error?.message || t('failed'));
+  return value;
+}
+async function perform(action) {
+  if (busy) return; busy = true;
+  document.querySelectorAll('button, select, input').forEach(node => { node.disabled = true; });
+  setStatus(t('working'));
+  try { const message = await action(); await loadOrganization(); setStatus(typeof message === 'string' ? message : t('saved')); }
+  catch (error) { setStatus(error.message || t('failed'), 'error'); }
+  finally { busy = false; document.querySelectorAll('button, select, input').forEach(node => { node.disabled = node.dataset.disabled === 'true'; }); }
+}
+function orgPath(suffix = '') { return `/v1/organizations/${encodeURIComponent(organization.id)}${suffix}`; }
+async function loadOrganization() {
+  $('#detail').replaceChildren();
+  $('#invite-result').classList.add('hidden');
+  $('#organization-header').classList.add('hidden');
+  $('#organization-toolbar').classList.add('hidden');
+  const id = $('#organization').value; if (!id) return;
+  organization = await api(`/v1/organizations/${encodeURIComponent(id)}`);
+  if (!window.synchOrganizationUI.canManage(organization)) { $('#invite-result').classList.add('hidden'); location.replace(localUrl('/vaults')); return; }
+  if ($('#invite-result').childElementCount) $('#invite-result').classList.remove('hidden');
+  $('#organization-header').classList.remove('hidden');
+  $('#organization-toolbar').classList.toggle('hidden', organizations.length < 2);
+  $('#organization-header h1').textContent = organization.name;
+  const url = new URL(location.href); url.searchParams.set('organizationId', id); history.replaceState(null, '', url);
+  $('#vaults-link').href = localUrl('/vaults', { organizationId: id });
+  const detail = $('#detail'); detail.replaceChildren();
+  const manager = isManager(organization.role);
+  const selectedOption = $('#organization').selectedOptions[0];
+  if (selectedOption) selectedOption.textContent = organization.name;
+  const summary = el('section', '', 'org-panel org-summary');
+  if (!organization.sharing.enabled) summary.append(el('p', t(organization.vaults.some(vault => vault.shared) ? 'suspended' : 'sharingRequired'), 'org-warning'));
+  if (organization.billingUrl) { const link = el('a', t('billing'), 'org-billing'); const url = new URL(organization.billingUrl); if (locale !== 'en') url.pathname = `/${locale}/billing`; link.href = url.toString(); summary.append(link); }
+  if (manager) {
+    const rename = el('form', '', 'org-inline'); const input = el('input', '', 'input'); input.value = organization.name; input.maxLength = 100; input.required = true;
+    const save = el('button', t('rename'), 'btn btn--secondary btn--compact'); save.type = 'submit';
+    rename.append(field(t('name'), input), save); rename.addEventListener('submit', event => { event.preventDefault(); const name = input.value; void perform(() => api(orgPath(), 'PATCH', { name })); }); const settings = el('details', '', 'org-settings'); settings.append(el('summary', t('rename')), rename); summary.append(settings);
+  }
+  detail.append(summary);
+  if (manager) { renderMembers(detail); renderInvitations(detail); }
+  const vaults = el('section', '', 'org-vaults');
+  vaults.append(el('h2', t('vaults'), 'org-section-title'));
+  if (organization.vaults.some(vault => vault.status === 'pending_key' || vault.members.some(member => member.status === 'pending_key'))) vaults.append(el('p', t('keyHelp'), 'org-help'));
+  for (const vault of organization.vaults) renderVault(vaults, vault);
+  if (!organization.vaults.length) vaults.append(el('p', t('noVaults'), 'org-panel'));
+  detail.append(vaults);
+  if (organization.role !== 'owner') detail.append(button(t('leave'), async () => { if (!confirm(t('removeConfirm'))) return; await api(orgPath(`/members/${encodeURIComponent(currentUser.id)}`), 'DELETE'); location.assign(localUrl('/organizations')); }, true));
+}
+function renderMembers(parent) {
+  const section = el('section', '', 'org-panel org-members'); const heading = el('div', '', 'org-panel-heading'); heading.append(el('h2', t('members'), 'org-heading'), el('span', String(organization.members.length), 'org-count')); section.append(heading);
+  for (const member of organization.members) {
+    const row = el('div', '', 'org-row'); const person = el('div', '', 'org-person'); const info = el('div', '', 'org-person-info'); info.append(el('span', member.name, 'org-person-name'), el('span', member.email, 'vault-meta')); person.append(info); row.append(person);
+    const roles = select(t('role'), [['member', t('member')], ['admin', t('admin')], ...(member.role === 'owner' ? [['owner', t('owner')]] : [])], member.role);
+    const locked = member.role === 'owner' || organization.role !== 'owner'; roles.disabled = locked; roles.dataset.disabled = String(locked);
+    roles.addEventListener('change', () => { const role = roles.value; void perform(() => api(orgPath(`/members/${encodeURIComponent(member.id)}`), 'PATCH', { role })); }); row.append(locked ? el('span', t(member.role), 'org-role') : roles);
+    if (member.role !== 'owner' && (organization.role === 'owner' || member.role === 'member')) row.append(button(t('remove'), async () => { if (!confirm(t('removeConfirm'))) return; const result = await api(orgPath(`/members/${encodeURIComponent(member.id)}`), 'DELETE'); return result.pending ? t('pendingRefresh') : t('saved'); }, true));
+    section.append(row);
+  }
+  parent.append(section);
+}
+function renderInvitations(parent) {
+  const section = el('section', '', 'org-panel org-invitations');
+  if (organization.sharing.enabled) {
+    const form = el('form', '', 'org-form'); const email = el('input', '', 'input'); email.type = 'email'; email.autocomplete = 'email'; email.placeholder = 'name@example.com'; email.required = true;
+    const role = select(t('organizationRole'), [['member', t('member')], ...(organization.role === 'owner' ? [['admin', t('admin')]] : [])]);
+    form.append(field(t('email'), email), field(t('organizationRole'), role), el('p', t('inviteHelp'), 'vault-meta'));
+    const selections = [];
+    const vaultChoices = el('div', '', 'org-form');
+    for (const vault of organization.vaults) {
+      const input = el('input'); input.type = 'checkbox';
+      selections.push([vault.id, input]); vaultChoices.append(field(vault.name, input));
+    }
+    const submit = el('button', t('invite'), 'btn btn--primary'); submit.type = 'submit';
+    const updateChoices = () => { vaultChoices.classList.toggle('hidden', role.value === 'admin'); const disabled = role.value === 'member' && !selections.length; submit.disabled = disabled; submit.dataset.disabled = String(disabled); };
+    role.addEventListener('change', updateChoices); updateChoices();
+    form.append(vaultChoices, submit); form.addEventListener('submit', event => { event.preventDefault(); const input = { email: email.value, role: role.value, vaults: role.value === 'admin' ? [] : selections.filter(([, node]) => node.checked).map(([vaultId]) => ({ vaultId })) }; if (input.role === 'member' && !input.vaults.length) { setStatus(t('selectVault')); return; } void perform(async () => { const result = await api(orgPath('/invitations'), 'POST', input); showInviteLink(result.url); return result.emailSent ? t('sent') : t('copyLink'); }); }); const disclosure = el('details', '', 'org-invite-disclosure'); disclosure.append(el('summary', t('invite')), form); section.append(disclosure);
+  }
+  const pendingInvitations = organization.invitations.filter(invitation => invitation.status === 'pending');
+  if (pendingInvitations.length) section.append(el('h3', t('invitations'), 'org-list-title'));
+  for (const invitation of organization.invitations.filter(invitation => invitation.status === 'pending')) {
+    const expired = new Date(invitation.expiresAt).getTime() <= Date.now();
+    const row = el('div', '', 'org-row'); row.append(el('span', `${invitation.email} · ${t(expired ? 'expired' : 'pending')}`, 'org-person'));
+    if (!expired && organization.sharing.enabled) row.append(button(t('resend'), async () => { const result = await api(orgPath(`/invitations/${encodeURIComponent(invitation.id)}/resend`), 'POST'); showInviteLink(result.url); return result.emailSent ? t('sent') : t('copyLink'); }));
+    row.append(button(t('cancel'), () => api(orgPath(`/invitations/${encodeURIComponent(invitation.id)}/cancel`), 'POST'))); section.append(row);
+  }
+  if (section.childElementCount) parent.append(section);
+}
+function showInviteLink(url) { const box = $('#invite-result'); box.replaceChildren(el('p', t('copyLink'))); const input = el('input', '', 'input'); input.readOnly = true; input.value = url; input.setAttribute('aria-label', t('inviteLink')); input.addEventListener('focus', () => input.select()); box.append(input); box.classList.remove('hidden'); }
+function renderVault(parent, vault) {
+  const section = el('section', '', 'org-panel org-vault'); section.append(el('h3', vault.name, 'org-heading'), el('p', `${t('yourAccess')}: ${vault.status ? t(vault.status) : t('noAccess')}`, 'vault-meta'));
+  if (vault.shared && !organization.sharing.enabled) section.append(el('p', t('suspended'), 'org-warning'));
+  const manage = vault.canManage;
+  for (const member of vault.members.filter(member => member.status !== 'revoked')) {
+    const row = el('div', '', 'org-row'); row.append(el('div', `${member.email} · ${t(member.status)}`, 'org-person'));
+    const path = `/v1/vaults/${encodeURIComponent(vault.id)}/members/${encodeURIComponent(member.userId)}`;
+    if (manage && !member.canManage) row.append(button(t('revoke'), async () => { if (!confirm(t('removeConfirm'))) return; const result = await api(path, 'DELETE'); return result.pending ? t('pendingRefresh') : t('saved'); }, true));
+    section.append(row);
+  }
+  const available = organization.members.filter(member => !isManager(member.role) && !vault.members.some(grant => grant.userId === member.id && grant.status !== 'revoked'));
+  if (manage && organization.sharing.enabled && available.length) {
+    const row = el('div', '', 'org-inline'); const member = select(t('members'), available.map(member => [member.id, member.email]));
+    row.append(member, button(t('grant'), () => api(`/v1/vaults/${encodeURIComponent(vault.id)}/grants`, 'POST', { userId: member.value }))); section.append(row);
+  }
+  parent.append(section);
+}
+async function initialize() {
+  await translationsReady;
+  for (const node of document.querySelectorAll('[data-i18n]')) node.textContent = t(node.dataset.i18n);
+  document.title = `Synch · ${t('title')}`;
+  const session = await api('/api/auth/get-session'); if (!session?.user) { location.assign(localUrl('/signin', { return_to: location.href })); return; } currentUser = session.user;
+  organizations = (await api('/v1/organizations')).organizations.filter(window.synchOrganizationUI.canManage);
+  if (!organizations.length) { location.replace(localUrl('/vaults')); return; }
+  const picker = $('#organization');
+  for (const org of organizations) { const option = el('option', org.name); option.value = org.id; picker.append(option); }
+  if (organizations.some(org => org.id === params.get('organizationId'))) picker.value = params.get('organizationId');
+  picker.addEventListener('change', () => { $('#invite-result').replaceChildren(); $('#invite-result').classList.add('hidden'); void perform(async () => {}); });
+  await loadOrganization(); setStatus('');
+}
+void initialize().catch(error => setStatus(error.message || t('failed')));
+
+  </script>
+ </body>
+</html>

@@ -63,6 +63,8 @@ function billingErrorMessage(code: BillingApplicationErrorCode): string {
 			return "switching from annual to monthly billing is not available";
 		case "billing_customer_not_found":
 			return "billing customer was not found";
+		case "billing_email_unavailable":
+			return "This email cannot be used for this organization's billing. Ask an organization owner or admin with a different email to start checkout.";
 		case "subscription_canceled":
 			return "subscription is already canceled";
 		case "payment_failed":

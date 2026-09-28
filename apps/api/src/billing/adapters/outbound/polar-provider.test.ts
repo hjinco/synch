@@ -2,6 +2,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const polarMocks = vi.hoisted(() => ({
 	checkoutsCreate: vi.fn(),
+	customersGetExternal: vi.fn(),
+	customersCreate: vi.fn(),
 	customerSessionsCreate: vi.fn(),
 	subscriptionsUpdate: vi.fn(),
 	Polar: vi.fn(function Polar(this: unknown, config: unknown) {
@@ -9,6 +11,10 @@ const polarMocks = vi.hoisted(() => ({
 			config,
 			checkouts: {
 				create: polarMocks.checkoutsCreate,
+			},
+			customers: {
+				getExternal: polarMocks.customersGetExternal,
+				create: polarMocks.customersCreate,
 			},
 			customerSessions: {
 				create: polarMocks.customerSessionsCreate,
@@ -27,6 +33,8 @@ vi.mock("@polar-sh/sdk", () => ({
 import { AlreadyCanceledSubscription } from "@polar-sh/sdk/models/errors/alreadycanceledsubscription";
 import { PaymentFailed } from "@polar-sh/sdk/models/errors/paymentfailed";
 import { SubscriptionLocked } from "@polar-sh/sdk/models/errors/subscriptionlocked";
+import { ResourceNotFound } from "@polar-sh/sdk/models/errors/resourcenotfound";
+import { HTTPValidationError } from "@polar-sh/sdk/models/errors/httpvalidationerror";
 
 import {
 	createPolarCheckout,
@@ -36,7 +44,8 @@ import {
 
 describe("createPolarCheckout", () => {
 	beforeEach(() => {
-		vi.clearAllMocks();
+		vi.resetAllMocks();
+		polarMocks.customersGetExternal.mockResolvedValue({ id: "customer-1" });
 	});
 
 	it("creates a starter checkout with organization metadata", async () => {
@@ -72,9 +81,8 @@ describe("createPolarCheckout", () => {
 		});
 		expect(polarMocks.checkoutsCreate).toHaveBeenCalledWith({
 			products: ["starter-product"],
-			externalCustomerId: "user-1",
-			customerEmail: "user@example.com",
-			successUrl: "https://synch.example/billing/success?checkout_id={CHECKOUT_ID}",
+			customerId: "customer-1",
+			successUrl: "https://synch.example/billing/success?checkout_id={CHECKOUT_ID}&organizationId=org-1",
 			metadata: {
 				referenceId: "org-1",
 				organizationId: "org-1",
@@ -83,6 +91,79 @@ describe("createPolarCheckout", () => {
 				billingInterval: "monthly",
 			},
 		});
+	});
+
+	const checkoutInput = {
+		planId: "starter" as const,
+		billingInterval: "monthly" as const,
+		productId: "starter-product",
+		organizationId: "org-1",
+		userId: "user-1",
+		email: "user@example.com",
+	};
+	const httpMeta = (status: number) => ({
+		response: new Response(null, { status }),
+		request: new Request("https://api.polar.sh/v1/customers/"),
+		body: "",
+	});
+	const missingCustomer = () => new ResourceNotFound(
+		{ error: "ResourceNotFound", detail: "Customer not found" }, httpMeta(404),
+	);
+	const duplicateEmail = () => new HTTPValidationError({
+		detail: [{ loc: ["body", "email"], type: "value_error", msg: "A customer with this email address already exists." }],
+	}, httpMeta(422));
+
+	it("creates the organization customer before opening checkout", async () => {
+		polarMocks.customersGetExternal.mockRejectedValueOnce(missingCustomer());
+		polarMocks.customersCreate.mockResolvedValueOnce({ id: "new-customer" });
+		polarMocks.checkoutsCreate.mockResolvedValueOnce({ id: "checkout-1", url: "https://polar.example/checkout-1" });
+
+		await createPolarCheckout({ accessToken: "polar-token" }, checkoutInput);
+
+		expect(polarMocks.customersGetExternal).toHaveBeenCalledWith({ externalId: "org-1" });
+		expect(polarMocks.customersCreate).toHaveBeenCalledWith({ externalId: "org-1", email: "user@example.com" });
+		expect(polarMocks.checkoutsCreate).toHaveBeenCalledWith(expect.objectContaining({ customerId: "new-customer" }));
+		expect(polarMocks.checkoutsCreate.mock.calls[0][0]).not.toHaveProperty("customerEmail");
+	});
+
+	it("reuses a stored legacy customer even when another admin pays", async () => {
+		polarMocks.checkoutsCreate.mockResolvedValueOnce({ id: "checkout-1", url: "https://polar.example/checkout-1" });
+
+		await createPolarCheckout({ accessToken: "polar-token" }, { ...checkoutInput, polarCustomerId: "legacy-customer", email: "other-admin@example.com" });
+
+		expect(polarMocks.customersGetExternal).not.toHaveBeenCalled();
+		expect(polarMocks.customersCreate).not.toHaveBeenCalled();
+		expect(polarMocks.checkoutsCreate).toHaveBeenCalledWith(expect.objectContaining({ customerId: "legacy-customer" }));
+	});
+
+	it("does not open checkout when the email belongs to another organization's customer", async () => {
+		polarMocks.customersGetExternal.mockRejectedValue(missingCustomer());
+		polarMocks.customersCreate.mockRejectedValueOnce(duplicateEmail());
+
+		await expect(createPolarCheckout({ accessToken: "polar-token" }, checkoutInput))
+			.rejects.toMatchObject({ code: "billing_email_unavailable" });
+
+		expect(polarMocks.checkoutsCreate).not.toHaveBeenCalled();
+	});
+
+	it("reuses the same organization's customer after concurrent creation", async () => {
+		polarMocks.customersGetExternal.mockRejectedValueOnce(missingCustomer())
+			.mockResolvedValueOnce({ id: "concurrent-customer" });
+		polarMocks.customersCreate.mockRejectedValueOnce(duplicateEmail());
+		polarMocks.checkoutsCreate.mockResolvedValueOnce({ id: "checkout-1", url: "https://polar.example/checkout-1" });
+
+		await createPolarCheckout({ accessToken: "polar-token" }, checkoutInput);
+
+		expect(polarMocks.checkoutsCreate).toHaveBeenCalledWith(expect.objectContaining({ customerId: "concurrent-customer" }));
+	});
+
+	it("does not treat lookup outages as a missing customer", async () => {
+		polarMocks.customersGetExternal.mockRejectedValueOnce(new Error("polar unavailable"));
+
+		await expect(createPolarCheckout({ accessToken: "polar-token" }, checkoutInput)).rejects.toThrow("polar unavailable");
+
+		expect(polarMocks.customersCreate).not.toHaveBeenCalled();
+		expect(polarMocks.checkoutsCreate).not.toHaveBeenCalled();
 	});
 
 	it("requires a Polar access token", async () => {

@@ -123,11 +123,9 @@ describe("SynchSettingTab sync status", () => {
 
     tab.open();
 
-    expect(getSettingNames().slice(0, 4)).toEqual([
+    expect(getSettingNames()).toEqual([
       t("sync.label"),
       t("authentication"),
-      t("subscription.label"),
-      t("vault.manage"),
     ]);
   });
 

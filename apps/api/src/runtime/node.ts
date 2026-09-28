@@ -73,6 +73,7 @@ export async function createNodeRuntime(config: NodeRuntimeConfig) {
 		db,
 		blobStorage: config.blobStorage,
 		syncTokenSecret: config.syncTokenSecret,
+		syncTokenTtlSeconds: config.syncTokenTtlSeconds,
 		profile: NODE_COMMUNITY_PROFILE,
 		productIdsByPlanId: {},
 	});
@@ -114,11 +115,18 @@ export async function createNodeRuntime(config: NodeRuntimeConfig) {
 		return c.json({ error: "not_found", message: "unknown route" }, 404);
 	});
 
+	const sharingRefreshTimer = setInterval(() => {
+		void application
+			.flushSharingRefreshes()
+			.catch((error) => console.error("sharing refresh retry failed", error));
+	}, 5 * 60 * 1000);
+	sharingRefreshTimer.unref();
 	return {
 		fetch: (request: Request) => application.app.fetch(request),
 		coordinatorNamespace,
 		syncTokenVerifier: application.syncTokenVerifier,
 		dispose: () => {
+			clearInterval(sharingRefreshTimer);
 			coordinatorNamespace.closeAll();
 			void client.close();
 		},

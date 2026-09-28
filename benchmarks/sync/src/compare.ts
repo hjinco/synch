@@ -32,6 +32,9 @@ function command(executable: string, args: string[], cwd: string, input?: string
     const deadline = setTimeout(() => terminate(child, "SIGTERM"), 20 * 60_000);
     const force = setTimeout(() => terminate(child, "SIGKILL"), 20 * 60_000 + 15_000);
     let output = "", errors = "";
+    // Decode across chunk boundaries so multilingual patches survive git diff -> apply.
+    child.stdout.setEncoding("utf8");
+    child.stderr.setEncoding("utf8");
     child.stdout.on("data", bytes => { output += bytes; });
     child.stderr.on("data", bytes => { errors = (errors + bytes).slice(-16_384); });
     child.on("error", reject);

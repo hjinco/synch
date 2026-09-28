@@ -8,6 +8,7 @@ import type {
 } from "../../dto/types";
 
 export interface SocketGateway {
+	listSocketSessions(): { connectionId: string; session: SocketSession }[];
 	readSocketSession(connectionId: string): SocketSession | null;
 	attachSocketSession(connectionId: string, session: SocketSession): void;
 	sendSocketMessage(connectionId: string, message: ServerControlMessage): boolean;

@@ -490,6 +490,7 @@ function syncRealtimeErrorFromCloseEvent(event: {
   code: number;
   reason: string;
 }): SyncRealtimeError | null {
+  if (event.code === 1013 && event.reason === "shared sync paused") return new SyncRealtimeError("sharing_suspended", "Shared vault sync is paused until the organization renews Plus");
   if ((event.code === 1013 || event.code === 4403) &&
       event.reason === "sync paused for vault repair") {
     return new SyncRealtimeError("sync_paused", "vault sync is temporarily paused for repair");

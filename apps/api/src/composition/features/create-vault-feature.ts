@@ -1,3 +1,4 @@
+import { DrizzleSharingStore } from "../../sharing/adapters/drizzle-sharing-store";
 import type { AppDb } from "../../db/client";
 import type { SubscriptionPolicyReader } from "../../subscription/application";
 import type { VaultPurgeMessage, VaultRetentionEmailMessage } from "../../vault/application";
@@ -69,6 +70,7 @@ export function createVaultFeature(config: VaultFeatureConfig): VaultFeature {
 			store,
 			config.policyReader,
 			purgeQueue,
+			async (userId, organizationId) => { const member = await new DrizzleSharingStore(config.db).membership(organizationId, userId); return member?.role === "owner" || member?.role === "admin"; },
 		),
 		organizationReader: new VaultOrganizationService(store),
 		purgeConsumer,

@@ -4,6 +4,7 @@ import {
   type HttpClient,
 } from "../http/request";
 import { remoteVaultUnavailableFromApiError } from "./unavailable";
+import { SharingClient } from "../sharing/client";
 import type {
   CreateRemoteVaultResponse,
   RemoteVaultBootstrapResponse,
@@ -24,10 +25,14 @@ export class RemoteVaultClient {
     );
   }
 
+  async listOrganizations(apiBaseUrl: string, sessionToken: string): Promise<{ id: string; name: string; role: string }[]> {
+    return new SharingClient(this.httpClient, apiBaseUrl, sessionToken).organizationSummaries();
+  }
+
   async createRemoteVault(
     apiBaseUrl: string,
     sessionToken: string,
-    input: { name: string; initialWrapper: RemoteVaultKeyWrapper },
+    input: { name: string; organizationId?: string; initialWrapper: RemoteVaultKeyWrapper },
   ): Promise<CreateRemoteVaultResponse> {
     return await this.requestJson<CreateRemoteVaultResponse>(
       `${stripTrailingSlash(apiBaseUrl)}/v1/vaults`,

@@ -564,3 +564,209 @@
   box-decoration-break: clone;
   -webkit-box-decoration-break: clone;
 }
+
+/* Vault connection: choose a vault, then complete one focused step. */
+.synch-connect-modal {
+  width: 480px;
+  max-width: calc(100vw - 32px);
+}
+
+.synch-connect {
+  padding: 4px 8px 8px;
+}
+
+.synch-connect h2 {
+  margin: 0 0 20px;
+  font-size: 1.4em;
+  font-weight: var(--font-medium);
+  overflow-wrap: anywhere;
+}
+
+/* Override Obsidian 1.13 modal row chrome, not other plugin settings. */
+.modal.synch-connect-modal .synch-connect .setting-item:not(.setting-item-heading) {
+  border: 0;
+  padding: 0;
+  background: transparent;
+}
+
+.synch-connect-group {
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+  font-weight: var(--font-normal);
+  margin: 24px 0 8px;
+}
+
+.synch-connect-choice .setting-item-info,
+.synch-connect-primary .setting-item-info,
+.synch-connect-secondary .setting-item-info,
+.synch-connect-back .setting-item-info {
+  display: none;
+}
+
+.synch-connect-choice .setting-item-control,
+.synch-connect-primary .setting-item-control,
+.synch-connect-field .setting-item-control {
+  width: 100%;
+}
+
+.synch-connect-choice button {
+  width: 100%;
+  height: auto;
+  min-height: 68px;
+  margin: 0 0 8px;
+  padding: 12px 14px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-m);
+  background: var(--background-primary);
+  color: var(--text-normal);
+  box-shadow: none;
+  text-align: left;
+}
+
+.synch-connect-choice button:hover {
+  background: var(--background-modifier-hover);
+}
+
+.synch-connect-choice-text {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.synch-connect-choice-meta,
+.synch-connect-eyebrow {
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+}
+
+.synch-connect-vault-icon,
+.synch-connect-chevron {
+  color: var(--text-muted);
+  display: flex;
+  flex-shrink: 0;
+}
+
+.synch-connect-vault-icon svg,
+.synch-connect-chevron svg {
+  width: 18px;
+  height: 18px;
+}
+
+.synch-connect .synch-connect-back {
+  margin-bottom: 20px;
+}
+
+.synch-connect-back .setting-item-control {
+  justify-content: flex-start;
+}
+
+.synch-connect-back button,
+.synch-connect-secondary button {
+  color: var(--text-muted);
+  background: transparent;
+  box-shadow: none;
+  padding: 4px 0;
+  font-size: var(--font-ui-small);
+  height: auto;
+  white-space: normal;
+}
+
+.synch-connect-back button:hover,
+.synch-connect-secondary button:hover {
+  color: var(--text-normal);
+}
+
+.synch-connect-eyebrow {
+  margin: 0 0 6px;
+}
+
+.synch-connect-hint {
+  color: var(--text-muted);
+  margin: 12px 0 20px;
+}
+
+.synch-connect .synch-connect-field {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  margin-top: 20px;
+}
+
+.synch-connect-field .setting-item-info {
+  margin: 0;
+}
+
+.synch-connect-field input {
+  width: 100%;
+  min-height: 40px;
+}
+
+.synch-connect .synch-connect-primary {
+  margin-top: 24px;
+}
+
+.synch-connect-primary button {
+  width: 100%;
+  min-height: 40px;
+  height: auto;
+  white-space: normal;
+  padding: 10px 14px;
+}
+
+.synch-connect .synch-connect-secondary {
+  margin-top: 14px;
+}
+
+.synch-connect-help {
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+  margin-top: 24px;
+}
+
+.synch-connect-help summary {
+  cursor: var(--cursor);
+}
+
+.synch-connect-code {
+  display: block;
+  padding: 14px;
+  border-radius: var(--radius-m);
+  background: var(--background-secondary);
+  color: var(--text-normal);
+  overflow-wrap: anywhere;
+  white-space: normal;
+  user-select: text;
+}
+
+.synch-connect-status {
+  font-size: var(--font-ui-medium);
+  margin: 24px 0 8px;
+}
+
+.synch-connect-notice {
+  padding: 14px;
+  border-radius: var(--radius-m);
+  background: var(--background-secondary);
+}
+
+.synch-connect .synch-modal-error {
+  margin: 14px 0 0;
+}
+
+.synch-connect .synch-modal-error:empty {
+  display: none;
+}
+
+@media (pointer: coarse) {
+  .synch-connect button {
+    min-height: 44px;
+  }
+}

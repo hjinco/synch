@@ -364,7 +364,7 @@ describe("vault integration", () => {
 		expect(denied.response.status).toBe(403);
 	});
 
-	it("grants organization members access to individual vaults", async () => {
+	it("rejects the legacy member-wrapper endpoint so it cannot bypass key approval", async () => {
 		const primary = await signUpAndCreateVault();
 		const secondary = await signUpAccount();
 
@@ -387,56 +387,10 @@ describe("vault integration", () => {
 				},
 			}),
 		});
-		expect(grant.response.status).toBe(201);
-		expect(grant.json?.wrapper.vaultId).toBe(primary.vaultId);
-		expect(grant.json?.wrapper.userId).toBe(secondary.userId);
-		expect(grant.json?.wrapper.kind).toBe("member");
-
-		const listed = await jsonRequest<{
-			vaults: Array<{ id: string; name: string; activeKeyVersion: number }>;
-		}>("/v1/vaults", {
-			headers: {
-				cookie: secondary.sessionCookie,
-			},
-		});
-		expect(listed.response.status).toBe(200);
-		expect(listed.json?.vaults.some((vault) => vault.id === primary.vaultId)).toBe(true);
-
-		const issued = await jsonRequest<{
-			token: string;
-			expiresAt: number;
-			vaultId: string;
-			localVaultId: string;
-			syncFormatVersion: number;
-		}>("/v1/sync/token", {
-			method: "POST",
-			headers: {
-				"content-type": "application/json",
-				cookie: secondary.sessionCookie,
-			},
-			body: JSON.stringify({
-				vaultId: primary.vaultId,
-				localVaultId: "member-local-vault",
-			}),
-		});
-
-		expect(issued.response.status).toBe(200);
-		expect(issued.json?.vaultId).toBe(primary.vaultId);
-		expect(issued.json?.token).toBeTruthy();
-		expect(issued.json?.syncFormatVersion).toBe(2);
-
-		const bootstrap = await jsonRequest<{
-			wrappers: Array<{ kind: string; userId: string | null }>;
-		}>(`/v1/vaults/${encodeURIComponent(primary.vaultId)}/bootstrap`, {
-			headers: {
-				cookie: secondary.sessionCookie,
-			},
-		});
-		expect(bootstrap.response.status).toBe(200);
-		expect(bootstrap.json?.wrappers).toEqual([
-			expect.objectContaining({ kind: "member", userId: secondary.userId }),
-		]);
-	});
+        expect(grant.response.status).toBe(410);
+        const bootstrap = await jsonRequest(`/v1/vaults/${primary.vaultId}/bootstrap`, { headers: { cookie: secondary.sessionCookie } });
+        expect(bootstrap.response.status).toBe(403);
+    });
 
 	it("rejects a second vault on the free plan", async () => {
 		const primary = await signUpAndCreateVault("Personal");

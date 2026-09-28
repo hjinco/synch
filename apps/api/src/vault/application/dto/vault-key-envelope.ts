@@ -39,8 +39,9 @@ function base64DecodedLength(value: string): number | null {
 	}
 }
 
-export const vaultKeyEnvelopeSchema: z.ZodType<VaultKeyEnvelope> = z.object({
-	version: z.literal(VAULT_KEY_ENVELOPE_VERSION),
+const envelopeFields = z.object({
+	version: z.union([z.literal(VAULT_KEY_ENVELOPE_VERSION), z.literal(2)]),
+	binding: z.object({ vaultId: z.string().min(1), userId: z.string().min(1) }).optional(),
 	keyVersion: z.literal(VAULT_KEY_ENVELOPE_KEY_VERSION),
 	kdf: z.object({
 		name: z.literal("argon2id"),
@@ -55,3 +56,5 @@ export const vaultKeyEnvelopeSchema: z.ZodType<VaultKeyEnvelope> = z.object({
 		ciphertext: base64Bytes(WRAPPED_VAULT_KEY_BYTES),
 	}),
 });
+
+export const vaultKeyEnvelopeSchema: z.ZodType<VaultKeyEnvelope> = envelopeFields.refine(e => e.version === 2 ? !!e.binding : !e.binding, { message: "Wrapper binding must match its format version" });

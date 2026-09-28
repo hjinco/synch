@@ -7,6 +7,7 @@ export type BillingApplicationErrorCode =
 	| "subscription_plan_unchanged"
 	| "billing_interval_downgrade_not_allowed"
 	| "billing_customer_not_found"
+	| "billing_email_unavailable"
 	| "subscription_canceled"
 	| "payment_failed"
 	| "subscription_locked";

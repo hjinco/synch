@@ -60,6 +60,7 @@ export interface SynchSettingsController {
   createRemoteVaultFromPrompt(): Promise<void>;
   connectRemoteVaultFromPrompt(): Promise<void>;
   openRemoteVaultManagementPage(): void;
+  openVaultSharing(): Promise<void>;
   disconnectRemoteVault(): Promise<void>;
   updateApiBaseUrl(value: string): Promise<void>;
   getSyncFileRules(): SyncFileRules;
