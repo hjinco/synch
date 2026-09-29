@@ -9,7 +9,7 @@ import type {
   SyncDiagnostics,
   SyncFailurePhase,
 } from "../diagnostics/types";
-import { SyncAutoLoop } from "../engine/auto-sync";
+import { SyncAutoLoop, type SyncTerminalStopReason } from "../engine/auto-sync";
 import type { SyncTokenResponse } from "../remote/client";
 import { SyncEventGate } from "../engine/event-gate";
 import { SyncEventRecorder } from "../engine/event-recorder";
@@ -99,6 +99,7 @@ export interface SyncEngineDeps {
   hasActiveRemoteVaultSession: () => boolean;
   diagnostics: SyncDiagnostics;
   onSyncError: (error: unknown, phase: SyncFailurePhase) => void | Promise<void>;
+  onSyncTerminalStop?: (reason: SyncTerminalStopReason) => void;
   notifySyncConflict: (event: {
     op: "upsert" | "delete";
     reason?: "local_pending_mutation" | "remote_path_collision";
@@ -301,6 +302,9 @@ export class SyncEngine {
       },
       onError: (error) => {
         void this.deps.onSyncError(error, "auto_sync");
+      },
+      onTerminalStop: (reason) => {
+        this.deps.onSyncTerminalStop?.(reason);
       },
       onRetryScheduled: ({ attempt, delayMs }) => {
         this.deps.diagnostics.record({

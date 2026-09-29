@@ -1,4 +1,5 @@
 export type { ReconcileOnceResult } from "./sync/engine/local-reconcile-service";
+export type { SyncTerminalStopReason } from "./sync/engine/auto-sync";
 export * from "./sync/runtime/change-source";
 export * from "./sync/runtime/sync-engine";
 export * from "./sync/runtime/user-visible-status";

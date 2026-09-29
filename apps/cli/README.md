@@ -14,7 +14,7 @@ synch logout                         # sign out, clear stored keys
 synch vault connect --vault-id <id>  # unlock a remote vault for a directory
 synch pull                           # download only; never upload local changes
 synch sync                           # one-shot synchronization
-synch watch                          # keep syncing until interrupted
+synch watch                          # keep syncing until interrupted or stopped by a terminal sync error
 synch status                         # account, vault, and sync state
 ```
 

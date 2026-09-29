@@ -1,3 +1,4 @@
+import type { SyncTerminalStopReason } from "@synch/sync-client/engine";
 import type { CliAppContext } from "../app/context";
 import { describeError } from "../app/context";
 import { formatSyncProgressSuffix, formatSyncStatusLabel } from "../app/notices";
@@ -41,23 +42,92 @@ export async function runWatch(ctx: CliAppContext): Promise<number> {
   ctx.engine.registerVaultEvents();
   await ctx.engine.reconcileOnce();
   await ctx.engine.waitForLocalMutationWork();
-  await ctx.engine.startAutoSync();
-  await ctx.engine.syncNow();
-  ctx.logger.log("Watching for changes. Press Ctrl+C to stop.");
+  const watchEnd = waitForWatchEnd(ctx);
+  try {
+    await ctx.engine.startAutoSync();
+    await ctx.engine.syncNow();
+    if (watchEnd.isSettled()) {
+      const result = await watchEnd.promise;
+      if (result.kind === "terminal_stop") {
+        return reportTerminalStop(ctx, result.reason);
+      }
+      ctx.logger.log("Stopping...");
+      return 0;
+    }
 
-  await waitForShutdownSignal();
-  ctx.logger.log("Stopping...");
-  return 0;
+    watchEnd.listenForShutdownSignals();
+    ctx.logger.log("Watching for changes. Press Ctrl+C to stop.");
+    const result = await watchEnd.promise;
+    if (result.kind === "signal") {
+      ctx.logger.log("Stopping...");
+      return 0;
+    }
+    return reportTerminalStop(ctx, result.reason);
+  } finally {
+    watchEnd.dispose();
+    ctx.onSyncTerminalStop = null;
+  }
 }
 
-function waitForShutdownSignal(): Promise<void> {
-  return new Promise((resolve) => {
-    const onSignal = () => {
+type WatchEndResult =
+  | { kind: "signal" }
+  | { kind: "terminal_stop"; reason: SyncTerminalStopReason };
+
+function waitForWatchEnd(ctx: CliAppContext): {
+  promise: Promise<WatchEndResult>;
+  isSettled: () => boolean;
+  listenForShutdownSignals: () => void;
+  dispose: () => void;
+} {
+  let settled = false;
+  let resolveResult: (result: WatchEndResult) => void = () => {};
+  const promise = new Promise<WatchEndResult>((resolve) => {
+    resolveResult = resolve;
+  });
+  const finish = (result: WatchEndResult) => {
+    if (settled) {
+      return;
+    }
+    settled = true;
+    resolveResult(result);
+  };
+  const onSignal = () => finish({ kind: "signal" });
+  ctx.onSyncTerminalStop = (reason) => finish({ kind: "terminal_stop", reason });
+  let listeningForSignals = false;
+
+  return {
+    promise,
+    isSettled: () => settled,
+    listenForShutdownSignals: () => {
+      if (listeningForSignals) {
+        return;
+      }
+      listeningForSignals = true;
+      process.on("SIGINT", onSignal);
+      process.on("SIGTERM", onSignal);
+    },
+    dispose: () => {
       process.off("SIGINT", onSignal);
       process.off("SIGTERM", onSignal);
-      resolve();
-    };
-    process.on("SIGINT", onSignal);
-    process.on("SIGTERM", onSignal);
-  });
+    },
+  };
+}
+
+function reportTerminalStop(ctx: CliAppContext, reason: SyncTerminalStopReason): 1 {
+  switch (reason.type) {
+    case "remote_vault_unavailable":
+      ctx.logger.error(
+        `Sync stopped: remote vault is unavailable (${reason.error.reason}): ${describeError(reason.error)}`,
+      );
+      return 1;
+    case "sync_history_mismatch":
+      // The engine already reports the detailed history mismatch error.
+      ctx.logger.error("Watch stopped because sync cannot continue with this history.");
+      return 1;
+    case "storage_quota_exceeded":
+      ctx.logger.error(
+        "Sync stopped: remote vault storage quota exceeded. Free space in the remote vault, then restart `synch watch`.",
+      );
+      return 1;
+  }
 }

@@ -20,6 +20,7 @@ import { InMemorySyncDiagnostics } from "@synch/sync-client/diagnostics";
 
 import {
   SyncEngine,
+  type SyncTerminalStopReason,
   type UserVisibleSyncProgress,
   type UserVisibleSyncState,
 } from "@synch/sync-client/engine";
@@ -69,6 +70,7 @@ export class CliAppContext {
   syncProgress: UserVisibleSyncProgress = { completedEntries: 0, totalEntries: 0 };
   onSyncStatusChange: (() => void) | null = null;
   onReconcileRequested: (() => void) | null = null;
+  onSyncTerminalStop: ((reason: SyncTerminalStopReason) => void) | null = null;
 
   private store: SqliteSyncStore | null = null;
   private lock: VaultLock | null = null;
@@ -182,6 +184,9 @@ export class CliAppContext {
       onSyncError: (error, phase) => {
         this.lastSyncError = error;
         this.logger.error(`sync failed (${phase}): ${describeError(error)}`);
+      },
+      onSyncTerminalStop: (reason) => {
+        this.onSyncTerminalStop?.(reason);
       },
       notifySyncConflict: (event) => {
         this.logger.log(formatSyncConflictNotice(event));

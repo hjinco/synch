@@ -55,9 +55,15 @@ export interface SyncAutoLoopDeps {
   onIdle?: () => void;
   onRetryScheduled?: (input: { attempt: number; delayMs: number }) => void;
   onError?: (error: unknown) => void;
+  onTerminalStop?: (reason: SyncTerminalStopReason) => void;
   onRemoteVaultUnavailable?: (error: RemoteVaultUnavailableError) => void | Promise<void>;
   onStorageQuotaExceeded?: () => void | Promise<void>;
 }
+
+export type SyncTerminalStopReason =
+  | { type: "remote_vault_unavailable"; error: RemoteVaultUnavailableError }
+  | { type: "sync_history_mismatch"; error: Error }
+  | { type: "storage_quota_exceeded" };
 
 export interface SyncRealtimeClientLike {
   openSession: SyncRealtimeClient["openSession"];
@@ -472,6 +478,7 @@ export class SyncAutoLoop {
       if (isCursorAheadOfServerError(error)) {
         this.stop();
         this.handleError(error);
+        this.deps.onTerminalStop?.({ type: "sync_history_mismatch", error });
         return;
       }
 
@@ -708,6 +715,7 @@ export class SyncAutoLoop {
               await this.deps.onStorageQuotaExceeded?.();
             } finally {
               this.stop();
+              this.deps.onTerminalStop?.({ type: "storage_quota_exceeded" });
             }
             return;
           }
@@ -727,6 +735,7 @@ export class SyncAutoLoop {
         if (isCursorAheadOfServerError(error)) {
           this.stop();
           this.handleError(error);
+          this.deps.onTerminalStop?.({ type: "sync_history_mismatch", error });
           return;
         }
 
@@ -823,6 +832,7 @@ export class SyncAutoLoop {
 
   private handleRemoteVaultUnavailable(error: RemoteVaultUnavailableError): void {
     this.stop();
+    this.deps.onTerminalStop?.({ type: "remote_vault_unavailable", error });
     void this.deps.onRemoteVaultUnavailable?.(error);
   }
 }
@@ -831,7 +841,7 @@ function isRealtimeConnectionError(error: unknown): boolean {
   return error instanceof SyncRealtimeConnectionError;
 }
 
-function isCursorAheadOfServerError(error: unknown): boolean {
+function isCursorAheadOfServerError(error: unknown): error is SyncRealtimeError {
   return (
     error instanceof SyncRealtimeError && error.code === "cursor_ahead_of_server"
   );
