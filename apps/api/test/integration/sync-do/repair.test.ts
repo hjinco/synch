@@ -40,8 +40,7 @@ describe("admin sync repair integration", () => {
 			headers: { cookie: primary.sessionCookie, "content-type": "application/json" },
 			body: JSON.stringify({ vaultId: primary.vaultId, localVaultId: "repair-device" }),
 		});
-		expect(pausedToken.status).toBe(503);
-		await expect(pausedToken.json()).resolves.toMatchObject({ error: "sync_paused" });
+		expect(pausedToken.status).toBe(200); // Temporary legacy upload-quota compatibility.
 
 		const repaired = await adminRepairRequest(primary.vaultId);
 		const body = (await repaired.json()) as {
@@ -111,7 +110,7 @@ async function adminRequest(vaultId: string, action: string, reason?: string): P
 
 
 describe("admin sync pause integration", () => {
-	it("closes sockets, rejects existing tokens and new tokens, then resumes without deleting data", async () => {
+	it("allows legacy clients to reconnect and read, rejects uploads with quota, and preserves data", async () => {
 		const primary = await signUpAndCreateVault();
 		const token = await issueSyncToken(primary.sessionCookie, primary.vaultId, "pause-device");
 		const blobId = uniqueId("pause-blob");
@@ -135,15 +134,36 @@ describe("admin sync pause integration", () => {
 		expect(await (await adminRequest(primary.vaultId, "sync-pause", "retry")).json()).toEqual(pauseState);
 		expect((await adminRepairRequest(primary.vaultId)).status).toBe(409);
 
-		for (const [url, init] of [
-			[socketUrl, { headers: { ...headers, upgrade: "websocket" } }],
-			[`/v1/vaults/${primary.vaultId}/blobs/${blobId}`, { headers }],
-			[`/v1/vaults/${primary.vaultId}/blobs/${uniqueId("blocked")}`, { method: "PUT", headers: { ...headers, "x-blob-size": "1" }, body: "x" }],
-			["/v1/sync/token", { method: "POST", headers: { cookie: primary.sessionCookie, "content-type": "application/json" }, body: JSON.stringify({ vaultId: primary.vaultId, localVaultId: "pause-device" }) }],
-		] as [string, RequestInit][]) {
-			const response = await apiRequest(url, init);
-			expect(response.status).toBe(503);
-			expect(await response.json()).toMatchObject({ error: "sync_paused" });
+		const renewed = await issueSyncToken(primary.sessionCookie, primary.vaultId, "pause-device");
+		const reconnected = await apiRequest(socketUrl, { headers: { authorization: `Bearer ${renewed.token}`, upgrade: "websocket" } });
+		expect(reconnected.status).toBe(101);
+		const legacySocket = reconnected.webSocket!;
+		legacySocket.accept();
+		try {
+			const hello = new Promise<MessageEvent>((resolve) => legacySocket.addEventListener("message", resolve, { once: true }));
+			legacySocket.send(JSON.stringify({ type: "hello", requestId: "legacy-hello", lastKnownCursor: 0 }));
+			expect(JSON.parse(String((await hello).data))).toMatchObject({ type: "hello_ack" });
+			const readable = await apiRequest(`/v1/vaults/${primary.vaultId}/blobs/${blobId}`, { headers });
+			expect(await readable.text()).toBe("keep this ciphertext");
+			const blockedId = uniqueId("blocked");
+			const blocked = await apiRequest(`/v1/vaults/${primary.vaultId}/blobs/${blockedId}`, {
+				method: "PUT", headers: { ...headers, "x-blob-size": "1" }, body: "x",
+			});
+			expect(blocked.status).toBe(413);
+			expect(await blocked.json()).toMatchObject({ error: "quota_exceeded", reason: "sync_paused" });
+			const missing = await apiRequest(`/v1/vaults/${primary.vaultId}/blobs/${blockedId}`, { headers });
+			expect(missing.status).toBe(404);
+			// Staging must not close the session before the quota response is handled.
+			expect(legacySocket.readyState).toBe(WebSocket.OPEN);
+			const commit = new Promise<MessageEvent>((resolve) => legacySocket.addEventListener("message", resolve, { once: true }));
+			legacySocket.send(JSON.stringify({ type: "commit_mutations", requestId: "blocked-commit", mutations: [{
+				mutationId: "blocked", entryId: "entry-blocked", op: "delete", baseRevision: 0,
+				blobId: null, encryptedMetadata: "metadata",
+			}] }));
+			const rejected = JSON.parse(String((await commit).data));
+			expect(JSON.stringify(rejected)).toContain("sync_paused");
+		} finally {
+			legacySocket.close();
 		}
 
 		expect(await (await adminRequest(primary.vaultId, "sync-resume")).json()).toEqual({ syncPause: null });

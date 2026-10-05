@@ -1,3 +1,4 @@
+import { LEGACY_PAUSE_QUOTA_COMPATIBILITY } from "../../../sync-access/domain/legacy-pause-compatibility";
 import { SyncCoordinatorApplicationError } from "../errors/coordinator-errors";
 import { type BlobStageDecision } from "../../domain/blob-policy";
 import { isBlobPinned } from "../../domain/blob-gc-policy";
@@ -53,7 +54,11 @@ export class BlobService {
 		if (decision.kind === "rejected") throwBlobStageError(blobId, decision);
 
 		if (decision.kind === "sync_paused") {
-			this.socketService.closeAllSockets(1013, "sync paused for vault repair");
+			// TODO(remove-legacy-pause-quota): Keep the session alive until the
+			// upload's 413 response reaches the client's terminal-stop handler.
+			if (!LEGACY_PAUSE_QUOTA_COMPATIBILITY) {
+				this.socketService.closeAllSockets(1013, "sync paused for vault repair");
+			}
 			throw syncPausedError();
 		}
 
@@ -83,6 +88,7 @@ export class BlobService {
 		blobId: string,
 	): Promise<void> {
 		await this.syncTokenService.verifySyncToken(token, vaultId);
+		if (this.unitOfWork.stores.state.readSyncPause()) throw syncPausedError();
 		const now = Date.now();
 		const { blob, referenceFacts } = this.unitOfWork.run((stores) => ({
 			blob: stores.blobs.readBlob(blobId),

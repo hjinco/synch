@@ -71,7 +71,7 @@ describe("IssueSyncTokenService", () => {
 		expect(signer.signSyncToken).not.toHaveBeenCalled();
 	});
 
-	it("rejects token issuance while coordinator sync is paused", async () => {
+	it("temporarily issues tokens while paused so legacy clients can reach quota-stop uploads", async () => {
 		const vaultService = {
 			getAccessibleVault: vi.fn(async () => accessibleVault()),
 		} as unknown as VaultService;
@@ -91,7 +91,7 @@ describe("IssueSyncTokenService", () => {
 				localVaultId: "local-vault-1",
 				displayName: "Ada",
 			}),
-		).rejects.toMatchObject({ code: "sync_paused" });
-		expect(signer.signSyncToken).not.toHaveBeenCalled();
+		).resolves.toMatchObject({ token: "token" });
+		expect(signer.signSyncToken).toHaveBeenCalled();
 	});
 });

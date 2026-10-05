@@ -4,7 +4,7 @@ import { BlobTransferApplicationError } from "../../../application/errors/blob-t
 import { mapBlobTransferApplicationError } from "./error-mapper";
 
 describe("mapBlobTransferApplicationError", () => {
-	it("maps paused-vault staging rejections to a retryable 503", async () => {
+	it("temporarily maps paused uploads to the legacy quota terminal-stop response", async () => {
 		const response = mapBlobTransferApplicationError(
 			new BlobTransferApplicationError("coordinator_stage_rejected", {
 				reason: "sync_paused",
@@ -12,8 +12,8 @@ describe("mapBlobTransferApplicationError", () => {
 			}),
 		);
 
-		expect(response?.status).toBe(503);
-		await expect(response?.json()).resolves.toMatchObject({ error: "sync_paused" });
+		expect(response?.status).toBe(413);
+		await expect(response?.json()).resolves.toMatchObject({ error: "quota_exceeded", reason: "sync_paused" });
 	});
 
 	it("maps coordinator error codes when the stage body has no reason", async () => {

@@ -40,11 +40,31 @@ A missing coordinator state returns 404. A pre-existing repair pause returns
 does not clear manual pauses.
 
 Pause closes existing sockets with 1013 and the legacy repair-pause reason so
-existing clients preserve their vault link. Token issuance, socket admission,
-control messages, and blob access reject paused vaults; commits recheck after
-asynchronous blob preflight before writing. Data is retained. Already-started
-object transfers and maintenance are not cancelled, and clients may continue
-sending retry requests. This is a sync admission control, not an edge rate limit.
+existing clients preserve their vault link. Data is retained. Already-started
+object transfers and maintenance are not cancelled.
+
+### Temporary legacy upload compatibility
+
+`LEGACY_PAUSE_QUOTA_COMPATIBILITY` in
+`sync-access/domain/legacy-pause-compatibility.ts` is temporarily enabled.
+Authenticated token issuance, socket admission, and reads remain available while
+paused so older clients can reach their next upload. Blob staging still rejects
+writes, but the public upload response translates `sync_paused` to HTTP 413
+`quota_exceeded` (with `reason: sync_paused`). This activates older plugins'
+persisted auto-sync-off behavior. Mutations and explicit deletions stay blocked.
+No quotas or subscription records are changed.
+
+Users see a misleading storage-quota notice and must manually enable sync after
+the operator resumes the vault. Idle/read-only clients and clients with only
+already-staged mutations may never upload and therefore will not be switched off.
+Do not resume after a fixed ten seconds and assume all clients have seen the
+response. This is not an edge rate limit or a universal remote stop command.
+
+TODO(remove-legacy-pause-quota): Once affected users update to clients that stop
+on `sync_paused`, disable/remove the compatibility flag and its guarded branches,
+and restore the standard paused-admission/upload expectations in tests. With the
+flag false, token/socket/read admission again rejects paused vaults and uploads
+return `503 sync_paused`.
 
 Example (variables supplied by the operator):
 

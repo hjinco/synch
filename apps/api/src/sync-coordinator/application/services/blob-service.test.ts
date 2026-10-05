@@ -108,10 +108,7 @@ describe("coordinator blob lifecycle", () => {
 			expect.any(Number),
 			expect.stringContaining("blob-stale"),
 		);
-		expect(socketService.closeAllSockets).toHaveBeenCalledWith(
-			1013,
-			"sync paused for vault repair",
-		);
+		expect(socketService.closeAllSockets).not.toHaveBeenCalled();
 	});
 
 	it("refuses new stages while a repair pause is active", async () => {
@@ -281,4 +278,15 @@ describe("coordinator blob lifecycle", () => {
 			code: "blob_size_changed",
 		});
 	});
+});
+
+
+it("blocks explicit blob deletion while paused even with legacy read access", async () => {
+	const stateRepository = createTestCoordinatorState({
+		readSyncPause: vi.fn(() => ({ pausedAt: 1, reason: "manual: stop" })),
+	});
+	const service = createCoordinatorService({ stateRepository });
+	await expect(service.deleteBlob("token", "vault-1", "blob-1"))
+		.rejects.toMatchObject({ code: "sync_paused" });
+	expect(stateRepository.deleteBlobRecord).not.toHaveBeenCalled();
 });

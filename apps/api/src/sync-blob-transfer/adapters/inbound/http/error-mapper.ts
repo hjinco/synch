@@ -1,3 +1,4 @@
+import { LEGACY_PAUSE_QUOTA_COMPATIBILITY } from "../../../../sync-access/domain/legacy-pause-compatibility";
 import { BlobTransferApplicationError } from "../../../application/errors/blob-transfer-errors";
 
 type CoordinatorStageRejection = {
@@ -7,7 +8,11 @@ type CoordinatorStageRejection = {
 };
 
 const COORDINATOR_STAGE_REJECTION: Record<string, CoordinatorStageRejection> = {
-	sync_paused: { status: 503, code: "sync_paused" },
+	// TODO(remove-legacy-pause-quota): Keep translation at the upload boundary;
+	// token/handshake errors with this code do not turn off old clients' auto sync.
+	sync_paused: LEGACY_PAUSE_QUOTA_COMPATIBILITY
+		? { status: 413, code: "quota_exceeded", includeReason: true }
+		: { status: 503, code: "sync_paused" },
 	sync_state_uninitialized: {
 		status: 409,
 		code: "sync_state_uninitialized",

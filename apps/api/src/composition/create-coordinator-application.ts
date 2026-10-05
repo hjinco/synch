@@ -1,3 +1,4 @@
+import { LEGACY_PAUSE_QUOTA_COMPATIBILITY } from "../sync-access/domain/legacy-pause-compatibility";
 import { SharingError } from "../sharing/application/types";
 import { DrizzleSharingStore } from "../sharing/adapters/drizzle-sharing-store";
 import { SharingAccess } from "../sharing/application/access";
@@ -111,7 +112,7 @@ export function createCoordinatorApplication(
 			config.syncTokenTtlSeconds ?? DEFAULT_SYNC_TOKEN_TTL_SECONDS,
 		) * 1000,
 		() => {
-			if (cursorStore.readSyncPause()) {
+			if (!LEGACY_PAUSE_QUOTA_COMPATIBILITY && cursorStore.readSyncPause()) {
 				throw new SharingError(503, "sync_paused", "vault sync is temporarily paused for repair");
 			}
 		},

@@ -1,3 +1,4 @@
+import { LEGACY_PAUSE_QUOTA_COMPATIBILITY } from "../../domain/legacy-pause-compatibility";
 import type { VaultService } from "../../../vault/application";
 import { DEFAULT_SYNC_TOKEN_TTL_SECONDS } from "../../domain/token-policy";
 import { SyncAccessApplicationError } from "../errors/sync-access-errors";
@@ -35,7 +36,7 @@ export class IssueSyncTokenService implements IssueSyncToken {
 		}
 
 		const syncPause = await this.syncPauseReader.readSyncPause(vault.id);
-		if (syncPause) {
+		if (syncPause && !LEGACY_PAUSE_QUOTA_COMPATIBILITY) {
 			throw new SyncAccessApplicationError("sync_paused");
 		}
 

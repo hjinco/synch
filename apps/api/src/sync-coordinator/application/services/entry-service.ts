@@ -429,6 +429,7 @@ export class EntryService {
 		const candidateBlobIds = new Set<string>();
 		for (const entry of message.entries) {
 			const outcome = this.unitOfWork.run((stores) => {
+				if (stores.state.readSyncPause()) throw new SyncCoordinatorApplicationError("sync_paused");
 				const current = stores.entries.readMutationEntry(entry.entryId);
 				const facts = {
 					current,

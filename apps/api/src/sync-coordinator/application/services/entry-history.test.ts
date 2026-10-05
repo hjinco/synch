@@ -328,3 +328,16 @@ describe("coordinator entry version history", () => {
 		});
 	});
 });
+
+
+it("blocks entry purge while paused even with legacy read access", async () => {
+	const stateRepository = createTestCoordinatorState({
+		readSyncPause: vi.fn(() => ({ pausedAt: 1, reason: "manual: stop" })),
+	});
+	const service = createCoordinatorService({ stateRepository });
+	await expect(service.purgeDeletedEntries(testSocketSession(), {
+		type: "purge_deleted_entries", requestId: "paused-purge",
+		entries: [{ entryId: "deleted-entry", revision: 1 }],
+	})).rejects.toMatchObject({ code: "sync_paused" });
+	expect(stateRepository.readMutationEntry).not.toHaveBeenCalled();
+});
