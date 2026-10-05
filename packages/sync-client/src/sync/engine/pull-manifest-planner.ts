@@ -96,7 +96,10 @@ export class PullManifestPlanner {
         superseded.push(item);
         continue;
       }
-      activeManifest.push(item);
+      // Recovery may include an already-applied owner only to choose the latest
+      // entry for a path. Replaying it could discard that owner's pending edits.
+      // It can still be superseded by a genuinely newer incoming entry above.
+      if (!item.contextOnly) activeManifest.push(item);
     }
 
     const deferredEntryIds = new Set<string>();

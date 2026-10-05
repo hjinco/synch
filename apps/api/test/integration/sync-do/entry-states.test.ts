@@ -92,5 +92,14 @@ describe("sync durable object entry-state integration", () => {
 				updatedSeq: 4,
 			}),
 		]);
+
+		const recovered = await listEntryStates(stub, session, {
+			sinceCursor: 0, targetCursor: null, after: null, limit: 100,
+			entryIds: ["entry-b", ...Array.from({ length: 99 }, (_, index) => `missing-${index}`)],
+		});
+		expect(recovered).toMatchObject({ targetCursor: 4, totalEntries: 1, hasMore: false });
+		expect(recovered.entries).toEqual([expect.objectContaining({
+			entryId: "entry-b", revision: 2, deleted: true,
+		})]);
 	});
 });

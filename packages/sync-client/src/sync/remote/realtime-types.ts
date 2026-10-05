@@ -101,6 +101,8 @@ export interface SyncRealtimeSession {
     targetCursor: number | null;
     after: EntryStatePageCursor | null;
     limit: number;
+    /** Optional targeted recovery; older servers may return an unfiltered page. */
+    entryIds?: string[];
   }): Promise<ListEntryStatesResponse>;
   listEntryVersions(input: {
     entryId: string;

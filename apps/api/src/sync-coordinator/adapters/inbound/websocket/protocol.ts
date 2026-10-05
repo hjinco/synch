@@ -62,6 +62,7 @@ export const listEntryStatesMessageSchema = z.object({
 	targetCursor: nonNegativeInteger.nullable(),
 	after: entryStatePageCursorSchema.nullable(),
 	limit: positiveInteger,
+	entryIds: z.array(nonEmptyString).min(1).max(100).optional(),
 });
 
 const entryVersionPageCursorSchema = z.object({

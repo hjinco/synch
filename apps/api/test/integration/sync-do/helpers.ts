@@ -74,6 +74,7 @@ export async function listEntryStates(
 		targetCursor: number | null;
 		after: { updatedSeq: number; entryId: string } | null;
 		limit: number;
+		entryIds?: string[];
 	},
 ): Promise<{
 	type: "entry_states_listed";
@@ -102,6 +103,7 @@ export async function listEntryStates(
 					targetCursor: number | null;
 					after: { updatedSeq: number; entryId: string } | null;
 					limit: number;
+					entryIds?: string[];
 				},
 			) => Promise<{
 				type: "entry_states_listed";
@@ -127,6 +129,7 @@ export async function listEntryStates(
 			targetCursor: input.targetCursor,
 			after: input.after,
 			limit: input.limit,
+			...(input.entryIds ? { entryIds: input.entryIds } : {}),
 		});
 	});
 }

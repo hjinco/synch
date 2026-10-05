@@ -6,6 +6,22 @@ import {
 } from "./helpers";
 
 describe("SyncRealtimeClient listing", () => {
+  it("sends entry IDs when recovering old states", async () => {
+    const { socket, session } = await openRealtimeSession();
+    const pending = session.listEntryStates({
+      sinceCursor: 0, targetCursor: null, after: null, limit: 100, entryIds: ["old-entry"],
+    });
+    await waitForSentMessage(socket, 1);
+    const message = socket.sentMessageAt(1);
+    expect(message).toMatchObject({ entryIds: ["old-entry"], sinceCursor: 0 });
+    socket.emitMessage({
+      type: "entry_states_listed", requestId: message.requestId,
+      targetCursor: 100, totalEntries: 0, entries: [], hasMore: false, nextAfter: null,
+    });
+    await pending;
+    session.close();
+  });
+
   it("lists entry-state delta pages over the realtime session", async () => {
     const { socket, session } = await openRealtimeSession();
 

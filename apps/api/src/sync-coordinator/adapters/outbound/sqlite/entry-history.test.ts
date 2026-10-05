@@ -34,6 +34,27 @@ async function commit(
 }
 
 describe("sqlite backend: entry state listing", () => {
+	it("filters recovery pages and counts, including tombstones, within the snapshot", async () => {
+		const { entryStore } = await createSqliteCoordinator();
+		for (let index = 1; index <= 4; index++) {
+			entryStore.upsertEntry({
+				entryId: `entry-${index}`, revision: 2, blobId: null,
+				encryptedMetadata: "encrypted", deleted: index === 3,
+				updatedSeq: index, updatedAt: 1, updatedByUserId: "user",
+				updatedByLocalVaultId: "local", lastMutationId: `mutation-${index}`,
+			});
+		}
+		const ids = ["entry-1", "entry-3", "entry-4", "missing", "entry-1"];
+		expect(entryStore.countEntryStates(0, 3, ids)).toBe(2);
+		const first = entryStore.listEntryStates(0, 3, null, 1, ids);
+		expect(first.map((entry) => entry.entry_id)).toEqual(["entry-1"]);
+		expect(entryStore.listEntryStates(0, 3, { updatedSeq: 1, entryId: "entry-1" }, 1, ids))
+			.toMatchObject([{ entry_id: "entry-3", deleted: true }]);
+		expect(entryStore.listEntryStates(1, 3, null, 10, ids).map((entry) => entry.entry_id))
+			.toEqual(["entry-3"]);
+		expect(entryStore.countEntryStates(0, 3, [])).toBe(0);
+	});
+
 	it("lists stored encrypted blob sizes without dropping entries with no blob", async () => {
 		const { entryStore, blobStore } = await createSqliteCoordinator();
 		blobStore.persistStage("blob-sized", { sizeBytes: 4097, now: 1, deleteAfter: 100 });

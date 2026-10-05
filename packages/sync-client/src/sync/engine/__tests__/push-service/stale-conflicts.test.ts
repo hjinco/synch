@@ -185,6 +185,7 @@ describe("SyncPushService stale revisions", () => {
       conflictsCreated: 0,
       shouldPullAfterPush: true,
       hasMore: true,
+      staleMutations: [{ entryId: "entry-note", baseRevision: 2 }],
     });
     expect(await store.listDirtyEntries()).toMatchObject([
       {

@@ -126,6 +126,7 @@ export class SyncRealtimeApiSession implements SyncRealtimeSession {
     targetCursor: number | null;
     after: EntryStatePageCursor | null;
     limit: number;
+    entryIds?: string[];
   }): Promise<ListEntryStatesResponse> {
     const message = await this.transport.request({
       type: "list_entry_states",
@@ -133,6 +134,7 @@ export class SyncRealtimeApiSession implements SyncRealtimeSession {
       targetCursor: input.targetCursor,
       after: input.after,
       limit: input.limit,
+      ...(input.entryIds ? { entryIds: input.entryIds } : {}),
     });
 
     if (message.type !== "entry_states_listed") {

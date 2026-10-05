@@ -28,6 +28,8 @@ export interface PullRollbackEvent {
 export type PullEntryStateManifestItem = {
   state: RemoteEntryState;
   metadata: SyncedEntryMetadata;
+  /** Already-applied recovery dependency: compare ownership without replaying it. */
+  contextOnly?: boolean;
 };
 
 export type PlannedEntryState = {

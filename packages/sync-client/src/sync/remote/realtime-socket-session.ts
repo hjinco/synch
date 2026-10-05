@@ -34,6 +34,7 @@ type ClientMessage =
       targetCursor: number | null;
       after: EntryStatePageCursor | null;
       limit: number;
+      entryIds?: string[];
     }
   | {
       type: "list_entry_versions";

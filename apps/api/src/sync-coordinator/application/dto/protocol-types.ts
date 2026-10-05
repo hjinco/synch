@@ -32,6 +32,7 @@ export type ListEntryStatesMessage = {
 	targetCursor: number | null;
 	after: { updatedSeq: number; entryId: string } | null;
 	limit: number;
+	entryIds?: string[];
 };
 
 export type ListEntryVersionsMessage = {

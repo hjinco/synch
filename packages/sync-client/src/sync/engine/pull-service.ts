@@ -7,6 +7,7 @@ import type { SyncRealtimeSession } from "../remote/realtime-client";
 import type { SyncCursorStore } from "../store/ports";
 import type { SyncOperationProgress } from "../runtime/user-visible-status";
 import { SyncWorkProgress } from "./work-progress";
+import { loadRecoveryManifest } from "./pull-recovery-manifest";
 import {
   type PullConflictEvent,
   PullEntryStateApplier,
@@ -87,6 +88,42 @@ export class SyncPullService {
       onFileSyncFailed: this.deps.onFileSyncFailed,
       now: this.deps.now,
     });
+  }
+
+  /** Reconcile stale entries without rewinding or advancing the global cursor. */
+  async recoverEntryStates(
+    session: SyncRealtimeSession,
+    entryIds: string[],
+    onProgress = this.deps.onProgress ?? (async (_progress: SyncOperationProgress) => {}),
+  ): Promise<void> {
+    if (entryIds.length === 0) return;
+    const store = this.deps.getSyncStore();
+    if (!store) throw new Error("Sync store is not initialized.");
+    const token = await this.deps.getSyncToken();
+    const progress = new SyncWorkProgress("pull");
+    await onProgress(progress.snapshot());
+    const manifest = await loadRecoveryManifest(session, store, entryIds, {
+      applier: this.entryStateApplier,
+      shouldApplyRemotePath: this.deps.shouldApplyRemotePath,
+      onItems: async (items) => {
+        progress.register(items.map(manifestKey));
+        await onProgress(progress.snapshot());
+      },
+    });
+    progress.seal();
+    await onProgress(progress.snapshot());
+    try {
+      // Resolve ownership across the whole recovery snapshot, including owners
+      // fetched in later batches. Blob preparation remains byte-budgeted.
+      const applied = await this.entryStateApplier.applyManifestWindow(store, token, manifest, {
+        finalWindow: true,
+      });
+      progress.complete(applied.completedStates.map(stateKey));
+      progress.complete(manifest.filter((item) => item.contextOnly).map(manifestKey));
+      await onProgress(progress.snapshot());
+    } finally {
+      if (manifest.length > 0) this.deps.onRemoteStatesChange?.();
+    }
   }
 
   async pullOnce(

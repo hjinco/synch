@@ -46,8 +46,8 @@ describe("coordinator entry-state sync", () => {
 			}),
 		);
 
-		expect(stateRepository.listEntryStates).toHaveBeenCalledWith(2, 10, null, 101);
-		expect(stateRepository.countEntryStates).toHaveBeenCalledWith(2, 10);
+		expect(stateRepository.listEntryStates).toHaveBeenCalledWith(2, 10, null, 101, undefined);
+		expect(stateRepository.countEntryStates).toHaveBeenCalledWith(2, 10, undefined);
 		expect(socketService.sendSocketMessage).toHaveBeenCalledWith("test", {
 			type: "entry_states_listed",
 			requestId: "request-entry-states",
@@ -68,6 +68,18 @@ describe("coordinator entry-state sync", () => {
 				},
 			],
 		});
+	});
+
+	it("passes targeted recovery through the websocket control channel", async () => {
+		const stateRepository = createTestCoordinatorState({ currentCursor: vi.fn(() => 100) });
+		const socketService = createMockCoordinatorSocketService({ readSocketSession: vi.fn(() => testSocketSession()) });
+		const service = createCoordinatorService({ stateRepository, socketService });
+		await service.handleSocketMessage(testWebSocket(), JSON.stringify({
+			type: "list_entry_states", requestId: "recovery", sinceCursor: 0,
+			targetCursor: null, after: null, limit: 100, entryIds: ["entry-old"],
+		}));
+		expect(stateRepository.listEntryStates).toHaveBeenCalledWith(0, 100, null, 101, ["entry-old"]);
+		expect(stateRepository.countEntryStates).toHaveBeenCalledWith(0, 100, ["entry-old"]);
 	});
 
 	it.each([

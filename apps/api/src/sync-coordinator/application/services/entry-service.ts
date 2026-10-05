@@ -56,10 +56,12 @@ export class EntryService {
 			targetCursor,
 			message.after,
 			effectiveLimit + 1,
+			message.entryIds,
 		);
 		const totalEntries = this.unitOfWork.stores.entries.countEntryStates(
 			message.sinceCursor,
 			targetCursor,
+			message.entryIds,
 		);
 		const hasMore = entries.length > effectiveLimit;
 		const page = hasMore ? entries.slice(0, effectiveLimit) : entries;

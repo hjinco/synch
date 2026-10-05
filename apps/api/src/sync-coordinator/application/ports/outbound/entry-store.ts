@@ -22,8 +22,9 @@ export interface EntryStateStore {
 		targetCursor: number,
 		after: EntryStatePageCursor | null,
 		limit: number,
+		entryIds?: readonly string[],
 	): EntryStateRow[];
-	countEntryStates(sinceCursor: number, targetCursor: number): number;
+	countEntryStates(sinceCursor: number, targetCursor: number, entryIds?: readonly string[]): number;
 	listDeletedEntries(
 		before: DeletedEntryPageCursor | null,
 		retentionStart: number,

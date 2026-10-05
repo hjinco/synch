@@ -24,6 +24,7 @@ export class CoordinatorEntryStore {
 		targetCursor: number,
 		after: EntryStatePageCursor | null,
 		limit: number,
+		entryIds?: readonly string[],
 	): EntryStateRow[] {
 		const rows = this.handle
 			.exec<{
@@ -49,6 +50,7 @@ export class CoordinatorEntryStore {
 				FROM entries
 				WHERE updated_seq > ?
 					AND updated_seq <= ?
+					${entryIds ? "AND entry_id IN (SELECT value FROM json_each(?))" : ""}
 					AND (
 						? IS NULL
 						OR updated_seq > ?
@@ -59,6 +61,7 @@ export class CoordinatorEntryStore {
 				`,
 				sinceCursor,
 				targetCursor,
+				...(entryIds ? [JSON.stringify(entryIds)] : []),
 				after?.updatedSeq ?? null,
 				after?.updatedSeq ?? null,
 				after?.updatedSeq ?? null,
@@ -79,7 +82,7 @@ export class CoordinatorEntryStore {
 		}));
 	}
 
-	countEntryStates(sinceCursor: number, targetCursor: number): number {
+	countEntryStates(sinceCursor: number, targetCursor: number, entryIds?: readonly string[]): number {
 		const row = this.handle
 			.exec<{ total: number }>(
 				`
@@ -87,9 +90,11 @@ export class CoordinatorEntryStore {
 				FROM entries
 				WHERE updated_seq > ?
 					AND updated_seq <= ?
+					${entryIds ? "AND entry_id IN (SELECT value FROM json_each(?))" : ""}
 				`,
 				sinceCursor,
 				targetCursor,
+				...(entryIds ? [JSON.stringify(entryIds)] : []),
 			)
 			.one();
 

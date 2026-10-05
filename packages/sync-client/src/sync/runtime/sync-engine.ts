@@ -235,9 +235,9 @@ export class SyncEngine {
             ? this.deps.createWebSocket(url, protocols)
             : new WebSocket(url, protocols),
       }),
-      pushPendingMutations: async (session, shouldYield) =>
+      pushPendingMutations: async (session, shouldYield, options) =>
         await this.withSyncActivity("push", async (report) => {
-          return await this.syncPushService.pushPendingMutations(session, report, shouldYield);
+          return await this.syncPushService.pushPendingMutations(session, report, shouldYield, options);
         }),
       unblockFileSizeBlockedMutations: async (session) =>
         await this.withSyncActivity("local", async () => {
@@ -252,6 +252,10 @@ export class SyncEngine {
       pullOnce: async (session) =>
         await this.withSyncActivity("pull", async (report) => {
           return await this.syncPullService.pullOnce(session, report);
+        }),
+      recoverEntryStates: async (session, entryIds) =>
+        await this.withSyncActivity("pull", async (report) => {
+          await this.syncPullService.recoverEntryStates(session, entryIds, report);
         }),
       shouldDeferSyncWork: () => this.deps.shouldDeferSyncWork(),
       onConnectionStateChange: (state) => {

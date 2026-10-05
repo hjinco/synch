@@ -6,6 +6,15 @@ import {
 } from "./protocol";
 
 describe("sync protocol schema", () => {
+	it.each([[], [""], Array.from({ length: 101 }, (_, index) => `entry-${index}`)].map((entryIds) => ({ entryIds })))(
+		"rejects invalid recovery entry IDs $entryIds", ({ entryIds }) => {
+			expect(parseClientControlMessage({
+				type: "list_entry_states", requestId: "recovery", sinceCursor: 0,
+				targetCursor: null, after: null, limit: 100, entryIds,
+			}).success).toBe(false);
+		},
+	);
+
 	it("accepts a valid hello message", () => {
 		const parsed = parseClientControlMessage({
 			type: "hello",
