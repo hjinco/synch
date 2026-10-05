@@ -8,6 +8,7 @@ export * from "./remote-vault/manager";
 export * from "./remote-vault/types";
 export * from "./remote-vault/unavailable";
 export * from "./sync/remote/client";
+export { isSyncPausedError } from "./sync/remote/sync-pause";
 export type {
   DeletedEntryPageCursor,
   EntryVersion,

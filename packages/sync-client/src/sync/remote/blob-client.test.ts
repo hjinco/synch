@@ -1,3 +1,4 @@
+import { isSyncPausedError } from "./sync-pause";
 import { describe, expect, it, vi } from "vitest";
 
 import type { HttpRequestInput, HttpResponseLike } from "../../http/request";
@@ -5,6 +6,19 @@ import { SyncBlobClient } from "./blob-client";
 import { SyncAuthorizedRequestClient } from "./request-client";
 
 describe("SyncBlobClient", () => {
+  it.each(["upload", "download"] as const)("preserves the server pause code on %s errors", async direction => {
+    const client = new SyncBlobClient(new SyncAuthorizedRequestClient({
+      getApiBaseUrl: () => "https://sync.example",
+      getSyncToken: async () => ({ token: "token", expiresAt: 1_000, vaultId: "v", localVaultId: "l" }),
+      invalidateSyncToken: () => {},
+      httpClient: { request: async () => ({ status: 503, json: { error: "sync_paused", message: "paused" } }) },
+    }));
+    const operation = direction === "upload" ? client.uploadBlob("v", "b", new Uint8Array([1])) : client.downloadBlob("v", "b");
+    const error = await operation.catch(error => error);
+    expect(error).toMatchObject({ status: 503, code: "sync_paused" });
+    expect(isSyncPausedError(error)).toBe(true);
+  });
+
   it.each(["upload", "download"] as const)(
     "applies overload backoff to real %s requests and preserves the HTTP error", async direction => {
       const pending: Array<(response: HttpResponseLike) => void> = [];

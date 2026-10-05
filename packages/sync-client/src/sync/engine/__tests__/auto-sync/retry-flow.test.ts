@@ -1,8 +1,11 @@
+import { SyncBlobUploadError, SyncBlobDownloadError } from "../../../remote/blob-client";
+import { ApiRequestError } from "../../../../http/request";
 import { describe, expect, it, vi } from "vitest";
 
 import { createTestSyncStore } from "../../../../test-support/in-memory-sync-store";
 import {
   SyncRealtimeConnectionError,
+  SyncRealtimeError,
   type SyncRealtimeCallbacks,
 } from "../../../remote/realtime-client";
 import { SyncAutoLoop } from "../../auto-sync";
@@ -221,12 +224,13 @@ describe("SyncAutoLoop retry flow", () => {
     await store.close();
   });
 
-  it.each([1013, 4403])("retains the vault and reconnects after a repair pause (%i)", async (code) => {
+  it.each([1013, 4403])("retains the vault and stops reconnecting after a repair pause (%i)", async (code) => {
     vi.useFakeTimers();
 
     const store = createTestSyncStore();
     const callbacks: SyncRealtimeCallbacks[] = [];
     const onRemoteVaultUnavailable = vi.fn();
+    const onTerminalStop = vi.fn();
     const autoLoop = new SyncAutoLoop({
       getApiBaseUrl: () => "http://127.0.0.1:8787",
       getSyncToken: async () => createToken(),
@@ -238,6 +242,7 @@ describe("SyncAutoLoop retry flow", () => {
       }),
       reconnectDelayMs: 1_000,
       onRemoteVaultUnavailable,
+      onTerminalStop,
     });
 
     await autoLoop.start();
@@ -246,8 +251,14 @@ describe("SyncAutoLoop retry flow", () => {
       code,
       reason: "sync paused for vault repair",
     });
-    await vi.advanceTimersByTimeAsync(1_000);
+    await vi.advanceTimersByTimeAsync(300_000);
 
+    expect(callbacks).toHaveLength(1);
+    expect(autoLoop.isActive()).toBe(false);
+    expect(onTerminalStop).toHaveBeenCalledExactlyOnceWith({ type: "sync_paused", error: expect.any(Error) });
+
+    // An explicit restart is still possible after the operator resumes the vault.
+    await autoLoop.start();
     expect(callbacks).toHaveLength(2);
     expect(onRemoteVaultUnavailable).not.toHaveBeenCalled();
 
@@ -521,6 +532,87 @@ describe("SyncAutoLoop retry flow", () => {
     expect(onIdle).toHaveBeenCalledTimes(1);
 
     autoLoop.stop();
+    await store.close();
+  });
+});
+
+
+describe("server pause terminal handling", () => {
+  const errors = [
+    new ApiRequestError(503, "sync_paused", "paused"),
+    new ApiRequestError(403, "forbidden", "vault sync is temporarily paused for repair"),
+    new SyncRealtimeError("sync_paused", "paused"),
+  ];
+
+  it.each(errors)("stops token retries for %s", async (error) => {
+    vi.useFakeTimers();
+    const store = createTestSyncStore();
+    const getSyncToken = vi.fn(async () => { throw error; });
+    const onTerminalStop = vi.fn();
+    const onRemoteVaultUnavailable = vi.fn();
+    const autoLoop = new SyncAutoLoop({
+      getApiBaseUrl: () => "http://127.0.0.1:8787", getSyncToken, getSyncStore: () => store,
+      pushPendingMutations: vi.fn(async () => createPushResult()), pullOnce: vi.fn(),
+      realtimeClient: createRealtimeClient(), onTerminalStop, onRemoteVaultUnavailable,
+    });
+    await autoLoop.start();
+    await vi.advanceTimersByTimeAsync(300_000);
+    await autoLoop.resumeConnection();
+    expect(getSyncToken).toHaveBeenCalledTimes(1);
+    expect(onTerminalStop).toHaveBeenCalledExactlyOnceWith({ type: "sync_paused", error });
+    expect(onRemoteVaultUnavailable).not.toHaveBeenCalled();
+    expect(autoLoop.isActive()).toBe(false);
+    await store.close();
+  });
+
+  it("stops pending work on a session error and only notifies once when close follows", async () => {
+    vi.useFakeTimers();
+    const store = createTestSyncStore();
+    const callbacks: SyncRealtimeCallbacks[] = [];
+    const pushPendingMutations = vi.fn(async () => createPushResult());
+    const onTerminalStop = vi.fn();
+    const onError = vi.fn();
+    const autoLoop = new SyncAutoLoop({
+      getApiBaseUrl: () => "http://127.0.0.1:8787", getSyncToken: async () => createToken(), getSyncStore: () => store,
+      pushPendingMutations, pullOnce: vi.fn(), realtimeClient: createRealtimeClient(next => callbacks.push(next)), onTerminalStop, onError,
+    });
+    await autoLoop.start();
+    autoLoop.notifyLocalChange();
+    callbacks[0].onError(new SyncRealtimeError("sync_paused", "paused"));
+    callbacks[0].onClose({ code: 1013, reason: "sync paused for vault repair" });
+    autoLoop.notifyLocalChange();
+    await vi.advanceTimersByTimeAsync(300_000);
+    expect(callbacks).toHaveLength(1);
+    expect(pushPendingMutations).not.toHaveBeenCalled();
+    expect(onTerminalStop).toHaveBeenCalledTimes(1);
+    expect(onError).toHaveBeenCalledTimes(1);
+    await store.close();
+  });
+
+  it.each(["push", "pull"])("does not retry %s after a server pause", async (direction) => {
+    vi.useFakeTimers();
+    const store = createTestSyncStore();
+    const error = direction === "push"
+      ? new SyncBlobUploadError(503, "sync_paused", "paused")
+      : new SyncBlobDownloadError(503, "paused", "sync_paused");
+    const mutation = { entryId: "note", mutationId: "local-edit", baseRevision: 3,
+      op: "upsert" as const, blobId: "local-blob", hash: "local-hash", encryptedMetadata: "encrypted", createdAt: 1 };
+    await store.markEntryDirty(mutation);
+    const pushPendingMutations = vi.fn(async () => { if (direction === "push") throw error; return createPushResult(); });
+    const pullOnce = vi.fn(async () => { if (direction === "pull") throw error; });
+    const onTerminalStop = vi.fn();
+    const autoLoop = new SyncAutoLoop({
+      getApiBaseUrl: () => "http://127.0.0.1:8787", getSyncToken: async () => createToken(), getSyncStore: () => store,
+      pushPendingMutations, pullOnce, realtimeClient: createRealtimeClient(), onTerminalStop,
+    });
+    await autoLoop.start();
+    expect(await autoLoop.syncNow()).toBe(false);
+    const calls = [pushPendingMutations.mock.calls.length, pullOnce.mock.calls.length];
+    await vi.advanceTimersByTimeAsync(300_000);
+    expect([pushPendingMutations.mock.calls.length, pullOnce.mock.calls.length]).toEqual(calls);
+    expect(onTerminalStop).toHaveBeenCalledExactlyOnceWith({ type: "sync_paused", error });
+    expect(autoLoop.isActive()).toBe(false);
+    expect(await store.getDirtyEntryMutation("note")).toEqual(mutation);
     await store.close();
   });
 });

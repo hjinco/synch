@@ -13,6 +13,7 @@ import type {
   SyncRealtimeCallbacks,
   SyncRealtimeClientOptions,
 } from "./realtime-types";
+import { isSyncPausedClose } from "./sync-pause";
 import { SyncRealtimeConnectionError, SyncRealtimeError } from "./realtime-types";
 import { remoteVaultUnavailableFromWebSocketClose } from "../../remote-vault/unavailable";
 
@@ -492,8 +493,7 @@ function syncRealtimeErrorFromCloseEvent(event: {
   reason: string;
 }): SyncRealtimeError | null {
   if (event.code === 1013 && event.reason === "shared sync paused") return new SyncRealtimeError("sharing_suspended", "Shared vault sync is paused until the organization renews Plus");
-  if ((event.code === 1013 || event.code === 4403) &&
-      event.reason === "sync paused for vault repair") {
+  if (isSyncPausedClose(event)) {
     return new SyncRealtimeError("sync_paused", "vault sync is temporarily paused for repair");
   }
   if (event.code !== 4409) {

@@ -308,6 +308,7 @@ export class SyncEngine {
         void this.deps.onSyncError(error, "auto_sync");
       },
       onTerminalStop: (reason) => {
+        this.stopHiddenFolderReconcileTimer();
         this.deps.onSyncTerminalStop?.(reason);
       },
       onRetryScheduled: ({ attempt, delayMs }) => {
@@ -584,6 +585,7 @@ export class SyncEngine {
 
   private startHiddenFolderReconcileTimer(): void {
     if (
+      !this.syncAutoLoop.isActive() ||
       this.hiddenFolderReconcileTimer !== null ||
       !this.hasPolledReconcileSources()
     ) {

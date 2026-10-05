@@ -1,3 +1,4 @@
+import { isSyncPausedError, isSyncPausedClose } from "../remote/sync-pause";
 import type { SyncTokenResponse } from "../remote/client";
 import type { PresenceSelection } from "../core/presence";
 import {
@@ -64,6 +65,7 @@ export interface SyncAutoLoopDeps {
 }
 
 export type SyncTerminalStopReason =
+  | { type: "sync_paused"; error: Error }
   | { type: "remote_vault_unavailable"; error: RemoteVaultUnavailableError }
   | { type: "sync_history_mismatch"; error: Error }
   | { type: "storage_quota_exceeded" };
@@ -412,6 +414,10 @@ export class SyncAutoLoop {
             this.setPresenceAvailability(enabled);
           },
           onClose: (event) => {
+            if (isSyncPausedClose(event)) {
+              this.handleError(new SyncRealtimeError("sync_paused", "vault sync is temporarily paused for repair"));
+              return;
+            }
             const unavailable = remoteVaultUnavailableFromWebSocketClose(
               event,
               token.vaultId,
@@ -842,7 +848,7 @@ export class SyncAutoLoop {
     this.timers.clear("syncRetry");
   }
 
-  private isActive(): boolean {
+  isActive(): boolean {
     return this.state.isActive();
   }
 
@@ -875,6 +881,14 @@ export class SyncAutoLoop {
   }
 
   private handleError(error: unknown): void {
+    if (isSyncPausedError(error)) {
+      // The same pause can arrive through a session error, pending requests and close.
+      if (!this.isActive()) return;
+      this.stop();
+      this.deps.onError?.(error);
+      this.deps.onTerminalStop?.({ type: "sync_paused", error });
+      return;
+    }
     this.deps.onError?.(error);
   }
 

@@ -1,3 +1,4 @@
+import { ApiRequestError } from "@synch/sync-client/http";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { SyncTokenResponse } from "@synch/sync-client/remote";
@@ -47,6 +48,24 @@ describe("SyncController", () => {
     controller.stopAutoSyncAndMarkPaused();
     await vi.advanceTimersByTimeAsync(180_000);
     expect(syncNow).toHaveBeenCalledTimes(2);
+  });
+
+  it("stops periodic sync on a server pause without disconnecting or deleting the store", async () => {
+    vi.useFakeTimers();
+    vi.spyOn(SyncEngine.prototype, "startAutoSync").mockResolvedValue(true);
+    vi.spyOn(SyncEngine.prototype, "reconcileOnce").mockRejectedValue(new ApiRequestError(503, "sync_paused", "paused"));
+    const stop = vi.spyOn(SyncEngine.prototype, "stopAutoSync").mockImplementation(() => {});
+    const detach = vi.spyOn(SyncEngine.prototype, "detachStore");
+    const onSyncPaused = vi.fn();
+    const onRemoteVaultUnavailable = vi.fn();
+    const controller = new SyncController(createDeps({ getSyncIntervalMs: () => 1_000, onSyncPaused, onRemoteVaultUnavailable }));
+    await controller.ensureAutoSyncState();
+    expect(onSyncPaused).toHaveBeenCalledTimes(1);
+    expect(stop).toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(300_000);
+    expect(SyncEngine.prototype.reconcileOnce).toHaveBeenCalledTimes(1);
+    expect(detach).not.toHaveBeenCalled();
+    expect(onRemoteVaultUnavailable).not.toHaveBeenCalled();
   });
 
   it("records a sync failure once before showing the existing error notice", async () => {

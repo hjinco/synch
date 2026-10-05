@@ -46,6 +46,7 @@ export class SyncBlobClient {
       throw new SyncBlobDownloadError(
         response.status,
         message || `blob download failed with status ${response.status}`,
+        extractErrorCode(response.json),
       );
     }
 
@@ -95,7 +96,7 @@ function extractErrorCode(value: unknown): string {
 }
 
 export class SyncBlobDownloadError extends Error {
-  constructor(readonly status: number, message: string) {
+  constructor(readonly status: number, message: string, readonly code = "") {
     super(message);
     this.name = "SyncBlobDownloadError";
   }

@@ -7,6 +7,7 @@ import {
 } from "@synch/sync-client/http";
 import {
   isRemoteVaultUnavailableError,
+  isSyncPausedError,
   type RemoteVaultUnavailableError,
   type SyncTokenResponse,
   type DeletedEntryPageCursor,
@@ -84,6 +85,7 @@ export interface SyncControllerDeps {
   onStorageStatusChange?: () => void;
   onFileSizeBlockedFilesChange?: () => void;
   onStorageQuotaExceeded?: () => void | Promise<void>;
+  onSyncPaused?: () => void | Promise<void>;
   onRemoteVaultUnavailable?: (
     error: RemoteVaultUnavailableError,
   ) => void | Promise<void>;
@@ -155,6 +157,7 @@ export class SyncController {
   private periodicSyncTimer: number | null = null;
   private periodicSyncPromise: Promise<void> | null = null;
   private periodicSyncEnabled = false;
+  private serverPaused = false;
 
   constructor(private readonly deps: SyncControllerDeps) {}
 
@@ -227,6 +230,7 @@ export class SyncController {
   }
 
   stopAutoSyncAndMarkNotReady(): void {
+    this.serverPaused = false;
     this.stopSyncAndClearSubscriptions();
     this.setSyncProgress({
       completedEntries: 0,
@@ -318,6 +322,7 @@ export class SyncController {
   }
 
   async ensureAutoSyncState(): Promise<void> {
+    this.serverPaused = false;
     if (!this.deps.hasActiveRemoteVaultSession() || !this.deps.hasAuthenticatedSession()) {
       this.stopSyncAndClearSubscriptions();
       if (this.shouldShowOfflineBeforeReady()) {
@@ -338,6 +343,7 @@ export class SyncController {
         this.syncEngine.setStorageStatusWatching(true);
         this.periodicSyncEnabled = true;
         await this.syncEngine.startAutoSync();
+        if (this.serverPaused) return;
         await this.runPeriodicSyncAndSchedule();
       } catch (error) {
         await this.handleSyncError(error, "auto_sync_initialization");
@@ -354,6 +360,7 @@ export class SyncController {
       this.recordSyncReconciled("startup", reconcile);
       await this.syncEngine.waitForLocalMutationWork();
       await this.syncEngine.startAutoSync();
+      if (this.serverPaused) return;
       if (wasPeriodic) {
         if (await this.syncEngine.syncNow()) {
           this.recordSyncCompleted("startup");
@@ -381,6 +388,7 @@ export class SyncController {
   }
 
   async resumeAutoSync(): Promise<void> {
+    this.serverPaused = false;
     try {
       if (!this.deps.hasActiveRemoteVaultSession() || !this.deps.hasAuthenticatedSession()) {
         if (this.shouldShowOfflineBeforeReady()) {
@@ -404,6 +412,7 @@ export class SyncController {
         if (!started) {
           await this.syncEngine.resumeAutoSyncConnection();
         }
+        if (this.serverPaused) return;
         await this.runPeriodicSyncAndSchedule();
         return;
       }
@@ -428,6 +437,7 @@ export class SyncController {
   }
 
   async syncNow(): Promise<void> {
+    if (this.serverPaused) return;
     if (!this.deps.hasActiveRemoteVaultSession() || !this.deps.hasAuthenticatedSession()) {
       return;
     }
@@ -453,6 +463,7 @@ export class SyncController {
     try {
       this.setSyncStatus("syncing");
       await this.syncEngine.reapplyAllowedRemoteVaultConfig();
+      if (this.serverPaused) return;
       if (this.deps.getSyncIntervalMs() > 0) {
         this.periodicSyncEnabled = true;
         await this.runPeriodicSyncAndSchedule();
@@ -558,6 +569,7 @@ export class SyncController {
   }
 
   private setSyncStatus(status: UserVisibleSyncState): void {
+    if (this.serverPaused && status !== "paused") return;
     if (this.syncStatus === status) {
       return;
     }
@@ -701,6 +713,15 @@ export class SyncController {
     error: unknown,
     phase: SyncFailurePhase,
   ): Promise<void> {
+    if (isSyncPausedError(error)) {
+      if (this.serverPaused) return;
+      this.serverPaused = true;
+      this.recordSyncError(error, phase);
+      this.stopAutoSyncAndMarkPaused();
+      await this.deps.onSyncPaused?.();
+      return;
+    }
+    if (this.serverPaused) return;
     if (isRemoteVaultUnavailableError(error)) {
       this.recordSyncError(error, phase, "remote_vault_unavailable");
       await this.handleRemoteVaultUnavailable(error);

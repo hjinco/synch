@@ -124,6 +124,9 @@ function reportTerminalStop(ctx: CliAppContext, reason: SyncTerminalStopReason):
       // The engine already reports the detailed history mismatch error.
       ctx.logger.error("Watch stopped because sync cannot continue with this history.");
       return 1;
+    case "sync_paused":
+      ctx.logger.error("Watch stopped because the server paused sync. The vault connection is preserved; restart `synch watch` to retry.");
+      return 1;
     case "storage_quota_exceeded":
       ctx.logger.error(
         "Sync stopped: remote vault storage quota exceeded. Free space in the remote vault, then restart `synch watch`.",

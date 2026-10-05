@@ -216,6 +216,9 @@ export class SynchPluginController implements SynchSettingsController {
     onFileSizeBlockedFilesChange: () => {
       this.emitUiEvent({ type: "file-size-blocked-changed" });
     },
+    onSyncPaused: async () => {
+      await this.setSyncEnabled(false);
+    },
     onStorageQuotaExceeded: async () => {
       this.needsMoreStorage = true;
       await this.setSyncEnabled(false);
