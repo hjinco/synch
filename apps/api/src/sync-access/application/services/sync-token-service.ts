@@ -4,6 +4,7 @@ import { DEFAULT_SYNC_TOKEN_TTL_SECONDS } from "../../domain/token-policy";
 import { SyncAccessApplicationError } from "../errors/sync-access-errors";
 import type { IssueSyncToken } from "../ports/inbound/issue-sync-token";
 import type { VerifySyncToken } from "../ports/inbound/verify-sync-token";
+import type { SyncPauseResumer } from "../ports/outbound/sync-pause-resumer";
 import type { SyncPauseReader } from "../ports/outbound/sync-pause-reader";
 import type { SyncTokenCodec } from "../ports/outbound/sync-token-codec";
 import type {
@@ -25,6 +26,7 @@ export class IssueSyncTokenService implements IssueSyncToken {
 		private readonly syncPauseReader: SyncPauseReader,
 		syncTokenTtlSeconds = DEFAULT_SYNC_TOKEN_TTL_SECONDS,
 		private readonly accessReader?: (userId: string, vaultId: string) => Promise<number>,
+		private readonly syncPauseResumer?: SyncPauseResumer,
 	) {
 		this.syncTokenTtlSeconds = syncTokenTtlSeconds;
 	}
@@ -35,13 +37,20 @@ export class IssueSyncTokenService implements IssueSyncToken {
 			throw new SyncAccessApplicationError("vault_access_denied");
 		}
 
-		const syncPause = await this.syncPauseReader.readSyncPause(vault.id);
+		// Verify live membership/subscription access before changing vault state.
+		const accessVersion = await this.accessReader?.(input.userId, input.vaultId);
+		let syncPause = await this.syncPauseReader.readSyncPause(vault.id);
+		if (input.resumeSync && syncPause) {
+			if (!this.syncPauseResumer) throw new SyncAccessApplicationError("sync_paused");
+			await this.syncPauseResumer.resumeSync(vault.id);
+			syncPause = await this.syncPauseReader.readSyncPause(vault.id);
+			if (syncPause) throw new SyncAccessApplicationError("sync_paused");
+		}
 		if (syncPause && !LEGACY_PAUSE_QUOTA_COMPATIBILITY) {
 			throw new SyncAccessApplicationError("sync_paused");
 		}
 
 		const now = Math.floor(Date.now() / 1000);
-		const accessVersion = await this.accessReader?.(input.userId, input.vaultId);
 		const claims = {
 			...(accessVersion === undefined ? {} : { accessVersion }),
 			sub: input.userId,

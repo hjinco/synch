@@ -19,6 +19,7 @@ export function registerSyncAccessRoutes(
 			z.object({
 				vaultId: z.string().trim().min(1),
 				localVaultId: z.string().trim().min(1),
+				resumeSync: z.boolean().optional(),
 			}),
 		),
 		async (c) => {
@@ -28,6 +29,7 @@ export function registerSyncAccessRoutes(
 					userId: c.var.user.id,
 					vaultId: body.vaultId,
 					localVaultId: body.localVaultId,
+					...(body.resumeSync === true ? { resumeSync: true } : {}),
 					displayName: displayNameFromAuthenticatedUser(c.var.user),
 				}),
 			);

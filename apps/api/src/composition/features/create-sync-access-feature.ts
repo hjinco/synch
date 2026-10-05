@@ -36,6 +36,7 @@ export function createSyncAccessFeature(config: {
 			pauseReader,
 			config.syncTokenTtlSeconds,
 			config.accessReader,
+			pauseReader,
 		),
 	};
 }

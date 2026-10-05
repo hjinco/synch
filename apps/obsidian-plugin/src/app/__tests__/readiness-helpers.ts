@@ -47,6 +47,9 @@ export function mockOnlineReadinessRequests(): void {
   setRequestUrlMock(
     vi.fn(async (input: unknown) => {
       const url = String((input as { url?: string }).url ?? "");
+      if (url.endsWith("/v1/sync/token")) {
+        return { status: 200, json: { token: "sync-token", expiresAt: Math.floor(Date.now() / 1000) + 120, vaultId: "vault-1", localVaultId: "local-vault-1" } };
+      }
       if (url.endsWith("/api/auth/get-session")) {
         return {
           status: 200,

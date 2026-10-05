@@ -18,7 +18,7 @@ export class SyncAccessClient {
   async issueSyncToken(
     apiBaseUrl: string,
     sessionToken: string,
-    input: { vaultId: string; localVaultId: string },
+    input: { vaultId: string; localVaultId: string; resumeSync?: boolean },
   ): Promise<SyncTokenResponse> {
     try {
       return await this.requestJson<SyncTokenResponse>(

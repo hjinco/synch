@@ -7,6 +7,8 @@ export type SyncTokenIssueInput = {
 	vaultId: string;
 	localVaultId: string;
 	displayName: string;
+	/** Only set for an explicit user restart, never automatic token refresh. */
+	resumeSync?: boolean;
 };
 
 export type SyncTokenIssueResponse = {

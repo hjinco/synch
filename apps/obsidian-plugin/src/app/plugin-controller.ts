@@ -438,12 +438,38 @@ export class SynchPluginController implements SynchSettingsController {
     return this.settingsStore.getSnapshot().syncEnabled;
   }
 
+  private syncEnabledRequest = 0;
+
   async setSyncEnabled(enabled: boolean): Promise<void> {
+    const request = ++this.syncEnabledRequest;
     if (enabled && this.updateService.isPluginUpdateRequired()) {
       new Notice(this.updateService.getPluginUpdateRequiredMessage());
       this.syncController.stopAutoSyncAndMarkNotReady();
       this.refreshUi();
       return;
+    }
+
+    if (enabled && !this.isSyncEnabled() && this.hasConnectedRemoteVault() && this.hasAuthenticatedSession()) {
+      const vaultId = this.remoteVaultManager.getRemoteVaultId() ?? this.sessionStore.getStoredRemoteVaultId();
+      const apiBaseUrl = this.getApiBaseUrl();
+      const sessionToken = this.authManager.getAuthSessionToken();
+      if (vaultId) {
+        try {
+          const connection = await this.syncController.readStoredConnection();
+          if (!connection || connection.remoteVaultId !== vaultId) return;
+          await new SyncAccessClient(defaultHttpClient).issueSyncToken(
+            apiBaseUrl, sessionToken,
+            { vaultId, localVaultId: connection.localVaultId, resumeSync: true },
+          );
+        } catch (error) {
+          if (request === this.syncEnabledRequest) this.notifyError(error, "error.autoSyncResume");
+          return;
+        }
+        if (request !== this.syncEnabledRequest || apiBaseUrl !== this.getApiBaseUrl() ||
+            sessionToken !== this.authManager.getAuthSessionToken() ||
+            vaultId !== (this.remoteVaultManager.getRemoteVaultId() ?? this.sessionStore.getStoredRemoteVaultId())) return;
+        this.clearSyncTokenState();
+      }
     }
 
     const changed = await this.settingsStore.updateSyncEnabled(enabled);

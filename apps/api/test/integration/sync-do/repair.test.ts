@@ -172,3 +172,30 @@ describe("admin sync pause integration", () => {
 		await issueSyncToken(primary.sessionCookie, primary.vaultId, "pause-device");
 	});
 });
+
+it("allows an authorized explicit restart but never resumes through automatic token refresh", async () => {
+	const owner = await signUpAndCreateVault();
+	const other = await signUpAndCreateVault();
+	const token = await issueSyncToken(owner.sessionCookie, owner.vaultId, "restart-device");
+	await uploadBlob(owner.vaultId, token.token, uniqueId("restart-blob"), "preserve");
+	expect((await adminRequest(owner.vaultId, "sync-pause", "manual restart test")).status).toBe(200);
+	const requestToken = (cookie: string, resumeSync?: boolean) => apiRequest("/v1/sync/token", {
+		method: "POST", headers: { cookie, "content-type": "application/json" },
+		body: JSON.stringify({ vaultId: owner.vaultId, localVaultId: "restart-device", ...(resumeSync ? { resumeSync } : {}) }),
+	});
+	await requestToken(owner.sessionCookie);
+	expect(await (await adminRequest(owner.vaultId, "sync-state")).json()).toMatchObject({ syncPause: { reason: "manual: manual restart test" } });
+	expect((await requestToken(other.sessionCookie, true)).status).toBe(403);
+	expect(await (await adminRequest(owner.vaultId, "sync-state")).json()).toMatchObject({ syncPause: { reason: "manual: manual restart test" } });
+	expect((await requestToken(owner.sessionCookie, true)).status).toBe(200);
+	expect(await (await adminRequest(owner.vaultId, "sync-state")).json()).toEqual({ syncPause: null });
+
+	const stub = env.SYNC_COORDINATOR.getByName(owner.vaultId);
+	await runInDurableObject(stub, async (_instance, state) => {
+		state.storage.sql.exec("UPDATE coordinator_state SET sync_paused_at = 1, sync_pause_reason = 'repair required' WHERE id = 1");
+	});
+	const repair = await requestToken(owner.sessionCookie, true);
+	expect(repair.status).toBe(503);
+	expect(await repair.json()).toMatchObject({ error: "sync_paused" });
+	expect(await (await adminRequest(owner.vaultId, "sync-state")).json()).toMatchObject({ syncPause: { reason: "repair required" } });
+});
