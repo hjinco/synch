@@ -7,22 +7,30 @@ import type { CoordinatorProxyRepository } from "../../outbound/durable-object-r
 export function registerCoordinatorAdminRoutes(
 	app: Hono,
 	deps: {
-		coordinatorProxyRepository: Pick<CoordinatorProxyRepository, "repairSyncState">;
+		coordinatorProxyRepository: Pick<CoordinatorProxyRepository, "repairSyncState" | "readSyncPause" | "setSyncPause">;
 		adminToken?: string;
 	},
 ): void {
+	app.use("/admin/v1/vaults/:vaultId/*", async (c, next) => {
+		const expectedToken = deps.adminToken?.trim() ?? "";
+		if (!expectedToken) return c.json({ error: "not_found" }, 404);
+		if (!hasAdminAuthorization(c.req.raw, expectedToken)) return c.json({ error: "unauthorized" }, 401);
+		await next();
+	});
+	app.get("/admin/v1/vaults/:vaultId/sync-state", async (c) =>
+		c.json({ syncPause: await deps.coordinatorProxyRepository.readSyncPause(c.req.param("vaultId")) }),
+	);
+	app.post("/admin/v1/vaults/:vaultId/sync-pause",
+		zValidator("json", z.object({ reason: z.string().trim().min(1).max(500) })),
+		(c) => deps.coordinatorProxyRepository.setSyncPause(c.req.param("vaultId"), c.req.valid("json").reason),
+	);
+	app.post("/admin/v1/vaults/:vaultId/sync-resume", (c) =>
+		deps.coordinatorProxyRepository.setSyncPause(c.req.param("vaultId"), null),
+	);
 	app.post(
 		"/admin/v1/vaults/:vaultId/sync-repair",
 		zValidator("param", z.object({ vaultId: z.string().trim().min(1) })),
 		async (c) => {
-			const expectedToken = deps.adminToken?.trim() ?? "";
-			if (!expectedToken) {
-				return c.json({ error: "not_found" }, 404);
-			}
-			if (!hasAdminAuthorization(c.req.raw, expectedToken)) {
-				return c.json({ error: "unauthorized" }, 401);
-			}
-
 			const { vaultId } = c.req.valid("param");
 			const result = await deps.coordinatorProxyRepository.repairSyncState(vaultId);
 			if (result.status === "manual_repair_required") {

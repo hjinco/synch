@@ -11,6 +11,7 @@ import type { SocketConnectionService } from "./socket-connection-service";
 import type { VaultService } from "./vault-service";
 
 export type CoordinatorApi = CoordinatorApplicationPort & {
+	setSyncPause: VaultService["setSyncPause"];
 	prepareSocketSession(
 		token: string | null | undefined,
 		vaultId: string,
@@ -51,6 +52,7 @@ export type CoordinatorApiServices = {
 
 export function bindCoordinatorApi(services: CoordinatorApiServices): CoordinatorApi {
 	return {
+		setSyncPause: (vaultId, reason) => services.vaultService.setSyncPause(vaultId, reason),
 		prepareSocketSession: (token, vaultId) =>
 			services.socketConnectionService.prepareSocketSession(token, vaultId),
 		completeSocketOpen: () => services.socketConnectionService.completeSocketOpen(),

@@ -1,3 +1,4 @@
+import { SyncCoordinatorApplicationError } from "../errors/coordinator-errors";
 import { decideEntryMutation } from "../../domain/entry-policy";
 import type {
 	BlobObjectKeyBuilder,
@@ -58,6 +59,7 @@ export class MutationService {
 		const versionHistoryRetentionMs =
 			this.vaultStateStore.readVersionHistoryRetentionDays() * DAY_IN_MS;
 		const result = this.unitOfWork.run((stores) => {
+			if (stores.state.readSyncPause()) throw new SyncCoordinatorApplicationError("sync_paused");
 			let nextCursor: number | null = null;
 			const readCursor = () => {
 				if (stores.state.readVaultId() !== session.vaultId)

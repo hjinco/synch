@@ -88,7 +88,7 @@ export class CoordinatorControlMessageHandler
 			"recordLocalVaultConnection"
 		>,
 		private readonly presenceStore = new PresenceStore(),
-		private readonly authorize?: (session: SocketSession) => Promise<void>,
+		private readonly authorize?: (session: SocketSession) => void | Promise<void>,
 	) {}
 
 	async handle(
@@ -111,15 +111,19 @@ export class CoordinatorControlMessageHandler
 		}
 
 		try {
-			await this.authorize?.(session);
+			const authorization = this.authorize?.(session);
+			if (authorization) await authorization;
 		} catch (error) {
+			const paused = error instanceof SharingError && error.code === "sync_paused";
 			const revoked =
 				error instanceof SharingError && error.code === "vault_access_denied";
 			const suspended =
 				error instanceof SharingError && error.code === "sharing_suspended";
 			this.socketService.sendSocketMessage(connectionId, {
 				type: "session_error",
-				code: suspended
+				code: paused
+					? "sync_paused"
+					: suspended
 					? "sharing_suspended"
 					: revoked
 						? "unauthorized"
@@ -132,7 +136,9 @@ export class CoordinatorControlMessageHandler
 			this.socketService.closeSocket(
 				connectionId,
 				revoked ? 4403 : 1013,
-				suspended
+				paused
+					? "sync paused for vault repair"
+					: suspended
 					? "shared sync paused"
 					: revoked
 						? "vault access denied"

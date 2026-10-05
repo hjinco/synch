@@ -1,3 +1,4 @@
+import { SyncCoordinatorApplicationError } from "../errors/coordinator-errors";
 import { deleteUnreferencedStagedBlob } from "./blob-record-operations";
 import type {
 	BlobObjectRepository,
@@ -15,6 +16,8 @@ import { isStaleStagedBlobPauseReason } from "../../domain/blob-policy";
 import { STAGED_BLOB_STALE_MS } from "../../domain/health-policy";
 import type { BlobGcService } from "./blob-gc-service";
 import type { HealthService } from "./health-service";
+
+export const MANUAL_SYNC_PAUSE_PREFIX = "manual: ";
 
 export const MAX_REPAIRABLE_STALE_STAGED_BLOBS = 100;
 
@@ -51,6 +54,28 @@ export class VaultService {
 			return null;
 		}
 		return this.vaultStateStore.readSyncPause();
+	}
+
+	setSyncPause(vaultId: string, reason: string | null): { syncPause: SyncPauseState | null } {
+		if (!this.vaultStateStore.vaultStateExistsFor(vaultId)) {
+			throw new SyncCoordinatorApplicationError("not_found");
+		}
+		const pause = this.vaultStateStore.readSyncPause();
+		// A manual action must never overwrite or clear a data-integrity repair pause.
+		if (pause && !pause.reason.startsWith(MANUAL_SYNC_PAUSE_PREFIX)) {
+			throw new SyncCoordinatorApplicationError("sync_repair_required", {
+				message: "vault requires sync repair before changing its pause state",
+			});
+		}
+		if (reason === null) {
+			this.vaultStateStore.clearSyncPause();
+		} else {
+			this.unitOfWork.stores.state.pauseSync(Date.now(), MANUAL_SYNC_PAUSE_PREFIX + reason);
+			// Preserve the close reason understood by existing plugin versions.
+			this.socketGateway.closeAllSockets(1013, "sync paused for vault repair");
+		}
+		console.info("[sync-admin]", { vaultId, action: reason === null ? "resume" : "pause", reason, at: Date.now() });
+		return { syncPause: this.vaultStateStore.readSyncPause() };
 	}
 
 	async ensureVaultState(vaultId: string): Promise<void> {

@@ -22,6 +22,7 @@ import type {
 } from "../../../application/dto/types";
 
 export interface CoordinatorHttpServices {
+	setSyncPause(vaultId: string, reason: string | null): { syncPause: SyncPauseState | null };
 	repairSyncState(vaultId: string): Promise<SyncRepairResult>;
 	readSyncPause(vaultId: string): SyncPauseState | null;
 	stageBlob(
@@ -62,6 +63,13 @@ export function createCoordinatorApp(deps: {
 	canApplyPolicy?: (vaultId: string) => Promise<boolean>;
 }) {
 	const app = new Hono();
+	app.post("/internal/v1/vaults/:vaultId/sync-pause",
+		zValidator("json", z.object({ reason: z.string().trim().min(1).max(500) })),
+		(c) => c.json(deps.services.setSyncPause(c.req.param("vaultId"), c.req.valid("json").reason)),
+	);
+	app.post("/internal/v1/vaults/:vaultId/sync-resume", (c) =>
+		c.json(deps.services.setSyncPause(c.req.param("vaultId"), null)),
+	);
 	app.post("/internal/v1/vaults/:vaultId/authorize", async (c) => {
 		if (!deps.authorize) return c.json({ error: "access_unavailable" }, 503);
 		await deps.authorize(readSyncToken(c.req.raw), c.req.param("vaultId"));

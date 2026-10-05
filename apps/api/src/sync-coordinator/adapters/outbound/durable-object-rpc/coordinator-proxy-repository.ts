@@ -27,6 +27,13 @@ export type CoordinatorNamespace = {
 };
 
 export class CoordinatorProxyRepository {
+	async setSyncPause(vaultId: string, reason: string | null): Promise<Response> {
+		return this.fetch(vaultId, new Request(
+			`https://internal/internal/v1/vaults/${encodeURIComponent(vaultId)}/${reason === null ? "sync-resume" : "sync-pause"}`,
+			{ method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ reason }) },
+		));
+	}
+
 	constructor(private readonly namespace: CoordinatorNamespace) {}
 
 	async refreshSharingAccess(vaultId: string): Promise<void> {

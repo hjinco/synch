@@ -13,12 +13,14 @@ function buildApp(adminToken: string | undefined = "admin-token") {
 		pause: null,
 	};
 	const repairSyncState = vi.fn(async (_vaultId: string) => result);
+	const readSyncPause = vi.fn(async () => null);
+	const setSyncPause = vi.fn(async (_vaultId: string, _reason: string | null) => Response.json({ syncPause: null }));
 	const app = new Hono();
 	registerCoordinatorAdminRoutes(app, {
-		coordinatorProxyRepository: { repairSyncState },
+		coordinatorProxyRepository: { repairSyncState, readSyncPause, setSyncPause },
 		adminToken,
 	});
-	return { app, repairSyncState };
+	return { app, repairSyncState, readSyncPause, setSyncPause };
 }
 
 describe("admin sync repair route", () => {
@@ -71,5 +73,32 @@ describe("admin sync repair route", () => {
 			error: "sync_repair_required",
 			status: "manual_repair_required",
 		});
+	});
+});
+
+
+describe("admin sync pause routes", () => {
+	it.each(["sync-state", "sync-pause", "sync-resume"])("authenticates %s before coordinator access", async (action) => {
+		for (const [token, status] of [["", 404], ["admin-token", 401]] as const) {
+			const { app, setSyncPause, readSyncPause } = buildApp(token);
+			const response = await app.request(`/admin/v1/vaults/vault-1/${action}`, { method: action === "sync-state" ? "GET" : "POST" });
+			expect(response.status).toBe(status);
+			expect(setSyncPause).not.toHaveBeenCalled();
+			expect(readSyncPause).not.toHaveBeenCalled();
+		}
+	});
+
+	it("validates the reason and forwards pause and resume", async () => {
+		const { app, setSyncPause } = buildApp();
+		const headers = { authorization: "Bearer admin-token", "content-type": "application/json" };
+		const invalid = await app.request("/admin/v1/vaults/vault-1/sync-pause", { method: "POST", headers, body: JSON.stringify({ reason: " " }) });
+		expect(invalid.status).toBe(400);
+		expect(setSyncPause).not.toHaveBeenCalled();
+		const paused = await app.request("/admin/v1/vaults/vault-1/sync-pause", { method: "POST", headers, body: JSON.stringify({ reason: "excessive requests" }) });
+		expect(paused.status).toBe(200);
+		expect(setSyncPause).toHaveBeenLastCalledWith("vault-1", "excessive requests");
+		const resumed = await app.request("/admin/v1/vaults/vault-1/sync-resume", { method: "POST", headers });
+		expect(resumed.status).toBe(200);
+		expect(setSyncPause).toHaveBeenLastCalledWith("vault-1", null);
 	});
 });

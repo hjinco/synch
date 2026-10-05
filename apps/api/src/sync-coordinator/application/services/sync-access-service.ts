@@ -33,10 +33,12 @@ export class CoordinatorSyncAccessService {
 		private readonly sockets: SocketGateway,
 		private readonly readSnapshot: (vaultId: string) => Promise<SyncAccessSnapshot>,
 		private readonly tokenLifetimeMs: number,
+		private readonly assertSyncAllowed: () => void = () => {},
 	) {}
 
 	/** Synchronous so socket acceptance can recheck without yielding to a revocation. */
 	require(input: VerifiedVaultAccess): void {
+		this.assertSyncAllowed();
 		this.load();
 		const error = this.denial(input.userId, input.accessVersion);
 		if (error) throw error;

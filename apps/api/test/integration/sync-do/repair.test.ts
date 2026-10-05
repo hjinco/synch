@@ -86,11 +86,17 @@ describe("admin sync repair integration", () => {
 });
 
 async function adminRepairRequest(vaultId: string): Promise<Response> {
+	return adminRequest(vaultId, "sync-repair");
+}
+
+async function adminRequest(vaultId: string, action: string, reason?: string): Promise<Response> {
 	const origin = process.env.BETTER_AUTH_URL ?? "http://localhost";
-	const url = new URL(`/admin/v1/vaults/${encodeURIComponent(vaultId)}/sync-repair`, origin);
+	const url = new URL(`/admin/v1/vaults/${encodeURIComponent(vaultId)}/${action}`, origin);
 	const request = new Request(url, {
-		method: "POST",
+		method: action === "sync-state" ? "GET" : "POST",
+		body: reason ? JSON.stringify({ reason }) : undefined,
 		headers: {
+			"content-type": "application/json",
 			origin: url.origin,
 			referer: `${url.origin}/`,
 			authorization: `Bearer ${ADMIN_TOKEN}`,
@@ -102,3 +108,47 @@ async function adminRepairRequest(vaultId: string): Promise<Response> {
 		request,
 	).fetch(request);
 }
+
+
+describe("admin sync pause integration", () => {
+	it("closes sockets, rejects existing tokens and new tokens, then resumes without deleting data", async () => {
+		const primary = await signUpAndCreateVault();
+		const token = await issueSyncToken(primary.sessionCookie, primary.vaultId, "pause-device");
+		const blobId = uniqueId("pause-blob");
+		await uploadBlob(primary.vaultId, token.token, blobId, "keep this ciphertext");
+		const headers = { authorization: `Bearer ${token.token}` };
+		const socketUrl = `/v1/vaults/${primary.vaultId}/socket`;
+		const opened = await apiRequest(socketUrl, { headers: { ...headers, upgrade: "websocket" } });
+		expect(opened.status).toBe(101);
+		const socket = opened.webSocket!;
+		socket.accept();
+		const closed = new Promise<CloseEvent>((resolve) => socket.addEventListener("close", resolve, { once: true }));
+
+		const paused = await adminRequest(primary.vaultId, "sync-pause", "excessive requests");
+		expect(paused.status).toBe(200);
+		const pauseState = await paused.json();
+		expect(pauseState).toMatchObject({ syncPause: { reason: "manual: excessive requests" } });
+		const close = await closed;
+		expect(close.code).toBe(1013);
+		expect(close.reason).toBe("sync paused for vault repair");
+		expect(await (await adminRequest(primary.vaultId, "sync-state")).json()).toEqual(pauseState);
+		expect(await (await adminRequest(primary.vaultId, "sync-pause", "retry")).json()).toEqual(pauseState);
+		expect((await adminRepairRequest(primary.vaultId)).status).toBe(409);
+
+		for (const [url, init] of [
+			[socketUrl, { headers: { ...headers, upgrade: "websocket" } }],
+			[`/v1/vaults/${primary.vaultId}/blobs/${blobId}`, { headers }],
+			[`/v1/vaults/${primary.vaultId}/blobs/${uniqueId("blocked")}`, { method: "PUT", headers: { ...headers, "x-blob-size": "1" }, body: "x" }],
+			["/v1/sync/token", { method: "POST", headers: { cookie: primary.sessionCookie, "content-type": "application/json" }, body: JSON.stringify({ vaultId: primary.vaultId, localVaultId: "pause-device" }) }],
+		] as [string, RequestInit][]) {
+			const response = await apiRequest(url, init);
+			expect(response.status).toBe(503);
+			expect(await response.json()).toMatchObject({ error: "sync_paused" });
+		}
+
+		expect(await (await adminRequest(primary.vaultId, "sync-resume")).json()).toEqual({ syncPause: null });
+		const downloaded = await apiRequest(`/v1/vaults/${primary.vaultId}/blobs/${blobId}`, { headers });
+		expect(await downloaded.text()).toBe("keep this ciphertext");
+		await issueSyncToken(primary.sessionCookie, primary.vaultId, "pause-device");
+	});
+});

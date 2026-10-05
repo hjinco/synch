@@ -1,3 +1,4 @@
+import { SharingError } from "../sharing/application/types";
 import { DrizzleSharingStore } from "../sharing/adapters/drizzle-sharing-store";
 import { SharingAccess } from "../sharing/application/access";
 import { CoordinatorSyncAccessService, type VerifiedVaultAccess } from "../sync-coordinator/application/services/sync-access-service";
@@ -109,6 +110,11 @@ export function createCoordinatorApplication(
 			DEFAULT_SYNC_TOKEN_TTL_SECONDS,
 			config.syncTokenTtlSeconds ?? DEFAULT_SYNC_TOKEN_TTL_SECONDS,
 		) * 1000,
+		() => {
+			if (cursorStore.readSyncPause()) {
+				throw new SharingError(503, "sync_paused", "vault sync is temporarily paused for repair");
+			}
+		},
 	);
 	const syncTokenFeature = createSyncTokenFeature({
 		syncTokenSecret: config.syncTokenSecret,
@@ -222,7 +228,7 @@ export function createCoordinatorApplication(
 		healthService,
 		connections,
 		undefined,
-		async (session) => {
+		(session) => {
 			syncAccess.require({
 				userId: session.userId,
 				vaultId: session.vaultId,
