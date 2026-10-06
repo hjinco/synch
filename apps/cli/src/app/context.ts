@@ -25,7 +25,7 @@ import {
   type UserVisibleSyncState,
 } from "@synch/sync-client/engine";
 
-import { CLI_CLIENT_ID, CLI_VERSION, DEFAULT_CONFIG_DIR_NAME } from "../config";
+import { CLI_CLIENT_ID, CLI_VERSION, DEFAULT_CONFIG_DIR_NAME, resolveApiBaseUrl } from "../config";
 import { NodeFsChangeSource } from "../host/change-source";
 import { defaultHttpClient } from "../host/http";
 import { VaultLock } from "../host/lock";
@@ -49,13 +49,14 @@ import {
 export interface CliAppContextOptions {
   /** Resolved absolute path of the vault directory. */
   vaultPath: string;
-  apiBaseUrl: string;
+  apiBaseUrl?: string;
   logger?: Logger;
   credentialsPath?: string;
   configDir?: string;
 }
 
 export class CliAppContext {
+  readonly apiBaseUrl: string;
   readonly logger: Logger;
   readonly credentials: CliCredentialsStore;
   readonly authManager: AuthManager;
@@ -82,9 +83,14 @@ export class CliAppContext {
       options.credentialsPath ?? cliCredentialsPath(),
     );
 
+    this.apiBaseUrl = resolveApiBaseUrl(
+      options.apiBaseUrl,
+      this.credentials.getSessionApiBaseUrl(),
+    );
+
     this.authManager = new AuthManager({
-      sessionTokenStore: this.credentials.createSessionTokenStore(),
-      getApiBaseUrl: () => this.options.apiBaseUrl,
+      sessionTokenStore: this.credentials.createSessionTokenStore(this.apiBaseUrl),
+      getApiBaseUrl: () => this.apiBaseUrl,
       authClient: new AuthClient(defaultHttpClient, CLI_CLIENT_ID),
       refreshUi: () => {},
       getLocale: () => "en",
@@ -98,7 +104,7 @@ export class CliAppContext {
     });
 
     this.remoteVaultManager = new RemoteVaultManager({
-      getApiBaseUrl: () => this.options.apiBaseUrl,
+      getApiBaseUrl: () => this.apiBaseUrl,
       getAuthSessionToken: () => this.authManager.getAuthSessionToken(),
       hasAuthenticatedSession: () => this.authManager.hasAuthenticatedSession(),
       getStoredRemoteVaultId: () =>
@@ -133,7 +139,7 @@ export class CliAppContext {
     });
 
     this.syncTokenManager = new SyncTokenManager({
-      getApiBaseUrl: () => this.options.apiBaseUrl,
+      getApiBaseUrl: () => this.apiBaseUrl,
       getAuthSessionToken: () => this.authManager.getAuthSessionToken(),
       getRemoteVaultId: () => this.remoteVaultManager.getRemoteVaultId(),
       getLocalVaultId: async () => await this.engine.readLocalVaultId(),
@@ -168,7 +174,7 @@ export class CliAppContext {
       changeSource: this.changeSource,
       getConfigDir,
       createWebSocket: (url, protocols) => new WebSocket(url, protocols),
-      getApiBaseUrl: () => this.options.apiBaseUrl,
+      getApiBaseUrl: () => this.apiBaseUrl,
       getSyncToken: async () =>
         await this.syncTokenManager.getTokenForActiveRemoteVault(),
       invalidateSyncToken: () => {
@@ -217,10 +223,6 @@ export class CliAppContext {
     return this.options.vaultPath;
   }
 
-  get apiBaseUrl(): string {
-    return this.options.apiBaseUrl;
-  }
-
   getSyncFileRules(): SyncFileRules {
     return DEFAULT_SYNC_FILE_RULES;
   }
@@ -246,7 +248,15 @@ export class CliAppContext {
 
   async initializeAuth(): Promise<AuthReadiness> {
     await this.authManager.initialize();
-    return this.authManager.getReadiness();
+    const readiness = this.authManager.getReadiness();
+    // Bind legacy tokens only after the server has verified them.
+    if (readiness.state === "verified" && !this.credentials.getSessionApiBaseUrl()) {
+      await this.credentials.setSessionToken(
+        this.authManager.getAuthSessionToken(),
+        this.apiBaseUrl,
+      );
+    }
+    return readiness;
   }
 
   requireVerifiedAuth(): void {

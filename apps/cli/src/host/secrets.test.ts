@@ -49,6 +49,47 @@ describe("CliCredentialsStore", () => {
     expect(reloaded.getVaultCredential("/vaults/b")).toBeNull();
   });
 
+  it("persists the API URL with the login and clears both on logout", async () => {
+    const store = new CliCredentialsStore(credentialsPath);
+    const tokenStore = store.createSessionTokenStore("https://api.example");
+    await tokenStore.write("session-token");
+    const reloaded = new CliCredentialsStore(credentialsPath);
+    expect(reloaded.getSessionApiBaseUrl()).toBe("https://api.example");
+    expect(reloaded.getSessionToken()).toBe("session-token");
+    expect(JSON.parse(fs.readFileSync(credentialsPath, "utf8")).version).toBe(1);
+    await tokenStore.clear();
+    const cleared = new CliCredentialsStore(credentialsPath);
+    expect(cleared.getSessionApiBaseUrl()).toBeUndefined();
+    expect(cleared.getSessionToken()).toBe("");
+  });
+
+  it("does not expose a saved token to another server", async () => {
+    const store = new CliCredentialsStore(credentialsPath);
+    await store.createSessionTokenStore("https://a.example").write("token-a");
+    const other = store.createSessionTokenStore("https://b.example");
+    expect(await other.read()).toBe("");
+    await other.clear();
+    expect(store.getSessionToken()).toBe("token-a");
+    await other.write("token-b");
+    expect(store.getSessionToken()).toBe("token-b");
+    expect(store.getSessionApiBaseUrl()).toBe("https://b.example");
+  });
+
+  it("loads legacy version 1 credentials without an API URL", () => {
+    fs.mkdirSync(path.dirname(credentialsPath), { recursive: true });
+    fs.writeFileSync(credentialsPath, JSON.stringify({
+      version: 1,
+      sessionToken: "legacy-session",
+      vaults: { "/vaults/a": { remoteVaultId: "vault-1", remoteVaultKeyBase64: "AQIDBA==" } },
+    }));
+    const store = new CliCredentialsStore(credentialsPath);
+    expect(store.getSessionToken()).toBe("legacy-session");
+    expect(store.getVaultCredential("/vaults/a")).toEqual({
+      remoteVaultId: "vault-1",
+      secret: { remoteVaultKey: new Uint8Array([1, 2, 3, 4]) },
+    });
+  });
+
   it("clears individual and all vault credentials", async () => {
     const store = new CliCredentialsStore(credentialsPath);
     const key = new Uint8Array([7]);

@@ -11,6 +11,8 @@ export async function runLogout(ctx: CliAppContext): Promise<number> {
     ctx.logger.log(`Server sign-out failed (${describeError(error)}); local session cleared.`);
   }
 
+  // Logout clears the single saved login even when a different server was selected.
+  await ctx.credentials.setSessionToken("");
   ctx.remoteVaultManager.clearSession();
   await ctx.credentials.clearAllVaultCredentials();
   ctx.logger.log("Cleared stored vault keys.");

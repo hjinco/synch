@@ -14,6 +14,7 @@ interface StoredVaultCredential {
 interface CredentialsFile {
   version: 1;
   sessionToken?: string;
+  apiBaseUrl?: string;
   /** Keyed by the vault directory's absolute path. */
   vaults?: Record<string, StoredVaultCredential>;
 }
@@ -35,11 +36,19 @@ export class CliCredentialsStore {
     return this.state.sessionToken ?? "";
   }
 
-  async setSessionToken(token: string): Promise<void> {
+  getSessionApiBaseUrl(): string | undefined {
+    return this.state.apiBaseUrl;
+  }
+
+  async setSessionToken(token: string, apiBaseUrl?: string): Promise<void> {
     if (token) {
       this.state.sessionToken = token;
+      if (apiBaseUrl !== undefined) {
+        this.state.apiBaseUrl = apiBaseUrl;
+      }
     } else {
       delete this.state.sessionToken;
+      delete this.state.apiBaseUrl;
     }
     await this.persist();
   }
@@ -90,14 +99,18 @@ export class CliCredentialsStore {
     await this.persist();
   }
 
-  createSessionTokenStore(): AuthSessionTokenStore {
+  createSessionTokenStore(apiBaseUrl?: string): AuthSessionTokenStore {
+    const matchesServer = () =>
+      !apiBaseUrl || !this.state.apiBaseUrl || this.state.apiBaseUrl === apiBaseUrl;
     return {
-      read: async () => this.getSessionToken(),
+      read: async () => (matchesServer() ? this.getSessionToken() : ""),
       write: async (token) => {
-        await this.setSessionToken(token);
+        await this.setSessionToken(token, apiBaseUrl);
       },
       clear: async () => {
-        await this.setSessionToken("");
+        if (matchesServer()) {
+          await this.setSessionToken("");
+        }
       },
     };
   }

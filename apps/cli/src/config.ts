@@ -4,8 +4,8 @@ export const DEFAULT_CONFIG_DIR_NAME = ".obsidian";
 
 const FALLBACK_API_BASE_URL = "http://127.0.0.1:8787";
 
-export function resolveApiBaseUrl(flagValue?: string): string {
-  const candidates = [flagValue, process.env.SYNCH_API_URL];
+export function resolveApiBaseUrl(flagValue?: string, storedValue?: string): string {
+  const candidates = [flagValue, process.env.SYNCH_API_URL, storedValue];
   for (const candidate of candidates) {
     const normalized = normalizeApiBaseUrl(candidate);
     if (normalized) {

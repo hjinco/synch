@@ -8,7 +8,7 @@ import { runStatus } from "./commands/status";
 import { runSync } from "./commands/sync";
 import { runVaultConnect } from "./commands/vault-connect";
 import { runWatch } from "./commands/watch";
-import { CLI_VERSION, resolveApiBaseUrl } from "./config";
+import { CLI_VERSION } from "./config";
 import { resolveVaultPath } from "./host/paths";
 
 const HELP_TEXT = `synch ${CLI_VERSION} - end-to-end encrypted vault sync
@@ -46,7 +46,7 @@ async function main(argv: string[]): Promise<number> {
 
   const ctx = new CliAppContext({
     vaultPath: resolveVaultPath(values.vault),
-    apiBaseUrl: resolveApiBaseUrl(values["api-url"]),
+    apiBaseUrl: values["api-url"],
   });
 
   try {

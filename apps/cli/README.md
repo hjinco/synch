@@ -23,7 +23,14 @@ mutations. Remote versions replace differing files in the target directory, so
 use it only for read-only replicas or backup staging directories.
 
 Common options: `--vault <path>` (default: current directory) and
-`--api-url <url>` (or the `SYNCH_API_URL` environment variable).
+`--api-url <url>` (or the `SYNCH_API_URL` environment variable). The API URL
+is saved with the session token after a successful login. Subsequent commands
+use `--api-url`, then `SYNCH_API_URL`, then the saved login URL, then the default
+`http://127.0.0.1:8787`, in that order. A token saved for another API URL is not
+sent to an overridden server; log in again to replace the single saved login.
+Existing credentials without an API URL retain the previous resolution behavior;
+the URL is saved after their session is successfully verified. Logout clears
+both the token and its URL.
 
 ## State layout
 
