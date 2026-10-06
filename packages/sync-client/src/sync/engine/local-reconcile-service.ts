@@ -1,3 +1,4 @@
+import { retrySyncStateWork, syncStateCoordinator, syncStateKeys, type SyncStateSnapshot } from "./sync-state-coordinator";
 import {
   type SyncContentRuntime,
   type SyncContentRuntimeDeps,
@@ -50,10 +51,14 @@ export class SyncLocalReconcileService {
     const remoteVaultKey = this.deps.getRemoteVaultKey();
     const metadataCrypto = createSyncCryptoContext(remoteVaultKey);
     try {
-      return await this.reconcileWithMetadataCrypto(
-        store,
-        metadataCrypto,
-      );
+      return await retrySyncStateWork(async () => {
+        const snapshot = syncStateCoordinator(store).watch();
+        try {
+          return await this.reconcileWithMetadataCrypto(store, metadataCrypto, snapshot);
+        } finally {
+          snapshot.dispose();
+        }
+      });
     } finally {
       metadataCrypto.dispose();
     }
@@ -62,6 +67,7 @@ export class SyncLocalReconcileService {
   private async reconcileWithMetadataCrypto(
     store: SyncLocalReconcileStore,
     metadataCrypto: Pick<SyncCryptoContext, "encryptMetadata" | "decryptMetadata">,
+    prepared: SyncStateSnapshot,
   ): Promise<ReconcileOnceResult> {
     const localFiles = await this.deps.scanner.listFiles();
     const localPaths = new Set<string>();
@@ -243,7 +249,17 @@ export class SyncLocalReconcileService {
       filesQueuedForDelete += 1;
     }
 
-    await applyReconcileUpdatesInChunks(store, updates);
+    if (updates.length > 0) {
+      const updatedIds = new Set(updates.map((update) => update.entryId));
+      const affected = snapshot.filter((entry) => updatedIds.has(entry.entryId));
+      await syncStateCoordinator(store).run(syncStateKeys({
+        entryIds: [...updatedIds],
+        paths: [
+          ...affected.flatMap((entry) => [entry.local?.path, entry.remote?.path]),
+          ...updates.map((update) => update.local?.path),
+        ],
+      }), async () => await applyReconcileUpdatesInChunks(store, updates), [prepared]);
+    }
 
     return {
       filesScanned: localFiles.length,

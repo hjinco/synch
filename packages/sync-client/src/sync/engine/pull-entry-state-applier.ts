@@ -1,3 +1,6 @@
+import type { SyncEventRecorderStore } from "./event-recorder";
+import { PullLocalFileSnapshots, PullLocalFilesChangedError } from "./pull-local-file-snapshots";
+import { retrySyncStateWork, syncStateCoordinator, withSyncState, type SyncStateSnapshot, type SyncStateResources } from "./sync-state-coordinator";
 import type { SyncConflictPolicy } from "../core/conflict-policy";
 import { decryptSyncMetadata } from "../core/crypto";
 import type { ContentReservation, SyncContentRuntimeDeps } from "../core/content-runtime";
@@ -19,7 +22,7 @@ import {
 } from "../vault/vault-writer";
 import type { SyncVaultAccess } from "../vault/ports";
 import type { SyncEventGateLike } from "./event-gate";
-import { groupPullApplications } from "./pull-application-groups";
+import { groupPullApplications, pullPlanFilePaths } from "./pull-application-groups";
 import { runPullPreparationPipeline } from "./pull-preparation-pipeline";
 import { PullBlobPreparer } from "./pull-blob-preparer";
 import { PullManifestPlanner, type PullManifestStore } from "./pull-manifest-planner";
@@ -80,7 +83,7 @@ export type { PullConflictEvent, PullEntryStateManifestItem, PullRollbackEvent }
 export interface PullEntryStateVaultAdapter extends SyncVaultAccess {}
 
 export interface PullEntryStateStore
-  extends PullManifestStore,
+  extends PullManifestStore, SyncEventRecorderStore,
     Pick<
       SyncEntryStore,
       "deleteEntry" | "getEntryStateById" | "upsertEntry"
@@ -111,11 +114,13 @@ export class PullEntryStateApplier {
   private readonly blobPreparer: PullBlobPreparer;
   private readonly manifestPlanner: PullManifestPlanner;
   private readonly pendingMutations: PullPendingMutationHandler;
+  private readonly localFiles: PullLocalFileSnapshots;
 
   constructor(private readonly deps: PullEntryStateApplierDeps) {
     this.blobPreparer = new PullBlobPreparer(deps);
     this.manifestPlanner = new PullManifestPlanner(deps);
     this.pendingMutations = new PullPendingMutationHandler(deps);
+    this.localFiles = new PullLocalFileSnapshots(deps);
   }
 
   async createManifestItems(
@@ -198,52 +203,107 @@ export class PullEntryStateApplier {
       };
     }
 
+    const completed = new Set<string>();
+    const totals = { entriesApplied: 0, filesWritten: 0, filesDeleted: 0, conflictsCreated: 0 };
+    const deferred = await retrySyncStateWork(async () => {
+      const snapshot = syncStateCoordinator(store).watch();
+      try {
+        return await this.applyManifestWindowAttempt(store, token, manifest, options, snapshot, completed, totals);
+      } finally {
+        snapshot.dispose();
+      }
+    });
+    return {
+      ...totals,
+      deferred,
+      completedStates: manifest.filter((item) => completed.has(item.state.entryId)).map(({ state }) => ({
+        entryId: state.entryId, revision: state.revision,
+      })),
+    };
+  }
+
+  private async applyManifestWindowAttempt(
+    store: PullEntryStateStore,
+    token: SyncTokenResponse,
+    manifest: PullEntryStateManifestItem[],
+    options: { finalWindow: boolean },
+    snapshot: SyncStateSnapshot,
+    completed: Set<string>,
+    totals: PullEntryStateApplyResult,
+  ): Promise<PullEntryStateManifestItem[]> {
     const { plans, deferred, superseded, skipped } = await this.manifestPlanner.planManifest(
-      store, manifest, { deferExternalPathOwners: !options.finalWindow },
+      store, manifest, { deferExternalPathOwners: !options.finalWindow, appliedEntryIds: completed },
     );
-    await this.applySkippedRemoteStates(store, skipped);
     await this.markAlreadyCurrentVaultWrites(store, plans);
-    const supersededWithPaths = await Promise.all(superseded.map(async (item) => ({
-      item, existingPath: (await store.getEntryById(item.state.entryId))?.path ?? null,
-    })));
-    const groups: Array<{ prepared: PreparedManifestApplication; estimate: number }> = [];
-    for (const group of groupPullApplications(plans, supersededWithPaths)) {
+    const withExistingPaths = async (items: PullEntryStateManifestItem[]) =>
+      await Promise.all(items.map(async (item) => ({
+        item, existingPath: (await store.getEntryById(item.state.entryId))?.path ?? null,
+      })));
+    const [supersededWithPaths, skippedWithPaths] = await Promise.all([
+      withExistingPaths(superseded), withExistingPaths(skipped),
+    ]);
+    const groups: Array<{
+      prepared: PreparedManifestApplication;
+      estimate: number;
+      resources: SyncStateResources;
+      pathsToSnapshot: string[];
+      localFiles: Map<string, string | null>;
+      reservation?: ContentReservation;
+    }> = [];
+    for (const group of groupPullApplications(plans, supersededWithPaths, skippedWithPaths)) {
       let estimate = 0;
-      const localPaths = new Set<string>();
+      const supersededPathsToRemove = await this.findSupersededPathsToRemove(store, group.superseded, plans);
+      const pathsToSnapshot = uniqueSyncPaths([
+        ...group.plans.flatMap(pullPlanFilePaths), ...supersededPathsToRemove,
+      ]);
       for (const plan of group.plans) {
         const size = plan.state.blobSize;
         if (size != null && (!Number.isSafeInteger(size) || size < 0)) {
           throw new Error(`Entry state ${plan.state.entryId} has an invalid blob size.`);
         }
         if (!plan.state.deleted && !plan.skipVaultWrite) estimate += (size ?? 0) * 3;
-        if (plan.existing?.path) localPaths.add(plan.existing.path);
-        if (plan.adoptedLocalEntry?.entry.path) localPaths.add(plan.adoptedLocalEntry.entry.path);
       }
-      for (const path of localPaths) {
+      for (const path of pathsToSnapshot) {
         if (await this.deps.vaultAdapter.exists(path)) {
           estimate += (await this.deps.vaultAdapter.getFileSize(path)) * 8;
         }
       }
       groups.push({
         estimate,
+        resources: group.resources,
+        pathsToSnapshot,
+        localFiles: new Map(),
         prepared: {
           plans: group.plans,
           superseded: group.superseded,
-          supersededPathsToRemove: await this.findSupersededPathsToRemove(store, group.superseded, plans),
+          skipped: group.skipped,
+          supersededPathsToRemove,
           pathsToWrite: uniqueSyncPaths(group.plans.filter((plan) => !plan.skipVaultWrite).map((plan) => plan.finalPath)),
           completedStates: [], deferred: [], pendingConflicts: [], batches: [],
         },
       });
     }
-    let filesDeleted = 0;
     await runPullPreparationPipeline({
       groups,
       concurrency: this.deps.prepareConcurrency ?? DEFAULT_PREPARE_CONCURRENCY,
       runtime: this.deps.contentRuntime,
       estimatedBytes: (group) => group.estimate,
-      prepare: async ({ prepared }, reservation) => {
+      prepare: async (group, reservation) => {
+        const { prepared } = group;
+        group.reservation = reservation;
         try {
+          group.localFiles = await this.localFiles.capture(group.pathsToSnapshot, reservation);
           await this.prepareApplicationGroup(store, token, prepared, reservation);
+          for (const conflict of prepared.pendingConflicts) {
+            const path = conflict.event?.conflictPath;
+            // Conflict copies were allocated only after checking nonexistence.
+            if (path && !group.localFiles.has(path)) group.localFiles.set(path, null);
+          }
+          // Pending deletes can refer to an entry with no visible local path.
+          group.resources.entryIds = [...(group.resources.entryIds ?? []),
+            ...prepared.pendingConflicts.map((conflict) => conflict.pending.entryId)];
+          group.resources.paths = [...(group.resources.paths ?? []),
+            ...prepared.pendingConflicts.flatMap((conflict) => [conflict.event?.originalPath, conflict.event?.conflictPath])];
         } catch (error) {
           for (const plan of prepared.plans) {
             this.deps.onFileSyncFailed?.({
@@ -254,25 +314,34 @@ export class PullEntryStateApplier {
           throw error;
         }
       },
-      apply: async ({ prepared }) => {
-        filesDeleted += await this.applyPreparedManifest(store, prepared);
+      apply: async ({ prepared, resources, localFiles, reservation }) => {
+        try {
+          await withSyncState(store, resources, async () => {
+            const current = await this.localFiles.capture([...localFiles.keys()], reservation!);
+            const changedPaths = [...localFiles].filter(([path, hash]) => current.get(path) !== hash).map(([path]) => path);
+            if (changedPaths.length > 0) throw new PullLocalFilesChangedError(changedPaths);
+            totals.filesDeleted += await this.applyPreparedManifest(store, prepared);
+            totals.entriesApplied += prepared.plans.length + prepared.superseded.length;
+            totals.filesWritten += prepared.pathsToWrite.length;
+            totals.conflictsCreated += prepared.plans.reduce((count, plan) => count +
+              (plan.pathConflict?.conflictPath ? 1 : 0) + (plan.pendingConflict?.conflictPath ? 1 : 0), 0);
+            for (const item of [...prepared.plans, ...prepared.superseded, ...prepared.skipped]) {
+              completed.add(item.state.entryId);
+            }
+          }, snapshot);
+        } catch (error) {
+          if (error instanceof PullLocalFilesChangedError) {
+            await this.localFiles.recordChanges(store, error.paths, reservation!);
+          }
+          throw error;
+        }
       },
       clear: ({ prepared }) => {
         prepared.batches.length = 0;
         prepared.pendingConflicts.length = 0;
       },
     });
-    return {
-      entriesApplied: plans.length + superseded.length,
-      filesWritten: groups.reduce((count, group) => count + group.prepared.pathsToWrite.length, 0),
-      filesDeleted,
-      conflictsCreated: plans.reduce((count, plan) => count +
-        (plan.pathConflict?.conflictPath ? 1 : 0) + (plan.pendingConflict?.conflictPath ? 1 : 0), 0),
-      deferred,
-      completedStates: [...plans, ...superseded, ...skipped].map(({ state }) => ({
-        entryId: state.entryId, revision: state.revision,
-      })),
-    };
+    return deferred;
   }
 
   private async prepareApplicationGroup(
@@ -409,6 +478,7 @@ export class PullEntryStateApplier {
         ],
         async () => {
           let removedTotal = 0;
+          await this.applySkippedRemoteStates(store, prepared.skipped);
           await this.applySupersededRemoteEntries(store, prepared);
           for (const path of prepared.supersededPathsToRemove) {
             if (await removeVaultPathIfExists(this.deps.vaultAdapter, path)) {
@@ -473,6 +543,9 @@ export class PullEntryStateApplier {
         },
       );
 
+      for (const plan of prepared.plans) {
+        if (plan.pathConflict) this.deps.onConflict?.(plan.pathConflict);
+      }
       for (const event of fileEvents) {
         this.deps.onFileSyncCompleted?.(event);
       }
@@ -589,7 +662,7 @@ export class PullEntryStateApplier {
     for (const item of superseded) {
       const existing = await store.getEntryById(item.state.entryId);
       paths.push(
-        existing?.path && !claimedPaths.has(existing.path) ? existing.path : null,
+        existing?.path && !existing.deleted && !claimedPaths.has(existing.path) ? existing.path : null,
       );
     }
     return uniqueSyncPaths(paths);
@@ -627,7 +700,7 @@ export class PullEntryStateApplier {
         entryIds.add(plan.supersededPathOwner.entryId);
       }
     }
-    for (const entry of prepared.superseded) {
+    for (const entry of [...prepared.superseded, ...prepared.skipped]) {
       entryIds.add(entry.state.entryId);
     }
 

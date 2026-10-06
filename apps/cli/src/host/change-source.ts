@@ -170,16 +170,13 @@ export class NodeFsChangeSource implements SyncChangeSource {
         return;
       }
 
-      // TODO: Route this read through recordUpsertFromFile with stat.size so
-      // watcher-triggered CLI reads participate in the shared byte budget.
-      // Reading first can exceed the budget when this overlaps push or
-      // reconciliation work.
-      const bytes = await this.deps.vaultAdapter.readBytes(relativePath);
-      const changed = await context.eventRecorder.recordUpsert(
-        relativePath,
-        bytes,
-        stat,
-      );
+      const changed = context.eventRecorder.recordUpsertFromFile
+        ? await context.eventRecorder.recordUpsertFromFile(
+            relativePath, async () => await this.deps.vaultAdapter.readBytes(relativePath), stat,
+          )
+        : await context.eventRecorder.recordUpsert(
+            relativePath, await this.deps.vaultAdapter.readBytes(relativePath), stat,
+          );
       if (changed) {
         context.onFileQueued?.({ operation: "modify", path: relativePath });
         context.notifyLocalChange();

@@ -62,7 +62,7 @@ export interface PreparedPushMutation {
 }
 
 export interface PushMutationStore
-  extends Pick<SyncEntryStore, "getEntryById">,
+  extends Pick<SyncEntryStore, "getEntryById" | "getEntryByPath">,
     Pick<SyncRemoteEntryStore, "applyRemoteState" | "getRemoteStateById">,
     Pick<SyncLocalEntryStore, "applyLocalState" | "getLocalStateById">,
     Pick<

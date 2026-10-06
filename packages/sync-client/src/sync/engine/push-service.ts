@@ -1,3 +1,4 @@
+import { withSyncState } from "./sync-state-coordinator";
 import { preparePushBatches } from "./push-preparation-pipeline";
 import { SyncWorkProgress } from "./work-progress";
 import type { SyncOperationProgress } from "../runtime/user-visible-status";
@@ -272,9 +273,14 @@ export class SyncPushService {
         }
 
         try {
-          await store.applyAcceptedPushBatch(acceptedPushMutations, {
-            remoteVaultKey,
-          });
+          if (acceptedPushMutations.length > 0) {
+            await withSyncState(store, {
+              entryIds: acceptedPushMutations.map((item) => item.mutation.entryId),
+              paths: acceptedPushMutations.map((item) => item.metadata.path),
+            }, async () => await store.applyAcceptedPushBatch(acceptedPushMutations, {
+              remoteVaultKey,
+            }));
+          }
         } catch (error) {
           for (const accepted of acceptedFiles) {
             this.deps.onFileSyncFailed?.({
@@ -397,14 +403,18 @@ export class SyncPushService {
         continue;
       }
 
-      await store.updateDirtyEntry({
-        ...mutation,
-        status: "pending",
-        blockedReason: null,
-        blockedEncryptedSizeBytes: null,
-        blockedMaxFileSizeBytes: null,
+      await withSyncState(store, { entryIds: [mutation.entryId] }, async () => {
+        const current = await store.getDirtyEntryMutation(mutation.entryId);
+        if (current?.mutationId !== mutation.mutationId || current.baseRevision !== mutation.baseRevision) return;
+        await store.updateDirtyEntry({
+          ...mutation,
+          status: "pending",
+          blockedReason: null,
+          blockedEncryptedSizeBytes: null,
+          blockedMaxFileSizeBytes: null,
+        });
+        unblocked += 1;
       });
-      unblocked += 1;
     }
 
     return unblocked;

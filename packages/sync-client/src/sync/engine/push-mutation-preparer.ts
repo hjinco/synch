@@ -1,3 +1,4 @@
+import { SyncStateChangedError, syncStateCoordinator, withSyncState, type SyncStateSnapshot } from "./sync-state-coordinator";
 import type { SyncedEntryMetadata } from "../core/content";
 import {
   SyncBlobUploadError,
@@ -78,13 +79,14 @@ export class PushMutationPreparer {
     const fileSize = await this.getFileSize(store, mutation, metadata.path);
     const reservation = await this.contentRuntime.reserve(fileSize);
     let retained = false;
+    const snapshot = syncStateCoordinator(store).watch();
     try {
       const hashed = await this.contentRuntime.hashAndReturnBytes(
         await this.deps.fileReader.readBytes(metadata.path),
       );
       const { bytes, hash: actualHash } = hashed;
       if (actualHash !== mutation.hash) {
-        await this.requeueChangedUpsert(store, mutation, metadata.path, actualHash);
+        await this.requeueChangedUpsert(store, mutation, metadata.path, actualHash, snapshot);
         return null;
       }
       const blobId = mutation.blobId;
@@ -156,7 +158,11 @@ export class PushMutationPreparer {
         // consumer after the server has staged them.
         encryptedBytes: retainEncryptedBytes ? encryptedBytes : null,
       };
+    } catch (error) {
+      if (error instanceof SyncStateChangedError) return null;
+      throw error;
     } finally {
+      snapshot.dispose();
       if (!retained) reservation.release();
     }
   }
@@ -188,12 +194,16 @@ export class PushMutationPreparer {
     encryptedSizeBytes: number,
     maxFileSizeBytes: number | null,
   ): Promise<void> {
-    await store.updateDirtyEntry({
-      ...mutation,
-      status: "blocked",
-      blockedReason: "file_too_large",
-      blockedEncryptedSizeBytes: encryptedSizeBytes,
-      blockedMaxFileSizeBytes: maxFileSizeBytes,
+    await withSyncState(store, { entryIds: [mutation.entryId] }, async () => {
+      const current = await store.getDirtyEntryMutation(mutation.entryId);
+      if (current?.mutationId !== mutation.mutationId || current.baseRevision !== mutation.baseRevision) return;
+      await store.updateDirtyEntry({
+        ...mutation,
+        status: "blocked",
+        blockedReason: "file_too_large",
+        blockedEncryptedSizeBytes: encryptedSizeBytes,
+        blockedMaxFileSizeBytes: maxFileSizeBytes,
+      });
     });
   }
 
@@ -201,12 +211,16 @@ export class PushMutationPreparer {
     store: PushMutationStore,
     mutation: PendingMutationRow,
   ): Promise<void> {
-    await store.updateDirtyEntry({
-      ...mutation,
-      status: "blocked",
-      blockedReason: "incompatible_path",
-      blockedEncryptedSizeBytes: null,
-      blockedMaxFileSizeBytes: null,
+    await withSyncState(store, { entryIds: [mutation.entryId] }, async () => {
+      const current = await store.getDirtyEntryMutation(mutation.entryId);
+      if (current?.mutationId !== mutation.mutationId || current.baseRevision !== mutation.baseRevision) return;
+      await store.updateDirtyEntry({
+        ...mutation,
+        status: "blocked",
+        blockedReason: "incompatible_path",
+        blockedEncryptedSizeBytes: null,
+        blockedMaxFileSizeBytes: null,
+      });
     });
   }
 
@@ -215,34 +229,39 @@ export class PushMutationPreparer {
     mutation: PendingMutationRow,
     path: string,
     hash: string,
+    snapshot: SyncStateSnapshot,
   ): Promise<void> {
-    const existing = await store.getEntryById(mutation.entryId);
-    const remote = await store.getRemoteStateById(mutation.entryId);
-    const local = await store.getLocalStateById(mutation.entryId);
-    const queued = await queueLocalUpsertMutation(store, {
-      remoteVaultKey: this.deps.getRemoteVaultKey(),
-      path,
-      entryId: mutation.entryId,
-      base: remote ?? {
-        revision: mutation.baseRevision,
-        deleted: false,
-        blobId: mutation.baseBlobId ?? mutation.blobId,
-        hash: mutation.baseHash ?? mutation.hash,
-      },
-      previousLocal: local ?? existing,
-      hash,
-    });
+    await withSyncState(store, { entryIds: [mutation.entryId], paths: [path] }, async () => {
+      const current = await store.getDirtyEntryMutation(mutation.entryId);
+      if (current?.mutationId !== mutation.mutationId || current.baseRevision !== mutation.baseRevision) return;
+      const existing = await store.getEntryById(mutation.entryId);
+      const remote = await store.getRemoteStateById(mutation.entryId);
+      const local = await store.getLocalStateById(mutation.entryId);
+      const queued = await queueLocalUpsertMutation(store, {
+        remoteVaultKey: this.deps.getRemoteVaultKey(),
+        path,
+        entryId: mutation.entryId,
+        base: remote ?? {
+          revision: mutation.baseRevision,
+          deleted: false,
+          blobId: mutation.baseBlobId ?? mutation.blobId,
+          hash: mutation.baseHash ?? mutation.hash,
+        },
+        previousLocal: local ?? existing,
+        hash,
+      });
 
-    await store.applyLocalState({
-      entryId: queued.entryId,
-      path,
-      blobId: queued.blobId,
-      hash,
-      deleted: false,
-      updatedAt: Date.now(),
-      localMtime: existing?.localMtime ?? null,
-      localSize: existing?.localSize ?? null,
-    });
+      await store.applyLocalState({
+        entryId: queued.entryId,
+        path,
+        blobId: queued.blobId,
+        hash,
+        deleted: false,
+        updatedAt: Date.now(),
+        localMtime: existing?.localMtime ?? null,
+        localSize: existing?.localSize ?? null,
+      });
+    }, snapshot);
   }
 }
 

@@ -93,6 +93,7 @@ export type PreparedManifestApplication = {
   completedStates: Array<{ entryId: string; revision: number }>;
   plans: PlannedEntryState[];
   superseded: PullEntryStateManifestItem[];
+  skipped: PullEntryStateManifestItem[];
   supersededPathsToRemove: string[];
   pathsToWrite: string[];
   pendingConflicts: PreparedPendingConflict[];
@@ -183,14 +184,15 @@ export function pathsToRemoveForPlan(
   if (plan.state.deleted) {
     // Metadata keeps the entry's historical path, which another entry may now
     // own. Only remove a path still associated with the deleted entry itself.
-    return [plan.existing?.path];
+    return [plan.existing?.deleted ? null : plan.existing?.path];
   }
 
   if (plan.vaultMove) {
     return [];
   }
 
-  return plan.existing?.path !== plan.finalPath ? [plan.existing?.path] : [];
+  return !plan.existing?.deleted && plan.existing?.path !== plan.finalPath
+    ? [plan.existing?.path] : [];
 }
 
 export function metadataContextFromRemoteState(state: RemoteEntryState) {

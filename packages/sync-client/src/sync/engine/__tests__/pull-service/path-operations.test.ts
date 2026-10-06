@@ -58,6 +58,12 @@ describe("SyncPullService path operations", () => {
         }));
       }
       const conflicts: PullConflictSummary[] = [];
+      const blobClient = createBlobClient({
+        blobs: {
+          "blob-b": await encryptTestBlob("blob-b", new TextEncoder().encode("content B")),
+        },
+      });
+      const download = vi.spyOn(blobClient, "downloadBlob");
       const service = new SyncPullService({
         contentRuntime: createTestContentRuntime(),
         getSyncToken: async () => createToken(),
@@ -65,11 +71,7 @@ describe("SyncPullService path operations", () => {
         getRemoteVaultKey: () => TEST_VAULT_KEY,
         shouldApplyRemotePath: (path, deleted) => deleted || isPortableVaultPath(path),
         vaultAdapter: adapter,
-        blobClient: createBlobClient({
-          blobs: {
-            "blob-b": await encryptTestBlob("blob-b", new TextEncoder().encode("content B")),
-          },
-        }),
+        blobClient,
         applyWindowSize: paginated ? 1 : undefined,
         onConflict: (event) => conflicts.push(event),
         onProgress: ignoreProgress,
@@ -83,6 +85,9 @@ describe("SyncPullService path operations", () => {
         : [{ cursor: 3, hasMore: false, commits }];
       await service.pullOnce(createRealtimeSession({ pages }));
 
+      // The ignored rename and the accepted write share a local path owner;
+      // applying the ignored state must not make the write download again.
+      expect(download).toHaveBeenCalledTimes(1);
       expect(adapter.text("a.md")).toBe("content A");
       expect(adapter.files.has("bad:name.md")).toBe(false);
       expect(conflicts).toHaveLength(1);
@@ -239,6 +244,85 @@ describe("SyncPullService path operations", () => {
     expect(await store.getLocalStateById("entry-config")).toBeNull();
     await store.close();
   });
+
+  it("skips multiple config entries sharing a path without exhausting retries", async () => {
+    const store = createTestSyncStore();
+    const path = ".obsidian/app.json";
+    const adapter = createVaultAdapter({ [path]: "local config" });
+    const hash = await hashText("remote config");
+    const commits = await Promise.all(Array.from({ length: 4 }, async (_, index) => {
+      const entryId = `config-${index}`;
+      const blobId = `blob-${index}`;
+      return createCommit({
+        cursor: index + 1, entryId, revision: 1, blobId,
+        encryptedMetadata: await encryptRemoteMetadata({
+          entryId, revision: 1, blobId, path, hash,
+        }),
+      });
+    }));
+    const service = new SyncPullService({
+      contentRuntime: createTestContentRuntime(),
+      getSyncToken: async () => createToken(),
+      getSyncStore: () => store,
+      getRemoteVaultKey: () => TEST_VAULT_KEY,
+      shouldApplyRemotePath: () => false,
+      vaultAdapter: adapter,
+      blobClient: createBlobClient({}),
+    });
+
+    await expect(service.pullOnce(createRealtimeSession({
+      pages: [{ cursor: 4, hasMore: false, commits }],
+    }))).resolves.toEqual({
+      cursor: 4, entriesApplied: 0, filesWritten: 0, filesDeleted: 0, conflictsCreated: 0,
+    });
+    expect(await store.getCursor()).toBe(4);
+    expect(await store.listRemoteStates()).toHaveLength(4);
+    expect(await store.listLocalStates()).toEqual([]);
+    expect(adapter.text(path)).toBe("local config");
+    expect(adapter.writes).toEqual([]);
+    await store.close();
+  });
+
+  it.each([false, true])(
+    "preserves a directory at a tombstone's historical path (already known: %s)",
+    async (alreadyKnown) => {
+      const store = createTestSyncStore();
+      const adapter = createVaultAdapter({ "folder/note.md": "local note" });
+      await adapter.mkdir("folder");
+      if (alreadyKnown) {
+        await store.upsertEntry({
+          entryId: "old-file", path: "folder", revision: 2, blobId: null,
+          hash: null, deleted: true, updatedAt: 1,
+        });
+      }
+      const commit = createCommit({
+        cursor: 2, entryId: "old-file", revision: 2, op: "delete", blobId: null,
+        encryptedMetadata: await encryptRemoteMetadata({
+          entryId: "old-file", revision: 2, deleted: true, blobId: null, path: "folder",
+        }),
+      });
+      const service = new SyncPullService({
+        contentRuntime: createTestContentRuntime(),
+        getSyncToken: async () => createToken(),
+        getSyncStore: () => store,
+        getRemoteVaultKey: () => TEST_VAULT_KEY,
+        vaultAdapter: adapter,
+        blobClient: createBlobClient({}),
+      });
+
+      await expect(service.pullOnce(createRealtimeSession({
+        pages: [{ cursor: 2, hasMore: false, commits: [commit] }],
+      }))).resolves.toMatchObject({ cursor: 2, filesWritten: 0, filesDeleted: 0 });
+      expect(await store.getCursor()).toBe(2);
+      expect(await store.getRemoteStateById("old-file")).toMatchObject({
+        revision: 2, deleted: true,
+      });
+      expect(await adapter.exists("folder")).toBe(true);
+      expect(adapter.text("folder/note.md")).toBe("local note");
+      expect(adapter.removes).toEqual([]);
+      await store.close();
+    },
+  );
 
   it("applies a tombstone when live writes for the path are rejected", async () => {
     const store = createTestSyncStore();

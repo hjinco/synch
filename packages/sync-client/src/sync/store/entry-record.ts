@@ -364,6 +364,7 @@ export async function planAcceptedPushApply(
   accepted: AcceptedPushMutationRow,
   remoteVaultKey: Uint8Array,
 ): Promise<AcceptedPushApplyPlan> {
+  if (row.remoteKnown && row.remoteRevision > accepted.acceptedRevision) return { rebase: null };
   const currentPending = toPendingMutationRow(row);
   if (!currentPending || currentPending.mutationId === accepted.mutation.mutationId) {
     return { rebase: null };
@@ -397,6 +398,9 @@ export function applyAcceptedPushToEntry(
   accepted: AcceptedPushMutationRow,
   plan: AcceptedPushApplyPlan,
 ): EntryRecord | "retry" {
+  // A pull can finish while the acknowledgement is in flight. Never roll the
+  // known remote state (or a newer local edit's merge base) back to that ack.
+  if (row.remoteKnown && row.remoteRevision > accepted.acceptedRevision) return row;
   const { mutation, metadata } = accepted;
   let updated: EntryRecord = {
     ...row,

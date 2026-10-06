@@ -1,3 +1,4 @@
+import { withSyncState } from "./sync-state-coordinator";
 import type { SyncedEntryMetadata } from "../core/content";
 import { writeConflictCopy } from "../core/conflict-file";
 import {
@@ -149,23 +150,29 @@ export class PushMutationCommitter {
       mutation.encryptedMetadata,
       metadataContextFromMutation(mutation),
     );
-    const conflictPath =
-      mutation.op === "upsert"
-        ? await this.writeConflictCopy(
-            metadata.path,
-            await this.deps.fileReader.readBytes(metadata.path),
-          )
-        : null;
+    return await withSyncState(store, { entryIds: [mutation.entryId], paths: [metadata.path] }, async () => {
+      const current = await store.getDirtyEntryMutation(mutation.entryId);
+      if (current?.mutationId !== mutation.mutationId || current.baseRevision !== mutation.baseRevision) {
+        return null;
+      }
+      const conflictPath =
+        mutation.op === "upsert"
+          ? await this.writeConflictCopy(
+              metadata.path,
+              await this.deps.fileReader.readBytes(metadata.path),
+            )
+          : null;
 
-    await store.clearDirtyEntryByMutationId(mutation.mutationId);
-    const event = {
-      entryId: mutation.entryId,
-      op: mutation.op,
-      originalPath: metadata.path,
-      conflictPath,
-    };
-    this.deps.onConflict?.(event);
-    return event;
+      await store.clearDirtyEntryByMutationId(mutation.mutationId);
+      const event = {
+        entryId: mutation.entryId,
+        op: mutation.op,
+        originalPath: metadata.path,
+        conflictPath,
+      };
+      this.deps.onConflict?.(event);
+      return event;
+    });
   }
 
   private forgetRemotelyStagedBlobIfMissing(

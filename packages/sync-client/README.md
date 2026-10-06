@@ -56,5 +56,21 @@ borrow a required runtime; standalone service tests supply and dispose one
 explicitly. HTTP blob uploads and downloads share one authorized client,
 which owns API URL resolution and token refresh.
 
+Sync services share one `SyncStateCoordinator` per store instance. Local event
+recording, reconciliation, pull application, config reapplication, and push
+responses serialize changes to overlapping entry IDs and vault paths. Rename
+and path-owner dependencies acquire their keys together. Store transactions
+and accepted-push validation remain responsible for durable atomic updates.
+
+Prepare network payloads and acquire content reservations outside state work.
+Optimistic preparations watch for changes to their resources, then validate
+under the same keys before applying. A stale plan is rebuilt (including merge
+and metadata encryption), with at most three attempts before returning to the
+normal retry policy. Pull also checks local file snapshots, and retains
+completed groups as ownership context so a retry does not apply them twice.
+This coordinates one store instance in one runtime; hosts must still enforce
+exclusive vault ownership across processes. It does not replace server revision
+checks, cross-device conflict resolution, or stale-revision recovery.
+
 System-level performance benchmarks live in `benchmarks/sync` and use real local
 Node/Cloudflare servers. Run `pnpm bench:sync` from the repository root.

@@ -61,24 +61,29 @@ afterEach(() => {
 // Watcher setup and event delivery can be slow when test files run in
 // parallel, so every test here gets a generous timeout.
 describe("NodeFsChangeSource", { timeout: 15_000 }, () => {
-  it("records an upsert with file contents when a file is created", async () => {
+  it("lets the recorder read file contents under its state coordination", async () => {
     const { context, recordUpsert, notifyLocalChange } = createContext();
+    const recordUpsertFromFile = vi.fn(async (_path: string, _read: () => Promise<Uint8Array>) => true);
+    context.eventRecorder.recordUpsertFromFile = recordUpsertFromFile;
     source.start(context);
     await source.whenReady();
 
     fs.writeFileSync(path.join(vaultPath, "note.md"), "hello");
 
     await vi.waitFor(() => {
-      expect(recordUpsert).toHaveBeenCalled();
+      expect(recordUpsertFromFile).toHaveBeenCalled();
     }, { timeout: 10_000 });
-    const [recordedPath, bytes, stat] = recordUpsert.mock.calls[0] as unknown as [
+    const [recordedPath, readBytes, stat] = recordUpsertFromFile.mock.calls[0] as unknown as [
       string,
-      Uint8Array,
+      () => Promise<Uint8Array>,
       { mtime: number; size: number },
     ];
     expect(recordedPath).toBe("note.md");
-    expect(new TextDecoder().decode(bytes)).toBe("hello");
     expect(stat.size).toBe(5);
+    expect(recordUpsert).not.toHaveBeenCalled();
+    // A queued recorder reads the current file, not bytes captured by the watcher.
+    fs.writeFileSync(path.join(vaultPath, "note.md"), "newer");
+    expect(new TextDecoder().decode(await readBytes())).toBe("newer");
     expect(notifyLocalChange).toHaveBeenCalled();
   });
 

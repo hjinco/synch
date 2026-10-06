@@ -18,6 +18,7 @@ import type {
   SyncMutationStore,
   SyncRemoteEntryStore,
 } from "../store/ports";
+import { withSyncState } from "./sync-state-coordinator";
 import { isAutoMergeTextPath } from "./text-merge-policy";
 
 export interface SyncEventRecorderDeps extends SyncContentRuntimeDeps {
@@ -27,7 +28,7 @@ export interface SyncEventRecorderDeps extends SyncContentRuntimeDeps {
 }
 
 export interface SyncEventRecorderStore
-  extends Pick<SyncEntryStore, "deleteEntry" | "getEntryByPath" | "getOrCreateEntryId">,
+  extends Pick<SyncEntryStore, "deleteEntry" | "getEntryById" | "getEntryByPath" | "getOrCreateEntryId">,
     Pick<
       SyncLocalEntryStore,
       "applyLocalState" | "getLocalStateById" | "getLocalStateByPath"
@@ -65,8 +66,10 @@ export class SyncEventRecorder {
       return false;
     }
 
-    const hash = await this.contentRuntime.hash(bytes);
-    return await this.recordUpsertWithHash(path, hash, localStat);
+    return await withSyncState(this.requireStore(), { paths: [path] }, async () => {
+      const hash = await this.contentRuntime.hash(bytes);
+      return await this.recordUpsertWithHash(path, hash, localStat);
+    });
   }
 
   async recordUpsertFromFile(
@@ -78,8 +81,15 @@ export class SyncEventRecorder {
       return false;
     }
 
-    const hash = await this.hashReadBytes(readBytes, localStat?.size ?? 0);
-    return await this.recordUpsertWithHash(path, hash, localStat);
+    // Admit bytes before acquiring state keys: a prepared pull may hold the
+    // byte budget while waiting for these same keys to apply and release it.
+    return await this.contentRuntime.withReservation(localStat?.size ?? 0, async () =>
+      await withSyncState(this.requireStore(), { paths: [path] }, async () => {
+        if (this.isSuppressed(path)) return false;
+        const hash = await this.contentRuntime.hash(await readBytes());
+        return await this.recordUpsertWithHash(path, hash, localStat);
+      }),
+    );
   }
 
   private async recordUpsertWithHash(
@@ -150,8 +160,10 @@ export class SyncEventRecorder {
       return false;
     }
 
-    const hash = await this.contentRuntime.hash(bytes);
-    return await this.recordRenameWithHash(oldPath, nextPath, hash, localStat);
+    return await withSyncState(this.requireStore(), { paths: [oldPath, nextPath] }, async () => {
+      const hash = await this.contentRuntime.hash(bytes);
+      return await this.recordRenameWithHash(oldPath, nextPath, hash, localStat);
+    });
   }
 
   async recordRenameFromFile(
@@ -164,8 +176,13 @@ export class SyncEventRecorder {
       return false;
     }
 
-    const hash = await this.hashReadBytes(readBytes, localStat?.size ?? 0);
-    return await this.recordRenameWithHash(oldPath, nextPath, hash, localStat);
+    return await this.contentRuntime.withReservation(localStat?.size ?? 0, async () =>
+      await withSyncState(this.requireStore(), { paths: [oldPath, nextPath] }, async () => {
+        if (this.isSuppressed(oldPath) || this.isSuppressed(nextPath)) return false;
+        const hash = await this.contentRuntime.hash(await readBytes());
+        return await this.recordRenameWithHash(oldPath, nextPath, hash, localStat);
+      }),
+    );
   }
 
   private async recordRenameWithHash(
@@ -228,6 +245,13 @@ export class SyncEventRecorder {
   }
 
   async recordDelete(path: string): Promise<boolean> {
+    if (this.isSuppressed(path)) return false;
+    return await withSyncState(this.requireStore(), { paths: [path] }, async () =>
+      await this.recordDeleteWithState(path),
+    );
+  }
+
+  private async recordDeleteWithState(path: string): Promise<boolean> {
     if (this.isSuppressed(path)) {
       return false;
     }
@@ -271,13 +295,6 @@ export class SyncEventRecorder {
 
   private isSuppressed(path: string): boolean {
     return this.deps.eventGate?.isSuppressed(path) ?? false;
-  }
-
-  private async hashReadBytes(
-    readBytes: () => Promise<Uint8Array>,
-    size: number,
-  ): Promise<string> {
-    return (await this.contentRuntime.readAndHash(size, readBytes)).hash;
   }
 
   private requireStore(): SyncEventRecorderStore {
