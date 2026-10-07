@@ -1,4 +1,4 @@
-export const MIN_SUPPORTED_OBSIDIAN_PLUGIN_VERSION = "0.0.9";
+export const MIN_SUPPORTED_OBSIDIAN_PLUGIN_VERSION = "0.5.5";
 export const SYNCH_API_MAJOR_VERSION = 1;
 
 export type ObsidianPluginVersionCheckResult =
