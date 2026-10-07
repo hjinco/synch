@@ -53,7 +53,6 @@ export function createNodeCoordinatorRuntime(
 	// `handleAlarm` isn't available until `application` is constructed below,
 	// but the scheduler needs a callback now - same forward-reference-via-
 	// closure pattern the coordinator's own test helpers use for the DO path.
-	let application: ReturnType<typeof createCoordinatorApplication>;
 	const maintenanceScheduler = new NodeMaintenanceScheduler(
 		storageHandle,
 		async () => {
@@ -71,7 +70,7 @@ export function createNodeCoordinatorRuntime(
 			}
 		},
 	);
-	application = createCoordinatorApplication(
+	const application = createCoordinatorApplication(
 		{
 			db: deps.db,
 			storage,

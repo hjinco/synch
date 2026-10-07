@@ -8,7 +8,7 @@ export function mapVaultApplicationError(error: unknown): Response | undefined {
 		return undefined;
 	}
 
-	const vaultError = error as VaultApplicationError;
+	const vaultError = error;
 	const message = vaultErrorMessage(vaultError.code, vaultError.details);
 	const status = vaultErrorStatus(vaultError.code);
 	return new Response(

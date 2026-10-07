@@ -93,8 +93,10 @@ export function createBetterAuth(db: AppDb, config: BetterAuthConfig) {
 		},
 		hooks: {
 			before: createAuthMiddleware(async (ctx) => {
-				if (ctx.path !== "/sign-up/email" || typeof ctx.body?.email !== "string") return;
-				const existing = await ctx.context.internalAdapter.findUserByEmail(ctx.body.email.toLowerCase());
+				if (ctx.path !== "/sign-up/email") return;
+				const body: unknown = ctx.body;
+				if (!body || typeof body !== "object" || !("email" in body) || typeof body.email !== "string") return;
+				const existing = await ctx.context.internalAdapter.findUserByEmail(body.email.toLowerCase());
 				if (existing) {
 					// Return an explicit error even when email verification is required;
 					// Better Auth otherwise responds as if it sent a verification email.

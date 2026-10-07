@@ -80,7 +80,7 @@ export interface PullEntryStateApplyResult {
 
 export type { PullConflictEvent, PullEntryStateManifestItem, PullRollbackEvent };
 
-export interface PullEntryStateVaultAdapter extends SyncVaultAccess {}
+export type PullEntryStateVaultAdapter = SyncVaultAccess;
 
 export interface PullEntryStateStore
   extends PullManifestStore, SyncEventRecorderStore,

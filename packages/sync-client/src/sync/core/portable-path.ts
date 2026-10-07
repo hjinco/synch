@@ -20,6 +20,7 @@ export interface PortablePathViolation {
 }
 
 const WINDOWS_RESERVED_CHARACTERS = /[<>:"\\|?*]/;
+// eslint-disable-next-line no-control-regex -- Reject the control characters forbidden in Windows filenames.
 const WINDOWS_CONTROL_CHARACTERS = /[\u0000-\u001f]/;
 const WINDOWS_TRAILING_SPACE_OR_DOT = /[ .]$/;
 const WINDOWS_DEVICE_NAME =

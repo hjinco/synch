@@ -7,7 +7,7 @@ export function mapBillingApplicationError(error: unknown): Response | undefined
 	if (!(error instanceof BillingApplicationError) && !isBillingErrorLike(error)) {
 		return undefined;
 	}
-	const billingError = error as BillingApplicationError;
+	const billingError = error;
 	return new Response(
 		JSON.stringify({
 			error: billingError.code,

@@ -1,6 +1,6 @@
 import type { IncomingMessage } from "node:http";
 import type { Duplex } from "node:stream";
-import { WebSocketServer, type WebSocket as WsWebSocket } from "ws";
+import { WebSocketServer } from "ws";
 
 import {
 	parseBearerToken,
@@ -87,8 +87,7 @@ export function createNodeWebSocketUpgradeHandler(runtime: NodeRuntime, publicUr
 			return;
 		}
 
-		wss.handleUpgrade(req, socket, head, (rawWs) => {
-			const ws = rawWs as WsWebSocket;
+		wss.handleUpgrade(req, socket, head, (ws) => {
 			const connectionId = coordinator.socketGateway.registerSocket(ws, session);
 
 			ws.on("message", (data, isBinary) => {

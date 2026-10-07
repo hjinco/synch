@@ -1,4 +1,5 @@
 import { serveStatic } from "@hono/node-server/serve-static";
+import type { Context, Env } from "hono";
 import { createClient } from "@libsql/client";
 import { drizzle as drizzleLibsql } from "drizzle-orm/libsql";
 import { migrate as migrateLibsql } from "drizzle-orm/libsql/migrator";
@@ -107,13 +108,13 @@ export async function createNodeRuntime(config: NodeRuntimeConfig) {
 		},
 	);
 
-	const servePublicAsset = serveStatic({
+	const servePublicAsset = serveStatic<Env>({
 		root: PUBLIC_DIR,
 		rewriteRequestPath: rewritePublicAssetPath,
 	});
 	// Fallback only: `GET *` would also match API routes and run if a handler
 	// called `next()`. `notFound` runs only when no route matched.
-	application.app.notFound(async (c) => {
+	application.app.notFound(async (c: Context<Env, string>) => {
 		if (c.req.method === "GET" || c.req.method === "HEAD") {
 			const asset = await servePublicAsset(c, async () => {});
 			if (asset) {

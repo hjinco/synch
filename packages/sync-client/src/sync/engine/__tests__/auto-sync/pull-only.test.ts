@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { createTestSyncStore } from "../../../../test-support/in-memory-sync-store";
 import { SyncAutoLoop } from "../../auto-sync";
+import type { SyncRealtimeCallbacks } from "../../../remote/realtime-client";
 import {
   createPushResult,
   createRealtimeClient,
@@ -116,18 +117,26 @@ describe("SyncAutoLoop pull-only", () => {
     await store.close();
   });
 
-  it("propagates asynchronous session errors and still closes the session", async () => {
+  it.each(["opening", "pulling"])("propagates session errors while %s and still closes the session", async (phase) => {
     const store = createTestSyncStore();
     let sessionClosed = false;
     const sessionError = new Error("session failed");
+    let callbacks: SyncRealtimeCallbacks | undefined;
+    const pullOnce = vi.fn(async () => {
+      callbacks?.onError(sessionError);
+      callbacks?.onError(new Error("later failure"));
+    });
     const autoLoop = new SyncAutoLoop({
       getApiBaseUrl: () => "http://127.0.0.1:8787",
       getSyncToken: async () => createToken(),
       getSyncStore: () => store,
       pushPendingMutations: vi.fn(async () => createPushResult()),
-      pullOnce: vi.fn(async () => {}),
+      pullOnce,
       realtimeClient: createRealtimeClient(
-        (callbacks) => callbacks.onError(sessionError),
+        (openedCallbacks) => {
+          callbacks = openedCallbacks;
+          if (phase === "opening") callbacks.onError(sessionError);
+        },
         (session) => {
           session.close = () => {
             sessionClosed = true;
@@ -136,7 +145,8 @@ describe("SyncAutoLoop pull-only", () => {
       ),
     });
 
-    await expect(autoLoop.pullOnlyOnce()).rejects.toThrow("session failed");
+    await expect(autoLoop.pullOnlyOnce()).rejects.toBe(sessionError);
+    expect(pullOnce).toHaveBeenCalledTimes(phase === "pulling" ? 1 : 0);
     expect(sessionClosed).toBe(true);
     await store.close();
   });

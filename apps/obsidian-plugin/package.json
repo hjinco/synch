@@ -7,8 +7,8 @@
   "scripts": {
     "dev": "node esbuild.config.mjs",
     "build": "tsgo --noEmit --skipLibCheck && node esbuild.config.mjs production",
-    "lint": "eslint .",
-    "lint:fix": "eslint . --fix",
+    "lint": "cd ../.. && eslint apps/obsidian-plugin/src packages/sync-client/src packages/vault-crypto/src --max-warnings=0",
+    "lint:fix": "pnpm run lint --fix",
     "bump:version": "node scripts/bump-release-version.mjs",
     "release-notes:prepare": "node scripts/prepare-release-notes.mjs",
     "release-notes:reset": "node scripts/reset-release-notes.mjs",

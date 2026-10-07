@@ -47,10 +47,11 @@ export class TransferScheduler {
             lane.window.duration += this.now() - start;
           }
           resolve(result.value);
-        }, error => {
+        }, (error: unknown) => {
           if (isCongestionError(error)) lane.policy.congested(this.now());
           else lane.policy.idle();
           lane.window = undefined;
+          // eslint-disable-next-line @typescript-eslint/prefer-promise-reject-errors -- Forward the original failure, including status/code used by the caller's retry policy.
           reject(error);
         }).finally(() => {
           lane.active -= 1;

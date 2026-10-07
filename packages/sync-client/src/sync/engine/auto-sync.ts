@@ -205,6 +205,11 @@ export class SyncAutoLoop {
     const token = await this.deps.getSyncToken();
     const cursor = await store.getCursor();
     let sessionError: Error | null = null;
+    const throwIfSessionFailed = () => {
+      if (sessionError) {
+        throw sessionError;
+      }
+    };
     const session = await this.realtimeClient.openSession(
       this.deps.getApiBaseUrl(),
       token,
@@ -230,13 +235,9 @@ export class SyncAutoLoop {
           "This device's sync history no longer matches the remote vault. Move .synch/sync.sqlite aside, then run `synch vault connect --vault-id <id>` to rebuild this read-only replica's sync state.",
         );
       }
-      if (sessionError) {
-        throw sessionError;
-      }
+      throwIfSessionFailed();
       await this.deps.pullOnce(session);
-      if (sessionError) {
-        throw sessionError;
-      }
+      throwIfSessionFailed();
     } finally {
       session.close();
     }

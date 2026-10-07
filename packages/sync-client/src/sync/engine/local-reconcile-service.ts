@@ -128,7 +128,7 @@ export class SyncLocalReconcileService {
       async (input) => {
         const { hash } = await this.contentRuntime.readAndHash(
           input.file.size,
-          input.file.readBytes,
+          () => input.file.readBytes(),
         );
         return {
           ...input,

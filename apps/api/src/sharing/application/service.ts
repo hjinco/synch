@@ -45,7 +45,7 @@ export class SharingService {
 	) {
 		const member = await this.store.membership(organizationId, userId);
 		if (!member || (manage && !isManager(member.role))) forbidden();
-		return member!;
+		return member;
 	}
 	async requireVault(
 		userId: string,
@@ -185,7 +185,7 @@ export class SharingService {
 					from: this.config.emailFrom,
 					to: email,
 					subject: "Invitation to a Synch organization",
-					text: `Sign in with this email address to review your Synch invitation:\n\n${url}\n\nYour vault password and encryption keys are never included in invitations.`,
+					text: `Sign in with this email address to review your Synch invitation:\n\n${url.toString()}\n\nYour vault password and encryption keys are never included in invitations.`,
 				});
 				emailSent = true;
 			} catch {
@@ -229,7 +229,7 @@ export class SharingService {
 				"verify_email",
 				"Verify your email before opening an invitation",
 			);
-		return invite!;
+		return invite;
 	}
 	async invitation(actor: SharingActor, id: string) {
 		const invite = await this.recipient(actor, id);
@@ -299,7 +299,7 @@ export class SharingService {
 			if (!role) return { pending: !(await this.flushRefreshes()) };
 			forbidden();
 		}
-		if (target!.role === "owner")
+		if (target.role === "owner")
 			throw new SharingError(
 				409,
 				"owner_protected",
@@ -312,7 +312,7 @@ export class SharingService {
 			if (
 				userId !== targetId &&
 				(!isManager(actor.role) ||
-					(target!.role === "admin" && actor.role !== "owner"))
+					(target.role === "admin" && actor.role !== "owner"))
 			)
 				forbidden();
 			await this.store.removeOrganizationMember(organizationId, targetId);
@@ -342,7 +342,7 @@ export class SharingService {
 			(request.userId !== userId && (grant.status !== "active" || !isManager(member.role)))
 		)
 			forbidden();
-		return request!;
+		return request;
 	}
 	async startKeyRequest(
 		userId: string,
@@ -392,7 +392,7 @@ export class SharingService {
 		const request = await this.store.keyRequest(id);
 		if (!request || request.vaultId !== vaultId || request.userId === userId)
 			forbidden();
-		await this.requireVault(request!.userId, vaultId, false, true);
+		await this.requireVault(request.userId, vaultId, false, true);
 		if (
 			!(await this.store.approveKeyRequest(
 				id,
@@ -418,7 +418,7 @@ export class SharingService {
 		const request = await this.store.keyRequest(id);
 		if (!request || request.userId !== userId || request.vaultId !== vaultId)
 			forbidden();
-		if (request!.status === "completed") {
+		if (request.status === "completed") {
 			if (
 				JSON.stringify(await this.store.passwordWrapper(vaultId, userId)) !==
 				JSON.stringify(envelope)
@@ -441,7 +441,7 @@ export class SharingService {
 				"invalid_wrapper",
 				"Password wrapper does not match this vault and user",
 			);
-		if (!(await this.store.completeKeyRequest(request!, envelope)))
+		if (!(await this.store.completeKeyRequest(request, envelope)))
 			throw new SharingError(
 				409,
 				"request_changed",

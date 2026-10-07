@@ -82,6 +82,7 @@ export function AuthPage({
     const body = Object.fromEntries(
       new FormData(event.currentTarget).entries(),
     );
+    const email = typeof body.email === "string" ? body.email : "";
     setBusy(true);
     setStatus({ message: t(signup ? "creatingAccount" : "loggingIn") });
     try {
@@ -95,7 +96,7 @@ export function AuthPage({
         },
       );
       if (signup && result?.token === null) {
-        verify(String(body.email));
+        verify(email);
         return;
       }
       setStatus({
@@ -109,7 +110,7 @@ export function AuthPage({
           (error.code === "EMAIL_NOT_VERIFIED" ||
             /verify|verified/i.test(error.message))
         )
-          verify(String(body.email));
+          verify(email);
         else
           setStatus({
             message:
@@ -180,7 +181,7 @@ export function AuthPage({
       <form
         id={signup ? "sign-up-form" : "sign-in-form"}
         className="form"
-        onSubmit={submit}
+        onSubmit={(event) => { void submit(event); }}
       >
         {socialProviders.filter(({ id }) => enabledProviders[id]).map(({ id, label }) => (
           <button

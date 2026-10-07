@@ -119,7 +119,7 @@ export class BytesInFlightBudget implements BytesInFlightBudgetLike {
 
     // FIFO admission prevents a stream of small files starving an oversized file.
     while (this.waiting.length > 0) {
-      if (!this.canAcquire(this.waiting[0]!.bytes)) return;
+      if (!this.canAcquire(this.waiting[0].bytes)) return;
       const reservation = this.waiting.shift();
       if (!reservation) {
         return;

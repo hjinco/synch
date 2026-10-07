@@ -14,6 +14,37 @@ import {
 } from "./helpers";
 
 describe("SyncLocalReconcileService queueing", () => {
+  it("preserves the file receiver when reading bytes for hashing", async () => {
+    const store = createTestSyncStore();
+    const bytes = encodeUtf8("body from a stateful file adapter");
+    const file = {
+      path: "Notes/stateful.md",
+      mtime: 10,
+      size: bytes.byteLength,
+      bytes,
+      async readBytes() {
+        return this.bytes;
+      },
+    };
+    const service = new SyncLocalReconcileService({
+      contentRuntime: createTestContentRuntime(),
+      getSyncStore: () => store,
+      getRemoteVaultKey: () => TEST_VAULT_KEY,
+      shouldSyncPath: () => true,
+      scanner: { async listFiles() { return [file]; } },
+    });
+
+    await expect(service.reconcileOnce()).resolves.toMatchObject({
+      filesQueuedForUpsert: 1,
+    });
+    const pending = await store.listDirtyEntries();
+    await expect(decryptPendingMetadata(pending[0])).resolves.toEqual({
+      path: file.path,
+      hash: await hashBytes(bytes),
+    });
+    await store.close();
+  });
+
   it("queues new files and server-backed deletes from a local snapshot", async () => {
     const store = createTestSyncStore();
     await store.upsertEntry({

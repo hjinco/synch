@@ -1,3 +1,5 @@
+import { createInterface } from "node:readline";
+
 export async function promptHidden(question: string): Promise<string> {
   const stdin = process.stdin;
   const stderr = process.stderr;
@@ -44,14 +46,13 @@ export async function promptHidden(question: string): Promise<string> {
 }
 
 async function readStdinLine(): Promise<string> {
-  let data = "";
-  for await (const chunk of process.stdin) {
-    data += chunk.toString("utf8");
-    const newlineIndex = data.indexOf("\n");
-    if (newlineIndex >= 0) {
-      return data.slice(0, newlineIndex).replace(/\r$/, "");
+  const lines = createInterface({ input: process.stdin, crlfDelay: Infinity });
+  try {
+    for await (const line of lines) {
+      return line;
     }
+    return "";
+  } finally {
+    lines.close();
   }
-
-  return data.replace(/\r$/, "");
 }

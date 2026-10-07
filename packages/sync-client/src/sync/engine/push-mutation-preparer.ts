@@ -149,7 +149,7 @@ export class PushMutationPreparer {
 
       retained = true;
       return {
-        release: reservation.release,
+        release: () => reservation.release(),
         commitPayload: toCommitPayload(mutation),
         metadata,
         localHash: mutation.hash,

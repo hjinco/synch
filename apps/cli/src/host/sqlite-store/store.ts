@@ -3,7 +3,6 @@ import path from "node:path";
 import { DatabaseSync, type StatementSync } from "node:sqlite";
 
 import {
-  type AcceptedPushApplyPlan,
   type BlobRecord,
   type EntryRecord,
   applyAcceptedPushToEntry,

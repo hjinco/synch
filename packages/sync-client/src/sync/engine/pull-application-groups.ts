@@ -38,8 +38,8 @@ export function groupPullApplications(
   ];
   const parent = nodes.map((_, index) => index);
   const root = (index: number): number => {
-    if (parent[index] !== index) parent[index] = root(parent[index]!);
-    return parent[index]!;
+    if (parent[index] !== index) parent[index] = root(parent[index]);
+    return parent[index];
   };
   const owners = new Map<string, number>();
   nodes.forEach((node, index) => {

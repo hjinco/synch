@@ -9,6 +9,7 @@ on:
       - "pnpm-lock.yaml"
       - "pnpm-workspace.yaml"
       - "tsconfig.base.json"
+      - "eslint.config.mjs"
       - ".github/workflows/obsidian-plugin-ci.yml"
       - ".github/actions/detect-affected/action.yml"
   push:
@@ -21,6 +22,7 @@ on:
       - "pnpm-lock.yaml"
       - "pnpm-workspace.yaml"
       - "tsconfig.base.json"
+      - "eslint.config.mjs"
       - ".github/workflows/obsidian-plugin-ci.yml"
       - ".github/actions/detect-affected/action.yml"
 
@@ -45,7 +47,7 @@ jobs:
         uses: ./.github/actions/detect-affected
         with:
           package-dir: apps/obsidian-plugin
-          full-run-paths: .github/workflows/obsidian-plugin-ci.yml .github/actions/detect-affected/action.yml
+          full-run-paths: eslint.config.mjs .github/workflows/obsidian-plugin-ci.yml .github/actions/detect-affected/action.yml
 
   obsidian-plugin:
     needs: detect
@@ -72,6 +74,8 @@ jobs:
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
+
+      - run: pnpm -C apps/obsidian-plugin lint
 
       - name: Typecheck affected packages
         run: pnpm -r --if-present $SINCE_FILTER --filter '!@synch/api' --filter '!@synch/cli' run typecheck

@@ -68,7 +68,6 @@ import {
   listBlockedSyncFiles,
   listFileSizeBlockedFiles,
   type SyncBlockedSyncFile,
-  type SyncFileSizeBlockedFile,
 } from "../engine/file-size-blocked";
 import {
   SyncActivityTracker,
@@ -668,7 +667,7 @@ export class SyncEngine {
   }
 
   /** @deprecated Use `listBlockedSyncFiles`. */
-  async listFileSizeBlockedFiles(): Promise<SyncFileSizeBlockedFile[]> {
+  async listFileSizeBlockedFiles(): Promise<SyncBlockedSyncFile[]> {
     const store = this.syncStore;
     if (!store) {
       return [];

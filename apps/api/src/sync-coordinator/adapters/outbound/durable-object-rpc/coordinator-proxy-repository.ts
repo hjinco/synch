@@ -111,9 +111,9 @@ export class CoordinatorProxyRepository {
 			);
 		}
 
-		const body = (await response.json()) as {
+		const body = await response.json<{
 			syncPause: SyncPauseState | null;
-		};
+		}>();
 		return body.syncPause;
 	}
 
@@ -131,7 +131,7 @@ export class CoordinatorProxyRepository {
 			);
 		}
 
-		return (await response.json()) as SyncRepairResult;
+		return await response.json<SyncRepairResult>();
 	}
 
 	async stageBlob(

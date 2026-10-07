@@ -48,7 +48,7 @@ export async function runPullPreparationPipeline<T>(options: {
   try {
     while (next < options.groups.length || pending.length > 0) {
       while (!stopped && next < options.groups.length && pending.length < concurrency) {
-        pending.push(start(options.groups[next++]!));
+        pending.push(start(options.groups[next++]));
       }
       const prepared = await pending.shift();
       if (!prepared) throw failure;

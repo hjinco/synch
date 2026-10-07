@@ -43,7 +43,6 @@ import {
   type SyncDeletedEntriesPurgeResult,
   type SyncEngineEntryVersionsPage,
   type SyncBlockedSyncFile,
-  type SyncFileSizeBlockedFile,
   type SyncEntryVersionPreview,
   getUserVisibleSyncDisplayPercent,
   type UserVisibleSyncProgress,
@@ -498,7 +497,7 @@ export class SyncController {
   }
 
   /** @deprecated Use `listBlockedSyncFiles`. */
-  async listFileSizeBlockedFiles(): Promise<SyncFileSizeBlockedFile[]> {
+  async listFileSizeBlockedFiles(): Promise<SyncBlockedSyncFile[]> {
     return await this.listBlockedSyncFiles();
   }
 

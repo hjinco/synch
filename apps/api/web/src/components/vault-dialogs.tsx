@@ -88,7 +88,7 @@ export function CreateVaultDialog({
       busy={busy}
       onClose={onClose}
     >
-      <form onSubmit={submit}>
+      <form onSubmit={(event) => { void submit(event); }}>
         <div className="dialog-body">
           <h2 className="dialog-title">{t("createTitle")}</h2>
           <p className="dialog-intro">{t("createIntro")}</p>
@@ -208,7 +208,7 @@ export function DeleteVaultDialog({
       busy={busy}
       onClose={onClose}
     >
-      <form onSubmit={submit}>
+      <form onSubmit={(event) => { void submit(event); }}>
         <div className="dialog-body">
           <h2 className="dialog-title">{t("deleteTitle")}</h2>
           <p className="dialog-intro">

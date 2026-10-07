@@ -1,6 +1,5 @@
 import { logServerError } from "../../../errors";
 import type {
-	PaidSubscriptionPlanId,
 	SubscriptionAccessReader,
 	SubscriptionBillingInterval,
 	SubscriptionPlanId,
@@ -70,7 +69,7 @@ export class BillingApplicationService implements BillingServicePort {
 			throw new BillingApplicationError("plan_not_available");
 		}
 
-		const planId = input.planId as PaidSubscriptionPlanId;
+		const planId = input.planId;
 		const productId =
 			this.config.productIdsByPlanId?.[planId]?.[billingInterval];
 		if (!productId) {
@@ -121,7 +120,7 @@ export class BillingApplicationService implements BillingServicePort {
 			throw new BillingApplicationError("plan_not_available");
 		}
 
-		const planId = input.planId as PaidSubscriptionPlanId;
+		const planId = input.planId;
 		const productId =
 			this.config.productIdsByPlanId?.[planId]?.[input.billingInterval];
 		if (!productId) {

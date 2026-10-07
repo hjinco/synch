@@ -7,7 +7,7 @@ import { vaultKeyEnvelopeSchema } from "../../vault/application/dto/vault-key-en
 import type { SharingService } from "../application/service";
 import { SharingError } from "../application/types";
 
-const id = z.string().uuid();
+const id = z.uuid();
 const role = z.enum(["admin", "member"]);
 const envelope = z
 	.object({
@@ -32,7 +32,7 @@ export function registerSharingRoutes(
 	const api = new Hono<{
 		Variables: { user: import("../../auth/session").AuthenticatedUser };
 	}>();
-	api.use("*", async (c, next) => {
+	api.use(async (c, next) => {
 		if (sharingPath(c.req.path)) return signedIn(c, next);
 		await next();
 	});
@@ -91,7 +91,7 @@ export function registerSharingRoutes(
 			"json",
 			z
 				.object({
-					email: z.string().email(),
+					email: z.email(),
 					role: role.default("member"),
 					vaults: z
 						.array(z.object({ vaultId: id }).strict())

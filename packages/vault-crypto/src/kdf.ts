@@ -1,3 +1,4 @@
+// eslint-disable-next-line @typescript-eslint/triple-slash-reference -- Include the ambient UMD declaration for consumers that compile this source through workspace exports.
 /// <reference path="./hash-wasm-argon2.d.ts" />
 
 import type { RemoteVaultKeyDerivationMetadata } from "./types";

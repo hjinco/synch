@@ -33,7 +33,7 @@ export class CoordinatorSyncPauseReader implements SyncPauseReader, SyncPauseRes
 			throw new Error(`failed to read sync state for vault ${vaultId}: ${response.status}`);
 		}
 
-		const body = (await response.json()) as { syncPause: SyncPauseState | null };
+		const body = await response.json<{ syncPause: SyncPauseState | null }>();
 		return body.syncPause;
 	}
 }

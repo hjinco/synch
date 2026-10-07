@@ -49,7 +49,6 @@ import type {
   SynchDeletedFilesRestoreResult,
   SynchEntryVersionCursor,
   SynchBlockedSyncFile,
-  SynchFileSizeBlockedFile,
   SynchCommunityPluginUpdateStatus,
   SynchServerCompatibilityStatus,
   SynchStorageDisplayState,
@@ -782,7 +781,7 @@ export class SynchPluginController implements SynchSettingsController {
   }
 
   /** @deprecated Use `listBlockedSyncFiles`. */
-  async listFileSizeBlockedFiles(): Promise<SynchFileSizeBlockedFile[]> {
+  async listFileSizeBlockedFiles(): Promise<SynchBlockedSyncFile[]> {
     return await this.listBlockedSyncFiles();
   }
 

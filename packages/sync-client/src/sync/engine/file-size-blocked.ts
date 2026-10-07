@@ -4,16 +4,15 @@ import { metadataContextFromMutation } from "./push-mutation-shared";
 import type { SyncStore } from "../store/store";
 import type { PendingMutationBlockedReason } from "../store/store";
 
-/** @deprecated Use `SyncBlockedSyncFile`. */
-export interface SyncFileSizeBlockedFile {
+export interface SyncBlockedSyncFile {
   path: string;
   encryptedSizeBytes: number | null;
   maxFileSizeBytes: number | null;
-}
-
-export interface SyncBlockedSyncFile extends SyncFileSizeBlockedFile {
   reason: PendingMutationBlockedReason;
 }
+
+/** @deprecated Use `SyncBlockedSyncFile`. */
+export type SyncFileSizeBlockedFile = Omit<SyncBlockedSyncFile, "reason">;
 
 export async function listBlockedSyncFiles(
   store: SyncStore,
@@ -63,7 +62,7 @@ export async function listBlockedSyncFiles(
 export async function listFileSizeBlockedFiles(
   store: SyncStore,
   remoteVaultKey: Uint8Array,
-): Promise<SyncFileSizeBlockedFile[]> {
+): Promise<SyncBlockedSyncFile[]> {
   return (await listBlockedSyncFiles(store, remoteVaultKey)).filter(
     (file) => file.reason === "file_too_large",
   );

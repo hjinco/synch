@@ -32,11 +32,13 @@ export async function createKeyTransferReceiver(): Promise<{
   return {
     publicKey: encodeBase64(
       new Uint8Array(
+        // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion -- Cloudflare's exportKey type also includes JsonWebKey for binary formats.
         (await crypto.subtle.exportKey("spki", keys.publicKey)) as ArrayBuffer,
       ),
     ),
     privateKey: encodeBase64(
       new Uint8Array(
+        // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion -- Cloudflare's exportKey type also includes JsonWebKey for binary formats.
         (await crypto.subtle.exportKey(
           "pkcs8",
           keys.privateKey,
