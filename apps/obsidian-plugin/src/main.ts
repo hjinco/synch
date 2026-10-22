@@ -11,6 +11,10 @@ import {
   SYNCH_VERSION_HISTORY_VIEW_TYPE,
   SynchVersionHistoryView,
 } from "./ui/version-history/version-history-view";
+import {
+  SYNCH_CONFLICT_VIEW_TYPE,
+  SynchConflictView,
+} from "./ui/conflicts/conflict-view";
 import { SynchSettingTab } from "./ui/settings/settings-tab";
 
 const QUIT_IN_FLIGHT_SYNC_GRACE_MS = 3_000;
@@ -34,6 +38,14 @@ export default class SynchPlugin extends Plugin {
       },
     });
     this.controller = controller;
+
+    // View types are app registrations and belong in the synchronous part of
+    // `onload`, before the first `await`, so a leaf restored from the saved
+    // workspace can resolve its view without waiting on `initialize()`.
+    this.registerView(
+      SYNCH_CONFLICT_VIEW_TYPE,
+      (leaf) => new SynchConflictView(leaf, controller),
+    );
 
     await controller.initialize();
 
@@ -72,6 +84,7 @@ export default class SynchPlugin extends Plugin {
 
     this.app.workspace.onLayoutReady(() => {
       controller.registerVaultEvents();
+      this.registerConflictViewEvents(controller);
       void controller.ensureAutoSyncState();
       void controller.ensureVersionHistoryPane();
       void this.fileSizeBlockedDecorator?.refresh();
@@ -112,6 +125,24 @@ export default class SynchPlugin extends Plugin {
         controller.refreshVersionHistoryViews();
       }),
     );
+  }
+
+  /**
+   * Conflicts are discovered by looking at the vault, so the list has to follow
+   * vault changes rather than sync events: a conflict copy can appear (or be
+   * resolved) while the pane is open.
+   *
+   * Called from `onLayoutReady` because Obsidian fires `create` for every file
+   * while it builds the vault index at startup; listening earlier would rescan
+   * the vault once per file.
+   */
+  private registerConflictViewEvents(controller: SynchPluginController): void {
+    const refresh = () => {
+      controller.refreshConflictViews();
+    };
+    this.registerEvent(this.app.vault.on("create", refresh));
+    this.registerEvent(this.app.vault.on("delete", refresh));
+    this.registerEvent(this.app.vault.on("rename", refresh));
   }
 
   private refreshUi(): void {

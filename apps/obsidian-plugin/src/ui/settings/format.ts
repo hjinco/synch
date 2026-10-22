@@ -71,7 +71,7 @@ export function formatDeletedFileTimestamp(value: number): string {
   return new Date(value).toLocaleString();
 }
 
-function formatBytes(bytes: number): string {
+export function formatBytes(bytes: number): string {
   const safeBytes = Math.max(0, bytes);
   const units = ["B", "KB", "MB", "GB", "TB"];
   let value = safeBytes;
