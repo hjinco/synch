@@ -195,3 +195,26 @@ export type SynchVersionPreview =
       capturedAt: number | null;
       message: string;
     };
+
+/**
+ * One `.sync-conflict-<timestamp>` copy found in the vault, paired with the file
+ * it was made from.
+ *
+ * The copy is the conflict record: it holds the content sync could not merge.
+ * `originalPath` is derived from the copy's name and may point at a file that no
+ * longer exists, so the UI must handle a missing original.
+ */
+export interface SynchConflictFile {
+  /** Vault path of the `.sync-conflict-*` copy. */
+  copyPath: string;
+  /** Vault path the copy was made from, recovered from the copy's name. */
+  originalPath: string;
+  /** Copy file size in bytes, for showing which side is larger. */
+  copySize: number;
+  /** Original file size in bytes, or null when the original is missing. */
+  originalSize: number | null;
+  /** True when the original still exists in the vault. */
+  originalExists: boolean;
+  /** Last-modified time of the copy, used as the detection time. */
+  modifiedAt: number;
+}

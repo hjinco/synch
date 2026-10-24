@@ -939,3 +939,171 @@ button.mod-cta.synch-button-loading > .synch-button-spinner {
   width: 14px;
   height: 14px;
 }
+
+/* Conflict copies left in the vault, and the actions that settle each one.
+   The diff body reuses the .synch-preview-diff* rules from version preview so
+   the two comparison views read the same. */
+.synch-conflict-view {
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-4-2);
+  padding: var(--size-4-3);
+}
+
+.synch-conflict-header {
+  align-items: center;
+  display: flex;
+  gap: var(--size-4-2);
+  justify-content: space-between;
+}
+
+.synch-conflict-title {
+  align-items: center;
+  display: flex;
+  font-size: var(--font-ui-medium);
+  font-weight: var(--font-semibold);
+  gap: var(--size-4-2);
+  min-width: 0;
+}
+
+.synch-conflict-count {
+  background: var(--background-modifier-hover);
+  border-radius: var(--radius-l);
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  font-weight: var(--font-normal);
+  line-height: 1.6;
+  padding: 0 var(--size-4-2);
+}
+
+.synch-conflict-refresh.is-disabled {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.synch-conflict-muted {
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+  margin: 0;
+}
+
+.synch-conflict-error {
+  color: var(--text-error);
+  font-size: var(--font-ui-small);
+  margin: 0;
+}
+
+.synch-conflict-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.synch-conflict-row {
+  border-top: 1px solid var(--background-modifier-border);
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-2-2);
+  padding: var(--size-4-3) 0;
+}
+
+.synch-conflict-row-top {
+  align-items: center;
+  display: flex;
+  gap: var(--size-4-1);
+  min-width: 0;
+}
+
+.synch-conflict-row-name {
+  color: var(--text-normal);
+  cursor: pointer;
+  flex: 1 1 auto;
+  font-size: var(--font-ui-small);
+  font-weight: var(--font-medium);
+  line-height: 1.4;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.synch-conflict-row-name:hover {
+  color: var(--text-accent);
+  text-decoration: underline;
+}
+
+.synch-conflict-row.is-missing-original .synch-conflict-row-name {
+  color: var(--text-muted);
+}
+
+/* Dismiss only hides the row for this session, so keep it quiet until hover. */
+.synch-conflict-dismiss {
+  flex: none;
+  opacity: 0;
+}
+
+.synch-conflict-row:hover .synch-conflict-dismiss,
+.synch-conflict-dismiss:focus-visible {
+  opacity: 1;
+}
+
+.synch-conflict-row-meta {
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.synch-conflict-row-warning {
+  color: var(--text-warning);
+  font-size: var(--font-ui-smaller);
+  line-height: 1.4;
+}
+
+.synch-conflict-row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--size-4-1);
+  margin-top: var(--size-2-2);
+}
+
+.synch-conflict-row-actions button.synch-conflict-action {
+  font-size: var(--font-ui-smaller);
+  height: auto;
+  min-height: 0;
+  padding: var(--size-2-2) var(--size-4-2);
+  white-space: nowrap;
+}
+
+/* Touch targets on mobile need the regular control height. */
+.is-mobile .synch-conflict-row-actions button.synch-conflict-action {
+  font-size: var(--font-ui-small);
+  padding: var(--size-4-1) var(--size-4-3);
+}
+
+.synch-conflict-modal-hint {
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+  margin-bottom: var(--size-4-2);
+}
+
+.synch-conflict-modal-warning {
+  color: var(--text-warning);
+}
+
+.synch-conflict-image-compare {
+  display: grid;
+  gap: var(--size-4-3);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.synch-conflict-image-side {
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-4-1);
+  min-width: 0;
+}
+
+.synch-conflict-image-side > span {
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+}
