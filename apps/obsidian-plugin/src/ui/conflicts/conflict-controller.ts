@@ -9,6 +9,7 @@ import {
 import {
   SYNCH_CONFLICT_VIEW_TYPE,
   SynchConflictView,
+  type ConflictPreview,
   type ConflictViewController,
 } from "./conflict-view";
 
@@ -115,7 +116,7 @@ export class SynchConflictController implements ConflictViewController {
    */
   async previewConflict(
     copyPath: string,
-  ): Promise<{ original: string; copy: string; merged: string | null } | null> {
+  ): Promise<ConflictPreview | null> {
     const originalPath = await this.originalPathFor(copyPath);
     if (!originalPath) {
       return null;
@@ -137,7 +138,11 @@ export class SynchConflictController implements ConflictViewController {
    * a whole-file choice rather than have something written that the user did not
    * pick.
    */
-  async resolveConflict(copyPath: string, action: ConflictAction): Promise<void> {
+  async resolveConflict(
+    copyPath: string,
+    action: ConflictAction,
+    displayedPreview?: ConflictPreview | null,
+  ): Promise<void> {
     const originalPath = await this.originalPathFor(copyPath);
     if (!originalPath) {
       throw new Error("This file is not a conflict copy.");
@@ -145,7 +150,7 @@ export class SynchConflictController implements ConflictViewController {
 
     if (action === "keep-original") {
       // The original already holds the version to keep; drop the copy.
-      await this.deleteFile(copyPath);
+      await this.deleteFile(copyPath, originalPath);
       return;
     }
 
@@ -153,17 +158,45 @@ export class SynchConflictController implements ConflictViewController {
       // Conflict copies can be images, PDFs, or other binary assets. Preserve
       // their bytes exactly instead of decoding them through cachedRead().
       await this.writeBinary(originalPath, await this.readBinary(copyPath));
-      await this.deleteFile(copyPath);
+      await this.deleteFile(copyPath, originalPath);
       return;
     }
 
-    const merged = (await this.previewConflict(copyPath))?.merged ?? null;
-    if (merged === null) {
+    if (!displayedPreview) {
+      throw new Error("Open the conflict comparison before merging.");
+    }
+
+    // Re-read both files only after confirmation. Never silently merge a newer
+    // pair of versions than the pair shown in the comparison modal.
+    const preview = await this.previewConflict(copyPath);
+    if (
+      !preview ||
+      preview.original !== displayedPreview.original ||
+      preview.copy !== displayedPreview.copy
+    ) {
+      throw new Error("The files changed. Open the comparison and review them again.");
+    }
+    if (preview.merged === null) {
       throw new Error("These versions overlap and cannot be merged automatically.");
     }
 
-    await this.writeText(originalPath, merged);
-    await this.deleteFile(copyPath);
+    const merged = preview.merged;
+    const { vault } = this.deps.plugin.app;
+    const original = vault.getAbstractFileByPath(originalPath);
+    if (!(original instanceof TFile)) {
+      throw new Error("The original file is missing. The conflict copy was preserved.");
+    }
+
+    // A separate read followed by modify() would leave a race. process() checks
+    // the current content and writes the merge atomically for the original.
+    await vault.process(original, (current) => {
+      if (current !== preview.original) {
+        throw new Error("The original changed. Review the conflict again.");
+      }
+      return merged;
+    });
+    // A successful write completes the merge; only then remove the copy.
+    await this.deleteFile(copyPath, originalPath);
   }
 
   hideConflict(copyPath: string): void {
@@ -211,19 +244,6 @@ export class SynchConflictController implements ConflictViewController {
     }
   }
 
-  private async writeText(path: string, text: string): Promise<void> {
-    const file = this.deps.plugin.app.vault.getAbstractFileByPath(path);
-    if (file instanceof TFile) {
-      await this.deps.plugin.app.vault.modify(file, text);
-      return;
-    }
-
-    // The original may have been deleted while the copy survived, in which case
-    // resolving recreates it.
-    await this.ensureParentFolders(path);
-    await this.deps.plugin.app.vault.create(path, text);
-  }
-
   private async writeBinary(path: string, content: ArrayBuffer): Promise<void> {
     const file = this.deps.plugin.app.vault.getAbstractFileByPath(path);
     if (file instanceof TFile) {
@@ -255,10 +275,16 @@ export class SynchConflictController implements ConflictViewController {
    * is the only record of content sync could not merge, so a plain `Vault.delete`
    * here could destroy the last copy of a user's edits against their wishes.
    */
-  private async deleteFile(path: string): Promise<void> {
-    const file = this.deps.plugin.app.vault.getAbstractFileByPath(path);
+  private async deleteFile(path: string, originalPath: string): Promise<void> {
+    const { vault, fileManager } = this.deps.plugin.app;
+    const file = vault.getAbstractFileByPath(path);
     if (file instanceof TFile) {
-      await this.deps.plugin.app.fileManager.trashFile(file);
+      // Revalidate immediately before trashing, with no awaited work between
+      // the existence check and the call that removes the conflict copy.
+      if (!(vault.getAbstractFileByPath(originalPath) instanceof TFile)) {
+        throw new Error("The original file is missing. The conflict copy was preserved.");
+      }
+      await fileManager.trashFile(file);
     }
     this.hidden.delete(path);
   }

@@ -5,16 +5,22 @@ import { formatBytes } from "../settings/format";
 import type { SynchConflictFile } from "../contracts";
 import type { ConflictAction } from "./conflict-files";
 import { openConfirmModal } from "../modals/confirm-modal";
-import { ConflictPreviewModal } from "./conflict-preview-modal";
+import { ConflictPreviewModal, type ConflictPreviewModalOptions } from "./conflict-preview-modal";
 
 export const SYNCH_CONFLICT_VIEW_TYPE = "synch-conflict-view";
+
+export type ConflictPreview = NonNullable<ConflictPreviewModalOptions["preview"]>;
 
 export interface ConflictViewController {
   listConflicts(): Promise<SynchConflictFile[]>;
   previewConflict(
     copyPath: string,
-  ): Promise<{ original: string; copy: string; merged: string | null } | null>;
-  resolveConflict(copyPath: string, action: ConflictAction): Promise<void>;
+  ): Promise<ConflictPreview | null>;
+  resolveConflict(
+    copyPath: string,
+    action: ConflictAction,
+    preview?: ConflictPreview | null,
+  ): Promise<void>;
   hideConflict(copyPath: string): void;
 }
 
@@ -204,11 +210,10 @@ export class SynchConflictView extends ItemView {
     }
 
     const actions = row.createDiv({ cls: "synch-conflict-row-actions" });
-    // Merge stays on the list because it loses nothing: it is only offered when
-    // the copy is the original plus appended lines. The whole-file choices each
-    // discard a side, so they live in the comparison modal behind this button.
+    // Both entry points open the comparison so merging always uses a snapshot
+    // the user has actually inspected, not the list's mergeability check.
     if (this.mergeablePaths.has(conflict.copyPath)) {
-      const merge = this.addButton(actions, t("conflict.merge"), () => this.applyAction(conflict, "merge"), true);
+      const merge = this.addButton(actions, t("conflict.merge"), () => this.openPreview(conflict), true);
       setTooltip(merge, t("conflict.mergeAvailable"));
     }
     this.addButton(actions, `${t("conflict.resolve")}…`, () => this.openPreview(conflict));
@@ -241,7 +246,11 @@ export class SynchConflictView extends ItemView {
   }
 
   /** Asks for confirmation, then applies one resolution to the vault. */
-  private async applyAction(conflict: SynchConflictFile, action: ConflictAction): Promise<void> {
+  private async applyAction(
+    conflict: SynchConflictFile,
+    action: ConflictAction,
+    preview: ConflictPreview | null,
+  ): Promise<void> {
     const path = conflict.originalPath;
     const [question, done] = action === "keep-original"
       ? [t("conflict.resolveKeepOriginal", { path }), t("conflict.resolvedKeepOriginal")]
@@ -253,7 +262,7 @@ export class SynchConflictView extends ItemView {
     this.loading = true;
     this.render();
     try {
-      await this.controller.resolveConflict(conflict.copyPath, action);
+      await this.controller.resolveConflict(conflict.copyPath, action, preview);
       new Notice(done);
       await this.refresh();
     } catch (error) {
@@ -274,7 +283,7 @@ export class SynchConflictView extends ItemView {
         conflict,
         preview,
         onChoose: (action) => {
-          void this.applyAction(conflict, action);
+          void this.applyAction(conflict, action, preview);
         },
       }).open();
     } catch (error) {

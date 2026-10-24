@@ -56,6 +56,17 @@ function createVault(initial: FakeFile[]) {
         Object.assign(file.handle, { stat: { size: file.size, mtime: file.mtime } });
       }
     },
+    // Like Vault.process, invoke the synchronous callback and commit without
+    // an awaited boundary between reading the current content and writing it.
+    process: async (target: { path: string }, update: (current: string) => string) => {
+      const file = files.get(target.path);
+      if (!file) throw new Error(`File not found: ${target.path}`);
+      const content = update(text(file.content));
+      file.content = content;
+      file.size = content.length;
+      Object.assign(file.handle, { stat: { size: file.size, mtime: file.mtime } });
+      return content;
+    },
     modifyBinary: async (target: { path: string }, content: ArrayBuffer) => {
       const file = files.get(target.path);
       if (file) {
@@ -119,6 +130,31 @@ describe("SynchConflictController resolution", () => {
 
     expect(vault.files.get("note.md")?.content).toBe("original\n");
     expect(vault.files.has("note.sync-conflict-20260424-001419.md")).toBe(false);
+  });
+
+  it("preserves the copy when the original disappears after previewing keep-original", async () => {
+    const copyPath = "note.sync-conflict-20260424-001419.md";
+    const vault = createVault([
+      { path: "note.md", content: "original\n", mtime: 1, size: 9 },
+      { path: copyPath, content: "copy\n", mtime: 2, size: 5 },
+    ]);
+    const controller = createController(vault);
+
+    expect(await controller.previewConflict(copyPath)).toEqual({
+      original: "original\n",
+      copy: "copy\n",
+      merged: null,
+    });
+    // Sync deletes the original while the user is deciding in the modal.
+    await vault.delete(vault.files.get("note.md")!.handle);
+
+    await expect.soft(
+      controller.resolveConflict(copyPath, "keep-original"),
+    ).rejects.toThrow();
+
+    expect.soft(vault.files.has("note.md")).toBe(false);
+    expect.soft(vault.files.get(copyPath)?.content).toBe("copy\n");
+    expect.soft(vault.trashed).toEqual([]);
   });
 
   it("keeps the copy by overwriting the original and removing the copy", async () => {
@@ -202,7 +238,11 @@ describe("SynchConflictController resolution", () => {
     const controller = createController(vault);
 
     await expect(
-      controller.resolveConflict("note.sync-conflict-20260424-001419.md", "merge"),
+      controller.resolveConflict(
+        "note.sync-conflict-20260424-001419.md",
+        "merge",
+        await controller.previewConflict("note.sync-conflict-20260424-001419.md"),
+      ),
     ).rejects.toThrow();
 
     // Nothing was written and nothing was deleted.
@@ -223,7 +263,11 @@ describe("SynchConflictController resolution", () => {
     const controller = createController(vault);
 
     await expect(
-      controller.resolveConflict("note.sync-conflict-20260424-001419.md", "merge"),
+      controller.resolveConflict(
+        "note.sync-conflict-20260424-001419.md",
+        "merge",
+        await controller.previewConflict("note.sync-conflict-20260424-001419.md"),
+      ),
     ).rejects.toThrow();
     expect(vault.files.get("note.md")?.content).toBe("Title\n\nbody\n");
   });
@@ -243,10 +287,160 @@ describe("SynchConflictController resolution", () => {
     await controller.resolveConflict(
       "note.sync-conflict-20260424-001419.md",
       "merge",
+      await controller.previewConflict("note.sync-conflict-20260424-001419.md"),
     );
 
     expect(vault.files.get("note.md")?.content).toBe("Title\n\nbody\nappended\n");
     expect(vault.files.has("note.sync-conflict-20260424-001419.md")).toBe(false);
+  });
+
+  it("aborts merge and preserves both files when the original changes during the copy read", async () => {
+    const copyPath = "note.sync-conflict-20260424-001419.md";
+    const copyContent = "one\nfrom copy\n";
+    const concurrentContent = "one\nconcurrent edit\n";
+    const vault = createVault([
+      { path: "note.md", content: "one\n", mtime: 1, size: 4 },
+      { path: copyPath, content: copyContent, mtime: 2, size: copyContent.length },
+    ]);
+    const readBinary = vault.readBinary;
+    let concurrentEditApplied = false;
+    // Install before createController: its plugin receives a spread of the vault.
+    vi.spyOn(vault, "readBinary").mockImplementation(async (target) => {
+      if (target.path === copyPath && !concurrentEditApplied) {
+        // The original has already been read. Simulate sync or another plugin
+        // editing it at this awaited I/O boundary, without timers or sleeps.
+        await vault.modify(vault.files.get("note.md")!.handle, concurrentContent);
+        concurrentEditApplied = true;
+      }
+      return await readBinary(target);
+    });
+    const controller = createController(vault);
+
+    await expect.soft(
+      controller.resolveConflict(copyPath, "merge", {
+        original: "one\n", copy: copyContent, merged: copyContent,
+      }),
+    ).rejects.toThrow();
+
+    expect(concurrentEditApplied).toBe(true);
+    expect.soft(vault.files.get("note.md")?.content).toBe(concurrentContent);
+    expect.soft(vault.files.get(copyPath)?.content).toBe(copyContent);
+    expect.soft(vault.trashed).toEqual([]);
+  });
+
+  it("checks the original inside the atomic merge update, not before it", async () => {
+    const copyPath = "note.sync-conflict-20260424-001419.md";
+    const vault = createVault([
+      { path: "note.md", content: "one\n", mtime: 1, size: 4 },
+      { path: copyPath, content: "one\ncopy\n", mtime: 2, size: 9 },
+    ]);
+    const process = vault.process;
+    const processSpy = vi.spyOn(vault, "process").mockImplementation(async (target, update) => {
+      // An edit lands after any preflight checks but before process acquires
+      // the original's current content and invokes the update callback.
+      await vault.modify(target, "one\nconcurrent\n");
+      return await process(target, update);
+    });
+    const controller = createController(vault);
+
+    await expect(controller.resolveConflict(copyPath, "merge", {
+      original: "one\n", copy: "one\ncopy\n", merged: "one\ncopy\n",
+    })).rejects.toThrow();
+
+    expect(processSpy).toHaveBeenCalledOnce();
+    expect(vault.files.get("note.md")?.content).toBe("one\nconcurrent\n");
+    expect(vault.files.get(copyPath)?.content).toBe("one\ncopy\n");
+    expect(vault.trashed).toEqual([]);
+  });
+
+  it.each(["original", "copy"] as const)(
+    "aborts without writing or deleting when the %s differs from the displayed preview",
+    async (side) => {
+      const copyPath = "note.sync-conflict-20260424-001419.md";
+      const vault = createVault([
+        { path: "note.md", content: "one\n", mtime: 1, size: 4 },
+        { path: copyPath, content: "one\ncopy\n", mtime: 2, size: 9 },
+      ]);
+      const processSpy = vi.spyOn(vault, "process");
+      const controller = createController(vault);
+      const displayed = await controller.previewConflict(copyPath);
+      const changedPath = side === "original" ? "note.md" : copyPath;
+      // Both updated pairs remain mergeable: re-computing from the latest
+      // contents alone must not silently accept a diff the user never saw.
+      const changedContent = side === "original" ? "" : "one\ncopy\nnew edit\n";
+      await vault.modify(vault.files.get(changedPath)!.handle, changedContent);
+
+      await expect(controller.resolveConflict(copyPath, "merge", displayed))
+        .rejects.toThrow("The files changed");
+
+      expect(processSpy).not.toHaveBeenCalled();
+      expect(vault.files.get("note.md")?.content).toBe(side === "original" ? "" : "one\n");
+      expect(vault.files.get(copyPath)?.content).toBe(side === "copy" ? changedContent : "one\ncopy\n");
+      expect(vault.trashed).toEqual([]);
+    },
+  );
+
+  it("rejects merging without a displayed preview", async () => {
+    const copyPath = "note.sync-conflict-20260424-001419.md";
+    const vault = createVault([
+      { path: "note.md", content: "one\n", mtime: 1, size: 4 },
+      { path: copyPath, content: "one\ncopy\n", mtime: 2, size: 9 },
+    ]);
+    const controller = createController(vault);
+
+    await expect(controller.resolveConflict(copyPath, "merge"))
+      .rejects.toThrow("Open the conflict comparison");
+    expect(vault.files.get("note.md")?.content).toBe("one\n");
+    expect(vault.files.has(copyPath)).toBe(true);
+    expect(vault.trashed).toEqual([]);
+  });
+
+  it("preserves the copy if the merge write fails", async () => {
+    const copyPath = "note.sync-conflict-20260424-001419.md";
+    const vault = createVault([
+      { path: "note.md", content: "one\n", mtime: 1, size: 4 },
+      { path: copyPath, content: "one\ncopy\n", mtime: 2, size: 9 },
+    ]);
+    vi.spyOn(vault, "process").mockRejectedValue(new Error("Write failed"));
+    const controller = createController(vault);
+    const displayed = await controller.previewConflict(copyPath);
+
+    await expect(controller.resolveConflict(copyPath, "merge", displayed))
+      .rejects.toThrow("Write failed");
+    expect(vault.files.get("note.md")?.content).toBe("one\n");
+    expect(vault.files.get(copyPath)?.content).toBe("one\ncopy\n");
+    expect(vault.trashed).toEqual([]);
+  });
+
+  it("waits for the merge write to succeed before deleting, without post-write reads", async () => {
+    const copyPath = "note.sync-conflict-20260424-001419.md";
+    const vault = createVault([
+      { path: "note.md", content: "one\n", mtime: 1, size: 4 },
+      { path: copyPath, content: "one\ncopy\n", mtime: 2, size: 9 },
+    ]);
+    let finishWrite!: () => void;
+    const writeReady = new Promise<void>((resolve) => { finishWrite = resolve; });
+    const process = vault.process;
+    const processSpy = vi.spyOn(vault, "process").mockImplementation(async (target, update) => {
+      await writeReady;
+      return await process(target, update);
+    });
+    const readSpy = vi.spyOn(vault, "readBinary");
+    const controller = createController(vault);
+    const displayed = await controller.previewConflict(copyPath);
+    readSpy.mockClear();
+
+    const resolution = controller.resolveConflict(copyPath, "merge", displayed);
+    await vi.waitFor(() => expect(processSpy).toHaveBeenCalledOnce());
+    expect(vault.files.has(copyPath)).toBe(true);
+    expect(vault.trashed).toEqual([]);
+    finishWrite();
+    await resolution;
+
+    expect(readSpy).toHaveBeenCalledTimes(2);
+    expect(vault.files.get("note.md")?.content).toBe(displayed?.merged);
+    expect(vault.files.has(copyPath)).toBe(false);
+    expect(vault.trashed).toEqual([copyPath]);
   });
 
   it("removes the copy through the trash, respecting the user's preference", async () => {
