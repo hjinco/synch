@@ -1,4 +1,13 @@
 import { TFile, TFolder, type Plugin, type WorkspaceLeaf } from "obsidian";
+import { getConflictOriginalPath, isImagePath } from "@synch/sync-client/core";
+import { toArrayBuffer } from "@synch/vault-crypto";
+
+import {
+  decodeConflictText,
+  sameConflictBytes,
+  type ConflictPreview,
+  type ConflictFileSnapshot,
+} from "./conflict-preview";
 
 import type { SynchConflictFile } from "../contracts";
 import {
@@ -9,7 +18,6 @@ import {
 import {
   SYNCH_CONFLICT_VIEW_TYPE,
   SynchConflictView,
-  type ConflictPreview,
   type ConflictViewController,
 } from "./conflict-view";
 
@@ -110,149 +118,173 @@ export class SynchConflictController implements ConflictViewController {
     );
   }
 
-  /**
-   * Reads both sides and reports whether they can be merged automatically.
-   * Returns null for a non-text file, where only a whole-file choice applies.
-   */
-  async previewConflict(
-    copyPath: string,
-  ): Promise<ConflictPreview | null> {
-    const originalPath = await this.originalPathFor(copyPath);
-    if (!originalPath) {
-      return null;
-    }
-
-    const original = await this.readTextIfPresent(originalPath);
-    const copy = await this.readTextIfPresent(copyPath);
-    if (original === null || copy === null) {
-      return null;
-    }
-
-    return { original, copy, merged: mergeSides(original, copy) };
+  /** Capture the exact bytes to compare and later validate, even for images. */
+  async previewConflict(copyPath: string): Promise<ConflictPreview> {
+    const originalPath = this.originalPathFor(copyPath);
+    const { original, copy } = await this.readPair(originalPath, copyPath);
+    const originalText = original ? decodeConflictText(original.bytes) : null;
+    const copyText = decodeConflictText(copy.bytes);
+    return {
+      originalFile: original ? { path: original.path, bytes: original.bytes } : null,
+      copyFile: { path: copy.path, bytes: copy.bytes },
+      original: originalText,
+      copy: copyText,
+      merged: originalText !== null && copyText !== null && !isImagePath(originalPath)
+        ? mergeSides(originalText, copyText)
+        : null,
+    };
   }
 
-  /**
-   * Applies a resolution.
-   *
-   * `merge` is rejected when the two sides overlap: the caller must fall back to
-   * a whole-file choice rather than have something written that the user did not
-   * pick.
-   */
   async resolveConflict(
     copyPath: string,
     action: ConflictAction,
-    displayedPreview?: ConflictPreview | null,
+    displayedPreview: ConflictPreview,
   ): Promise<void> {
-    const originalPath = await this.originalPathFor(copyPath);
-    if (!originalPath) {
-      throw new Error("This file is not a conflict copy.");
+    if (!displayedPreview) {
+      throw new Error("Open the conflict comparison before resolving.");
     }
+    const originalPath = this.originalPathFor(copyPath);
+    if (
+      displayedPreview.copyFile.path !== copyPath ||
+      (displayedPreview.originalFile && displayedPreview.originalFile.path !== originalPath)
+    ) {
+      throw filesChanged();
+    }
+
+    // All actions validate the pair the user reviewed. A missing original is
+    // also part of the snapshot: a newly created file must never be overwritten.
+    const current = await this.readPair(originalPath, copyPath);
+    this.assertPairMatches(current, displayedPreview.originalFile, displayedPreview.copyFile);
+    let expectedOriginal = current.original?.bytes ?? null;
 
     if (action === "keep-original") {
-      // The original already holds the version to keep; drop the copy.
-      await this.deleteFile(copyPath, originalPath);
-      return;
-    }
-
-    if (action === "keep-copy") {
-      // Conflict copies can be images, PDFs, or other binary assets. Preserve
-      // their bytes exactly instead of decoding them through cachedRead().
-      await this.writeBinary(originalPath, await this.readBinary(copyPath));
-      await this.deleteFile(copyPath, originalPath);
-      return;
-    }
-
-    if (!displayedPreview) {
-      throw new Error("Open the conflict comparison before merging.");
-    }
-
-    // Re-read both files only after confirmation. Never silently merge a newer
-    // pair of versions than the pair shown in the comparison modal.
-    const preview = await this.previewConflict(copyPath);
-    if (
-      !preview ||
-      preview.original !== displayedPreview.original ||
-      preview.copy !== displayedPreview.copy
-    ) {
-      throw new Error("The files changed. Open the comparison and review them again.");
-    }
-    if (preview.merged === null) {
-      throw new Error("These versions overlap and cannot be merged automatically.");
-    }
-
-    const merged = preview.merged;
-    const { vault } = this.deps.plugin.app;
-    const original = vault.getAbstractFileByPath(originalPath);
-    if (!(original instanceof TFile)) {
-      throw new Error("The original file is missing. The conflict copy was preserved.");
-    }
-
-    // A separate read followed by modify() would leave a race. process() checks
-    // the current content and writes the merge atomically for the original.
-    await vault.process(original, (current) => {
-      if (current !== preview.original) {
-        throw new Error("The original changed. Review the conflict again.");
+      if (!current.original) throw filesChanged();
+    } else {
+      const originalText = current.original ? decodeConflictText(current.original.bytes) : null;
+      const copyText = decodeConflictText(current.copy.bytes);
+      const merged = originalText !== null && copyText !== null && !isImagePath(originalPath)
+        ? mergeSides(originalText, copyText)
+        : null;
+      if (action === "merge" && merged === null) {
+        throw new Error("These versions cannot be merged automatically.");
       }
-      return merged;
-    });
-    // A successful write completes the merge; only then remove the copy.
-    await this.deleteFile(copyPath, originalPath);
+      const replacementText = action === "merge" ? merged : copyText;
+      // An allowed merge is append-only, so its exact bytes are the copy's.
+      expectedOriginal = current.copy.bytes;
+      const { vault } = this.deps.plugin.app;
+
+      if (!current.original) {
+        await this.ensureParentFolders(originalPath);
+        this.assertCurrent(current.copy);
+        if (vault.getAbstractFileByPath(originalPath)) throw filesChanged();
+        // createBinary fails if another writer creates the path during I/O.
+        await vault.createBinary(originalPath, toArrayBuffer(expectedOriginal));
+      } else if (originalText !== null && replacementText !== null) {
+        // Check and write together, including edits arriving after the preflight.
+        const original = current.original;
+        await vault.process(original.file, (content) => {
+          this.assertCurrent(original);
+          this.assertCurrent(current.copy);
+          if (content !== originalText) throw filesChanged();
+          return replacementText;
+        });
+      } else {
+        // Obsidian has no binary compare-and-swap API. Revalidate handles/stats
+        // immediately before its write and retain the copy if post-write checks
+        // detect an intervening edit. Edits inside modifyBinary cannot be made
+        // conditional; replace this with binary CAS if Obsidian exposes one.
+        this.assertCurrent(current.original);
+        this.assertCurrent(current.copy);
+        await vault.modifyBinary(current.original.file, toArrayBuffer(expectedOriginal));
+      }
+    }
+
+    // A copy can be edited while the original's write is pending. Never trash
+    // those newer bytes; likewise preserve it if the original changed/disappeared.
+    const finalPair = action === "keep-original"
+      ? current
+      : await this.readPair(originalPath, copyPath);
+    this.assertPairMatches(
+      finalPair,
+      expectedOriginal ? { path: originalPath, bytes: expectedOriginal } : null,
+      displayedPreview.copyFile,
+    );
+    if (!finalPair.original) throw filesChanged();
+    this.assertCurrent(finalPair.original);
+    this.assertCurrent(finalPair.copy);
+    // Respect the user's configured trash setting. The API has no conditional
+    // trash operation, so keep the final checks adjacent to the call.
+    await this.deps.plugin.app.fileManager.trashFile(finalPair.copy.file);
+    this.hidden.delete(copyPath);
   }
 
   hideConflict(copyPath: string): void {
     this.hidden.add(copyPath);
   }
 
-  refreshViews(): void {
+  refreshViews(paths?: readonly string[]): void {
     for (const leaf of this.deps.plugin.app.workspace.getLeavesOfType(
       SYNCH_CONFLICT_VIEW_TYPE,
     )) {
       const view = leaf.view;
       if (view instanceof SynchConflictView) {
-        void view.refresh();
+        view.queueRefresh(paths);
       }
     }
   }
 
-  private async originalPathFor(copyPath: string): Promise<string | null> {
-    const conflicts = await this.listConflicts();
-    return conflicts.find((conflict) => conflict.copyPath === copyPath)
-      ?.originalPath ?? null;
+  private originalPathFor(copyPath: string): string {
+    const originalPath = getConflictOriginalPath(copyPath);
+    if (
+      !originalPath || this.hidden.has(copyPath) ||
+      copyPath.split("/").some((part) => part.startsWith(".")) ||
+      !(this.deps.plugin.app.vault.getAbstractFileByPath(copyPath) instanceof TFile)
+    ) {
+      throw new Error("This file is not a conflict copy.");
+    }
+    return originalPath;
   }
 
-  private async readBinary(path: string): Promise<ArrayBuffer> {
-    const file = this.deps.plugin.app.vault.getAbstractFileByPath(path);
-    if (!(file instanceof TFile)) {
-      throw new Error(`File not found: ${path}`);
-    }
-
-    return await this.deps.plugin.app.vault.readBinary(file);
+  private async readPair(originalPath: string, copyPath: string): Promise<ConflictPair> {
+    const original = await this.readSnapshot(originalPath);
+    const copy = await this.readSnapshot(copyPath);
+    if (!copy) throw filesChanged();
+    if (original) this.assertCurrent(original);
+    else if (this.deps.plugin.app.vault.getAbstractFileByPath(originalPath)) throw filesChanged();
+    this.assertCurrent(copy);
+    return { original, copy };
   }
 
-  /** Text content, or null when the file is missing or not valid UTF-8. */
-  private async readTextIfPresent(path: string): Promise<string | null> {
-    const file = this.deps.plugin.app.vault.getAbstractFileByPath(path);
-    if (!(file instanceof TFile)) {
-      return null;
-    }
-
-    const bytes = new Uint8Array(await this.deps.plugin.app.vault.readBinary(file));
-    try {
-      return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
-    } catch {
-      return null;
-    }
+  private async readSnapshot(path: string): Promise<CapturedFile | null> {
+    const { vault } = this.deps.plugin.app;
+    const file = vault.getAbstractFileByPath(path);
+    if (!file) return null;
+    if (!(file instanceof TFile)) throw filesChanged();
+    const stat = { mtime: file.stat.mtime, size: file.stat.size };
+    const bytes = new Uint8Array(await vault.readBinary(file));
+    const snapshot = { path, file, stat, bytes };
+    this.assertCurrent(snapshot);
+    return snapshot;
   }
 
-  private async writeBinary(path: string, content: ArrayBuffer): Promise<void> {
-    const file = this.deps.plugin.app.vault.getAbstractFileByPath(path);
-    if (file instanceof TFile) {
-      await this.deps.plugin.app.vault.modifyBinary(file, content);
-      return;
-    }
+  private assertCurrent(snapshot: CapturedFile): void {
+    const file = this.deps.plugin.app.vault.getAbstractFileByPath(snapshot.path);
+    if (
+      !(file instanceof TFile) || file !== snapshot.file || file.path !== snapshot.path ||
+      file.stat.mtime !== snapshot.stat.mtime || file.stat.size !== snapshot.stat.size
+    ) throw filesChanged();
+  }
 
-    await this.ensureParentFolders(path);
-    await this.deps.plugin.app.vault.createBinary(path, content);
+  private assertPairMatches(
+    pair: ConflictPair,
+    original: ConflictFileSnapshot | null,
+    copy: ConflictFileSnapshot,
+  ): void {
+    if (
+      Boolean(pair.original) !== Boolean(original) ||
+      (pair.original && original && !sameConflictBytes(pair.original.bytes, original.bytes)) ||
+      !sameConflictBytes(pair.copy.bytes, copy.bytes)
+    ) throw filesChanged();
   }
 
   private async ensureParentFolders(path: string): Promise<void> {
@@ -266,26 +298,18 @@ export class SynchConflictController implements ConflictViewController {
       }
     }
   }
+}
 
-  /**
-   * Removes a conflict copy after its content has been dealt with.
-   *
-   * Goes through `FileManager.trashFile` so the user's own deletion preference
-   * (system trash, Obsidian trash, or permanent) is respected. A conflict copy
-   * is the only record of content sync could not merge, so a plain `Vault.delete`
-   * here could destroy the last copy of a user's edits against their wishes.
-   */
-  private async deleteFile(path: string, originalPath: string): Promise<void> {
-    const { vault, fileManager } = this.deps.plugin.app;
-    const file = vault.getAbstractFileByPath(path);
-    if (file instanceof TFile) {
-      // Revalidate immediately before trashing, with no awaited work between
-      // the existence check and the call that removes the conflict copy.
-      if (!(vault.getAbstractFileByPath(originalPath) instanceof TFile)) {
-        throw new Error("The original file is missing. The conflict copy was preserved.");
-      }
-      await fileManager.trashFile(file);
-    }
-    this.hidden.delete(path);
-  }
+interface CapturedFile extends ConflictFileSnapshot {
+  file: TFile;
+  stat: { mtime: number; size: number };
+}
+
+interface ConflictPair {
+  original: CapturedFile | null;
+  copy: CapturedFile;
+}
+
+function filesChanged(): Error {
+  return new Error("The files changed. Open the comparison and review them again.");
 }

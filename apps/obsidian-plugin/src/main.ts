@@ -1,4 +1,4 @@
-import { Platform, Plugin } from "obsidian";
+import { Platform, Plugin, TFile, type TAbstractFile } from "obsidian";
 
 import { registerSynchCommands } from "./ui/commands";
 import { SynchFileSizeBlockedDecorator } from "./ui/file-size/file-size-blocked-decorator";
@@ -137,12 +137,15 @@ export default class SynchPlugin extends Plugin {
    * the vault once per file.
    */
   private registerConflictViewEvents(controller: SynchPluginController): void {
-    const refresh = () => {
-      controller.refreshConflictViews();
+    const refresh = (file: TAbstractFile, oldPath?: string) => {
+      controller.refreshConflictViews(file instanceof TFile
+        ? [file.path, ...(oldPath ? [oldPath] : [])]
+        : undefined);
     };
     this.registerEvent(this.app.vault.on("create", refresh));
     this.registerEvent(this.app.vault.on("delete", refresh));
     this.registerEvent(this.app.vault.on("rename", refresh));
+    this.registerEvent(this.app.vault.on("modify", refresh));
   }
 
   private refreshUi(): void {
