@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import {
   DEFAULT_SYNC_FILE_RULES,
+  getConflictOriginalPath,
+  isImagePath,
   normalizeExcludedFolders,
   normalizeIncludedHiddenFolders,
   normalizeSyncFileRules,
@@ -209,5 +211,48 @@ describe("normalizeExcludedFolders", () => {
 
   it("prunes regardless of input order", () => {
     expect(normalizeExcludedFolders(["Foo/Bar", "Foo"])).toEqual(["Foo"]);
+  });
+});
+
+describe("getConflictOriginalPath", () => {
+  // Conflict copies are written next to the original as
+  // `<stem>.sync-conflict-<timestamp>[-n]<ext>`. The resolution UI pairs a copy
+  // with the file the user actually edited, so recovering the original has to
+  // handle nested folders, dotted stems, missing extensions, and retry suffixes.
+  it.each([
+    ["note.sync-conflict-20260424-001419.md", "note.md"],
+    ["Folder/note.sync-conflict-20260424-001419.md", "Folder/note.md"],
+    ["Folder/note.sync-conflict-20260424-001419-2.md", "Folder/note.md"],
+    [
+      ".obsidian/plugins/calendar/data.sync-conflict-20260424-001419.json",
+      ".obsidian/plugins/calendar/data.json",
+    ],
+    ["noext.sync-conflict-20260424-001419", "noext"],
+    ["image.sync-conflict-20260424-001419.png", "image.png"],
+    ["a/b/c/deep.sync-conflict-20260424-001419.markdown", "a/b/c/deep.markdown"],
+    ["my.note.sync-conflict-20260424-001419.md", "my.note.md"],
+  ])("recovers the original for %s", (input, expected) => {
+    expect(getConflictOriginalPath(input)).toBe(expected);
+  });
+
+  it.each([
+    ["note.md"],
+    ["note.sync-conflict.md"],
+    [""],
+  ])("returns null for a path that is not a conflict copy: %s", (input) => {
+    expect(getConflictOriginalPath(input)).toBeNull();
+  });
+});
+
+describe("isImagePath", () => {
+  it.each([
+    ["Attachments/diagram.png", true],
+    ["photo.JPG", true],
+    ["image.sync-conflict-20260424-001419.webp", true],
+    ["note.md", false],
+    ["png", false],
+    ["Folder.png/note", false],
+  ])("%s -> %s", (input, expected) => {
+    expect(isImagePath(input)).toBe(expected);
   });
 });

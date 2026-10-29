@@ -11,6 +11,7 @@ export interface SynchCommandController {
   connectRemoteVaultFromPrompt(): Promise<void>;
   disconnectRemoteVault(): Promise<void>;
   openVersionHistoryPane(): Promise<void>;
+  openConflictPane(): Promise<void>;
   syncNow(): Promise<void>;
 }
 
@@ -87,6 +88,14 @@ export function registerSynchCommands(
     name: t("version.header"),
     callback: async () => {
       await controller.openVersionHistoryPane();
+    },
+  });
+
+  plugin.addCommand({
+    id: "open-conflicts",
+    name: t("conflict.openPane"),
+    callback: async () => {
+      await controller.openConflictPane();
     },
   });
 }
