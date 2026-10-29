@@ -41,6 +41,7 @@ import { SynchRemoteVaultController } from "../ui/remote-vault/remote-vault-cont
 import { SynchVersionHistoryController } from "../ui/version-history/version-history-controller";
 import { SynchConflictController } from "../ui/conflicts/conflict-controller";
 import type { ConflictAction } from "../ui/conflicts/conflict-files";
+import type { ConflictPreview } from "../ui/conflicts/conflict-preview";
 import type { SynchUiEvent } from "../ui/ui-events";
 import type { VersionHistoryViewState } from "../ui/version-history/version-history-view";
 import type {
@@ -762,8 +763,8 @@ export class SynchPluginController implements SynchSettingsController {
     await this.conflictController.openPane();
   }
 
-  refreshConflictViews(): void {
-    this.conflictController.refreshViews();
+  refreshConflictViews(paths?: readonly string[]): void {
+    this.conflictController.refreshViews(paths);
   }
 
   // `SynchConflictView` talks to the plugin through this surface; the conflict
@@ -775,12 +776,12 @@ export class SynchPluginController implements SynchSettingsController {
 
   async previewConflict(
     copyPath: string,
-  ): Promise<{ original: string; copy: string; merged: string | null } | null> {
+  ): Promise<ConflictPreview> {
     return await this.conflictController.previewConflict(copyPath);
   }
 
-  async resolveConflict(copyPath: string, action: ConflictAction): Promise<void> {
-    await this.conflictController.resolveConflict(copyPath, action);
+  async resolveConflict(copyPath: string, action: ConflictAction, preview: ConflictPreview): Promise<void> {
+    await this.conflictController.resolveConflict(copyPath, action, preview);
   }
 
   hideConflict(copyPath: string): void {

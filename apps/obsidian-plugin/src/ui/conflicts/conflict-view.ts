@@ -1,3 +1,4 @@
+import { getConflictOriginalPath } from "@synch/sync-client/core";
 import { ItemView, Notice, setIcon, setTooltip, TFile, type WorkspaceLeaf } from "obsidian";
 
 import { t } from "../../i18n";
@@ -5,21 +6,20 @@ import { formatBytes } from "../settings/format";
 import type { SynchConflictFile } from "../contracts";
 import type { ConflictAction } from "./conflict-files";
 import { openConfirmModal } from "../modals/confirm-modal";
-import { ConflictPreviewModal, type ConflictPreviewModalOptions } from "./conflict-preview-modal";
+import { ConflictPreviewModal } from "./conflict-preview-modal";
+import type { ConflictPreview } from "./conflict-preview";
 
 export const SYNCH_CONFLICT_VIEW_TYPE = "synch-conflict-view";
-
-export type ConflictPreview = NonNullable<ConflictPreviewModalOptions["preview"]>;
 
 export interface ConflictViewController {
   listConflicts(): Promise<SynchConflictFile[]>;
   previewConflict(
     copyPath: string,
-  ): Promise<ConflictPreview | null>;
+  ): Promise<ConflictPreview>;
   resolveConflict(
     copyPath: string,
     action: ConflictAction,
-    preview?: ConflictPreview | null,
+    preview: ConflictPreview,
   ): Promise<void>;
   hideConflict(copyPath: string): void;
 }
@@ -35,7 +35,9 @@ export class SynchConflictView extends ItemView {
   private requestId = 0;
   private loading = false;
   private conflicts: SynchConflictFile[] = [];
-  private mergeablePaths = new Set<string>();
+  private refreshTimer: number | null = null;
+  private closed = false;
+  private resolving = false;
   private loadError: string | null = null;
 
   constructor(
@@ -58,10 +60,42 @@ export class SynchConflictView extends ItemView {
   }
 
   async onOpen(): Promise<void> {
+    this.closed = false;
     await this.refresh();
   }
 
+  onClose(): Promise<void> {
+    this.closed = true;
+    this.requestId++;
+    this.cancelQueuedRefresh();
+    return Promise.resolve();
+  }
+
+  queueRefresh(paths?: readonly string[]): void {
+    // Folder events omit paths because they can move whole conflict subtrees.
+    if (paths && !paths.some((path) =>
+      getConflictOriginalPath(path) !== null || this.conflicts.some((conflict) =>
+        path === conflict.originalPath || path === conflict.copyPath,
+      ),
+    )) return;
+    if (this.closed || this.refreshTimer !== null) return;
+    this.requestId++;
+    this.refreshTimer = window.setTimeout(() => {
+      this.refreshTimer = null;
+      void this.refresh();
+    }, 100);
+  }
+
+  private cancelQueuedRefresh(): void {
+    if (this.refreshTimer !== null) {
+      window.clearTimeout(this.refreshTimer);
+      this.refreshTimer = null;
+    }
+  }
+
   async refresh(): Promise<void> {
+    if (this.closed) return;
+    this.cancelQueuedRefresh();
     const requestId = ++this.requestId;
     this.loading = true;
     this.render();
@@ -70,28 +104,10 @@ export class SynchConflictView extends ItemView {
       const conflicts = await this.controller.listConflicts();
       if (requestId !== this.requestId) return;
 
-      const mergeablePaths = new Set(
-        (await Promise.all(
-          conflicts.map(async (conflict) => {
-            if (!conflict.originalExists) return null;
-            try {
-              const preview = await this.controller.previewConflict(conflict.copyPath);
-              return preview !== null && preview.merged !== null
-                ? conflict.copyPath
-                : null;
-            } catch {
-              return null;
-            }
-          }),
-        )).filter((path): path is string => path !== null),
-      );
-      if (requestId !== this.requestId) return;
-
-      // Publish one refresh result atomically so a slower, stale refresh cannot
-      // replace the current conflict list or merge-availability decisions.
+      // Listing only reads metadata. Contents are loaded on demand when the
+      // user opens a comparison, including whether automatic merge is possible.
       this.loadError = null;
       this.conflicts = conflicts;
-      this.mergeablePaths = mergeablePaths;
     } catch (error) {
       if (requestId !== this.requestId) return;
 
@@ -210,12 +226,6 @@ export class SynchConflictView extends ItemView {
     }
 
     const actions = row.createDiv({ cls: "synch-conflict-row-actions" });
-    // Both entry points open the comparison so merging always uses a snapshot
-    // the user has actually inspected, not the list's mergeability check.
-    if (this.mergeablePaths.has(conflict.copyPath)) {
-      const merge = this.addButton(actions, t("conflict.merge"), () => this.openPreview(conflict), true);
-      setTooltip(merge, t("conflict.mergeAvailable"));
-    }
     this.addButton(actions, `${t("conflict.resolve")}…`, () => this.openPreview(conflict));
   }
 
@@ -229,7 +239,7 @@ export class SynchConflictView extends ItemView {
       text: label,
       cls: primary ? "synch-conflict-action mod-cta" : "synch-conflict-action",
     });
-    button.disabled = this.loading;
+    button.disabled = this.loading || this.resolving;
     button.addEventListener("click", () => {
       void onClick();
     });
@@ -249,7 +259,7 @@ export class SynchConflictView extends ItemView {
   private async applyAction(
     conflict: SynchConflictFile,
     action: ConflictAction,
-    preview: ConflictPreview | null,
+    preview: ConflictPreview,
   ): Promise<void> {
     const path = conflict.originalPath;
     const [question, done] = action === "keep-original"
@@ -259,7 +269,7 @@ export class SynchConflictView extends ItemView {
         : [t("conflict.resolveMerge", { path }), t("conflict.resolvedMerge")];
     if (!(await openConfirmModal(this.app, question, t("conflict.resolve")))) return;
 
-    this.loading = true;
+    this.resolving = true;
     this.render();
     try {
       await this.controller.resolveConflict(conflict.copyPath, action, preview);
@@ -271,8 +281,9 @@ export class SynchConflictView extends ItemView {
           message: error instanceof Error ? error.message : String(error),
         }),
       );
-      this.loading = false;
-      this.render();
+    } finally {
+      this.resolving = false;
+      if (!this.closed) this.render();
     }
   }
 

@@ -1,15 +1,16 @@
 import { isImagePath } from "@synch/sync-client/core";
 import { diffLines, type Change } from "diff";
-import { Modal, Setting, TFile, type App } from "obsidian";
+import { Modal, Setting, type App } from "obsidian";
+import { toArrayBuffer } from "@synch/vault-crypto";
 
 import { t } from "../../i18n";
 import type { SynchConflictFile } from "../contracts";
 import type { ConflictAction } from "./conflict-files";
+import type { ConflictPreview, ConflictFileSnapshot } from "./conflict-preview";
 
 export interface ConflictPreviewModalOptions {
   conflict: SynchConflictFile;
-  /** Text of both sides, or null for a binary file or a missing original. */
-  preview: { original: string; copy: string; merged: string | null } | null;
+  preview: ConflictPreview;
   /** Called after the modal closes with the side the user chose. */
   onChoose: (action: ConflictAction) => void;
 }
@@ -23,6 +24,7 @@ export interface ConflictPreviewModalOptions {
  * at what that side contains, not from a file name alone.
  */
 export class ConflictPreviewModal extends Modal {
+  private readonly imageUrls: string[] = [];
   constructor(
     app: App,
     private readonly options: ConflictPreviewModalOptions,
@@ -44,20 +46,20 @@ export class ConflictPreviewModal extends Modal {
       text: t("conflict.copyPath", { path: conflict.copyPath }),
     });
 
-    if (preview) {
+    if (preview.originalFile && isImagePath(conflict.originalPath)) {
+      this.renderImages(contentEl);
+    } else if (preview.original !== null && preview.copy !== null) {
       const hint = preview.merged === null
         ? t("conflict.mergeUnavailable")
         : t("conflict.mergeAvailable");
       contentEl.createDiv({ cls: "synch-conflict-modal-hint", text: hint });
       renderDiff(contentEl, preview.original, preview.copy);
-    } else if (!conflict.originalExists) {
+    } else if (!preview.originalFile) {
       contentEl.createDiv({
         cls: "synch-conflict-modal-hint synch-conflict-modal-warning",
         text: t("conflict.originalMissing"),
       });
-      void this.renderCopyOnly(contentEl);
-    } else if (isImagePath(conflict.originalPath) && isImagePath(conflict.copyPath)) {
-      this.renderImages(contentEl);
+      this.renderCopyOnly(contentEl);
     } else {
       contentEl.createDiv({ cls: "synch-conflict-modal-hint", text: t("conflict.binaryNotice") });
     }
@@ -66,19 +68,21 @@ export class ConflictPreviewModal extends Modal {
   }
 
   onClose(): void {
+    for (const url of this.imageUrls) URL.revokeObjectURL(url);
+    this.imageUrls.length = 0;
     this.contentEl.empty();
   }
 
   private renderActions(contentEl: HTMLElement): void {
-    const { conflict, preview } = this.options;
+    const { preview } = this.options;
     const buttons = contentEl.createDiv({ cls: "modal-button-container" });
 
     // "Keep original" is meaningless when there is no original to keep.
-    if (conflict.originalExists) {
+    if (preview.originalFile) {
       this.addChoice(buttons, t("conflict.keepOriginal"), "keep-original");
     }
     this.addChoice(buttons, t("conflict.keepCopy"), "keep-copy");
-    if (conflict.originalExists && preview !== null && preview.merged !== null) {
+    if (preview.originalFile && preview.merged !== null) {
       this.addChoice(buttons, t("conflict.merge"), "merge", true);
     }
   }
@@ -99,46 +103,37 @@ export class ConflictPreviewModal extends Modal {
     });
   }
 
-  /** Both images side by side, labelled like the text diff legend. */
+  /** Images use the same captured bytes as resolution, never a live vault URL. */
   private renderImages(contentEl: HTMLElement): void {
-    const { conflict } = this.options;
+    const { preview } = this.options;
     const grid = contentEl.createDiv({ cls: "synch-conflict-image-compare" });
-    this.renderImage(grid, conflict.originalPath, t("conflict.diffLegendOriginal"), "synch-preview-diff-legend-removed");
-    this.renderImage(grid, conflict.copyPath, t("conflict.diffLegendCopy"), "synch-preview-diff-legend-added");
+    if (preview.originalFile) {
+      this.renderImage(grid, preview.originalFile, t("conflict.diffLegendOriginal"), "synch-preview-diff-legend-removed");
+    }
+    this.renderImage(grid, preview.copyFile, t("conflict.diffLegendCopy"), "synch-preview-diff-legend-added");
   }
 
-  private renderImage(container: HTMLElement, path: string, label: string, legendClass: string): void {
-    const file = this.app.vault.getAbstractFileByPath(path);
+  private renderImage(container: HTMLElement, snapshot: ConflictFileSnapshot, label: string, legendClass: string): void {
     const figure = container.createDiv({ cls: "synch-conflict-image-side" });
     figure.createSpan({ cls: legendClass, text: label });
     const frame = figure.createDiv({ cls: "synch-preview-content synch-preview-image" });
-    if (file instanceof TFile) {
-      frame.createEl("img", { attr: { alt: path, src: this.app.vault.getResourcePath(file) } });
-    }
+    const extension = snapshot.path.split(".").pop()?.toLowerCase() ?? "";
+    const mimeType = extension === "svg" ? "image/svg+xml"
+      : extension === "jpg" ? "image/jpeg"
+        : extension === "ico" ? "image/x-icon" : `image/${extension}`;
+    const url = URL.createObjectURL(new Blob([toArrayBuffer(snapshot.bytes)], { type: mimeType }));
+    this.imageUrls.push(url);
+    frame.createEl("img", { attr: { alt: snapshot.path, src: url } });
   }
 
-  /** With no original to compare against, show what keeping the copy restores. */
-  private async renderCopyOnly(contentEl: HTMLElement): Promise<void> {
-    const { conflict } = this.options;
-    const file = this.app.vault.getAbstractFileByPath(conflict.copyPath);
-    if (!(file instanceof TFile)) return;
-
-    const slot = contentEl.createDiv();
-    // Keep the body above the action buttons, which are rendered synchronously.
-    contentEl.querySelector(".modal-button-container")?.before(slot);
-
-    if (isImagePath(conflict.copyPath)) {
-      slot.createDiv({ cls: "synch-preview-content synch-preview-image" })
-        .createEl("img", { attr: { alt: conflict.copyPath, src: this.app.vault.getResourcePath(file) } });
-      return;
-    }
-
-    try {
-      const bytes = new Uint8Array(await this.app.vault.readBinary(file));
-      const text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
-      slot.createEl("pre", { cls: "synch-preview-content synch-preview-raw", text });
-    } catch {
-      slot.createDiv({ cls: "synch-conflict-modal-hint", text: t("conflict.binaryNotice") });
+  private renderCopyOnly(contentEl: HTMLElement): void {
+    const { preview } = this.options;
+    if (isImagePath(preview.copyFile.path)) {
+      this.renderImage(contentEl, preview.copyFile, t("conflict.diffLegendCopy"), "synch-preview-diff-legend-added");
+    } else if (preview.copy !== null) {
+      contentEl.createEl("pre", { cls: "synch-preview-content synch-preview-raw", text: preview.copy });
+    } else {
+      contentEl.createDiv({ cls: "synch-conflict-modal-hint", text: t("conflict.binaryNotice") });
     }
   }
 }
@@ -164,7 +159,7 @@ function renderDiff(contentEl: HTMLElement, original: string, copy: string): voi
   });
 
   const changes = diffLines(original, copy);
-  if (changes.length === 1 && !changes[0]?.added && !changes[0]?.removed) {
+  if (changes.length === 0 || (changes.length === 1 && !changes[0]?.added && !changes[0]?.removed)) {
     diffEl.createEl("p", {
       cls: "synch-preview-diff-empty",
       text: t("conflict.diffNoChanges"),
