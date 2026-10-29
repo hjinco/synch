@@ -85,9 +85,13 @@ Optional variables, also in `.env`:
 - `OIDC_SCOPES` - comma-separated scopes to request. Defaults to `openid,profile,email`.
 - `OIDC_ACCOUNT_ISSUER` - overrides the issuer identity used to scope linked accounts. Defaults to the origin of `OIDC_DISCOVERY_URL`; only set this if your provider's issuer differs from that origin.
 
+#### Verified email addresses
+
+Your provider must also mark each user's email address as verified - the `email_verified` claim in the ID token it issues. Synch rejects sign-ins whose email the provider hasn't verified, the same rule it applies to Google and GitHub sign-in, and the sign-in page tells the user why. Some providers leave addresses unverified by default. Pocket ID, for example, only marks emails as verified once its `EMAILS_VERIFIED` setting is turned on, and that applies to addresses added or changed afterwards - so mark any users you created earlier as verified individually.
+
 #### Account linking by email
 
-When someone signs in through OIDC, Synch links that session to any existing local account with the same email address instead of creating a duplicate. This is deliberate: someone who registered with a password before OIDC was set up keeps their existing vaults after switching to single sign-on. Your provider must mark the address as verified (the `email_verified` claim in the ID token); Synch rejects OIDC sign-ins whose email the provider hasn't verified, the same as for Google and GitHub sign-in.
+When someone signs in through OIDC, Synch links that session to any existing local account with the same email address instead of creating a duplicate. This is deliberate: someone who registered with a password before OIDC was set up keeps their existing vaults after switching to single sign-on.
 
 One consequence is worth knowing before you rely on this. Self-hosted Synch doesn't send verification emails, so registering an address here never proves control of it - and that's true regardless of whether your provider verifies addresses on its own side. So if password sign-up is still open, anyone could register one of your allowed addresses before its real owner ever signs in through your provider - and would then be linked to that account the moment the real owner does. Vault contents stay safe either way, since they're encrypted on the client with a passphrase the server never sees; what's exposed in that scenario is a session, the vault list and its metadata, the encrypted blobs, and the ability to delete or purge vaults - not the notes themselves. This is also why reusing your account password as your vault passphrase isn't a good idea: it collapses a separation the encryption is designed to preserve.
 
