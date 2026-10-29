@@ -104,15 +104,9 @@ export function createBetterAuth(
 		emailVerification,
 		account: {
 			accountLinking: {
-				enabled: true,
-				trustedProviders: config.oidc ? [config.oidc.providerId] : [],
-				// Community deployments never verify email locally (emailVerification
-				// is "disabled" there), so the local-row gate would otherwise block
-				// every account link. Upstream marks this option deprecated with a
-				// FIXME to make the gate unconditional on the next minor, so a future
-				// better-auth upgrade will need to revisit this setting and confirm
-				// account-linking behavior is still correct without it.
-				requireLocalEmailVerified: config.oidc ? false : config.emailVerification === "required",
+				// Community deployments disable email verification and restrict sign-up
+				// with an allowlist. Provider-verified email is still required to link.
+				requireLocalEmailVerified: config.emailVerification === "required",
 			},
 		},
 		user: {
@@ -127,7 +121,7 @@ export function createBetterAuth(
 				// every other creation path (password, and any future auth method
 				// Better Auth adds) stays gated.
 				// Check the current provider assertion on both signup and returning login.
-				if (source.method === "oauth" && user.emailVerified !== true && !isAllowlistExemptSource(source)) {
+				if (source.method === "oauth" && user.emailVerified !== true) {
 					return {
 						error: "email_not_verified",
 						errorDescription: "Verify your email with your sign-in provider before signing in.",
