@@ -205,3 +205,27 @@ describe("OIDC sign-in", () => {
     expect(label).not.toBe(english("continueWithProvider", { name: "Pocket ID" }));
   });
 });
+
+describe("OAuth callback errors", () => {
+  it.each([
+    { error: "email_not_verified", key: "socialEmailNotVerified" },
+    { error: "account_not_linked", key: "socialAccountNotLinked" },
+    { error: "access_denied", key: "socialFailed" },
+  ] as const)("explains the $error callback error", async ({ error, key }) => {
+    history.replaceState(null, "", `/signin?error=${error}&error_description=untrusted-text`);
+    vi.stubGlobal("fetch", vi.fn(() => json(null)));
+    const t = await translator("signin", "en");
+    await act(async () => {
+      render(<AuthPage mode="signin" t={t} locale="en" />);
+    });
+    expect(screen.getByText(t(key))).toBeTruthy();
+    expect(screen.queryByText("untrusted-text")).toBeNull();
+  });
+
+  it.each(["de", "ja", "ko", "zh-cn", "zh-tw"] as const)("translates the specific callback errors for %s", async (locale) => {
+    const [english, translated] = await Promise.all([translator("signup", "en"), translator("signup", locale)]);
+    for (const key of ["socialEmailNotVerified", "socialAccountNotLinked"] as const) {
+      expect(translated(key)).not.toBe(english(key));
+    }
+  });
+});

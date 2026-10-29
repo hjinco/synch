@@ -17,6 +17,13 @@ type ProvidersResponse = Partial<Record<SocialProvider, boolean>> & {
   oidc?: OidcProvider | null;
 };
 
+function callbackErrorMessage(t: PageProps<"signin" | "signup">["t"], error: string | null): string {
+  if (error === null) return "";
+  if (error === "email_not_verified") return t("socialEmailNotVerified");
+  if (error === "account_not_linked") return t("socialAccountNotLinked");
+  return t("socialFailed");
+}
+
 export function AuthPage({
   mode,
   t,
@@ -30,9 +37,7 @@ export function AuthPage({
   const [oidcProvider, setOidcProvider] = useState<OidcProvider | null>(null);
   const [emailAndPassword, setEmailAndPassword] = useState(true);
   const [status, setStatus] = useState<StatusValue>(() => ({
-    message: new URLSearchParams(location.search).has("error")
-      ? t("socialFailed")
-      : "",
+    message: callbackErrorMessage(t, new URLSearchParams(location.search).get("error")),
     tone: "error",
   }));
   const [verificationEmail, setVerificationEmail] = useState("");
