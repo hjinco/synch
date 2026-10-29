@@ -229,3 +229,26 @@ describe("OAuth callback errors", () => {
     }
   });
 });
+
+describe("no sign-in methods", () => {
+  it.each(["signin", "signup"] as const)("explains on %s when password authentication is disabled and no provider is configured", async (mode) => {
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL) =>
+      String(input).endsWith("providers")
+        ? json({ google: false, github: false, emailAndPassword: false, oidc: null })
+        : json(null),
+    ));
+    const t = await translator(mode, "en");
+    render(<AuthPage mode={mode} t={t} locale="en" />);
+    await screen.findByText(t("noSignInMethods"));
+  });
+
+  it("does not claim no methods are configured while provider discovery is unavailable", async () => {
+    vi.stubGlobal("fetch", vi.fn(() => json({}, 503)));
+    const t = await translator("signin", "en");
+    await act(async () => {
+      render(<AuthPage mode="signin" t={t} locale="en" />);
+    });
+    expect(screen.queryByText(t("noSignInMethods"))).toBeNull();
+    expect(screen.getByLabelText(t("password"))).toBeTruthy();
+  });
+});

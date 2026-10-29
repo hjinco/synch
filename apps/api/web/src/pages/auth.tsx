@@ -191,6 +191,7 @@ export function AuthPage({
     }
   }
   const disabled = busy || Boolean(verificationEmail);
+  const noSignInMethods = !emailAndPassword && !oidcProvider && !enabledProviders.google && !enabledProviders.github;
   return (
     <div className="page page--narrow">
       <PageHeader title={t("title")} subtitle={t("subtitle")} />
@@ -278,6 +279,7 @@ export function AuthPage({
             </div>
           </>
         )}
+        {noSignInMethods && <Status id="no-sign-in-methods" message={t("noSignInMethods")} tone="error" />}
         <Status {...status} />
         {emailAndPassword && (
           <button
