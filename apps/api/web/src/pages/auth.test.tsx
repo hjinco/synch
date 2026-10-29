@@ -130,3 +130,78 @@ describe("last used login method", () => {
     expect(document.cookie).toContain("better-auth.last_used_login_method=google");
   });
 });
+
+describe("OIDC sign-in", () => {
+  const oidcProviders = (overrides: Record<string, unknown> = {}) => ({
+    google: false,
+    github: false,
+    emailAndPassword: true,
+    oidc: { providerId: "oidc", name: "Pocket ID" },
+    ...overrides,
+  });
+
+  it.each(["signin", "signup"] as const)("starts the configured provider from %s through social sign-in", async (mode) => {
+    history.replaceState(null, "", `/${mode}?return_to=${encodeURIComponent("/device?user_code=ABCD")}`);
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      if (String(input).endsWith("providers")) return json(oidcProviders());
+      if (String(input).endsWith("get-session")) return json(null);
+      return json({ message: "Failed" }, 503);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const t = await translator(mode, "en");
+    render(<AuthPage mode={mode} t={t} locale="en" />);
+    await userEvent.click(await screen.findByRole("button", { name: t("continueWithProvider", { name: "Pocket ID" }) }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/auth/sign-in/social", expect.objectContaining({
+      method: "POST",
+      body: JSON.stringify({
+        provider: "oidc",
+        callbackURL: "http://localhost:3000/device?user_code=ABCD",
+        errorCallbackURL: `http://localhost:3000/${mode}?lang=en&return_to=http%3A%2F%2Flocalhost%3A3000%2Fdevice%3Fuser_code%3DABCD`,
+        disableRedirect: true,
+      }),
+    })));
+  });
+
+  it.each([{ oidc: null }, "unavailable"] as const)("hides the provider when discovery reports %j", async (availability) => {
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL) => {
+      if (!String(input).endsWith("providers")) return json(null);
+      return availability === "unavailable" ? json({}, 503) : json(oidcProviders(availability));
+    }));
+    const t = await translator("signin", "en");
+    await act(async () => {
+      render(<AuthPage mode="signin" t={t} locale="en" />);
+    });
+    expect(screen.queryByRole("button", { name: t("continueWithProvider", { name: "Pocket ID" }) })).toBeNull();
+    expect(screen.getByLabelText(t("password"))).toBeTruthy();
+  });
+
+  it.each(["signin", "signup"] as const)("hides the password form on %s when password authentication is disabled", async (mode) => {
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL) =>
+      String(input).endsWith("providers") ? json(oidcProviders({ emailAndPassword: false })) : json(null),
+    ));
+    const t = await translator(mode, "en");
+    render(<AuthPage mode={mode} t={t} locale="en" />);
+    await screen.findByRole("button", { name: t("continueWithProvider", { name: "Pocket ID" }) });
+    expect(screen.queryByLabelText(t("email"))).toBeNull();
+    expect(screen.queryByLabelText(t("password"))).toBeNull();
+    expect(screen.queryByRole("button", { name: t("submit") })).toBeNull();
+  });
+
+  it("marks the provider as the last used login method", async () => {
+    document.cookie = "better-auth.last_used_login_method=oidc; Path=/";
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL) =>
+      String(input).endsWith("providers") ? json(oidcProviders()) : json(null),
+    ));
+    const t = await translator("signin", "en");
+    render(<AuthPage mode="signin" t={t} locale="en" />);
+    const button = await screen.findByRole("button", { name: `${t("continueWithProvider", { name: "Pocket ID" })} ${t("lastUsed")}` });
+    expect(within(button).getByText(t("lastUsed"))).toBeTruthy();
+  });
+
+  it.each(["de", "ja", "ko", "zh-cn", "zh-tw"] as const)("translates the provider label for %s", async (locale) => {
+    const [english, translated] = await Promise.all([translator("signin", "en"), translator("signin", locale)]);
+    const label = translated("continueWithProvider", { name: "Pocket ID" });
+    expect(label).toContain("Pocket ID");
+    expect(label).not.toBe(english("continueWithProvider", { name: "Pocket ID" }));
+  });
+});
