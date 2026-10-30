@@ -25,6 +25,36 @@ export const EmailOnly: Story = {
     },
   },
 };
+export const WithOidc: Story = {
+  parameters: {
+    msw: {
+      handlers: [
+        json("/api/auth/get-session", null),
+        json("/api/auth/providers", {
+          google: true,
+          github: true,
+          emailAndPassword: true,
+          oidc: { providerId: "oidc", name: "Pocket ID" },
+        }),
+      ],
+    },
+  },
+};
+export const OidcOnly: Story = {
+  parameters: {
+    msw: {
+      handlers: [
+        json("/api/auth/get-session", null),
+        json("/api/auth/providers", {
+          google: false,
+          github: false,
+          emailAndPassword: false,
+          oidc: { providerId: "oidc", name: "Pocket ID" },
+        }),
+      ],
+    },
+  },
+};
 export const SocialError: Story = {
   parameters: { query: { error: "access_denied" } },
 };

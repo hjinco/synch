@@ -11,6 +11,18 @@ const socialProviders = [
   { id: "github", label: "continueWithGitHub" },
 ] as const;
 type SocialProvider = (typeof socialProviders)[number]["id"];
+type OidcProvider = { providerId: string; name: string };
+type ProvidersResponse = Partial<Record<SocialProvider, boolean>> & {
+  emailAndPassword?: boolean;
+  oidc?: OidcProvider | null;
+};
+
+function callbackErrorMessage(t: PageProps<"signin" | "signup">["t"], error: string | null): string {
+  if (error === null) return "";
+  if (error === "email_not_verified") return t("socialEmailNotVerified");
+  if (error === "account_not_linked") return t("socialAccountNotLinked");
+  return t("socialFailed");
+}
 
 export function AuthPage({
   mode,
@@ -22,10 +34,10 @@ export function AuthPage({
   const [lastLoginMethod] = useState(readLastLoginMethod);
   const [busy, setBusy] = useState(false);
   const [enabledProviders, setEnabledProviders] = useState({ google: false, github: false });
+  const [oidcProvider, setOidcProvider] = useState<OidcProvider | null>(null);
+  const [emailAndPassword, setEmailAndPassword] = useState(true);
   const [status, setStatus] = useState<StatusValue>(() => ({
-    message: new URLSearchParams(location.search).has("error")
-      ? t("socialFailed")
-      : "",
+    message: callbackErrorMessage(t, new URLSearchParams(location.search).get("error")),
     tone: "error",
   }));
   const [verificationEmail, setVerificationEmail] = useState("");
@@ -36,16 +48,19 @@ export function AuthPage({
   });
   useEffect(() => {
     const controller = new AbortController();
-    void request<Record<SocialProvider, boolean>>("/api/auth/providers", {
+    void request<ProvidersResponse>("/api/auth/providers", {
       fallback: t("requestFailed"),
       redirectUnauthorized: false,
       signal: controller.signal,
     })
       .then((providers) => {
-        if (!controller.signal.aborted) setEnabledProviders({
+        if (controller.signal.aborted) return;
+        setEnabledProviders({
           google: providers?.google === true,
           github: providers?.github === true,
         });
+        setOidcProvider(providers?.oidc ?? null);
+        setEmailAndPassword(providers?.emailAndPassword !== false);
       })
       .catch(() => {
         // Email authentication remains available if provider discovery fails.
@@ -126,8 +141,9 @@ export function AuthPage({
       setBusy(false);
     }
   }
-  async function signInWithSocialProvider(provider: SocialProvider) {
-    if (busy || !enabledProviders[provider]) return;
+  async function signInWithSocialProvider(provider: string) {
+    const enabled = provider === oidcProvider?.providerId || enabledProviders[provider as SocialProvider];
+    if (busy || !enabled) return;
     setBusy(true);
     setStatus({ message: "" });
     try {
@@ -175,6 +191,7 @@ export function AuthPage({
     }
   }
   const disabled = busy || Boolean(verificationEmail);
+  const noSignInMethods = !emailAndPassword && !oidcProvider && !enabledProviders.google && !enabledProviders.github;
   return (
     <div className="page page--narrow">
       <PageHeader title={t("title")} subtitle={t("subtitle")} />
@@ -198,7 +215,21 @@ export function AuthPage({
             </span>
           </button>
         ))}
-        {signup && (
+        {oidcProvider && (
+          <button
+            type="button"
+            className="btn btn--secondary btn--social btn--block"
+            disabled={busy}
+            onClick={() => void signInWithSocialProvider(oidcProvider.providerId)}
+          >
+            <ProviderIcon provider="oidc" />
+            <span>
+              {t("continueWithProvider", { name: oidcProvider.name })}
+              {lastLoginMethod === "oidc" && <>{" "}<span className="login-method-badge">{t("lastUsed")}</span></>}
+            </span>
+          </button>
+        )}
+        {emailAndPassword && signup && (
           <div className="field">
             <label htmlFor="name" className="label">
               {t("name")}
@@ -214,51 +245,58 @@ export function AuthPage({
             />
           </div>
         )}
-        <div className="field">
-          <label htmlFor="email" className="label">
-            {t("email")}
-          </label>
-          <input
-            type="email"
-            id="email"
-            name="email"
-            required
-            autoComplete="email"
-            className="input"
-            placeholder="you@example.com"
-            disabled={disabled}
-          />
-        </div>
-        <div className="field">
-          <label htmlFor="password" className="label">
-            {t("password")}
-          </label>
-          <input
-            type="password"
-            id="password"
-            name="password"
-            required
-            autoComplete={signup ? "new-password" : "current-password"}
-            className="input"
-            placeholder="••••••••"
-            disabled={disabled}
-          />
-        </div>
+        {emailAndPassword && (
+          <>
+            <div className="field">
+              <label htmlFor="email" className="label">
+                {t("email")}
+              </label>
+              <input
+                type="email"
+                id="email"
+                name="email"
+                required
+                autoComplete="email"
+                className="input"
+                placeholder="you@example.com"
+                disabled={disabled}
+              />
+            </div>
+            <div className="field">
+              <label htmlFor="password" className="label">
+                {t("password")}
+              </label>
+              <input
+                type="password"
+                id="password"
+                name="password"
+                required
+                autoComplete={signup ? "new-password" : "current-password"}
+                className="input"
+                placeholder="••••••••"
+                disabled={disabled}
+              />
+            </div>
+          </>
+        )}
+        {noSignInMethods && <Status id="no-sign-in-methods" message={t("noSignInMethods")} tone="error" />}
         <Status {...status} />
-        <button
-          type="submit"
-          disabled={disabled}
-          className={`btn btn--primary btn--block ${verificationEmail ? "btn--muted" : ""}`}
-        >
-          {t(
-            verificationEmail
-              ? signup
-                ? "emailSent"
-                : "verificationRequiredButton"
-              : "submit",
-          )}
-          {!signup && lastLoginMethod === "email" && <>{" "}<span className="login-method-badge">{t("lastUsed")}</span></>}
-        </button>
+        {emailAndPassword && (
+          <button
+            type="submit"
+            disabled={disabled}
+            className={`btn btn--primary btn--block ${verificationEmail ? "btn--muted" : ""}`}
+          >
+            {t(
+              verificationEmail
+                ? signup
+                  ? "emailSent"
+                  : "verificationRequiredButton"
+                : "submit",
+            )}
+            {!signup && lastLoginMethod === "email" && <>{" "}<span className="login-method-badge">{t("lastUsed")}</span></>}
+          </button>
+        )}
         {verificationEmail && (
           <div id="success-container" className="success-panel">
             <div className="success-title">

@@ -1,3 +1,20 @@
 BETTER_AUTH_SECRET=replace-with-random-hex
 SYNC_TOKEN_SECRET=replace-with-different-random-hex
 AUTH_ALLOWED_EMAILS=developer@example.com
+
+# Generic OIDC (Keycloak, Authentik, Authelia, Zitadel, Dex, Okta, Entra, Auth0, etc.).
+# All three required together, or omit all three - a partial set is a request-time error, not silent disable.
+# Discovery URL is typically <issuer>/.well-known/openid-configuration.
+# Register this redirect URI with the provider: {PUBLIC_URL}/api/auth/callback/oidc
+# In deployed Workers, set OIDC_CLIENT_SECRET with `wrangler secret put OIDC_CLIENT_SECRET`, not as a plaintext `vars` entry.
+# OIDC_DISCOVERY_URL=
+# OIDC_CLIENT_ID=
+# OIDC_CLIENT_SECRET=
+
+# Optional: OIDC_PROVIDER_NAME (default "Single sign-on"), OIDC_SCOPES (default openid,profile,email), OIDC_ACCOUNT_ISSUER
+# OIDC_PROVIDER_NAME=
+# OIDC_SCOPES=openid,profile,email
+# OIDC_ACCOUNT_ISSUER=
+
+# enabled (default) or disabled. disabled makes AUTH_ALLOWED_EMAILS optional (no other gate needed); otherwise it's still required.
+# AUTH_EMAIL_PASSWORD=disabled

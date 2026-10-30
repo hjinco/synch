@@ -21,7 +21,7 @@ describe.each(["google", "github"] as const)("Cloudflare %s credentials", (provi
     };
     const response = await requestWithEnv("/api/auth/providers", testEnv);
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ google: provider === "google" && enabled, github: provider === "github" && enabled });
+    expect(await response.json()).toEqual({ google: provider === "google" && enabled, github: provider === "github" && enabled, emailAndPassword: true, oidc: null });
     const signIn = await requestWithEnv("/api/auth/sign-in/social", testEnv, {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -45,5 +45,5 @@ it("enables Google and GitHub together without publishing their credentials", as
       GITHUB_CLIENT_ID: "github-client", GITHUB_CLIENT_SECRET: "github-secret",
     },
   });
-  expect(await response.json()).toEqual({ google: true, github: true });
+  expect(await response.json()).toEqual({ google: true, github: true, emailAndPassword: true, oidc: null });
 });

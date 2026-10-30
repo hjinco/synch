@@ -11,6 +11,16 @@ export type RuntimeTestEnv = Omit<
 	AUTH_EMAIL_FROM?: string;
 	DEV_MODE?: boolean | string;
 	WWW_BASE_URL?: string;
+	// Mirrors CloudflareRuntimeEnv's (src/runtime/http.ts) additions on top of the
+	// wrangler-generated Env, which does not declare these: they are read directly
+	// off `env` by parseCloudflareHttpConfig rather than through wrangler.jsonc vars.
+	OIDC_DISCOVERY_URL?: string;
+	OIDC_CLIENT_ID?: string;
+	OIDC_CLIENT_SECRET?: string;
+	OIDC_PROVIDER_NAME?: string;
+	OIDC_SCOPES?: string;
+	OIDC_ACCOUNT_ISSUER?: string;
+	AUTH_EMAIL_PASSWORD?: string;
 };
 
 export function expectDeviceVerificationUrl(value: string | undefined): URL {

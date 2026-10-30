@@ -115,7 +115,7 @@ describe.each(["google", "github"] as const)("optional %s authentication", (prov
     const auth = feature(provider, id, secret);
     const response = await auth.authHttpHandler(new Request(`${baseURL}/api/auth/providers`));
     expect(response.headers.get("cache-control")).toBe("no-store");
-    expect(await response.json()).toEqual({ google: false, github: false });
+    expect(await response.json()).toEqual({ google: false, github: false, emailAndPassword: true, oidc: null });
     const signIn = await start(provider, auth);
     expect(signIn.status).toBe(404);
     expect(await signIn.json()).toMatchObject({ code: "PROVIDER_NOT_FOUND" });
@@ -124,7 +124,7 @@ describe.each(["google", "github"] as const)("optional %s authentication", (prov
   it("publishes only availability and starts OAuth with the configured callback", async () => {
     const auth = feature(provider, " client-id ", " client-secret ");
     const response = await auth.authHttpHandler(new Request(`${baseURL}/api/auth/providers`));
-    expect(await response.json()).toEqual({ google: provider === "google", github: provider === "github" });
+    expect(await response.json()).toEqual({ google: provider === "google", github: provider === "github", emailAndPassword: true, oidc: null });
     const signIn = await start(provider, auth);
     expect(signIn.status).toBe(200);
     expect(signIn.headers.get("set-cookie") ?? "").not.toContain("last_used_login_method");

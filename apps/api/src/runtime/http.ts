@@ -41,13 +41,16 @@ export function createRuntimeApp(env: CloudflareRuntimeEnv, request: Request) {
 				githubClientSecret: env.GITHUB_CLIENT_SECRET,
 				email: env.EMAIL,
 				emailFrom: env.AUTH_EMAIL_FROM,
-				allowedEmails:
-					config.capabilities.signUpAccess === "allowlist"
-						? requireNonBlankStringBinding(
-								env.AUTH_ALLOWED_EMAILS,
-								"AUTH_ALLOWED_EMAILS",
-							)
-						: undefined,
+				// parseCloudflareHttpConfig already threw above (via
+				// requiresSignUpAllowlist) if an allowlist is required and absent, so
+				// this binding needs no second gate here -- duplicating that rule
+				// would let the two copies drift, and previously did: this used to
+				// require AUTH_ALLOWED_EMAILS whenever signUpAccess was "allowlist"
+				// regardless of emailAndPassword, which made the config layer's
+				// AUTH_EMAIL_PASSWORD=disabled path impossible to actually boot.
+				allowedEmails: env.AUTH_ALLOWED_EMAILS,
+				oidc: config.oidc,
+				emailAndPassword: config.emailAndPassword,
 			},
 			syncTokenSecret: env.SYNC_TOKEN_SECRET,
 			adminToken:
@@ -88,10 +91,3 @@ function requireBinding<T>(binding: T | undefined, name: string): T {
 	return binding;
 }
 
-function requireNonBlankStringBinding(binding: string | undefined, name: string): string {
-	if (!binding?.trim()) {
-		throw new Error(`${name} binding is required`);
-	}
-
-	return binding;
-}
