@@ -1,4 +1,4 @@
-import { expect, it } from "vitest";
+import { expect, it, vi } from "vitest";
 import { isOidcRequest } from "./oidc-request";
 
 it.each([
@@ -12,21 +12,22 @@ it.each([
 	["/sign-in/social", "POST", { provider: "oidc" }, true],
 	["/sign-in/social/", "POST", { provider: "google" }, false],
 	["/link-social", "POST", { provider: "oidc" }, true],
-	["/get-access-token", "POST", { providerId: "oidc" }, true],
-	["/refresh-token", "POST", { providerId: "github" }, false],
-	["/refresh-token", "POST", { accountId: "opaque-db-id" }, true],
-	["/account-info?providerId=oidc", "GET", undefined, true],
-	["/account-info?providerId=google", "GET", undefined, false],
-	["/account-info?accountId=opaque-db-id", "GET", undefined, true],
+	["/get-access-token", "POST", { accountId: "oidc-account" }, true],
+	["/refresh-token", "POST", { accountId: "github-account" }, false],
+	["/refresh-token", "POST", { accountId: "unknown-account" }, false],
+	["/account-info?accountId=oidc-account", "GET", undefined, true],
+	["/account-info?accountId=google-account", "GET", undefined, false],
+	["/account-info?accountId=unknown-account", "GET", undefined, false],
+	["/get-access-token", "POST", { useAccountCookie: true }, false],
 ] as const)("selects provider-dependent requests: %s %s %j", async (path, method, body, expected) => {
 	const url = new URL(`https://synch.example/api/auth${path}`);
 	const request = new Request(url, { method, headers: { "content-type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body) });
-	expect(await isOidcRequest(request, url.pathname)).toBe(expected);
+	expect(await isOidcRequest(request, url.pathname, async (id) => id === "unknown-account" ? undefined : id.split("-")[0])).toBe(expected);
 	if (body) expect(await request.json()).toEqual(body);
 });
 
 it("recognizes form-encoded OAuth requests without consuming the body", async () => {
 	const request = new Request("https://synch.example/api/auth/sign-in/social", { method: "POST", body: new URLSearchParams({ provider: "oidc" }) });
-	expect(await isOidcRequest(request, new URL(request.url).pathname)).toBe(true);
+	expect(await isOidcRequest(request, new URL(request.url).pathname, vi.fn())).toBe(true);
 	expect(await request.text()).toBe("provider=oidc");
 });

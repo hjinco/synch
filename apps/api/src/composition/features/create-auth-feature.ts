@@ -51,7 +51,15 @@ export function createAuthFeature(
 			if (pathname.startsWith("/api/auth/organization/") && !(request.method === "GET" && pathname === "/api/auth/organization/list")) {
 				return Response.json({ error: "use_organization_api", message: "Use the Synch organization management API" }, { status: 403 });
 			}
-			if (oidcAuth && await isOidcRequest(request, pathname)) {
+			if (oidcAuth && await isOidcRequest(request, pathname, async (accountId) => {
+				// Use Better Auth's authenticated account list so routing cannot look
+				// up another user's account. The HTTP handler also applies bearer auth.
+				const url = new URL("/api/auth/list-accounts", request.url);
+				const response = await auth.handler(new Request(url, { headers: request.headers }));
+				if (!response.ok) return undefined;
+				const accounts = await response.json<Array<{ id: string; providerId: string }>>();
+				return accounts.find((account) => account.id === accountId)?.providerId;
+			})) {
 				const ready = await oidcAuth.get();
 				if (!ready) {
 					return Response.json({ code: "OIDC_UNAVAILABLE", message: "Single sign-on is temporarily unavailable. Please try again." }, {
