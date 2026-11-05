@@ -63,6 +63,54 @@ describe("OIDC account linking", () => {
 		expect(sessionJson?.user?.id).toBe(preRegisteredUser.id);
 	});
 
+	it("keeps identical subjects from different issuer paths in separate accounts", async () => {
+		const origin = `https://${uniqueId("tenant-host")}.idp.test`;
+		const sub = uniqueId("shared-subject");
+		const users: string[] = [];
+		for (const tenant of ["tenant-a", "tenant-b"]) {
+			const idp = await createFakeIdp(`${origin}/${tenant}`);
+			installFakeIdpFetch(idp, { discoveryUrl: idp.discoveryUrl, jwksUrl: idp.jwksUrl, tokenUrl: idp.tokenUrl });
+			const testEnv = oidcTestEnv(idp);
+			const email = `${uniqueId(tenant)}@example.com`;
+			const authorize = await startOidcSignIn(testEnv);
+			signIdTokenForCallback(idp, authorize, { sub, email });
+			const callback = await completeOidcCallback(testEnv, authorize);
+			const session = await requestWithEnv("/api/auth/get-session", testEnv, {
+				headers: { cookie: setCookieHeader(callback) },
+			});
+			const body = await session.json() as { user: { id: string; email: string } };
+			expect(body.user.email).toBe(email);
+			users.push(body.user.id);
+			const accounts = await findOidcAccountRowsBySubject(idp.issuer, sub);
+			expect(accounts).toHaveLength(1);
+			expect(accounts[0]?.userId).toBe(body.user.id);
+		}
+		expect(users[0]).not.toBe(users[1]);
+	});
+
+	it("links a full-issuer identity to its existing origin-scoped account by verified email", async () => {
+		const idp = await createFakeIdp(`https://${uniqueId("migration")}.idp.test/tenant`);
+		installFakeIdpFetch(idp, { discoveryUrl: idp.discoveryUrl, jwksUrl: idp.jwksUrl, tokenUrl: idp.tokenUrl });
+		const email = `${uniqueId("migration-user")}@example.com`;
+		const sub = uniqueId("migration-sub");
+		const testEnv = oidcTestEnv(idp);
+		const previousEnv = { ...testEnv, OIDC_ACCOUNT_ISSUER: new URL(idp.issuer).origin };
+		const previous = await startOidcSignIn(previousEnv);
+		signIdTokenForCallback(idp, previous, { sub, email });
+		await completeOidcCallback(previousEnv, previous);
+		const [before] = await findUserRowsByEmail(email);
+		expect(before).toBeDefined();
+
+		const authorize = await startOidcSignIn(testEnv);
+		signIdTokenForCallback(idp, authorize, { sub, email });
+		const callback = await completeOidcCallback(testEnv, authorize);
+		const session = await requestWithEnv("/api/auth/get-session", testEnv, { headers: { cookie: setCookieHeader(callback) } });
+		expect(await session.json()).toMatchObject({ user: { id: before!.id, email } });
+		const accounts = await findOidcAccountRowsBySubject(idp.issuer, sub);
+		expect(accounts).toHaveLength(1);
+		expect(accounts[0]?.userId).toBe(before!.id);
+	});
+
 	it("promotes the local row to emailVerified: true after the first successful link", async () => {
 		const idp = await setUpFakeIdp();
 		const email = `${uniqueId("promote")}@example.com`;

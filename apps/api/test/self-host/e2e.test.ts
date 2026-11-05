@@ -14,7 +14,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import WebSocket from "ws";
 
 import { parseOidcProviderConfig, type OidcProviderConfig } from "../../src/auth/policies/oidc";
-import { OIDC_REBUILD_COOLDOWN_MS } from "../../src/composition/features/create-auth-feature";
+import { OIDC_RETRY_COOLDOWN_MS } from "../../src/auth/oidc-auth";
 import { createNodeRuntime, type NodeRuntime } from "../../src/runtime/node";
 import { createNodeWebSocketUpgradeHandler } from "../../src/runtime/node-websocket";
 import { LocalDiskBlobObjectStorage } from "../../src/sync-blob-transfer/adapters/outbound/local-disk-object-storage";
@@ -811,11 +811,8 @@ describe("self-hosted Node runtime: end-to-end sync", () => {
 	});
 
 	it("isolates password sign-in from an unreachable OIDC provider and recovers OIDC once it comes back, with no process restart", async () => {
-		// Node builds this runtime's betterAuth() instance exactly once, at
-		// boot, unlike Cloudflare (which rebuilds per request). Reserving the
-		// port but never starting a server on it reproduces "Synch wins the
-		// docker-compose startup race against its identity provider": the
-		// discovery fetch this boot performs fails with connection-refused.
+		// Reserving a port without starting an IdP models a startup race.
+		// Discovery starts only when the first OIDC request arrives.
 		const idpPort = await reserveFreePort();
 		const idp = await createFakeIdp(`http://127.0.0.1:${idpPort}`);
 
@@ -841,9 +838,7 @@ describe("self-hosted Node runtime: end-to-end sync", () => {
 
 		// Password sign-up has nothing to do with OIDC. An unrelated
 		// provider's discovery failure must not take it down too -- this
-		// request's response only comes back once the runtime has fully
-		// finished (successfully) building its auth context, discovery
-		// failure included, so this is not a race against that failure.
+		// request must finish without starting OIDC discovery at all.
 		const signUpWhileUnreachable = await fetch(`${baseUrl}/api/auth/sign-up/email`, {
 			method: "POST",
 			headers: { "content-type": "application/json", origin: baseUrl },
@@ -851,21 +846,16 @@ describe("self-hosted Node runtime: end-to-end sync", () => {
 		});
 		expect(signUpWhileUnreachable.status, await signUpWhileUnreachable.text()).toBeLessThan(300);
 
-		// Checked immediately after the sign-up above (before any other
-		// request can trigger a fresh attempt): the unreachable provider is
-		// visibly absent rather than silently offering a button that would
-		// 404.
+		// Provider configuration stays advertised so browser users can retry.
 		const providersWhileUnreachable = await fetch(`${baseUrl}/v1/auth/providers`);
-		await expect(providersWhileUnreachable.json()).resolves.toMatchObject({ oidc: null });
+		await expect(providersWhileUnreachable.json()).resolves.toMatchObject({ oidc: { providerId: "oidc" } });
 
-		// OIDC sign-in itself fails closed -- "provider not found", never a
-		// 500 and never a live, unverified token.
 		const oidcSignInWhileUnreachable = await fetch(`${baseUrl}/api/auth/sign-in/social`, {
 			method: "POST",
 			headers: { "content-type": "application/json", origin: baseUrl },
 			body: JSON.stringify({ provider: "oidc", callbackURL: `${baseUrl}/dashboard` }),
 		});
-		expect(oidcSignInWhileUnreachable.status).toBe(404);
+		expect(oidcSignInWhileUnreachable.status).toBe(503);
 
 		// Bring the provider up: same process, same runtime, no restart.
 		const idpServer = await startFakeIdpServer(idp);
@@ -876,7 +866,7 @@ describe("self-hosted Node runtime: end-to-end sync", () => {
 		// state -- recovery is bounded by the cooldown window, not instant.
 		// Waiting it out here is what makes the assertions below about actual
 		// recovery, rather than about how quickly it happens.
-		await new Promise((resolve) => setTimeout(resolve, OIDC_REBUILD_COOLDOWN_MS + 250));
+		await new Promise((resolve) => setTimeout(resolve, OIDC_RETRY_COOLDOWN_MS + 250));
 
 		// Once the cooldown has elapsed, the next request must retry discovery
 		// instead of replaying a permanently cached failure -- a full

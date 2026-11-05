@@ -1,16 +1,4 @@
-/**
- * Bounds how often an OIDC-init failure (a discovery fetch that rejects, an
- * incomplete discovery document, and similar construction-time failures) is
- * surfaced to logs. `createBetterAuth` runs on every request -- including
- * routes such as blob transfer that never await a session -- so an
- * unreachable identity provider would otherwise produce one log entry per
- * request at full traffic volume rather than once per outage.
- *
- * The decision of whether a given failure should be emitted is kept pure and
- * side-effect-free: it takes the current time as a parameter instead of
- * calling `Date.now()` internally, so the de-duplication window can be
- * exercised deterministically without real timers.
- */
+/** Bounds application diagnostics across OIDC attempts and request-scoped Workers. */
 
 /** Last-allowed timestamp (ms) per key. */
 export type TimeWindowGateState = ReadonlyMap<string, number>;
@@ -20,14 +8,7 @@ export type TimeWindowGateDecision = {
 	readonly nextState: TimeWindowGateState;
 };
 
-/**
- * Pure decision shared by every "at most once per window, per key" policy in
- * the OIDC integration: given the prior state, a key, and the current time,
- * decides whether this occurrence is allowed and returns the state to carry
- * forward. Never mutates `state`. Callers -- diagnostic de-duplication here,
- * and the rebuild cooldown in `createAuthFeature` -- keep their own state and
- * their own window, so unrelated policies never throttle each other.
- */
+/** Pure, immutable time-window gate used by diagnostic deduplication. */
 export function decideTimeWindowedAction(
 	state: TimeWindowGateState,
 	key: string,
@@ -92,16 +73,7 @@ export function recordOidcDiagnostic(
 	console.error("[api] oidc init diagnostic", { key, ...detail, at: now });
 }
 
-/**
- * Applies `decideOidcDiagnosticEmission` against module-scoped state and
- * reports whether this occurrence is worth emitting. Callers -- the explicit
- * `.catch()` attached to the OIDC plugin's init promise at construction --
- * must call `recordOidcDiagnostic` themselves when (and only when) this
- * returns `true`. Because the eager init promise is recreated on every
- * request, this is consulted once per failing request; the module-scoped
- * state is what keeps the resulting `recordOidcDiagnostic` calls (and
- * therefore log volume) bounded regardless of request count.
- */
+/** Applies the diagnostic window across requests; callers emit only when allowed. */
 export function shouldEmitOidcDiagnostic(key: string, now: number = Date.now()): boolean {
 	const decision = decideOidcDiagnosticEmission(dedupState, key, now);
 	dedupState = decision.nextState;

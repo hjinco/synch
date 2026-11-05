@@ -85,7 +85,7 @@ export function installFakeIdpFetch(idp: FakeIdp, routes: FakeIdpFetchRoutes): v
  * provider is unreachable. `mode: "reject"` fails immediately, modelling a
  * refused connection; `mode: "hang"` never resolves, modelling a provider that
  * accepts the connection but never answers. The distinction matters because a
- * refusal fails fast while a hang is bounded by nothing the application sets.
+ * refusal fails fast while a hang must respect the initialization deadline.
  * Restored in `onTestFinished`, same as `installFakeIdpFetch`.
  */
 export function installFailingFetch(
