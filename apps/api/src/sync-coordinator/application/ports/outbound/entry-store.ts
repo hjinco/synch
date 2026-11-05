@@ -27,23 +27,24 @@ export interface EntryStateStore {
 	countEntryStates(sinceCursor: number, targetCursor: number, entryIds?: readonly string[]): number;
 	listDeletedEntries(
 		before: DeletedEntryPageCursor | null,
-		retentionStart: number,
+		now: number,
 		limit: number,
 	): DeletedEntryListRow[];
 	readEntry(entryId: string): CurrentEntryRow | null;
 }
 
+/** History is readable only while its persisted expiresAt is strictly greater than now. */
 export interface EntryHistoryStore {
 	listEntryVersions(
 		entryId: string,
 		before: EntryVersionPageCursor | null,
-		retentionStart: number,
+		now: number,
 		limit: number,
 	): EntryVersionListRow[];
 	readEntryVersion(
 		entryId: string,
 		versionId: string,
-		retentionStart: number,
+		now: number,
 	): EntryVersionRow | null;
 }
 
@@ -53,7 +54,7 @@ export interface EntryStore extends EntryStateStore {
 }
 export interface EntryVersionStore extends EntryHistoryStore {
 	insertEntryVersion(input: InsertEntryVersionInput): boolean;
-	hasRestorableHistory(entryId: string, retentionStart: number): boolean;
+	hasRestorableHistory(entryId: string, now: number): boolean;
 	listBlobIds(entryId: string): string[];
 	deleteEntryVersions(entryId: string): void;
 	expireEntryVersions(now: number): void;

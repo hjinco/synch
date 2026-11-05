@@ -1,7 +1,7 @@
 ---
 title: 不使用 Cloudflare 自托管 Synch
 description: 使用 Docker Compose 或普通 systemd 在自己的硬件上运行 Synch 服务器，无需 Cloudflare 或第三方服务。
-updatedDate: 2026-08-02
+updatedDate: 2026-11-05
 ---
 
 如果你完全不想使用 Cloudflare，Synch 服务器也可以作为普通 Node.js 进程运行。本指南介绍如何在自己的硬件上运行 Synch——例如家庭实验室 NAS、小型 VPS、Incus/LXC 容器，或任何能够运行长期进程并公开端口的环境——你可以选择使用 [Docker Compose](#使用-docker-compose-部署) 或 [systemd](#不使用-docker使用-systemd-运行)。
@@ -57,6 +57,20 @@ updatedDate: 2026-08-02
 ### Blob 存储
 
 默认情况下，加密的文件内容会存储在同一个数据卷的磁盘中。如果希望使用 AWS S3、MinIO、R2 等 S3 兼容存储桶，请在启动前取消 `.env` 中 `BLOB_STORAGE=s3` 配置块的注释并填写相应值。
+
+### 版本历史保留期限
+
+在 `.env` 中设置 `VERSION_HISTORY_RETENTION_DAYS`，可以延长新保存的文件版本历史的保留期限：
+
+```text
+VERSION_HISTORY_RETENTION_DAYS=30
+```
+
+默认值为 **1 天**，允许设置 **1 至 36500 之间的整数**，例如 `30` 或 `90`。无效值会导致服务器无法启动。此设置仅适用于自托管 Node 服务器，包括 Docker 和 systemd 部署，不适用于 Cloudflare 部署或 Synch 托管服务。
+
+修改 `.env` 后，运行 `docker compose up -d --force-recreate` 或重启 systemd 服务。此设置适用于所有 vault，包括现有 vault；每个 vault 会在重启后首次被访问时应用新策略。之后新保存的历史记录使用新的保留期限。无论延长还是缩短期限，已有历史记录都会保留原来的到期时间。延长期限无法恢复已经过期或删除的历史记录。
+
+保留期限越长，磁盘或 S3 中保存的加密历史文件就越多，存储用量和费用也可能增加。历史记录过期不会删除当前文件。请继续保留独立备份，以便在发生故障时恢复数据。
 
 ### 升级
 

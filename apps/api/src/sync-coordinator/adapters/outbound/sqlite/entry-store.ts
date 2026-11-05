@@ -103,7 +103,7 @@ export class CoordinatorEntryStore {
 
 	listDeletedEntries(
 		before: DeletedEntryPageCursor | null,
-		retentionStart: number,
+		now: number,
 		limit: number,
 	): DeletedEntryListRow[] {
 		const rows = this.handle
@@ -133,7 +133,7 @@ export class CoordinatorEntryStore {
 						WHERE entry_versions.entry_id = entries.entry_id
 							AND entry_versions.op_type = 'upsert'
 							AND entry_versions.blob_id IS NOT NULL
-							AND entry_versions.captured_at >= ?
+							AND entry_versions.expires_at > ?
 					)
 				ORDER BY updated_at DESC, entry_id DESC
 				LIMIT ?
@@ -142,7 +142,7 @@ export class CoordinatorEntryStore {
 				before?.deletedAt ?? null,
 				before?.deletedAt ?? null,
 				before?.entryId ?? null,
-				retentionStart,
+				now,
 				limit,
 			)
 			.toArray();

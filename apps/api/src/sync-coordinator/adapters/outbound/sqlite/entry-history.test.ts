@@ -96,6 +96,35 @@ describe("sqlite backend: entry state listing", () => {
 });
 
 describe("sqlite backend: entry history", () => {
+	it("uses stored expiry for listing, restoring and deleted-entry recovery before GC", async () => {
+		const { historyStore, entryStore } = await createSqliteCoordinator();
+		entryStore.upsertEntry({
+			entryId: "deleted", revision: 2, blobId: null, encryptedMetadata: "encrypted",
+			deleted: true, updatedSeq: 2, updatedAt: 100, updatedByUserId: "user",
+			updatedByLocalVaultId: "local", lastMutationId: "delete",
+		});
+		for (const [versionId, expiresAt] of [["short", 200], ["long", 500]] as const) {
+			historyStore.insertEntryVersion({
+				versionId, entryId: "deleted", sourceRevision: 1, opType: "upsert",
+				blobId: "blob", encryptedMetadata: "encrypted", reason: "auto", bucketStartMs: null,
+				createdAt: 100, expiresAt, createdByUserId: "user", createdByLocalVaultId: "local",
+			});
+		}
+		expect(historyStore.listEntryVersions("deleted", null, 200, 10).map(row => row.version_id)).toEqual(["long"]);
+		expect(historyStore.readEntryVersion("deleted", "short", 200)).toBeNull();
+		expect(historyStore.readEntryVersion("deleted", "long", 499)).not.toBeNull();
+		expect(historyStore.hasRestorableHistory("deleted", 499)).toBe(true);
+		expect(entryStore.listDeletedEntries(null, 499, 10)).toHaveLength(1);
+		expect(historyStore.listEntryVersions("deleted", null, 500, 10)).toEqual([]);
+		expect(historyStore.readEntryVersion("deleted", "long", 500)).toBeNull();
+		expect(historyStore.hasRestorableHistory("deleted", 500)).toBe(false);
+		expect(entryStore.listDeletedEntries(null, 500, 10)).toEqual([]);
+		historyStore.expireEntryVersions(200);
+		expect(historyStore.listEntryVersions("deleted", null, 0, 10).map(row => row.version_id)).toEqual(["long"]);
+		historyStore.expireEntryVersions(500);
+		expect(historyStore.listEntryVersions("deleted", null, 0, 10)).toEqual([]);
+	});
+
 	it("captures an auto version on a second mutation and lists it", async () => {
 		const { mutationService, historyStore } = await createSqliteCoordinator();
 

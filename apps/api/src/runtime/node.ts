@@ -47,6 +47,7 @@ export interface NodeRuntimeConfig {
 	githubClientSecret?: string;
 	syncTokenSecret: string;
 	syncTokenTtlSeconds?: number;
+	versionHistoryRetentionDays?: number;
 	blobStorage: BlobObjectStorage;
 	/** Defaults to the drizzle/*.sql folder shared with the D1 (Cloudflare) backend. */
 	migrationsFolder?: string;
@@ -85,6 +86,7 @@ export async function createNodeRuntime(config: NodeRuntimeConfig) {
 		syncTokenTtlSeconds: config.syncTokenTtlSeconds,
 		profile: NODE_COMMUNITY_PROFILE,
 		productIdsByPlanId: {},
+		selfHostedVersionHistoryRetentionDays: config.versionHistoryRetentionDays,
 	});
 	const application = createApiApplication(
 		{
@@ -111,6 +113,7 @@ export async function createNodeRuntime(config: NodeRuntimeConfig) {
 			syncTokenSecret: config.syncTokenSecret,
 			syncTokenTtlSeconds: config.syncTokenTtlSeconds,
 			productIdsByPlanId: {},
+			selfHostedVersionHistoryRetentionDays: config.versionHistoryRetentionDays,
 		},
 	);
 

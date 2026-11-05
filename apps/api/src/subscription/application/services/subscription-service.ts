@@ -20,6 +20,7 @@ import type { VaultPolicyWriter } from "../ports/outbound/vault-policy-writer";
 
 export type SubscriptionServiceConfig = {
 	selfHosted?: boolean;
+	selfHostedVersionHistoryRetentionDays?: number;
 	productIdsByPlanId?: SubscriptionProductIdsByPlanId;
 	dataReader?: SubscriptionPolicyDataReader;
 	vaultReader?: OrganizationVaultReader;
@@ -36,7 +37,15 @@ export class SubscriptionService
 
 	async readOrganizationPolicy(organizationId: string) {
 		if (this.config.selfHosted) {
-			return getSubscriptionPlanPolicy("self_hosted");
+			const policy = getSubscriptionPlanPolicy("self_hosted");
+			return {
+				...policy,
+				limits: {
+					...policy.limits,
+					versionHistoryRetentionDays:
+						this.config.selfHostedVersionHistoryRetentionDays ?? policy.limits.versionHistoryRetentionDays,
+				},
+			};
 		}
 		if (!this.config.dataReader) {
 			return getSubscriptionPlanPolicy("free");

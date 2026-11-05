@@ -97,12 +97,11 @@ export class EntryService {
 		_session: SocketSession,
 		message: ListDeletedEntriesMessage,
 	): Promise<DeletedEntriesListedMessage> {
-		const versionHistoryRetentionMs = this.readVersionHistoryRetentionMs();
-		const retentionStart = Date.now() - versionHistoryRetentionMs;
+		const now = Date.now();
 		const effectiveLimit = Math.min(message.limit, MAX_DELETED_ENTRIES_BATCH);
 		const entries = this.unitOfWork.stores.entries.listDeletedEntries(
 			message.before,
-			retentionStart,
+			now,
 			effectiveLimit + 1,
 		);
 		const hasMore = entries.length > effectiveLimit;
@@ -133,13 +132,12 @@ export class EntryService {
 		_session: SocketSession,
 		message: ListEntryVersionsMessage,
 	): Promise<EntryVersionsListedMessage> {
-		const versionHistoryRetentionMs = this.readVersionHistoryRetentionMs();
-		const retentionStart = Date.now() - versionHistoryRetentionMs;
+		const now = Date.now();
 		const effectiveLimit = Math.min(message.limit, MAX_HISTORY_BATCH);
 		const versions = this.unitOfWork.stores.versions.listEntryVersions(
 			message.entryId,
 			message.before,
-			retentionStart,
+			now,
 			effectiveLimit + 1,
 		);
 		const hasMore = versions.length > effectiveLimit;
@@ -182,8 +180,7 @@ export class EntryService {
 		session: SocketSession,
 		message: RestoreEntryVersionMessage,
 	): Promise<RestoreEntryVersionResult> {
-		const versionHistoryRetentionMs = this.readVersionHistoryRetentionMs();
-		const retentionStart = Date.now() - versionHistoryRetentionMs;
+		const now = Date.now();
 
 		const current = this.unitOfWork.stores.entries.readEntry(message.entryId);
 		if (!current) {
@@ -195,7 +192,7 @@ export class EntryService {
 		const target = this.unitOfWork.stores.versions.readEntryVersion(
 			message.entryId,
 			message.versionId,
-			retentionStart,
+			now,
 		);
 		if (!target) {
 			throw new SyncCoordinatorApplicationError("not_found", {
@@ -274,8 +271,7 @@ export class EntryService {
 		session: SocketSession,
 		message: RestoreEntryVersionsMessage,
 	): Promise<RestoreEntryVersionsResult> {
-		const versionHistoryRetentionMs = this.readVersionHistoryRetentionMs();
-		const retentionStart = Date.now() - versionHistoryRetentionMs;
+		const now = Date.now();
 		const results: RestoreEntryVersionBatchResult[] = [];
 		const mutationIndexes: number[] = [];
 		const restoredFromRevisions: number[] = [];
@@ -291,7 +287,7 @@ export class EntryService {
 			const target = this.unitOfWork.stores.versions.readEntryVersion(
 				restore.entryId,
 				restore.versionId,
-				retentionStart,
+				now,
 			);
 			if (!target) {
 				results.push(
@@ -423,8 +419,7 @@ export class EntryService {
 		session: SocketSession,
 		message: PurgeDeletedEntriesMessage,
 	): Promise<DeletedEntriesPurgeResult> {
-		const versionHistoryRetentionMs = this.readVersionHistoryRetentionMs();
-		const retentionStart = Date.now() - versionHistoryRetentionMs;
+		const now = Date.now();
 		const results: PurgeDeletedEntryBatchResult[] = [];
 		const candidateBlobIds = new Set<string>();
 		for (const entry of message.entries) {
@@ -435,7 +430,7 @@ export class EntryService {
 					current,
 					hasRestorableHistory: stores.versions.hasRestorableHistory(
 						entry.entryId,
-						retentionStart,
+						now,
 					),
 				};
 				const decision = decideDeletedEntryPurge({
@@ -521,15 +516,7 @@ export class EntryService {
 			candidateBlobIds: purged.candidateBlobIds,
 		};
 	}
-
-	private readVersionHistoryRetentionMs(): number {
-		return (
-			this.unitOfWork.stores.state.readVersionHistoryRetentionDays() * DAY_IN_MS
-		);
-	}
 }
-
-const DAY_IN_MS = 24 * 60 * 60 * 1000;
 
 function validateCursorRange(
 	message: ListEntryStatesMessage,

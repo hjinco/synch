@@ -23,6 +23,7 @@ export interface NodeCoordinatorSharedDeps {
 	syncTokenTtlSeconds?: number;
 	profile: Extract<DeploymentProfile, { platform: "node" }>;
 	productIdsByPlanId: SubscriptionProductIdsByPlanId;
+	selfHostedVersionHistoryRetentionDays?: number;
 }
 
 /**
@@ -83,6 +84,7 @@ export function createNodeCoordinatorRuntime(
 		{
 			profile: deps.profile,
 			productIdsByPlanId: deps.productIdsByPlanId,
+			selfHostedVersionHistoryRetentionDays: deps.selfHostedVersionHistoryRetentionDays,
 			syncTokenSecret: deps.syncTokenSecret,
 			syncTokenTtlSeconds: deps.syncTokenTtlSeconds,
 		},
@@ -90,6 +92,9 @@ export function createNodeCoordinatorRuntime(
 
 	const ready = (async () => {
 		await storage.migrate();
+		// Node policies are process configuration. Refresh lazily opened existing
+		// vaults before requests or maintenance; historical expiry dates stay intact.
+		await application.refreshVaultPolicy(vaultId);
 		maintenanceScheduler.ensureArmed();
 	})();
 

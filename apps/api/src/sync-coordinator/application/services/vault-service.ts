@@ -88,6 +88,13 @@ export class VaultService {
 		this.vaultStateStore.ensureVaultState(vaultId, initialLimits);
 	}
 
+	/** Refresh persisted limits without creating state for an unknown or purged vault. */
+	async refreshVaultPolicy(vaultId: string): Promise<void> {
+		if (!this.vaultStateStore.vaultStateExistsFor(vaultId)) return;
+		const limits = await this.initialVaultLimitReader.readInitialVaultLimits(vaultId);
+		await this.applyVaultPolicy(vaultId, limits);
+	}
+
 	async detachLocalVault(session: SocketSession): Promise<void> {
 		this.unitOfWork.stores.connections.deleteLocalVaultConnection(
 			session.userId,

@@ -66,6 +66,7 @@ export type CoordinatorApplicationDependencies = {
 
 export type CoordinatorApplicationConfig = {
 	profile: DeploymentProfile;
+	selfHostedVersionHistoryRetentionDays?: number;
 	productIdsByPlanId: SubscriptionProductIdsByPlanId;
 	syncTokenSecret: string;
 	syncTokenTtlSeconds?: number;
@@ -91,6 +92,7 @@ export function createCoordinatorApplication(
 	const subscriptionFeature = createSubscriptionFeature(deps.db, {
 		selfHosted: isCommunityEdition(config.profile),
 		productIdsByPlanId: config.productIdsByPlanId,
+		selfHostedVersionHistoryRetentionDays: config.selfHostedVersionHistoryRetentionDays,
 	});
 	const vaultOrganizationReader = createVaultOrganizationReader(deps.db);
 	const syncStatusRepository = new VaultSyncStatusRepository(deps.db);
@@ -239,6 +241,7 @@ export function createCoordinatorApplication(
 	);
 
 	return {
+		refreshVaultPolicy: (vaultId: string) => vaultService.refreshVaultPolicy(vaultId),
 		authorizeSyncAccess: async (input: VerifiedVaultAccess) =>
 			syncAccess.authorizeVerified(input),
 		app: createCoordinatorApp({

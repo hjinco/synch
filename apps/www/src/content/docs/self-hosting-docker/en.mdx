@@ -1,7 +1,7 @@
 ---
 title: Self-host Synch without Cloudflare
 description: Run the Synch server on your own hardware with Docker Compose or plain systemd - no Cloudflare account, no third-party services required.
-updatedDate: 2026-08-02
+updatedDate: 2026-11-05
 ---
 
 If you'd rather not use Cloudflare at all, Synch's server also runs as a plain Node.js process. This guide covers running it on your own hardware - a homelab NAS, a small VPS, an Incus/LXC container, anywhere you can run a long-lived process and expose a port - with either [Docker Compose](#deploy-with-docker-compose) or [systemd](#run-without-docker-systemd).
@@ -58,6 +58,20 @@ Vault and blob data persist in the `synch-data` Docker volume across restarts an
 ### Blob storage
 
 By default, encrypted file contents are stored on disk inside the same data volume. If you'd rather use an S3-compatible bucket (AWS S3, MinIO, R2, etc.), uncomment and fill in the `BLOB_STORAGE=s3` block in `.env` before starting the container.
+
+### Version history retention
+
+Set `VERSION_HISTORY_RETENTION_DAYS` in `.env` to retain newly captured file versions for longer:
+
+```text
+VERSION_HISTORY_RETENTION_DAYS=30
+```
+
+The default is **1 day**. Values must be whole numbers from **1 to 36500**; for example, `30` or `90`. Invalid values prevent server startup. This setting is available only for self-hosted Node servers, including Docker and systemd deployments. It does not apply to Cloudflare deployments or the managed Synch service.
+
+After editing `.env`, run `docker compose up -d --force-recreate` or restart your systemd service. The setting applies to all vaults, including existing ones: each vault picks up the policy when first accessed after restart. Newly captured history uses the new duration. Existing history keeps its original expiry date, whether you increase or decrease the setting; extending retention cannot recover history that has already expired or been deleted.
+
+Longer retention keeps more encrypted historical file data on disk or in S3, increasing storage usage and potentially storage costs. Current files are not deleted when their history expires. Keep independent backups for disaster recovery.
 
 ### Single sign-on (OIDC)
 

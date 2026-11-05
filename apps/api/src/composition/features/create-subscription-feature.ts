@@ -19,6 +19,7 @@ import type { AppDb } from "../../db/client";
 
 export type SubscriptionFeatureConfig = {
 	selfHosted: boolean;
+	selfHostedVersionHistoryRetentionDays?: number;
 	productIdsByPlanId?: SubscriptionProductIdsByPlanId;
 };
 
@@ -47,6 +48,7 @@ export function createSubscriptionFeature(
 	const service = new SubscriptionService({
 		selfHosted: config.selfHosted,
 		productIdsByPlanId: config.productIdsByPlanId,
+		selfHostedVersionHistoryRetentionDays: config.selfHostedVersionHistoryRetentionDays,
 		dataReader: new DrizzleSubscriptionPolicyDataReader(db),
 		...(refresh && {
 			vaultReader: refresh.vaultReader,
