@@ -1,7 +1,7 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { mkdtemp, mkdir, cp, readFile, rm, symlink, realpath } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join } from "node:path";
 import { createReport, options, root, save } from "./cli";
 import { assertComparable, renderReport, successful, type Report, type Comparison } from "./report";
 import { runComparisonSample } from "./comparison-sample";
@@ -54,7 +54,7 @@ async function stageDefinition(checkout: string, frozen: string) {
     // These are isolated, owned checkouts. Remove old definitions before copying.
     await rm(join(checkout, folder), { recursive: true, force: true });
     await cp(join(frozen, folder), join(checkout, folder), { recursive: true });
-    const manifest = JSON.parse(await readFile(join(frozen, folder, "package.json"), "utf8"));
+    const manifest = JSON.parse(await readFile(join(frozen, folder, "package.json"), "utf8")) as { devDependencies: Record<string, string> };
     for (const name of Object.keys(manifest.devDependencies)) {
       const link = join(checkout, folder, "node_modules", name);
       await mkdir(dirname(link), { recursive: true });

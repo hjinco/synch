@@ -10,7 +10,16 @@ import { runSample } from "./runner";
 import { renderReport, successful, type Report } from "./report";
 
 export const root = fileURLToPath(new URL("../../../", import.meta.url));
-export function options(args: string[], compare = false) {
+interface BenchmarkOptions {
+  runtime: Runtime;
+  scenarios: ReturnType<typeof selectScenarios>;
+  iterations: number;
+  warmup: number;
+  output: string;
+  base: string | undefined;
+  candidate: string | undefined;
+}
+export function options(args: string[], compare = false): BenchmarkOptions {
   if (args[0] === "--") args = args.slice(1);
   const { values } = parseArgs({ args, options: {
     runtime: { type: "string", default: "cloudflare" }, suite: { type: "string", default: "quick" },
@@ -21,7 +30,7 @@ export function options(args: string[], compare = false) {
   if (values.runtime !== "node" && values.runtime !== "cloudflare") throw new Error(`Unknown runtime: ${values.runtime}`);
   const iterations = Number(values.iterations), warmup = Number(values.warmup);
   if (!Number.isInteger(iterations) || iterations < 1 || iterations > 100 || !Number.isInteger(warmup) || warmup < 0 || warmup > 10) throw new Error("iterations must be 1..100; warmup must be 0..10");
-  return { runtime: values.runtime as Runtime, scenarios: selectScenarios(values.suite!, values.scenario), iterations, warmup, output: resolve(values.output!), base: values.base as string | undefined, candidate: values.candidate as string | undefined };
+  return { runtime: values.runtime, scenarios: selectScenarios(values.suite, values.scenario), iterations, warmup, output: resolve(values.output), base: typeof values.base === "string" ? values.base : undefined, candidate: typeof values.candidate === "string" ? values.candidate : undefined };
 }
 export async function definitionFingerprint(checkout = root) {
   const hash = createHash("sha256");
@@ -43,7 +52,7 @@ export async function createReport(config: ReturnType<typeof options>, checkout 
   const untracked = git("ls-files", "--others", "--exclude-standard", "-z").split("\0").filter(Boolean).sort();
   const dirtyDigest = createHash("sha256").update(dirty);
   for (const path of untracked) { dirtyDigest.update(path); dirtyDigest.update(await readFile(join(checkout, path))); }
-  const version = async (packagePath: string) => JSON.parse(await readFile(join(checkout, packagePath, "package.json"), "utf8")).version as string;
+  const version = async (packagePath: string) => (JSON.parse(await readFile(join(checkout, packagePath, "package.json"), "utf8")) as { version: string }).version;
   return {
     schemaVersion: 1, kind: "run", runtime: config.runtime, definition: await definitionFingerprint(checkout),
     source: { commit: git("rev-parse", "HEAD").trim(), dirtyHash: dirty || untracked.length ? dirtyDigest.digest("hex") : null, lockfile: sha(await readFile(join(checkout, "pnpm-lock.yaml"))) },

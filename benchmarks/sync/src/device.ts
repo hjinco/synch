@@ -26,7 +26,7 @@ export class Device {
   pageRequests = 0;
   private readonly transport = createTransport({
     beforeSend: text => {
-      const message = JSON.parse(text);
+      const message = JSON.parse(text) as { type: string };
       if (!this.measuring) return;
       if (message.type === "commit_mutations") {
         this.metrics.commitStarted();
@@ -38,7 +38,7 @@ export class Device {
       }
     },
     received: text => {
-      const message = JSON.parse(text);
+      const message = JSON.parse(text) as { type: string; policy: { storageLimitBytes: number; maxFileSizeBytes: number }; cursor?: number; targetCursor?: number; results?: { status: string }[] };
       if (message.type === "hello_ack") this.policy = message.policy;
       if (typeof message.cursor === "number") this.cursor = Math.max(this.cursor, message.cursor);
       if (typeof message.targetCursor === "number") this.cursor = Math.max(this.cursor, message.targetCursor);
@@ -65,14 +65,14 @@ export class Device {
     this.vault = new FilesystemVault(directory);
     const error = (message: unknown) => { if (this.errors.length < 20) this.errors.push(String(message)); };
     this.engine = new SyncEngine({
-      vaultAdapter: this.vault, vaultConfigSource: { listFiles: async () => [] }, changeSource: { start() {} },
+      vaultAdapter: this.vault, vaultConfigSource: { listFiles: () => Promise.resolve([]) }, changeSource: { start() {} },
       httpClient: { request: async input => {
         const shaped = this.measuring && input.url.includes("/blobs/") ? this.bandwidth : undefined;
         if (input.method === "PUT" && input.body instanceof ArrayBuffer) await shaped?.transfer(input.body.byteLength);
         const response = await this.transport.httpClient.request(input);
         if (input.method !== "PUT" && response.arrayBuffer) await shaped?.transfer(response.arrayBuffer.byteLength);
         return response;
-      } }, createWebSocket: this.transport.createWebSocket,
+      } }, createWebSocket: (url, protocols) => this.transport.createWebSocket(url, protocols),
       getApiBaseUrl: () => baseUrl, getSyncToken: () => remote.token(this.localId), invalidateSyncToken() {},
       getRemoteVaultKey: () => key, getConfigDir: () => ".obsidian",
       getSyncFileRules: () => ({ ...DEFAULT_SYNC_FILE_RULES, includeOtherFiles: true }),
@@ -82,7 +82,7 @@ export class Device {
         record: event => { if (this.measuring && event.type === "file_sync_completed") this.metrics.fileCompleted(event.path); },
         recordError: error, clear() {}, getSnapshot: () => ({ count: 0, text: "" }), subscribe: () => () => {},
       },
-      onSyncError: async e => { error(e); }, notifySyncConflict: () => error("Unexpected conflict"),
+      onSyncError: e => { error(e); return Promise.resolve(); }, notifySyncConflict: () => error("Unexpected conflict"),
       notifyRollbackDetected: () => error("Unexpected rollback"),
       setSyncProgress() {}, setSyncStatus() {}, setStorageStatus() {},
     } satisfies SyncEngineDeps);

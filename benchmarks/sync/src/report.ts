@@ -35,40 +35,71 @@ export function assertComparable(base: Report, candidate: Report) {
 /** Validate untrusted CI artifacts before rendering. No source-controlled text becomes Markdown. */
 export function validateReport(input: unknown): asserts input is Report | Comparison {
   const fail = (): never => { throw new Error("Invalid sync benchmark report"); };
-  if (!input || typeof input !== "object") fail();
-  const value = input as any;
+  const record = (value: unknown): Record<string, unknown> => {
+    if (value === null || typeof value !== "object" || Array.isArray(value)) return fail();
+    return value as Record<string, unknown>;
+  };
+  const array = (value: unknown): unknown[] => Array.isArray(value) ? value : fail();
+  const nonnegative = (n: unknown): n is number => typeof n === "number" && Number.isFinite(n) && n >= 0;
+  const fingerprint = (s: unknown) => typeof s === "string" && /^[a-f0-9]{64}$/.test(s);
+  const oneOf = (value: unknown, choices: string[]) => typeof value === "string" && choices.includes(value);
+  const value = record(input);
   if (value.schemaVersion !== 1) fail();
   if (value.kind === "comparison") {
-    validateReport(value.base); validateReport(value.candidate);
-    if (value.base.kind !== "run" || value.candidate.kind !== "run") fail();
-    assertComparable(value.base, value.candidate);
+    const base = value.base, candidate = value.candidate;
+    validateReport(base); validateReport(candidate);
+    if (base.kind !== "run" || candidate.kind !== "run") return fail();
+    assertComparable(base, candidate);
     return;
   }
-  if (value.kind !== "run" || !["node", "cloudflare"].includes(value.runtime) || typeof value.definition !== "string" || !/^[a-f0-9]{64}$/.test(value.definition)) fail();
-  if (!value.source || !/^[a-f0-9]{40,64}$/.test(value.source.commit) || !value.options || !Number.isInteger(value.options.iterations) || value.options.iterations < 1 || value.options.iterations > 100 || !Number.isInteger(value.options.warmup) || value.options.warmup < 0 || value.options.warmup > 10) fail();
-  const nonnegative = (n: unknown) => typeof n === "number" && Number.isFinite(n) && n >= 0;
-  const fingerprint = (s: unknown) => typeof s === "string" && /^[a-f0-9]{64}$/.test(s);
-  if (!fingerprint(value.source.lockfile) || !(value.source.dirtyHash === null || fingerprint(value.source.dirtyHash)) || value.options.isolation !== "fresh-process/prepared-session" || !value.environment || typeof value.environment !== "object" || Object.values(value.environment).some(v => !(typeof v === "string" && v.length <= 2000) && !nonnegative(v))) fail();
-  if (!Array.isArray(value.scenarios) || value.scenarios.length > 30) fail();
-  if (new Set(value.scenarios.map((g: any) => g?.scenario?.id)).size !== value.scenarios.length) fail();
-  for (const group of value.scenarios) {
-    if (!group.scenario || !/^[a-zA-Z0-9-]{1,80}$/.test(group.scenario.id) || !Array.isArray(group.samples) || group.samples.length > 110) fail();
-    const bandwidth = group.scenario.bandwidth;
-    if (bandwidth !== undefined && (!Array.isArray(bandwidth) || !bandwidth.length || bandwidth.length > 20
-      || bandwidth.some((step: any, i: number) => !step || !nonnegative(step.afterMs)
-        || !nonnegative(step.bytesPerSecond) || step.bytesPerSecond === 0
-        || (i === 0 ? step.afterMs !== 0 : step.afterMs <= bandwidth[i - 1].afterMs)))) fail();
-    if (group.scenario.version !== 1 || !["bulk", "notes", "mixed"].includes(group.scenario.fixture) || !["pull", "push", "incremental"].includes(group.scenario.operation) || ["pageDelayMs", "downloadDelayMs", "uploadDelayMs", "commitDelayMs", "attachmentDelayMs"].some(k => !nonnegative(group.scenario[k]))) fail();
-    for (const sample of group.samples) {
-      if (!["passed", "failed"].includes(sample.status) || typeof sample.rehearsal !== "boolean") fail();
-      if (!(sample.error === null || typeof sample.error === "string" && sample.error.length <= 4000)) fail();
-      if (sample.fixture !== null && (!fingerprint(sample.fixture?.fingerprint) || ![sample.fixture.files, sample.fixture.bytes, sample.fixture.changedBytes].every(nonnegative))) fail();
-      if (sample.policy !== null && ![sample.policy?.storageLimitBytes, sample.policy?.maxFileSizeBytes].every(nonnegative)) fail();
-      if (sample.status === "passed" && (!sample.metrics || !sample.fixture || !sample.policy)) fail();
-      for (const n of [sample.preparationMs, sample.verificationMs, ...Object.values(sample.metrics ?? {})]) {
-        if (n !== null && (typeof n !== "number" || !Number.isFinite(n) || n < 0)) fail();
+  if (value.kind !== "run" || !oneOf(value.runtime, ["node", "cloudflare"]) || !fingerprint(value.definition)) fail();
+  const source = record(value.source), options = record(value.options), environment = record(value.environment);
+  if (typeof source.commit !== "string" || !/^[a-f0-9]{40,64}$/.test(source.commit)
+    || !nonnegative(options.iterations) || !Number.isInteger(options.iterations) || options.iterations < 1 || options.iterations > 100
+    || !nonnegative(options.warmup) || !Number.isInteger(options.warmup) || options.warmup > 10) fail();
+  if (!fingerprint(source.lockfile) || !(source.dirtyHash === null || fingerprint(source.dirtyHash))
+    || options.isolation !== "fresh-process/prepared-session"
+    || Object.values(environment).some(v => !(typeof v === "string" && v.length <= 2000) && !nonnegative(v))) fail();
+  const groups = array(value.scenarios);
+  if (groups.length > 30) fail();
+  const ids = new Set<string>();
+  for (const rawGroup of groups) {
+    const group = record(rawGroup), scenario = record(group.scenario), samples = array(group.samples);
+    if (typeof scenario.id !== "string" || !/^[a-zA-Z0-9-]{1,80}$/.test(scenario.id)) return fail();
+    if (ids.has(scenario.id) || samples.length > 110) fail();
+    ids.add(scenario.id);
+    if (scenario.bandwidth !== undefined) {
+      const bandwidth = array(scenario.bandwidth);
+      if (!bandwidth.length || bandwidth.length > 20) fail();
+      let previous = -1;
+      for (const [i, rawStep] of bandwidth.entries()) {
+        const step = record(rawStep);
+        if (!nonnegative(step.afterMs) || !nonnegative(step.bytesPerSecond) || step.bytesPerSecond === 0
+          || (i === 0 ? step.afterMs !== 0 : step.afterMs <= previous)) return fail();
+        previous = step.afterMs;
       }
-      if (sample.status === "passed" && (!Number.isFinite(sample.metrics.totalMs) || sample.metrics.totalMs <= 0)) fail();
+    }
+    if (scenario.version !== 1 || !oneOf(scenario.fixture, ["bulk", "notes", "mixed"])
+      || !oneOf(scenario.operation, ["pull", "push", "incremental"])
+      || ["pageDelayMs", "downloadDelayMs", "uploadDelayMs", "commitDelayMs", "attachmentDelayMs"].some(k => !nonnegative(scenario[k]))) fail();
+    for (const rawSample of samples) {
+      const sample = record(rawSample);
+      if (!oneOf(sample.status, ["passed", "failed"]) || typeof sample.rehearsal !== "boolean") fail();
+      if (!(sample.error === null || typeof sample.error === "string" && sample.error.length <= 4000)) fail();
+      if (sample.fixture !== null) {
+        const fixture = record(sample.fixture);
+        if (!fingerprint(fixture.fingerprint) || ![fixture.files, fixture.bytes, fixture.changedBytes].every(nonnegative)) fail();
+      }
+      if (sample.policy !== null) {
+        const policy = record(sample.policy);
+        if (![policy.storageLimitBytes, policy.maxFileSizeBytes].every(nonnegative)) fail();
+      }
+      if (sample.status === "passed" && (!sample.metrics || !sample.fixture || !sample.policy)) fail();
+      const metrics = sample.metrics == null ? {} : record(sample.metrics);
+      for (const n of [sample.preparationMs, sample.verificationMs, ...Object.values(metrics)]) {
+        if (n !== null && !nonnegative(n)) fail();
+      }
+      if (sample.status === "passed" && (!nonnegative(metrics.totalMs) || metrics.totalMs <= 0)) fail();
     }
   }
 }

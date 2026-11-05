@@ -58,7 +58,7 @@ const nodeEnvSchema = baseNodeEnvSchema.superRefine((env, ctx) => {
 		!env.AUTH_ALLOWED_EMAILS
 	) {
 		ctx.addIssue({
-			code: z.ZodIssueCode.custom,
+			code: "custom",
 			path: ["AUTH_ALLOWED_EMAILS"],
 			message: "AUTH_ALLOWED_EMAILS is required",
 		});

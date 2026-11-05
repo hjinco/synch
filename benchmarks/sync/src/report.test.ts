@@ -50,6 +50,13 @@ describe("durable comparison results", () => {
     value.scenarios[0].scenario.id = "[click](https://example.com)";
     expect(() => validateReport(value)).toThrow();
   });
+  it("rejects malformed records and arrays at report boundaries", () => {
+    for (const value of [null, [], { ...report(), source: [] }, { ...report(), environment: [] },
+      { ...report(), scenarios: [null] },
+      { ...report(), scenarios: [{ scenario: scenarios[0], samples: [null] }] },
+      { ...report(), scenarios: [{ scenario: { ...scenarios[0], bandwidth: [null] }, samples: [] }] },
+    ]) expect(() => validateReport(value)).toThrow("Invalid sync benchmark report");
+  });
   it("summarizes runs with a median and no invented run-level p95", () => {
     expect(median([30, 10, 20, 40])).toBe(25); expect(median([])).toBeNull();
     expect(successful(report())).toBe(true);

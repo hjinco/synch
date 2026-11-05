@@ -10,15 +10,17 @@ export class Worker {
   });
   get processId() { return this.child.pid!; }
   private nextId = 0;
-  private pending = new Map<number, { resolve(value: any): void; reject(error: Error): void }>();
+  private pending = new Map<number, { resolve(value: unknown): void; reject(error: Error): void }>();
   constructor() {
     // Drain without retaining bodies, paths, or credentials from runtime logs.
     this.child.stdout?.resume(); this.child.stderr?.resume();
-    this.child.on("message", (message: any) => {
+    this.child.on("message", (message: unknown) => {
+      if (!message || typeof message !== "object" || !("id" in message) || typeof message.id !== "number") return;
       const waiter = this.pending.get(message.id);
       if (!waiter) return;
       this.pending.delete(message.id);
-      if (message.error) waiter.reject(new Error(message.error)); else waiter.resolve(message.value);
+      if ("error" in message && typeof message.error === "string") waiter.reject(new Error(message.error));
+      else waiter.resolve("value" in message ? message.value : undefined);
     });
     this.child.on("error", error => this.fail(error));
     this.child.on("exit", (code, signal) => this.fail(new Error(`Client worker exited: ${signal ?? code}`)));
@@ -30,7 +32,8 @@ export class Worker {
     let timer: ReturnType<typeof setTimeout>;
     try {
       return await new Promise<T>((resolve, reject) => {
-        this.pending.set(id, { resolve, reject });
+        // The command and reply are paired by the parent-owned request id.
+        this.pending.set(id, { resolve: value => resolve(value as T), reject });
         timer = setTimeout(() => {
           this.pending.delete(id);
           this.child.kill("SIGKILL");

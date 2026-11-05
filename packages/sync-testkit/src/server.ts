@@ -65,7 +65,13 @@ export async function startServer(runtime: Runtime, checkoutRoot = defaultRoot):
     } else {
       const parsed = ts.parseConfigFileTextToJson("wrangler.jsonc", await readFile(path.join(apiRoot, "wrangler.jsonc"), "utf8"));
       if (parsed.error) throw new Error(ts.flattenDiagnosticMessageText(parsed.error.messageText, "\n"));
-      const config = parsed.config;
+      // This config comes from the checked-out API project, not from a remote artifact.
+      const config = parsed.config as {
+        env?: unknown; secrets?: unknown;
+        build?: { command?: string; cwd?: string };
+        main: string; assets: { directory: string }; vars?: Record<string, unknown>;
+        d1_databases: { database_id: string; migrations_dir: string; [key: string]: unknown }[];
+      };
       // Production community Worker/DO/D1/R2. Managed policy has separate API integration coverage.
       delete config.env;
       delete config.secrets;
@@ -76,7 +82,7 @@ export async function startServer(runtime: Runtime, checkoutRoot = defaultRoot):
       config.main = path.join(apiRoot, config.main);
       config.assets.directory = path.join(apiRoot, config.assets.directory);
       config.vars = { ...config.vars, ...vars, BETTER_AUTH_URL: baseUrl };
-      config.d1_databases = config.d1_databases.map((db: Record<string, string>) => ({
+      config.d1_databases = config.d1_databases.map(db => ({
         ...db, database_id: "00000000-0000-0000-0000-000000000001", migrations_dir: path.join(apiRoot, db.migrations_dir),
       }));
       const configPath = path.join(directory, "wrangler.json");
@@ -84,8 +90,8 @@ export async function startServer(runtime: Runtime, checkoutRoot = defaultRoot):
       const wrangler = path.join(apiRoot, "node_modules/.bin/wrangler");
       child = launch(wrangler, ["d1", "migrations", "apply", "DB", "--local", "--config", configPath, "--persist-to", directory]);
       const migrationTimer = setTimeout(() => child && signalTree(child, "SIGTERM"), 30_000);
-      let code: number | null;
-      try { [code] = await once(child, "exit"); } finally { clearTimeout(migrationTimer); }
+      let code: unknown;
+      try { const result: unknown[] = await once(child, "exit"); code = result[0]; } finally { clearTimeout(migrationTimer); }
       if (code !== 0) throw new Error(`D1 migration failed: ${output}`);
       child = launch(wrangler, ["dev", "--local", "--config", configPath, "--persist-to", directory, "--ip", "127.0.0.1", "--port", String(port), "--inspector-port", "0"]);
     }
