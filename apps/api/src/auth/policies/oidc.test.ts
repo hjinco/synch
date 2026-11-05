@@ -20,7 +20,7 @@ describe("OIDC provider config parsing", () => {
 			discoveryUrl: "https://idp.example.com/oidc",
 			clientId: "test-client-id",
 			clientSecret: "test-client-secret",
-			accountIssuer: "https://idp.example.com",
+			accountIssuer: undefined,
 			scopes: ["openid", "profile", "email"],
 		});
 	});
@@ -99,9 +99,9 @@ describe("OIDC provider config parsing", () => {
 		).toThrow();
 	});
 
-	it("derives accountIssuer from the discovery URL's origin when not explicitly configured", () => {
+	it("leaves the account namespace to the discovered issuer by default", () => {
 		const result = parseOidcProviderConfig(fullInput);
 
-		expect(result?.accountIssuer).toBe("https://idp.example.com");
+		expect(result?.accountIssuer).toBeUndefined();
 	});
 });

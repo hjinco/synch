@@ -83,7 +83,9 @@ Optional variables, also in `.env`:
 
 - `OIDC_PROVIDER_NAME` - label shown on the sign-in button. Defaults to `Single sign-on`.
 - `OIDC_SCOPES` - comma-separated scopes to request. Defaults to `openid,profile,email`.
-- `OIDC_ACCOUNT_ISSUER` - overrides the issuer identity used to scope linked accounts. Defaults to the origin of `OIDC_DISCOVERY_URL`; only set this if your provider's issuer differs from that origin.
+- `OIDC_ACCOUNT_ISSUER` - overrides the issuer identity used to scope linked accounts. Defaults to the full issuer returned by discovery, including any tenant or realm path. Normally leave this unset; assigning the same override to different issuers can confuse their accounts.
+
+If upgrading from the first OIDC implementation, stored account issuers may contain only the discovery URL's origin. Do not automatically carry that namespace to a different tenant. With the same verified email, the normal account-linking rules can attach the new full-issuer identity to the existing user. If emails have changed, review the affected accounts before migrating; do not fall back to matching subjects across issuers.
 
 #### Verified email addresses
 
@@ -99,13 +101,13 @@ Setting `AUTH_EMAIL_PASSWORD=disabled` (see below) closes this off, since no pas
 
 #### Turning off password sign-in
 
-Password sign-up stays enabled by default alongside OIDC. Once you've confirmed OIDC sign-in works, you can require it exclusively by setting `AUTH_EMAIL_PASSWORD=disabled` in `.env` and restarting the service. At that point `AUTH_ALLOWED_EMAILS` stops being read, since there's no password sign-up left for it to gate.
+Password sign-up stays enabled by default alongside OIDC. Once you've confirmed OIDC sign-in works, you can require it exclusively by setting `AUTH_EMAIL_PASSWORD=disabled` in `.env` and restarting the service. At that point `AUTH_ALLOWED_EMAILS` is optional. If supplied, it still restricts new Google/GitHub accounts; OIDC accounts are exempt.
 
 #### If your provider is unreachable
 
-While your OIDC provider's discovery endpoint can't be reached, sign-in through it fails, and so does any request that needs to check a live session. Whether an in-flight sync keeps working depends on how recently its sync token was issued - those tokens are short-lived, so anything already close to expiry re-checks the session and fails along with sign-in.
+Discovery runs only when an OIDC operation needs it. Password login, Google/GitHub login, existing session checks and sync do not wait for it. The SSO button stays visible so you can retry after an outage. If initialization fails or takes more than three seconds, the OIDC request returns `503 OIDC_UNAVAILABLE`.
 
-There's also no way to bound how long Synch will wait on a provider that's reachable but slow - that fetch happens inside the auth library with no timeout available to configure. A provider that hangs is worse than one that refuses the connection, since a refusal fails fast and a hang doesn't. If you can choose between providers or instances, prefer the one that fails fast.
+On Node, failed initialization can retry after a two-second cooldown. The auth library does not expose cancellation for discovery, so a still-running fetch is retained instead of starting overlapping requests; a late successful response becomes usable automatically. On Cloudflare, initialization is scoped to the OIDC request. The three-second limit applies to initialization, not the subsequent token exchange. Local sign-out does not require contacting the identity provider.
 
 ### Upgrading
 

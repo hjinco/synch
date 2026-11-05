@@ -62,26 +62,10 @@ export type BetterAuthConfig = AuthFeatureConfig & {
 	plugins?: AuthPlugin[];
 };
 
-/**
- * Mutable status sink written to by the OIDC plugin's isolated `init` (see
- * `withOidcInitIsolation`) and read back by the caller after construction.
- * `available` starts `true` -- optimistic until proven otherwise, the same
- * stance the rebuild-on-use logic in `createAuthFeature` takes with the
- * whole auth context -- and flips to `false` the moment discovery or any
- * other construction-time check for this provider fails.
- */
-export type OidcAvailability = {
-	available: boolean;
-};
-
 /** Auth lifetime for signed-in clients (bearer token and cookies). */
 const SESSION_EXPIRES_IN_SECONDS = 60 * 60 * 24 * 30;
 
-export function createBetterAuth(
-	db: AppDb,
-	config: BetterAuthConfig,
-	oidcAvailability?: OidcAvailability,
-) {
+export function createBetterAuth(db: AppDb, config: BetterAuthConfig) {
 	const emailVerification = createEmailVerificationConfig(config);
 	const allowedEmails = parseAllowedEmails(config.allowedEmails);
 	const auth = betterAuth({
@@ -127,7 +111,7 @@ export function createBetterAuth(
 						errorDescription: "Verify your email with your sign-in provider before signing in.",
 					};
 				}
-				if (isAllowlistExemptSource(source)) {
+				if (source.action !== "create-user" || isAllowlistExemptSource(source)) {
 					return;
 				}
 				if (
@@ -237,26 +221,18 @@ export function createBetterAuth(
 				customResolveMethod: (ctx) => ctx.path === "/verify-email" ? "email" : null,
 			}),
 			...(config.oidc
-				? [
-						withOidcInitIsolation(
-							genericOAuth({
-								config: [
-									{
-										providerId: config.oidc.providerId,
-										clientId: config.oidc.clientId,
-										clientSecret: config.oidc.clientSecret,
-										discoveryUrl: config.oidc.discoveryUrl,
-										scopes: config.oidc.scopes,
-										pkce: true,
-										requireIdTokenVerification: true,
-										accountIssuer: config.oidc.accountIssuer,
-									},
-								],
-							}),
-							config.oidc,
-							oidcAvailability,
-						),
-					]
+				? [genericOAuth({
+					config: [{
+						providerId: config.oidc.providerId,
+						clientId: config.oidc.clientId,
+						clientSecret: config.oidc.clientSecret,
+						discoveryUrl: config.oidc.discoveryUrl,
+						scopes: config.oidc.scopes,
+						pkce: true,
+						requireIdTokenVerification: true,
+						accountIssuer: config.oidc.accountIssuer,
+					}],
+				})]
 				: []),
 			...(config.plugins ?? []),
 			bearer(),
@@ -268,96 +244,6 @@ export function createBetterAuth(
 	});
 
 	return auth;
-}
-
-/**
- * better-auth's plugin loop (`runPluginInit`) has no try/catch around a
- * plugin's `init` -- a throw there rejects the *entire* shared auth context,
- * which is why an unreachable OIDC provider previously took password
- * sign-in and every existing session down with it, not just OIDC sign-in.
- * Wrapping `init` here contains a discovery/configuration failure to just
- * this provider: the plugin's own throw becomes a caught, diagnosed failure
- * and `init` resolves to `void` -- a documented no-op return per
- * `BetterAuthPlugin["init"]`'s type -- so the rest of the context (and every
- * unrelated plugin) still builds normally and this provider is simply left
- * unregistered. `sign-in/social` against an unregistered provider fails
- * closed with a 404, never with a live, unverified token.
- */
-function withOidcInitIsolation(
-	plugin: AuthPlugin,
-	oidc: OidcProviderConfig,
-	oidcAvailability: OidcAvailability | undefined,
-): AuthPlugin {
-	const originalInit = plugin.init;
-	if (!originalInit) {
-		return plugin;
-	}
-
-	// better-auth's own `init` type is a union of function shapes
-	// (`Awaitable<{...}> | void | Promise<void>`) that a single function
-	// implementation returning either branch cannot satisfy structurally --
-	// this wrapper only ever forwards `originalInit`'s own (already
-	// correctly typed) result unchanged or produces the documented no-op
-	// `void` return, so the cast is asserting a shape TypeScript cannot
-	// otherwise verify across that union, not bypassing real type safety.
-	async function isolatedInit(
-		...args: Parameters<NonNullable<AuthPlugin["init"]>>
-	): Promise<Awaited<ReturnType<NonNullable<AuthPlugin["init"]>>> | void> {
-		try {
-			// Narrowed by the early return above; TypeScript doesn't carry that
-			// narrowing of a closed-over `const` into this nested function.
-			return await originalInit!(...args);
-		} catch (error) {
-			if (oidcAvailability) {
-				oidcAvailability.available = false;
-			}
-			const errorClass = classifyOidcInitError(error);
-			const key = `${oidc.providerId}:${oidc.discoveryUrl}:${errorClass}`;
-			if (shouldEmitOidcDiagnostic(key)) {
-				recordOidcDiagnostic(key, {
-					providerId: oidc.providerId,
-					discoveryUrl: oidc.discoveryUrl,
-					errorClass,
-				});
-			}
-			return;
-		}
-	}
-
-	return {
-		...plugin,
-		init: isolatedInit as AuthPlugin["init"],
-	};
-}
-
-/**
- * Classifies an OIDC init failure into a small, bounded set of categories
- * instead of logging the raw error: the message text is safe here (better-
- * auth's own construction-time throws only ever mention the provider id),
- * but a fixed category is still preferable so this never becomes a channel
- * for stack traces or cause chains to leak through, and so the dedup key
- * built from it distinguishes genuinely different misconfigurations (a
- * discovery outage should not hide a subsequent invalid-jwks-uri problem).
- */
-function classifyOidcInitError(error: unknown): string {
-	if (!(error instanceof Error)) {
-		return "unknown";
-	}
-
-	if (error.message.includes("discovery did not return an issuer")) {
-		return "discovery-missing-issuer";
-	}
-	if (error.message.includes("invalid jwks_uri")) {
-		return "discovery-invalid-jwks-uri";
-	}
-	if (error.message.includes("discovery returned no valid data")) {
-		return "discovery-unavailable";
-	}
-	if (error.message.includes("requires verified ID tokens")) {
-		return "id-token-verification-unavailable";
-	}
-
-	return error.name || "error";
 }
 
 export type BetterAuth = ReturnType<typeof createBetterAuth>;

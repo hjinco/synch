@@ -134,8 +134,8 @@ async function setUpFakeIdp(): Promise<FakeIdp> {
 	// Each test mints its own issuer (embedding a fresh UUID) so the fixture
 	// discovery URL is unique per case, per this repo's non-isolated D1/test
 	// storage: a shared identifier across tests would let one pass for the
-	// wrong reason. Fetch is mocked, matching oidc.test.ts, so genericOAuth's
-	// eager discovery fetch resolves against this in-process fake rather than
+	// wrong reason. Fetch is mocked, matching oidc.test.ts, so any OIDC
+	// discovery fetch resolves against this in-process fake rather than
 	// attempting real network I/O against an unreachable host.
 	const idp = await createFakeIdp(`https://${crypto.randomUUID()}.idp.test`);
 	installFakeIdpFetch(idp, {

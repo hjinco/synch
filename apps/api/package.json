@@ -65,7 +65,7 @@
 				"description": "Optional. Comma-separated OAuth scopes to request from your OIDC provider, for example `openid,profile,email`. Defaults to `openid,profile,email` when unset."
 			},
 			"OIDC_ACCOUNT_ISSUER": {
-				"description": "Optional. Overrides the issuer identity used to scope linked OIDC accounts. Defaults to the origin of OIDC_DISCOVERY_URL when unset; only set this if your provider's issuer differs from that origin."
+				"description": "Optional. Overrides the issuer identity used to scope linked OIDC accounts. Defaults to the full discovered issuer, including any tenant path. Set only for an intentional account namespace migration."
 			},
 			"AUTH_EMAIL_PASSWORD": {
 				"description": "Optional. Accepts `enabled` (default) or `disabled`. Set to `disabled` to turn off email/password sign-in and require OIDC for all sign-ins."

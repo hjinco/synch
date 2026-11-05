@@ -9,7 +9,7 @@ export type OidcProviderConfig = {
 	discoveryUrl: string;
 	clientId: string;
 	clientSecret: string;
-	accountIssuer: string;
+	accountIssuer?: string;
 	scopes: string[];
 };
 
@@ -66,14 +66,11 @@ export function parseOidcProviderConfig(
 		throw new MissingOidcVariablesError(missing);
 	}
 
-	const parsedDiscoveryUrl = new URL(discoveryUrl);
+	new URL(discoveryUrl);
 
-	// Derived from the configured discovery URL's origin rather than from a
-	// fetched discovery document, because its whole purpose is to be available
-	// when discovery is not: it scopes the stored account identity, so reading
-	// it from a document we may be unable to fetch would defeat the point.
-	const accountIssuer =
-		presentValue(input.accountIssuer) ?? parsedDiscoveryUrl.origin;
+	// Let Better Auth use the verified discovery issuer, including its tenant
+	// path. An explicit override is only for intentional namespace migrations.
+	const accountIssuer = presentValue(input.accountIssuer);
 
 	const scopes = presentValue(input.scopes)
 		?.split(",")

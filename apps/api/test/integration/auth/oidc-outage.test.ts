@@ -30,11 +30,8 @@ function outageTestEnv(overrides: Partial<RuntimeTestEnv> = {}): RuntimeTestEnv 
 }
 
 async function issueBlobRequests(testEnv: RuntimeTestEnv, count: number): Promise<Response[]> {
-	// The blob-transfer routes never await the Better Auth session context --
-	// they authenticate via a separate sync token -- so they are the
-	// real-world high-volume path that still triggers a per-request Better
-	// Auth (and therefore OIDC plugin) construction without ever consuming
-	// its result.
+	// Blob transfers authenticate with sync tokens and must not perform
+	// unrelated identity-provider discovery.
 	const responses: Response[] = [];
 	for (let i = 0; i < count; i++) {
 		responses.push(
@@ -71,7 +68,7 @@ describe("OIDC init diagnostics during an IdP outage", () => {
 		recordSpy?.mockRestore();
 	});
 
-	it("does not produce a diagnostic per request when the IdP discovery endpoint is unreachable", async () => {
+	it("does not start discovery for blob transfers or health checks", async () => {
 		installFailingFetch({ discoveryUrl: DISCOVERY_URL });
 		const testEnv = outageTestEnv();
 
@@ -79,15 +76,42 @@ describe("OIDC init diagnostics during an IdP outage", () => {
 		await requestWithEnv("/health", testEnv);
 		await flushMicrotasksAndTimers();
 
-		// The eager init promise is created on EVERY request because
-		// createRuntimeApp constructs Better Auth unconditionally, including
-		// for blob transfer -- the highest-volume route in a sync product.
-		// Requests that never await the auth context still initiate the
-		// discovery fetch, so without a de-duplicated diagnostic this count
-		// would scale with REQUEST_COUNT instead of staying bounded.
-		expect(recordSpy.mock.calls.length).toBeGreaterThanOrEqual(1);
-		expect(recordSpy.mock.calls.length).toBeLessThanOrEqual(MAX_EXPECTED_DIAGNOSTIC_EMISSIONS);
+		expect(recordSpy).not.toHaveBeenCalled();
 	});
+
+	it("bounds diagnostics across explicit OIDC requests during an outage", async () => {
+		installFailingFetch({ discoveryUrl: DISCOVERY_URL });
+		for (let i = 0; i < REQUEST_COUNT; i++) {
+			const response = await requestWithEnv("/api/auth/sign-in/social", outageTestEnv(), {
+				method: "POST", headers: { "content-type": "application/json" },
+				body: JSON.stringify({ provider: "oidc" }),
+			});
+			expect(response.status).toBe(503);
+		}
+		expect(recordSpy!.mock.calls.length).toBeGreaterThanOrEqual(1);
+		expect(recordSpy!.mock.calls.length).toBeLessThanOrEqual(MAX_EXPECTED_DIAGNOSTIC_EMISSIONS);
+		expect(rejections).toHaveLength(0);
+	});
+
+	it("keeps password sessions working when discovery hangs, and bounds the OIDC response", async () => {
+		installFailingFetch({ discoveryUrl: DISCOVERY_URL }, "hang");
+		const testEnv = outageTestEnv();
+		const response = await requestWithEnv("/api/auth/sign-up/email", testEnv, {
+			method: "POST", headers: { "content-type": "application/json" },
+			body: JSON.stringify({ email: `${crypto.randomUUID()}@example.com`, name: "Owner", password: "existing-password-123" }),
+		});
+		expect(response.status).toBe(200);
+		const cookie = response.headers.getSetCookie().map(value => value.split(";")[0]).join("; ");
+		const session = await requestWithEnv("/api/auth/get-session", testEnv, { headers: { cookie } });
+		expect(await session.json()).toMatchObject({ user: { name: "Owner" } });
+		const oidc = await requestWithEnv("/api/auth/sign-in/social", testEnv, {
+			method: "POST", headers: { "content-type": "application/json" },
+			body: JSON.stringify({ provider: "oidc" }),
+		});
+		expect(oidc.status).toBe(503);
+		expect(await oidc.json()).toMatchObject({ code: "OIDC_UNAVAILABLE" });
+		expect(rejections).toHaveLength(0);
+	}, 10_000);
 
 	it("does not turn a discovery failure into an unhandled rejection", async () => {
 		installFailingFetch({ discoveryUrl: DISCOVERY_URL });
@@ -96,9 +120,6 @@ describe("OIDC init diagnostics during an IdP outage", () => {
 		await issueBlobRequests(testEnv, REQUEST_COUNT);
 		await flushMicrotasksAndTimers();
 
-		// Without the .catch() attached at construction, the eager init
-		// promise's rejection is never observed and surfaces as an unhandled
-		// rejection instead of the swallow-and-count path.
 		expect(rejections).toHaveLength(0);
 	});
 

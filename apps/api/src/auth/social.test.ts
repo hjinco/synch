@@ -21,7 +21,7 @@ function feature(
   provider: "google" | "github",
   clientId?: string,
   clientSecret?: string,
-  options: Partial<Pick<AuthFeatureConfig, "emailVerification" | "devMode" | "email">> = {},
+  options: Partial<Pick<AuthFeatureConfig, "emailVerification" | "devMode" | "email" | "allowedEmails">> = {},
 ): AuthFeature {
   const config = parseNodeServerConfig({
     BETTER_AUTH_SECRET: "a-long-test-secret-with-at-least-32-characters",
@@ -37,13 +37,13 @@ function feature(
     devMode: false,
     email: { send: async () => {} },
     emailFrom: "Synch <noreply@example.com>",
-    ...options,
     secret: config.betterAuthSecret,
     googleClientId: config.googleClientId,
     googleClientSecret: config.googleClientSecret,
     githubClientId: config.githubClientId,
     githubClientSecret: config.githubClientSecret,
     allowedEmails: config.authAllowedEmails,
+    ...options,
   }, [{
     id: "test-origin-checks",
     // Better Auth skips origin validation by default under NODE_ENV=test.
@@ -255,6 +255,28 @@ describe.each(["google", "github"] as const)("optional %s authentication", (prov
     expect((await client.execute("SELECT id FROM user")).rows).toEqual([{ id: originalUser.id }]);
     expect((await client.execute("SELECT * FROM organization")).rows).toEqual(originalOrganizations);
     expect((await client.execute("SELECT * FROM member")).rows).toEqual(originalMembers);
+  });
+
+  it.each(["social", "password"] as const)("allows existing %s users to log in/link after removal from the signup allowlist", async (initialMethod) => {
+    const original = feature(provider, "client", "secret");
+    if (initialMethod === "social") {
+      await completeOAuth(provider, original, "owner@example.com");
+    } else {
+      const signup = await original.authHttpHandler(new Request(`${baseURL}/api/auth/sign-up/email`, {
+        method: "POST", headers: { "content-type": "application/json", origin: baseURL },
+        body: JSON.stringify({ name: "Owner", email: "owner@example.com", password: "existing-password-123" }),
+      }));
+      expect(signup.status).toBe(200);
+    }
+    const userId = (await client.execute("SELECT id FROM user")).rows[0]!.id;
+    const restricted = feature(provider, "client", "secret", { allowedEmails: "someone-else@example.com" });
+    const login = await completeOAuth(provider, restricted, "owner@example.com");
+    expect(login.headers.get("location")).toBe(`${baseURL}/device?user_code=ABCD`);
+    expect(login.headers.get("set-cookie")).toContain("better-auth.session_token=");
+    expect((await client.execute("SELECT id FROM user")).rows).toEqual([{ id: userId }]);
+
+    const unverified = await completeOAuth(provider, restricted, "owner@example.com", false);
+    expect(new URL(unverified.headers.get("location")!).searchParams.get("error")).toBe("email_not_verified");
   });
 
   it.each(["disabled", "required"] as const)("rejects password sign-up for an existing social account with verification %s", async (emailVerification) => {

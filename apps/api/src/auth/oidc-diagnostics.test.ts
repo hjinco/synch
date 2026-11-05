@@ -108,12 +108,9 @@ describe("decideOidcDiagnosticEmission", () => {
 	});
 });
 
-// The shared primitive behind decideOidcDiagnosticEmission, exercised
-// directly under the name the OIDC rebuild cooldown (createAuthFeature)
-// consumes it under -- proving the cooldown gate's math without needing a
-// full betterAuth()/AppDb instance to observe it through.
+// Exercise the diagnostic gate independently of logging.
 describe("decideTimeWindowedAction", () => {
-	const REBUILD_KEY = "oidc-rebuild";
+	const DIAGNOSTIC_KEY = "oidc-init-failed";
 	const COOLDOWN_MS = 2_000;
 
 	function emptyGateState(): TimeWindowGateState {
@@ -121,27 +118,27 @@ describe("decideTimeWindowedAction", () => {
 	}
 
 	it("allows the first attempt for a key", () => {
-		const decision = decideTimeWindowedAction(emptyGateState(), REBUILD_KEY, 0, COOLDOWN_MS);
+		const decision = decideTimeWindowedAction(emptyGateState(), DIAGNOSTIC_KEY, 0, COOLDOWN_MS);
 
 		expect(decision.allowed).toBe(true);
 	});
 
 	it("blocks a repeat attempt for the same key inside the window", () => {
-		const first = decideTimeWindowedAction(emptyGateState(), REBUILD_KEY, 0, COOLDOWN_MS);
-		const second = decideTimeWindowedAction(first.nextState, REBUILD_KEY, COOLDOWN_MS - 1, COOLDOWN_MS);
+		const first = decideTimeWindowedAction(emptyGateState(), DIAGNOSTIC_KEY, 0, COOLDOWN_MS);
+		const second = decideTimeWindowedAction(first.nextState, DIAGNOSTIC_KEY, COOLDOWN_MS - 1, COOLDOWN_MS);
 
 		expect(second.allowed).toBe(false);
 	});
 
 	it("allows the next attempt once the window elapses", () => {
-		const first = decideTimeWindowedAction(emptyGateState(), REBUILD_KEY, 0, COOLDOWN_MS);
-		const second = decideTimeWindowedAction(first.nextState, REBUILD_KEY, COOLDOWN_MS, COOLDOWN_MS);
+		const first = decideTimeWindowedAction(emptyGateState(), DIAGNOSTIC_KEY, 0, COOLDOWN_MS);
+		const second = decideTimeWindowedAction(first.nextState, DIAGNOSTIC_KEY, COOLDOWN_MS, COOLDOWN_MS);
 
 		expect(second.allowed).toBe(true);
 	});
 
 	// The actual property under test: attempts must not scale with request
-	// count while sustained failures keep asking for a rebuild every time.
+	// count while sustained failures keep asking for a emit every time.
 	it("bounds total allowed attempts under high call volume inside one window", () => {
 		const CALL_COUNT = 10_000;
 		let state = emptyGateState();
@@ -149,7 +146,7 @@ describe("decideTimeWindowedAction", () => {
 
 		for (let i = 0; i < CALL_COUNT; i++) {
 			const now = i / 10; // spread across ~1s of wall-clock time, still inside one window
-			const decision = decideTimeWindowedAction(state, REBUILD_KEY, now, COOLDOWN_MS);
+			const decision = decideTimeWindowedAction(state, DIAGNOSTIC_KEY, now, COOLDOWN_MS);
 			state = decision.nextState;
 			if (decision.allowed) {
 				allowedCount++;
