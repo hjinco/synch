@@ -12,6 +12,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import WebSocket from "ws";
+import Database from "better-sqlite3";
 
 import { parseOidcProviderConfig, type OidcProviderConfig } from "../../src/auth/policies/oidc";
 import { OIDC_RETRY_COOLDOWN_MS } from "../../src/auth/oidc-auth";
@@ -323,6 +324,55 @@ describe("self-hosted Node runtime: end-to-end sync", () => {
 		}
 		cleanup = [];
 	});
+
+	it("applies configured history retention to existing vaults after process restarts", async () => {
+		const dataDir = mkdtempSync(path.join(tmpdir(), "synch-retention-"));
+		cleanup.push(() => rmSync(dataDir, { recursive: true, force: true }));
+		let owner: Awaited<ReturnType<typeof signUpAndCreateVault>> | undefined;
+		const previousExpiries = new Map<string, number>();
+		// Exercise the real env parser and entrypoint, including returning to the default.
+		for (const days of [1, 90, 30, 1]) {
+			const phase = previousExpiries.size;
+			const running = await bootSubprocessServer(dataDir, days === 1 ? {} : {
+				VERSION_HISTORY_RETENTION_DAYS: String(days),
+			});
+			cleanup.push(() => killAndWaitForExit(running.child));
+			owner ??= await signUpAndCreateVault(running.baseUrl);
+			const token = await issueSyncToken(running.baseUrl, owner.sessionCookie, owner.vaultId, "retention-device");
+			const ws = await connectSocket(running.baseUrl, owner.vaultId, token);
+			cleanup.push(() => ws.terminate());
+			ws.send(JSON.stringify({ type: "hello", requestId: "hello", lastKnownCursor: 0 }));
+			await nextMessage(ws, message => message.type === "hello_ack");
+			for (let revision = 0; revision < 2; revision++) {
+				const blobId = `blob-${phase}-${revision}`;
+				await uploadBlob(running.baseUrl, token, owner.vaultId, blobId, "encrypted content");
+				ws.send(JSON.stringify({
+					type: "commit_mutations", requestId: `commit-${phase}-${revision}`,
+					mutations: [{ mutationId: `m-${phase}-${revision}`, entryId: `entry-${phase}`,
+						op: "upsert", baseRevision: revision, blobId, encryptedMetadata: `encrypted-${revision}` }],
+				}));
+				await nextMessage(ws, message => message.type === "commit_mutations_committed");
+			}
+			ws.terminate();
+			await killAndWaitForExit(running.child);
+			const db = new Database(path.join(dataDir, "vaults", `${owner.vaultId}.sqlite`));
+			try {
+				expect(db.prepare("SELECT version_history_retention_days AS days FROM coordinator_state").get()).toEqual({ days });
+				const rows = db.prepare("SELECT version_id, entry_id, captured_at, expires_at FROM entry_versions").all() as {
+					version_id: string; entry_id: string; captured_at: number; expires_at: number;
+				}[];
+				const fresh = rows.filter(row => row.entry_id === `entry-${phase}`);
+				expect(fresh.length).toBeGreaterThan(0);
+				for (const row of fresh) expect(row.expires_at - row.captured_at).toBe(days * 86_400_000);
+				for (const [id, expiry] of previousExpiries) {
+					expect(rows.find(row => row.version_id === id)?.expires_at).toBe(expiry);
+				}
+				for (const row of fresh) previousExpiries.set(row.version_id, row.expires_at);
+			} finally {
+				db.close();
+			}
+		}
+	}, 30_000);
 
     it("shares retained history through personal passwords, recovers with approval, and closes revoked sockets", async () => {
       const { baseUrl, dataDir, runtime, server, wss } = await bootServer();

@@ -1,7 +1,7 @@
 ---
 title: 不使用 Cloudflare 自行託管 Synch
 description: 使用 Docker Compose 或一般 systemd 在自己的硬體上執行 Synch 伺服器，不需要 Cloudflare 或第三方服務。
-updatedDate: 2026-08-02
+updatedDate: 2026-11-05
 ---
 
 如果你完全不想使用 Cloudflare，Synch 伺服器也可以作為一般 Node.js 程序執行。本指南介紹如何在自己的硬體上執行 Synch——例如家用實驗室 NAS、小型 VPS、Incus/LXC 容器，或任何能夠執行長時間程序並公開連接埠的環境——你可以選擇使用 [Docker Compose](#使用-docker-compose-部署) 或 [systemd](#不使用-docker使用-systemd-執行)。
@@ -57,6 +57,20 @@ updatedDate: 2026-08-02
 ### Blob 儲存
 
 預設情況下，加密的檔案內容會儲存在同一個資料磁碟區的磁碟中。如果希望使用 AWS S3、MinIO、R2 等 S3 相容儲存貯體，請在啟動前取消 `.env` 中 `BLOB_STORAGE=s3` 設定區塊的註解並填入相應值。
+
+### 版本歷史保留期限
+
+在 `.env` 中設定 `VERSION_HISTORY_RETENTION_DAYS`，可以延長新儲存的檔案版本歷史的保留期限：
+
+```text
+VERSION_HISTORY_RETENTION_DAYS=30
+```
+
+預設值為 **1 天**，可設定 **1 至 36500 之間的整數**，例如 `30` 或 `90`。無效的值會導致伺服器無法啟動。此設定僅適用於自行託管的 Node 伺服器，包括 Docker 和 systemd 部署，不適用於 Cloudflare 部署或 Synch 託管服務。
+
+修改 `.env` 後，執行 `docker compose up -d --force-recreate` 或重新啟動 systemd 服務。此設定適用於所有 vault，包括現有 vault；每個 vault 會在重新啟動後首次被存取時套用新政策。之後新儲存的歷史記錄會使用新的保留期限。無論延長或縮短期限，既有歷史記錄都會保留原本的到期時間。延長期限無法還原已經到期或刪除的歷史記錄。
+
+保留期限越長，磁碟或 S3 中儲存的加密歷史檔案就越多，儲存空間用量和費用也可能增加。歷史記錄到期不會刪除目前的檔案。請繼續保留獨立備份，以便在發生故障時還原資料。
 
 ### 升級
 

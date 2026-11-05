@@ -20,6 +20,17 @@ describe("SubscriptionService", () => {
 			).resolves.toEqual(getSubscriptionPlanPolicy("self_hosted"));
 		});
 
+		it("overrides only self-hosted history retention without mutating the default policy", async () => {
+			const base = getSubscriptionPlanPolicy("self_hosted");
+			const service = new SubscriptionService({ selfHosted: true, selfHostedVersionHistoryRetentionDays: 90 });
+			await expect(service.readOrganizationPolicy("org-1")).resolves.toEqual({
+				...base, limits: { ...base.limits, versionHistoryRetentionDays: 90 },
+			});
+			expect(getSubscriptionPlanPolicy("self_hosted").limits.versionHistoryRetentionDays).toBe(1);
+			await expect(new SubscriptionService({ selfHostedVersionHistoryRetentionDays: 90 })
+				.readOrganizationPolicy("org-1")).resolves.toEqual(getSubscriptionPlanPolicy("free"));
+		});
+
 		it("uses the starter policy for a matching active product subscription", async () => {
 			const service = new SubscriptionService({
 				dataReader: policyDataReader({

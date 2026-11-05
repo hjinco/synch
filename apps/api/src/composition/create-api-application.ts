@@ -37,6 +37,7 @@ export type ApiApplicationDependencies = {
 
 export type ApiApplicationConfig = {
 	profile: DeploymentProfile;
+	selfHostedVersionHistoryRetentionDays?: number;
 	corsOrigin: string;
 	auth: Omit<AuthFeatureConfig, "emailVerification">;
 	syncTokenSecret: string;
@@ -62,6 +63,7 @@ export function createApiApplication(
 	const subscriptionFeature = createSubscriptionFeature(deps.db, {
 		selfHosted: isCommunityEdition(config.profile),
 		productIdsByPlanId: config.productIdsByPlanId,
+		selfHostedVersionHistoryRetentionDays: config.selfHostedVersionHistoryRetentionDays,
 	});
 	const vaultFeature = createVaultFeature({
 		db: deps.db,

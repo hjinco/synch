@@ -1,7 +1,7 @@
 ---
 title: Synch ohne Cloudflare selbst hosten
 description: Betreiben Sie den Synch-Server auf eigener Hardware mit Docker Compose oder systemd – ohne Cloudflare-Konto und ohne Drittanbieterdienste.
-updatedDate: 2026-08-02
+updatedDate: 2026-11-05
 ---
 
 Wenn Sie Cloudflare überhaupt nicht verwenden möchten, lässt sich der Synch-Server auch als gewöhnlicher Node.js-Prozess betreiben. Diese Anleitung beschreibt den Betrieb auf eigener Hardware – einem Homelab-NAS, einem kleinen VPS, einem Incus/LXC-Container oder überall dort, wo Sie einen dauerhaft laufenden Prozess ausführen und einen Port freigeben können – entweder mit [Docker Compose](#mit-docker-compose-bereitstellen) oder mit [systemd](#ohne-docker-ausführen-systemd).
@@ -57,6 +57,20 @@ Vault- und Blob-Daten bleiben im Docker-Volume `synch-data` über Neustarts und 
 ### Blob-Speicher
 
 Standardmäßig werden verschlüsselte Dateiinhalte auf der Festplatte im selben Daten-Volume gespeichert. Wenn Sie lieber einen S3-kompatiblen Bucket (AWS S3, MinIO, R2 usw.) verwenden möchten, entfernen Sie vor dem Start des Containers die Kommentarzeichen im Block `BLOB_STORAGE=s3` in `.env` und tragen Sie die Werte ein.
+
+### Aufbewahrungsdauer des Versionsverlaufs
+
+Mit `VERSION_HISTORY_RETENTION_DAYS` in `.env` können Sie neu erfasste Dateiversionen länger aufbewahren:
+
+```text
+VERSION_HISTORY_RETENTION_DAYS=30
+```
+
+Der Standardwert ist **1 Tag**. Zulässig sind ganze Zahlen von **1 bis 36500**, beispielsweise `30` oder `90`. Bei ungültigen Werten startet der Server nicht. Diese Einstellung gilt ausschließlich für selbst gehostete Node-Server, einschließlich Docker und systemd. Sie gilt nicht für Cloudflare-Bereitstellungen oder den verwalteten Synch-Dienst.
+
+Führen Sie nach dem Ändern von `.env` `docker compose up -d --force-recreate` aus oder starten Sie Ihren systemd-Dienst neu. Die Einstellung gilt für alle Vaults, auch bestehende: Jeder Vault übernimmt die Richtlinie beim ersten Zugriff nach dem Neustart. Neu erfasste Versionen verwenden die neue Dauer. Bestehende Versionen behalten ihr ursprüngliches Ablaufdatum, unabhängig davon, ob Sie die Dauer verlängern oder verkürzen. Bereits abgelaufene oder gelöschte Versionen lassen sich durch eine Verlängerung nicht wiederherstellen.
+
+Eine längere Aufbewahrungsdauer hält mehr verschlüsselte frühere Dateiinhalte auf der Festplatte oder in S3 vor und kann den Speicherbedarf und die Speicherkosten erhöhen. Aktuelle Dateien werden beim Ablauf ihres Versionsverlaufs nicht gelöscht. Erstellen Sie weiterhin unabhängige Backups zur Wiederherstellung nach Ausfällen.
 
 ### Aktualisieren
 

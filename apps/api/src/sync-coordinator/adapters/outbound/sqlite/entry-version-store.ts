@@ -1,5 +1,5 @@
 import type { InsertEntryVersionInput } from "../../../application/ports/outbound/entry-writes";
-import { and, eq, gte, lte, isNotNull, sql } from "drizzle-orm";
+import { and, eq, gt, lte, isNotNull, sql } from "drizzle-orm";
 
 import * as doSchema from "../../../../db/do";
 import type { EntryVersionPageCursor } from "../../../application/dto/types";
@@ -16,7 +16,7 @@ export class CoordinatorEntryVersionStore {
 	listEntryVersions(
 		entryId: string,
 		before: EntryVersionPageCursor | null,
-		retentionStart: number,
+		now: number,
 		limit: number,
 	): EntryVersionListRow[] {
 		const rows = this.handle
@@ -42,7 +42,7 @@ export class CoordinatorEntryVersionStore {
 					captured_at
 				FROM entry_versions
 				WHERE entry_id = ?
-					AND captured_at >= ?
+					AND expires_at > ?
 					AND (
 						? IS NULL
 						OR captured_at < ?
@@ -52,7 +52,7 @@ export class CoordinatorEntryVersionStore {
 				LIMIT ?
 				`,
 				entryId,
-				retentionStart,
+				now,
 				before?.capturedAt ?? null,
 				before?.capturedAt ?? null,
 				before?.capturedAt ?? null,
@@ -76,7 +76,7 @@ export class CoordinatorEntryVersionStore {
 	readEntryVersion(
 		entryId: string,
 		versionId: string,
-		retentionStart: number,
+		now: number,
 	): EntryVersionRow | null {
 		const row = this.handle
 			.exec<{
@@ -97,12 +97,12 @@ export class CoordinatorEntryVersionStore {
 				FROM entry_versions
 				WHERE entry_id = ?
 					AND version_id = ?
-					AND captured_at >= ?
+					AND expires_at > ?
 				LIMIT 1
 				`,
 				entryId,
 				versionId,
-				retentionStart,
+				now,
 			)
 			.toArray()[0];
 
@@ -147,7 +147,7 @@ export class CoordinatorEntryVersionStore {
 
 		return inserted !== undefined;
 	}
-	hasRestorableHistory(entryId: string, retentionStart: number): boolean {
+	hasRestorableHistory(entryId: string, now: number): boolean {
 		return (
 			this.handle.db
 				.select({ found: sql<number>`1` })
@@ -157,7 +157,7 @@ export class CoordinatorEntryVersionStore {
 						eq(doSchema.entryVersions.entryId, entryId),
 						eq(doSchema.entryVersions.opType, "upsert"),
 						isNotNull(doSchema.entryVersions.blobId),
-						gte(doSchema.entryVersions.capturedAt, retentionStart),
+						gt(doSchema.entryVersions.expiresAt, now),
 					),
 				)
 				.limit(1)

@@ -45,6 +45,7 @@ async function main(): Promise<void> {
 		oidc: config.oidc,
 		syncTokenSecret: config.syncTokenSecret,
 		syncTokenTtlSeconds: config.syncTokenTtlSeconds,
+		versionHistoryRetentionDays: config.versionHistoryRetentionDays,
 		blobStorage,
 	});
 

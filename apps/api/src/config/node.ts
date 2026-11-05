@@ -16,6 +16,8 @@ const baseNodeEnvSchema = z.object({
 	PORT: z.coerce.number().int().min(1).max(65_535).default(8787),
 	// Keep uploads below the coordinator's 30-minute staged-blob GC grace.
 	REQUEST_TIMEOUT_MS: z.coerce.number().int().positive().max(25 * 60_000).default(300_000),
+	// Bound the duration to 100 years so expiry arithmetic stays finite and precise.
+	VERSION_HISTORY_RETENTION_DAYS: z.coerce.number().int().min(1).max(36_500).default(1),
 	HOST: optionalNonBlankString.default("0.0.0.0"),
 	PUBLIC_URL: optionalNonBlankString,
 	CORS_ORIGIN: optionalNonBlankString,
@@ -78,6 +80,7 @@ export type NodeServerConfig = {
 	host: string;
 	port: number;
 	requestTimeoutMs: number;
+	versionHistoryRetentionDays: number;
 	dataDir: string;
 	publicUrl: string;
 	corsOrigin?: string;
@@ -116,6 +119,7 @@ export function parseNodeServerConfig(
 		host: env.HOST,
 		port: env.PORT,
 		requestTimeoutMs: env.REQUEST_TIMEOUT_MS,
+		versionHistoryRetentionDays: env.VERSION_HISTORY_RETENTION_DAYS,
 		dataDir: env.DATA_DIR,
 		publicUrl,
 		corsOrigin,

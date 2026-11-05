@@ -31,6 +31,17 @@ describe("Node server config", () => {
 		});
 	});
 
+	it("validates version history retention in whole days", () => {
+		expect(parseNodeServerConfig(requiredEnv).versionHistoryRetentionDays).toBe(1);
+		for (const days of [1, 30, 90, 36500]) {
+			expect(parseNodeServerConfig({ ...requiredEnv, VERSION_HISTORY_RETENTION_DAYS: String(days) })
+				.versionHistoryRetentionDays).toBe(days);
+		}
+		for (const value of ["", " ", "0", "-1", "1.5", "NaN", "Infinity", "36501"]) {
+			expect(() => parseNodeServerConfig({ ...requiredEnv, VERSION_HISTORY_RETENTION_DAYS: value })).toThrow();
+		}
+	});
+
 	it("keeps request timeouts finite and below staged GC expiry", () => {
 		expect(parseNodeServerConfig(requiredEnv).requestTimeoutMs).toBe(300_000);
 		expect(parseNodeServerConfig({ ...requiredEnv, REQUEST_TIMEOUT_MS: "900000" }))
