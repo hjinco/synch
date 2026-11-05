@@ -70,7 +70,7 @@ describe.each(["/api/auth", "/v1/auth"])("authentication via %s", (basePath) => 
   });
 
   it("exposes provider availability and preserves organization API restrictions", async () => {
-    expect(await (await request(`${basePath}/providers`)).json()).toEqual({ google: true, github: true });
+    expect(await (await request(`${basePath}/providers`)).json()).toEqual({ google: true, github: true, emailAndPassword: true, oidc: null });
     for (const path of ["organization/create", "organization/%63reate"]) {
       const response = await request(`${basePath}/${path}`, { name: "Blocked" });
       expect(response.status).toBe(403);

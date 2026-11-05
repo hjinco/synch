@@ -31,6 +31,8 @@ You can start with a free Cloudflare account. If your Cloudflare account is new,
    - `BETTER_AUTH_SECRET`
    - `SYNC_TOKEN_SECRET`
 
+   The wizard always asks for these three, even if you plan to sign in with single sign-on afterwards instead of a password - see [Single sign-on (OIDC)](#single-sign-on-oidc) below for why `AUTH_ALLOWED_EMAILS` is still needed here.
+
 <SecretGenerator locale="en" />
 
 5. Click **Deploy** to start, then wait for the deployment to complete.
@@ -53,6 +55,58 @@ https://your-synch-api.your-account.workers.dev
 4. In **Self-hosted server**, paste the Synch server address you copied. Do not include a trailing `/`.
 5. Click **Save**.
 6. Continue sign-in and vault setup normally.
+
+## Single sign-on (OIDC)
+
+Synch can authenticate through any standards-compliant OpenID Connect provider - Keycloak, Authentik, Authelia, Zitadel, Dex, Okta, Entra ID, Auth0, and others all work. This isn't tied to one vendor.
+
+OIDC isn't part of the Deploy to Cloudflare wizard above, so it's set up afterwards. In the Cloudflare dashboard, open your Worker's **Settings → Variables and Secrets** and add:
+
+- `OIDC_DISCOVERY_URL` - your provider's discovery document, typically ending in `/.well-known/openid-configuration`
+- `OIDC_CLIENT_ID`
+- `OIDC_CLIENT_SECRET`
+
+These three belong together: set all of them, or none of them. Setting only one or two is treated as a broken configuration, not a disabled feature - the Worker fails requests until the missing value is filled in, rather than quietly running without OIDC. Add `OIDC_CLIENT_SECRET` as a **Secret**, not a **Variable** - equivalently, `wrangler secret put OIDC_CLIENT_SECRET` from `apps/api` if you're working from a checkout. Never put it in a `vars` entry in a committed config file.
+
+Whatever provider you use, register this exact redirect URI with it:
+
+```text
+{PUBLIC_URL}/api/auth/callback/oidc
+```
+
+using your own Worker's address in place of `{PUBLIC_URL}` - for example `https://your-synch-api.your-account.workers.dev/api/auth/callback/oidc`. Getting this path wrong is the single most common way to lose an hour on OIDC setup; most providers call it a "redirect URI" or "callback URL" on their own client configuration screen.
+
+Optional variables:
+
+- `OIDC_PROVIDER_NAME` - label shown on the sign-in button. Defaults to `Single sign-on`.
+- `OIDC_SCOPES` - comma-separated scopes to request. Defaults to `openid,profile,email`.
+- `OIDC_ACCOUNT_ISSUER` - overrides the issuer identity used to scope linked accounts. Defaults to the origin of `OIDC_DISCOVERY_URL`; only set this if your provider's issuer differs from that origin.
+
+### Verified email addresses
+
+Your provider must also mark each user's email address as verified - the `email_verified` claim in the ID token it issues. Synch rejects sign-ins whose email the provider hasn't verified, the same rule it applies to Google and GitHub sign-in, and the sign-in page tells the user why. Some providers leave addresses unverified by default. Pocket ID, for example, only marks emails as verified once its `EMAILS_VERIFIED` setting is turned on, and that applies to addresses added or changed afterwards - so mark any users you created earlier as verified individually.
+
+### Account linking by email
+
+When someone signs in through OIDC, Synch links that session to any existing local account with the same email address instead of creating a duplicate. This is deliberate: someone who registered with a password before OIDC was set up keeps their existing vaults after switching to single sign-on.
+
+One consequence is worth knowing before you rely on this. Self-hosted Synch doesn't send verification emails, so registering an address here never proves control of it - and that's true regardless of whether your provider verifies addresses on its own side. So if password sign-up is still open, anyone could register one of your allowed addresses before its real owner ever signs in through your provider - and would then be linked to that account the moment the real owner does. Vault contents stay safe either way, since they're encrypted on the client with a passphrase the server never sees; what's exposed in that scenario is a session, the vault list and its metadata, the encrypted blobs, and the ability to delete or purge vaults - not the notes themselves. This is also why reusing your account password as your vault passphrase isn't a good idea: it collapses a separation the encryption is designed to preserve.
+
+Setting `AUTH_EMAIL_PASSWORD=disabled` (see below) closes this off, since no password account - and so no address to register ahead of its owner - can be created.
+
+### Turning off password sign-in
+
+Password sign-up stays enabled by default alongside OIDC. Once you've confirmed OIDC sign-in works, you can require it exclusively by setting `AUTH_EMAIL_PASSWORD` to `disabled`. Do this as a second step after a normal deploy - it isn't offered by the wizard, and the wizard's `AUTH_ALLOWED_EMAILS` prompt happens either way, because password sign-up is on by default and the allowlist is the only thing gating it. Once `AUTH_EMAIL_PASSWORD=disabled` takes effect, the `AUTH_ALLOWED_EMAILS` value you entered stops being read.
+
+### If your provider is unreachable
+
+While your OIDC provider's discovery endpoint can't be reached, sign-in through it fails, and so does any request that needs to check a live session. Whether an in-flight sync keeps working depends on how recently its sync token was issued - those tokens are short-lived, so anything already close to expiry re-checks the session and fails along with sign-in.
+
+There's also no way to bound how long Synch will wait on a provider that's reachable but slow - that fetch happens inside the auth library with no timeout available to configure. A provider that hangs is worse than one that refuses the connection, since a refusal fails fast and a hang doesn't. If you can choose between providers or instances, prefer the one that fails fast.
+
+### Troubleshooting: everything returns `internal_error` after changing secrets
+
+If every route - including `/health` - starts returning `{"error":"internal_error"}` right after you add or edit OIDC secrets, the most likely cause is an incomplete OIDC variable set (for example, `OIDC_CLIENT_ID` set but `OIDC_CLIENT_SECRET` still missing, or a typo in a name). That failure happens before the Worker has registered its routes, including the health check, so the generic error is all you'll see in the response. Check `wrangler tail`, or the **Logs** tab in the Cloudflare dashboard, to see which variable is actually missing.
 
 ## Update your server
 

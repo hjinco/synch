@@ -3,16 +3,25 @@ import { drizzleAdapter } from "@better-auth/drizzle-adapter";
 import { betterAuth } from "better-auth";
 import { APIError, createAuthMiddleware } from "better-auth/api";
 import type { BetterAuthPlugin } from "better-auth";
-import { bearer, deviceAuthorization, lastLoginMethod, organization } from "better-auth/plugins";
+import {
+	bearer,
+	deviceAuthorization,
+	genericOAuth,
+	lastLoginMethod,
+	organization,
+} from "better-auth/plugins";
 
 import type { AppDb } from "../db/client";
 import * as schema from "../db/d1";
 import {
+	isAllowlistExemptSource,
 	isEmailAllowed,
 	parseAllowedEmails,
 	SIGN_UP_EMAIL_NOT_ALLOWED,
 } from "./policies/allowed-emails";
 import { defaultOrganizationSlug } from "./policies/organization";
+import type { OidcProviderConfig } from "./policies/oidc";
+import { recordOidcDiagnostic, shouldEmitOidcDiagnostic } from "./oidc-diagnostics";
 
 export type OutgoingEmail = {
 	from: string;
@@ -39,6 +48,13 @@ export type AuthFeatureConfig = {
 	googleClientSecret?: string;
 	githubClientId?: string;
 	githubClientSecret?: string;
+	/** Registers the `generic-oauth` plugin against this provider when present. */
+	oidc?: OidcProviderConfig;
+	/**
+	 * Toggles the `emailAndPassword` provider. Left unset, email/password stays
+	 * enabled -- the historical default.
+	 */
+	emailAndPassword?: "enabled" | "disabled";
 };
 
 export type AuthPlugin = BetterAuthPlugin;
@@ -46,34 +62,32 @@ export type BetterAuthConfig = AuthFeatureConfig & {
 	plugins?: AuthPlugin[];
 };
 
+/**
+ * Mutable status sink written to by the OIDC plugin's isolated `init` (see
+ * `withOidcInitIsolation`) and read back by the caller after construction.
+ * `available` starts `true` -- optimistic until proven otherwise, the same
+ * stance the rebuild-on-use logic in `createAuthFeature` takes with the
+ * whole auth context -- and flips to `false` the moment discovery or any
+ * other construction-time check for this provider fails.
+ */
+export type OidcAvailability = {
+	available: boolean;
+};
+
 /** Auth lifetime for signed-in clients (bearer token and cookies). */
 const SESSION_EXPIRES_IN_SECONDS = 60 * 60 * 24 * 30;
 
-export function createBetterAuth(db: AppDb, config: BetterAuthConfig) {
+export function createBetterAuth(
+	db: AppDb,
+	config: BetterAuthConfig,
+	oidcAvailability?: OidcAvailability,
+) {
 	const emailVerification = createEmailVerificationConfig(config);
 	const allowedEmails = parseAllowedEmails(config.allowedEmails);
 	const auth = betterAuth({
 		socialProviders: {
 			google: optionalOAuthProvider(config.baseURL, "google", config.googleClientId, config.googleClientSecret),
 			github: optionalOAuthProvider(config.baseURL, "github", config.githubClientId, config.githubClientSecret),
-		},
-		user: {
-			validateUserInfo: ({ user, source }) => {
-				// Check the current provider assertion on both signup and returning login.
-				if (source.method === "oauth" && user.emailVerified !== true) {
-					return {
-						error: "email_not_verified",
-						errorDescription: "Verify your email with your sign-in provider before signing in.",
-					};
-				}
-			},
-		},
-		account: {
-			accountLinking: {
-				// Community deployments disable email verification and restrict sign-up
-				// with an allowlist. Provider-verified email is still required to link.
-				requireLocalEmailVerified: config.emailVerification === "required",
-			},
 		},
 		baseURL: config.baseURL,
 		secret: config.secret,
@@ -83,11 +97,62 @@ export function createBetterAuth(db: AppDb, config: BetterAuthConfig) {
 		}),
 		trustedOrigins: config.trustedOrigins,
 		emailAndPassword: {
-			enabled: true,
+			enabled: config.emailAndPassword !== "disabled",
 			requireEmailVerification:
 				config.emailVerification === "required" && !config.devMode,
 		},
 		emailVerification,
+		account: {
+			accountLinking: {
+				// Community deployments disable email verification and restrict sign-up
+				// with an allowlist. Provider-verified email is still required to link.
+				requireLocalEmailVerified: config.emailVerification === "required",
+			},
+		},
+		user: {
+			validateUserInfo: async ({ user, source }) => {
+				// validateUserInfo is used here -- rather than the previous
+				// databaseHooks.user.create.before throw -- because it is the only
+				// hook that receives source.method and source.oauth.providerId,
+				// which isAllowlistExemptSource needs to recognize a sign-up the
+				// configured OIDC provider vouches for. The identity provider is the
+				// authority for identities it asserts, so a sign-up federated
+				// through the configured OIDC provider bypasses the email allowlist;
+				// every other creation path (password, and any future auth method
+				// Better Auth adds) stays gated.
+				// Check the current provider assertion on both signup and returning login.
+				if (source.method === "oauth" && user.emailVerified !== true) {
+					return {
+						error: "email_not_verified",
+						errorDescription: "Verify your email with your sign-in provider before signing in.",
+					};
+				}
+				if (isAllowlistExemptSource(source)) {
+					return;
+				}
+				if (
+					allowedEmails &&
+					(typeof user.email !== "string" || !isEmailAllowed(user.email, allowedEmails))
+				) {
+					// The rejected email is attacker-supplied input (this hook runs
+					// before any credential is verified), so it must never reach the
+					// log -- only the stable rejection code and the method that was
+					// attempted, which is exactly enough for an operator to see that
+					// the allowlist is doing its job without exposing who tried it.
+					const key = `allowlist-rejection:${SIGN_UP_EMAIL_NOT_ALLOWED.code}:${source.method}`;
+					if (shouldEmitOidcDiagnostic(key)) {
+						recordOidcDiagnostic(key, {
+							code: SIGN_UP_EMAIL_NOT_ALLOWED.code,
+							method: source.method,
+						});
+					}
+					return {
+						error: SIGN_UP_EMAIL_NOT_ALLOWED.code,
+						errorDescription: SIGN_UP_EMAIL_NOT_ALLOWED.message,
+					};
+				}
+			},
+		},
 		session: {
 			expiresIn: SESSION_EXPIRES_IN_SECONDS,
 		},
@@ -110,11 +175,6 @@ export function createBetterAuth(db: AppDb, config: BetterAuthConfig) {
 		databaseHooks: {
 			user: {
 				create: {
-					before: async (user) => {
-						if (allowedEmails && !isEmailAllowed(user.email, allowedEmails)) {
-							throw APIError.from("FORBIDDEN", SIGN_UP_EMAIL_NOT_ALLOWED);
-						}
-					},
 					after: async (user) => {
 						if (await readDefaultOrganizationIdForUser(db, user.id)) {
 							return;
@@ -176,6 +236,28 @@ export function createBetterAuth(db: AppDb, config: BetterAuthConfig) {
 				// Managed email sign-up creates a session only after verification.
 				customResolveMethod: (ctx) => ctx.path === "/verify-email" ? "email" : null,
 			}),
+			...(config.oidc
+				? [
+						withOidcInitIsolation(
+							genericOAuth({
+								config: [
+									{
+										providerId: config.oidc.providerId,
+										clientId: config.oidc.clientId,
+										clientSecret: config.oidc.clientSecret,
+										discoveryUrl: config.oidc.discoveryUrl,
+										scopes: config.oidc.scopes,
+										pkce: true,
+										requireIdTokenVerification: true,
+										accountIssuer: config.oidc.accountIssuer,
+									},
+								],
+							}),
+							config.oidc,
+							oidcAvailability,
+						),
+					]
+				: []),
 			...(config.plugins ?? []),
 			bearer(),
 			deviceAuthorization({
@@ -186,6 +268,96 @@ export function createBetterAuth(db: AppDb, config: BetterAuthConfig) {
 	});
 
 	return auth;
+}
+
+/**
+ * better-auth's plugin loop (`runPluginInit`) has no try/catch around a
+ * plugin's `init` -- a throw there rejects the *entire* shared auth context,
+ * which is why an unreachable OIDC provider previously took password
+ * sign-in and every existing session down with it, not just OIDC sign-in.
+ * Wrapping `init` here contains a discovery/configuration failure to just
+ * this provider: the plugin's own throw becomes a caught, diagnosed failure
+ * and `init` resolves to `void` -- a documented no-op return per
+ * `BetterAuthPlugin["init"]`'s type -- so the rest of the context (and every
+ * unrelated plugin) still builds normally and this provider is simply left
+ * unregistered. `sign-in/social` against an unregistered provider fails
+ * closed with a 404, never with a live, unverified token.
+ */
+function withOidcInitIsolation(
+	plugin: AuthPlugin,
+	oidc: OidcProviderConfig,
+	oidcAvailability: OidcAvailability | undefined,
+): AuthPlugin {
+	const originalInit = plugin.init;
+	if (!originalInit) {
+		return plugin;
+	}
+
+	// better-auth's own `init` type is a union of function shapes
+	// (`Awaitable<{...}> | void | Promise<void>`) that a single function
+	// implementation returning either branch cannot satisfy structurally --
+	// this wrapper only ever forwards `originalInit`'s own (already
+	// correctly typed) result unchanged or produces the documented no-op
+	// `void` return, so the cast is asserting a shape TypeScript cannot
+	// otherwise verify across that union, not bypassing real type safety.
+	async function isolatedInit(
+		...args: Parameters<NonNullable<AuthPlugin["init"]>>
+	): Promise<Awaited<ReturnType<NonNullable<AuthPlugin["init"]>>> | void> {
+		try {
+			// Narrowed by the early return above; TypeScript doesn't carry that
+			// narrowing of a closed-over `const` into this nested function.
+			return await originalInit!(...args);
+		} catch (error) {
+			if (oidcAvailability) {
+				oidcAvailability.available = false;
+			}
+			const errorClass = classifyOidcInitError(error);
+			const key = `${oidc.providerId}:${oidc.discoveryUrl}:${errorClass}`;
+			if (shouldEmitOidcDiagnostic(key)) {
+				recordOidcDiagnostic(key, {
+					providerId: oidc.providerId,
+					discoveryUrl: oidc.discoveryUrl,
+					errorClass,
+				});
+			}
+			return;
+		}
+	}
+
+	return {
+		...plugin,
+		init: isolatedInit as AuthPlugin["init"],
+	};
+}
+
+/**
+ * Classifies an OIDC init failure into a small, bounded set of categories
+ * instead of logging the raw error: the message text is safe here (better-
+ * auth's own construction-time throws only ever mention the provider id),
+ * but a fixed category is still preferable so this never becomes a channel
+ * for stack traces or cause chains to leak through, and so the dedup key
+ * built from it distinguishes genuinely different misconfigurations (a
+ * discovery outage should not hide a subsequent invalid-jwks-uri problem).
+ */
+function classifyOidcInitError(error: unknown): string {
+	if (!(error instanceof Error)) {
+		return "unknown";
+	}
+
+	if (error.message.includes("discovery did not return an issuer")) {
+		return "discovery-missing-issuer";
+	}
+	if (error.message.includes("invalid jwks_uri")) {
+		return "discovery-invalid-jwks-uri";
+	}
+	if (error.message.includes("discovery returned no valid data")) {
+		return "discovery-unavailable";
+	}
+	if (error.message.includes("requires verified ID tokens")) {
+		return "id-token-verification-unavailable";
+	}
+
+	return error.name || "error";
 }
 
 export type BetterAuth = ReturnType<typeof createBetterAuth>;

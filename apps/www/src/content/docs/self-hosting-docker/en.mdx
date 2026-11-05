@@ -38,13 +38,14 @@ You'll need Docker and Docker Compose installed.
      ```bash
      openssl rand -hex 32
      ```
-   - `AUTH_ALLOWED_EMAILS` (required) - a comma-separated list of the exact email addresses allowed to create accounts:
+   - `AUTH_ALLOWED_EMAILS` (required, unless you disable password sign-in entirely - see [Single sign-on (OIDC)](#single-sign-on-oidc) below) - a comma-separated list of the exact email addresses allowed to create accounts:
 
      ```text
      AUTH_ALLOWED_EMAILS=you@example.com,family@example.com
      ```
 
      Matching ignores letter case and surrounding spaces. This setting only controls new accounts, so existing users can still sign in after their address is removed from the list.
+   - `OIDC_DISCOVERY_URL`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET` (optional) - enable single sign-on. See [Single sign-on (OIDC)](#single-sign-on-oidc) below.
 
 4. Start the server:
 
@@ -57,6 +58,54 @@ Vault and blob data persist in the `synch-data` Docker volume across restarts an
 ### Blob storage
 
 By default, encrypted file contents are stored on disk inside the same data volume. If you'd rather use an S3-compatible bucket (AWS S3, MinIO, R2, etc.), uncomment and fill in the `BLOB_STORAGE=s3` block in `.env` before starting the container.
+
+### Single sign-on (OIDC)
+
+Synch can authenticate through any standards-compliant OpenID Connect provider - Keycloak, Authentik, Authelia, Zitadel, Dex, Okta, Entra ID, Auth0, and others all work. This isn't tied to one vendor.
+
+Uncomment and fill in these three in `.env`:
+
+- `OIDC_DISCOVERY_URL` - your provider's discovery document, typically ending in `/.well-known/openid-configuration`
+- `OIDC_CLIENT_ID`
+- `OIDC_CLIENT_SECRET`
+
+These three belong together: fill in all of them, or leave all of them commented out. Setting only one or two is treated as a broken configuration, not a disabled feature - the server refuses to start until the missing value is filled in, rather than quietly running without OIDC. Keep `OIDC_CLIENT_SECRET` in `.env`, which is not committed to version control, and never move it into a file that is.
+
+Whatever provider you use, register this exact redirect URI with it:
+
+```text
+{PUBLIC_URL}/api/auth/callback/oidc
+```
+
+using the `PUBLIC_URL` you set above - for example `https://synch.your-domain.example/api/auth/callback/oidc`. Getting this path wrong is the single most common way to lose an hour on OIDC setup; most providers call it a "redirect URI" or "callback URL" on their own client configuration screen.
+
+Optional variables, also in `.env`:
+
+- `OIDC_PROVIDER_NAME` - label shown on the sign-in button. Defaults to `Single sign-on`.
+- `OIDC_SCOPES` - comma-separated scopes to request. Defaults to `openid,profile,email`.
+- `OIDC_ACCOUNT_ISSUER` - overrides the issuer identity used to scope linked accounts. Defaults to the origin of `OIDC_DISCOVERY_URL`; only set this if your provider's issuer differs from that origin.
+
+#### Verified email addresses
+
+Your provider must also mark each user's email address as verified - the `email_verified` claim in the ID token it issues. Synch rejects sign-ins whose email the provider hasn't verified, the same rule it applies to Google and GitHub sign-in, and the sign-in page tells the user why. Some providers leave addresses unverified by default. Pocket ID, for example, only marks emails as verified once its `EMAILS_VERIFIED` setting is turned on, and that applies to addresses added or changed afterwards - so mark any users you created earlier as verified individually.
+
+#### Account linking by email
+
+When someone signs in through OIDC, Synch links that session to any existing local account with the same email address instead of creating a duplicate. This is deliberate: someone who registered with a password before OIDC was set up keeps their existing vaults after switching to single sign-on.
+
+One consequence is worth knowing before you rely on this. Self-hosted Synch doesn't send verification emails, so registering an address here never proves control of it - and that's true regardless of whether your provider verifies addresses on its own side. So if password sign-up is still open, anyone could register one of your allowed addresses before its real owner ever signs in through your provider - and would then be linked to that account the moment the real owner does. Vault contents stay safe either way, since they're encrypted on the client with a passphrase the server never sees; what's exposed in that scenario is a session, the vault list and its metadata, the encrypted blobs, and the ability to delete or purge vaults - not the notes themselves. This is also why reusing your account password as your vault passphrase isn't a good idea: it collapses a separation the encryption is designed to preserve.
+
+Setting `AUTH_EMAIL_PASSWORD=disabled` (see below) closes this off, since no password account - and so no address to register ahead of its owner - can be created.
+
+#### Turning off password sign-in
+
+Password sign-up stays enabled by default alongside OIDC. Once you've confirmed OIDC sign-in works, you can require it exclusively by setting `AUTH_EMAIL_PASSWORD=disabled` in `.env` and restarting the service. At that point `AUTH_ALLOWED_EMAILS` stops being read, since there's no password sign-up left for it to gate.
+
+#### If your provider is unreachable
+
+While your OIDC provider's discovery endpoint can't be reached, sign-in through it fails, and so does any request that needs to check a live session. Whether an in-flight sync keeps working depends on how recently its sync token was issued - those tokens are short-lived, so anything already close to expiry re-checks the session and fails along with sign-in.
+
+There's also no way to bound how long Synch will wait on a provider that's reachable but slow - that fetch happens inside the auth library with no timeout available to configure. A provider that hangs is worse than one that refuses the connection, since a refusal fails fast and a hang doesn't. If you can choose between providers or instances, prefer the one that fails fast.
 
 ### Upgrading
 

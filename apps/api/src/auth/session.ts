@@ -23,9 +23,16 @@ export interface SessionReader {
 	readSession(input: SessionLookup): Promise<AuthenticatedSession | null>;
 }
 
-export function createBetterAuthSessionReader(auth: BetterAuth): SessionReader {
+/**
+ * Takes an accessor rather than a `BetterAuth` instance directly so callers
+ * that rebuild their auth instance after an init failure (see
+ * `createAuthFeature`) always read the current one instead of the possibly
+ * poisoned instance captured at construction time.
+ */
+export function createBetterAuthSessionReader(getAuth: () => BetterAuth): SessionReader {
 	return {
 		async readSession(input: SessionLookup): Promise<AuthenticatedSession | null> {
+			const auth = getAuth();
 			const headers = new Headers();
 			if (input.authorization) {
 				headers.set("authorization", input.authorization);

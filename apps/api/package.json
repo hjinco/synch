@@ -48,6 +48,27 @@
 			},
 			"SYNC_TOKEN_SECRET": {
 				"description": "Generate a separate random secret for sync websocket token signing, for example `openssl rand -hex 32`."
+			},
+			"OIDC_DISCOVERY_URL": {
+				"description": "Optional. OpenID Connect discovery document URL for single sign-on, for example `https://accounts.example.com/.well-known/openid-configuration`. Register `{PUBLIC_URL}/api/auth/callback/oidc` as the redirect URI with your provider. Leave unset to disable OIDC sign-in; if set, OIDC_CLIENT_ID and OIDC_CLIENT_SECRET are also required."
+			},
+			"OIDC_CLIENT_ID": {
+				"description": "Optional. OAuth client ID issued by your OIDC provider. Required alongside OIDC_DISCOVERY_URL and OIDC_CLIENT_SECRET to enable OIDC sign-in."
+			},
+			"OIDC_CLIENT_SECRET": {
+				"description": "Optional. OAuth client secret issued by your OIDC provider. Required alongside OIDC_DISCOVERY_URL and OIDC_CLIENT_ID to enable OIDC sign-in."
+			},
+			"OIDC_PROVIDER_NAME": {
+				"description": "Optional. Display name for the OIDC sign-in button, for example `Company SSO`. Defaults to \"Single sign-on\" when unset."
+			},
+			"OIDC_SCOPES": {
+				"description": "Optional. Comma-separated OAuth scopes to request from your OIDC provider, for example `openid,profile,email`. Defaults to `openid,profile,email` when unset."
+			},
+			"OIDC_ACCOUNT_ISSUER": {
+				"description": "Optional. Overrides the issuer identity used to scope linked OIDC accounts. Defaults to the origin of OIDC_DISCOVERY_URL when unset; only set this if your provider's issuer differs from that origin."
+			},
+			"AUTH_EMAIL_PASSWORD": {
+				"description": "Optional. Accepts `enabled` (default) or `disabled`. Set to `disabled` to turn off email/password sign-in and require OIDC for all sign-ins."
 			}
 		}
 	},

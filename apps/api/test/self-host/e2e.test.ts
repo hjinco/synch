@@ -13,13 +13,17 @@ import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import WebSocket from "ws";
 
-import { createNodeRuntime } from "../../src/runtime/node";
+import { parseOidcProviderConfig, type OidcProviderConfig } from "../../src/auth/policies/oidc";
+import { OIDC_REBUILD_COOLDOWN_MS } from "../../src/composition/features/create-auth-feature";
+import { createNodeRuntime, type NodeRuntime } from "../../src/runtime/node";
 import { createNodeWebSocketUpgradeHandler } from "../../src/runtime/node-websocket";
 import { LocalDiskBlobObjectStorage } from "../../src/sync-blob-transfer/adapters/outbound/local-disk-object-storage";
 import {
 	SYNC_WEBSOCKET_AUTH_PROTOCOL_PREFIX,
 	SYNC_WEBSOCKET_PROTOCOL,
 } from "../../src/sync-access/application";
+import { createFakeIdp } from "../helpers/fake-idp";
+import { startFakeIdpServer } from "./fake-idp-server";
 
 const API_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const TSX_BIN = path.join(API_ROOT, "node_modules/.bin/tsx");
@@ -84,7 +88,7 @@ async function reserveFreePort(): Promise<number> {
 }
 
 /** Boots a full self-hosted Node runtime (libSQL app DB + SQLite coordinator + local disk blobs) against an ephemeral port. */
-async function bootServer(existingDataDir?: string) {
+async function bootServer(existingDataDir?: string, oidc?: OidcProviderConfig) {
 	const dataDir = existingDataDir ?? mkdtempSync(path.join(tmpdir(), "synch-self-host-e2e-"));
 	const port = await reserveFreePort();
 	const baseUrl = `http://127.0.0.1:${port}`;
@@ -95,6 +99,7 @@ async function bootServer(existingDataDir?: string) {
 		authAllowedEmails: `${SELF_HOST_ALLOWED_EMAIL},member@test.invalid`,
 		syncTokenSecret: "test-sync-token-secret-test-sync",
 		blobStorage: new LocalDiskBlobObjectStorage(path.join(dataDir, "blobs")),
+		oidc,
 	});
 	const { wss, handleUpgrade } = createNodeWebSocketUpgradeHandler(runtime, baseUrl);
 	const server = serve({ fetch: (request) => runtime.fetch(request), port });
@@ -191,6 +196,35 @@ function killAndWaitForExit(child: ChildProcess): Promise<void> {
 		}
 		child.kill("SIGKILL");
 	});
+}
+
+const OIDC_CLIENT_SECRET = "test-oidc-client-secret";
+
+function setCookieHeader(response: Response): string {
+	return response.headers
+		.getSetCookie()
+		.map((pair) => pair.split(";")[0] ?? "")
+		.filter(Boolean)
+		.join("; ");
+}
+
+async function startOidcSignIn(baseUrl: string): Promise<{ url: URL; cookie: string }> {
+	const response = await fetch(`${baseUrl}/api/auth/sign-in/social`, {
+		method: "POST",
+		headers: { "content-type": "application/json", origin: baseUrl },
+		body: JSON.stringify({
+			provider: "oidc",
+			callbackURL: `${baseUrl}/dashboard`,
+			errorCallbackURL: `${baseUrl}/sign-in-error`,
+		}),
+	});
+	const body = (await response.json()) as { url?: string };
+	if (!body.url) {
+		throw new Error(
+			`sign-in/social did not return an authorization url (status ${response.status})`,
+		);
+	}
+	return { url: new URL(body.url), cookie: setCookieHeader(response) };
 }
 
 async function signUpAndCreateVault(baseUrl: string) {
@@ -718,4 +752,234 @@ describe("self-hosted Node runtime: end-to-end sync", () => {
 		},
 		30_000,
 	);
+
+	it("completes an OIDC sign-in against the self-hosted Node runtime using a real fake-IdP HTTP server", async () => {
+		// Unlike the Workers-pool version of this test (test/integration/auth/oidc.test.ts),
+		// nothing here patches globalThis.fetch: the fake IdP is a real,
+		// locally-listening node:http server, and the Node runtime's own
+		// outbound calls to its token and JWKS endpoints go over a real socket -
+		// proving the OIDC round trip on the one runtime the Workers integration
+		// suite never exercises.
+		const idpPort = await reserveFreePort();
+		const idp = await createFakeIdp(`http://127.0.0.1:${idpPort}`);
+		const idpServer = await startFakeIdpServer(idp);
+		cleanup.push(() => idpServer.close());
+
+		const oidc = parseOidcProviderConfig({
+			discoveryUrl: idp.discoveryUrl,
+			clientId: idp.clientId,
+			clientSecret: OIDC_CLIENT_SECRET,
+		});
+		if (!oidc) {
+			throw new Error("expected a fully-configured OIDC provider for this test");
+		}
+
+		const { dataDir, runtime, server, wss, baseUrl } = await bootServer(undefined, oidc);
+		cleanup.push(() => rmSync(dataDir, { recursive: true, force: true }));
+		cleanup.push(() => runtime.dispose());
+		cleanup.push(() => closeServer(server, wss));
+
+		const assertedEmail = `${uniqueId("oidc-node-e2e")}@idp.example`;
+		const authorize = await startOidcSignIn(baseUrl);
+		const nonce = authorize.url.searchParams.get("nonce") ?? "";
+		idp.tokenHandler = async () => ({
+			status: 200,
+			body: idp.tokenResponse(
+				await idp.signIdToken({ nonce, sub: uniqueId("oidc-node-sub"), email: assertedEmail }),
+			),
+		});
+
+		const state = authorize.url.searchParams.get("state") ?? "";
+		const callback = await fetch(
+			`${baseUrl}/api/auth/callback/oidc?code=fake-authorization-code&state=${encodeURIComponent(state)}`,
+			{
+				redirect: "manual",
+				headers: { cookie: authorize.cookie, origin: baseUrl },
+			},
+		);
+		expect(callback.status).toBe(302);
+
+		const session = await fetch(`${baseUrl}/api/auth/get-session`, {
+			headers: { cookie: setCookieHeader(callback), origin: baseUrl },
+		});
+		expect(session.status).toBe(200);
+		const sessionJson = (await session.json()) as { user?: { email?: string } } | null;
+		// Same assertion as the Workers-pool session test: the email IS the
+		// identity contract, and this is what proves the round trip actually
+		// created a session rather than merely returning a 302.
+		expect(sessionJson?.user?.email).toBe(assertedEmail);
+	});
+
+	it("isolates password sign-in from an unreachable OIDC provider and recovers OIDC once it comes back, with no process restart", async () => {
+		// Node builds this runtime's betterAuth() instance exactly once, at
+		// boot, unlike Cloudflare (which rebuilds per request). Reserving the
+		// port but never starting a server on it reproduces "Synch wins the
+		// docker-compose startup race against its identity provider": the
+		// discovery fetch this boot performs fails with connection-refused.
+		const idpPort = await reserveFreePort();
+		const idp = await createFakeIdp(`http://127.0.0.1:${idpPort}`);
+
+		const oidc = parseOidcProviderConfig({
+			discoveryUrl: idp.discoveryUrl,
+			clientId: idp.clientId,
+			clientSecret: OIDC_CLIENT_SECRET,
+		});
+		if (!oidc) {
+			throw new Error("expected a fully-configured OIDC provider for this test");
+		}
+
+		const { dataDir, runtime, server, wss, baseUrl } = await bootServer(undefined, oidc);
+		cleanup.push(() => rmSync(dataDir, { recursive: true, force: true }));
+		cleanup.push(() => runtime.dispose());
+		cleanup.push(() => closeServer(server, wss));
+
+		const signUpBody = JSON.stringify({
+			email: SELF_HOST_ALLOWED_EMAIL,
+			password: "correct horse battery staple",
+			name: "Isolation",
+		});
+
+		// Password sign-up has nothing to do with OIDC. An unrelated
+		// provider's discovery failure must not take it down too -- this
+		// request's response only comes back once the runtime has fully
+		// finished (successfully) building its auth context, discovery
+		// failure included, so this is not a race against that failure.
+		const signUpWhileUnreachable = await fetch(`${baseUrl}/api/auth/sign-up/email`, {
+			method: "POST",
+			headers: { "content-type": "application/json", origin: baseUrl },
+			body: signUpBody,
+		});
+		expect(signUpWhileUnreachable.status, await signUpWhileUnreachable.text()).toBeLessThan(300);
+
+		// Checked immediately after the sign-up above (before any other
+		// request can trigger a fresh attempt): the unreachable provider is
+		// visibly absent rather than silently offering a button that would
+		// 404.
+		const providersWhileUnreachable = await fetch(`${baseUrl}/v1/auth/providers`);
+		await expect(providersWhileUnreachable.json()).resolves.toMatchObject({ oidc: null });
+
+		// OIDC sign-in itself fails closed -- "provider not found", never a
+		// 500 and never a live, unverified token.
+		const oidcSignInWhileUnreachable = await fetch(`${baseUrl}/api/auth/sign-in/social`, {
+			method: "POST",
+			headers: { "content-type": "application/json", origin: baseUrl },
+			body: JSON.stringify({ provider: "oidc", callbackURL: `${baseUrl}/dashboard` }),
+		});
+		expect(oidcSignInWhileUnreachable.status).toBe(404);
+
+		// Bring the provider up: same process, same runtime, no restart.
+		const idpServer = await startFakeIdpServer(idp);
+		cleanup.push(() => idpServer.close());
+
+		// The rebuild cooldown means a request landing immediately after the
+		// provider comes back can still be served the stale "unavailable"
+		// state -- recovery is bounded by the cooldown window, not instant.
+		// Waiting it out here is what makes the assertions below about actual
+		// recovery, rather than about how quickly it happens.
+		await new Promise((resolve) => setTimeout(resolve, OIDC_REBUILD_COOLDOWN_MS + 250));
+
+		// Once the cooldown has elapsed, the next request must retry discovery
+		// instead of replaying a permanently cached failure -- a full
+		// authorize/callback/get-session round trip, same as the "completes an
+		// OIDC sign-in" case above, proves OIDC sign-in itself works again, not
+		// just that some flag flipped.
+		const assertedEmail = `${uniqueId("oidc-recovery")}@idp.example`;
+		const authorize = await startOidcSignIn(baseUrl);
+		const nonce = authorize.url.searchParams.get("nonce") ?? "";
+		idp.tokenHandler = async () => ({
+			status: 200,
+			body: idp.tokenResponse(
+				await idp.signIdToken({ nonce, sub: uniqueId("oidc-recovery-sub"), email: assertedEmail }),
+			),
+		});
+
+		const state = authorize.url.searchParams.get("state") ?? "";
+		const callback = await fetch(
+			`${baseUrl}/api/auth/callback/oidc?code=fake-authorization-code&state=${encodeURIComponent(state)}`,
+			{
+				redirect: "manual",
+				headers: { cookie: authorize.cookie, origin: baseUrl },
+			},
+		);
+		expect(callback.status).toBe(302);
+
+		const session = await fetch(`${baseUrl}/api/auth/get-session`, {
+			headers: { cookie: setCookieHeader(callback), origin: baseUrl },
+		});
+		expect(session.status).toBe(200);
+		const sessionJson = (await session.json()) as { user?: { email?: string } } | null;
+		expect(sessionJson?.user?.email).toBe(assertedEmail);
+
+		// The recovery is now also visible in what the sign-in page would show.
+		const providersAfterRecovery = await fetch(`${baseUrl}/v1/auth/providers`);
+		await expect(providersAfterRecovery.json()).resolves.toMatchObject({
+			oidc: { providerId: "oidc" },
+		});
+	});
+
+	it("exits non-zero at boot when the OIDC config is partial", async () => {
+		const dataDir = mkdtempSync(path.join(tmpdir(), "synch-self-host-e2e-oidc-partial-"));
+		cleanup.push(() => rmSync(dataDir, { recursive: true, force: true }));
+		const port = await reserveFreePort();
+		const baseUrl = `http://127.0.0.1:${port}`;
+
+		const env = { ...process.env };
+		delete env.OIDC_DISCOVERY_URL;
+		delete env.OIDC_CLIENT_ID;
+		delete env.OIDC_CLIENT_SECRET;
+
+		const child = spawn(TSX_BIN, ["src/self-host.ts"], {
+			cwd: API_ROOT,
+			env: {
+				...env,
+				DATA_DIR: dataDir,
+				PORT: String(port),
+				PUBLIC_URL: baseUrl,
+				BETTER_AUTH_SECRET: "test-secret-test-secret-test-secret",
+				AUTH_ALLOWED_EMAILS: SELF_HOST_ALLOWED_EMAIL,
+				SYNC_TOKEN_SECRET: "test-sync-token-secret-test-sync",
+				// Exactly one of the three OIDC_* variables that gate
+				// parseOidcProviderConfig - the other two below are the ones the
+				// boot failure must name.
+				OIDC_CLIENT_ID: "partial-oidc-client-id",
+			},
+			stdio: ["ignore", "pipe", "pipe"],
+		});
+		let stderr = "";
+		child.stderr?.on("data", (chunk: Buffer) => {
+			stderr += chunk.toString("utf8");
+		});
+		cleanup.push(
+			() =>
+				new Promise<void>((resolve) => {
+					if (child.exitCode !== null || child.signalCode !== null) {
+						resolve();
+						return;
+					}
+					child.once("exit", () => resolve());
+					child.kill("SIGKILL");
+				}),
+		);
+
+		const exit = await new Promise<{ code: number | null; signal: NodeJS.Signals | null }>(
+			(resolve, reject) => {
+				const timeout = setTimeout(
+					() => reject(new Error(`self-host process did not exit within 10s (stderr: ${stderr})`)),
+					10_000,
+				);
+				child.once("exit", (code, signal) => {
+					clearTimeout(timeout);
+					resolve({ code, signal });
+				});
+			},
+		);
+
+		// The Node runtime is the one place fail-loudly is achievable at boot -
+		// unlike Cloudflare, which has no boot step and only surfaces this as a
+		// request-time error. `MissingOidcVariablesError`'s message names every
+		// missing variable, and that is what console.error prints to stderr here.
+		expect(exit.code).not.toBe(0);
+		expect(stderr).toContain("OIDC_DISCOVERY_URL");
+		expect(stderr).toContain("OIDC_CLIENT_SECRET");
+	});
 });

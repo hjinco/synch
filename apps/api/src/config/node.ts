@@ -1,11 +1,17 @@
 import { z } from "zod";
 
+import { parseOidcProviderConfig, type OidcProviderConfig } from "../auth/policies/oidc";
+import { requiresSignUpAllowlist } from "../auth/policies/sign-up-allowlist";
+import { capabilitiesFor, NODE_COMMUNITY_PROFILE } from "./deployment-profile";
+
 const optionalNonBlankString = z.preprocess(
 	(value) => (typeof value === "string" && value.trim() === "" ? undefined : value),
 	z.string().trim().min(1).optional(),
 );
 
-const nodeEnvSchema = z.object({
+const nodeCapabilities = capabilitiesFor(NODE_COMMUNITY_PROFILE);
+
+const baseNodeEnvSchema = z.object({
 	DATA_DIR: optionalNonBlankString.default("./data"),
 	PORT: z.coerce.number().int().min(1).max(65_535).default(8787),
 	// Keep uploads below the coordinator's 30-minute staged-blob GC grace.
@@ -18,7 +24,8 @@ const nodeEnvSchema = z.object({
 	GOOGLE_CLIENT_SECRET: optionalNonBlankString,
 	GITHUB_CLIENT_ID: optionalNonBlankString,
 	GITHUB_CLIENT_SECRET: optionalNonBlankString,
-	AUTH_ALLOWED_EMAILS: z.string().trim().min(1, "AUTH_ALLOWED_EMAILS is required"),
+	AUTH_ALLOWED_EMAILS: optionalNonBlankString,
+	AUTH_EMAIL_PASSWORD: z.enum(["enabled", "disabled"]).default("enabled"),
 	SYNC_TOKEN_SECRET: z.string().trim().min(1, "SYNC_TOKEN_SECRET is required"),
 	SYNC_TOKEN_TTL_SECONDS: z.coerce.number().int().positive().optional(),
 	BLOB_STORAGE: z.preprocess(
@@ -31,6 +38,29 @@ const nodeEnvSchema = z.object({
 	S3_REGION: optionalNonBlankString,
 	S3_ACCESS_KEY_ID: optionalNonBlankString,
 	S3_SECRET_ACCESS_KEY: optionalNonBlankString,
+	OIDC_DISCOVERY_URL: optionalNonBlankString,
+	OIDC_CLIENT_ID: optionalNonBlankString,
+	OIDC_CLIENT_SECRET: optionalNonBlankString,
+	OIDC_PROVIDER_NAME: optionalNonBlankString,
+	OIDC_SCOPES: optionalNonBlankString,
+	OIDC_ACCOUNT_ISSUER: optionalNonBlankString,
+});
+
+// The allowlist is the only gate on password sign-up and cannot prove
+// whoever submits an address controls that inbox, so it must stay mandatory
+// wherever password sign-up is reachable. It becomes optional only once
+// AUTH_EMAIL_PASSWORD=disabled removes password sign-up entirely.
+const nodeEnvSchema = baseNodeEnvSchema.superRefine((env, ctx) => {
+	if (
+		requiresSignUpAllowlist(nodeCapabilities, env.AUTH_EMAIL_PASSWORD) &&
+		!env.AUTH_ALLOWED_EMAILS
+	) {
+		ctx.addIssue({
+			code: z.ZodIssueCode.custom,
+			path: ["AUTH_ALLOWED_EMAILS"],
+			message: "AUTH_ALLOWED_EMAILS is required",
+		});
+	}
 });
 
 export type NodeBlobConfig =
@@ -52,7 +82,8 @@ export type NodeServerConfig = {
 	publicUrl: string;
 	corsOrigin?: string;
 	betterAuthSecret: string;
-	authAllowedEmails: string;
+	authAllowedEmails?: string;
+	emailAndPassword: "enabled" | "disabled";
 	googleClientId?: string;
 	googleClientSecret?: string;
 	githubClientId?: string;
@@ -60,6 +91,7 @@ export type NodeServerConfig = {
 	syncTokenSecret: string;
 	syncTokenTtlSeconds?: number;
 	blob: NodeBlobConfig;
+	oidc?: OidcProviderConfig;
 };
 
 export function parseNodeServerConfig(
@@ -71,6 +103,15 @@ export function parseNodeServerConfig(
 		? new URL(parseUrl("CORS_ORIGIN", env.CORS_ORIGIN)).origin
 		: undefined;
 
+	const oidc = parseOidcProviderConfig({
+		discoveryUrl: env.OIDC_DISCOVERY_URL,
+		clientId: env.OIDC_CLIENT_ID,
+		clientSecret: env.OIDC_CLIENT_SECRET,
+		displayName: env.OIDC_PROVIDER_NAME,
+		scopes: env.OIDC_SCOPES,
+		accountIssuer: env.OIDC_ACCOUNT_ISSUER,
+	});
+
 	return {
 		host: env.HOST,
 		port: env.PORT,
@@ -79,14 +120,20 @@ export function parseNodeServerConfig(
 		publicUrl,
 		corsOrigin,
 		betterAuthSecret: env.BETTER_AUTH_SECRET,
+		// Only absent when AUTH_EMAIL_PASSWORD=disabled (enforced above), in which
+		// case there is no password sign-up for an allowlist to gate. Left as
+		// `undefined` rather than "" so "not configured" stays distinguishable
+		// from "configured but empty".
 		authAllowedEmails: env.AUTH_ALLOWED_EMAILS,
 		googleClientId: env.GOOGLE_CLIENT_ID,
 		googleClientSecret: env.GOOGLE_CLIENT_SECRET,
 		githubClientId: env.GITHUB_CLIENT_ID,
 		githubClientSecret: env.GITHUB_CLIENT_SECRET,
+		emailAndPassword: env.AUTH_EMAIL_PASSWORD,
 		syncTokenSecret: env.SYNC_TOKEN_SECRET,
 		syncTokenTtlSeconds: env.SYNC_TOKEN_TTL_SECONDS,
 		blob: parseBlobConfig(env),
+		oidc,
 	};
 }
 
