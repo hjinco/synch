@@ -48,8 +48,7 @@ export interface SyncPushServiceDeps extends SyncContentRuntimeDeps {
   prepareConcurrency?: number;
   onProgress?: (progress: SyncOperationProgress) => Promise<void>;
   onConflict?: (event: PushConflictEvent) => void;
-  /** @deprecated Name retained for host compatibility; fires for every blocked sync file. */
-  onFileSizeBlockedFilesChange?: () => void;
+  onBlockedSyncFilesChange?: () => void;
   onFileSyncStarted?: (event: {
     operation: "upsert" | "delete";
     path: string;
@@ -377,7 +376,7 @@ export class SyncPushService {
 
     // TODO: Refresh decorations when an existing blocked file becomes syncable.
     if (blockedSyncFiles > 0) {
-      this.deps.onFileSizeBlockedFilesChange?.();
+      this.deps.onBlockedSyncFilesChange?.();
     }
 
     return {

@@ -25,7 +25,6 @@ COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
 COPY apps/api/package.json apps/api/package.json
 COPY apps/www/package.json apps/www/package.json
 COPY apps/obsidian-plugin/package.json apps/obsidian-plugin/package.json
-COPY packages/tsconfig/package.json packages/tsconfig/package.json
 RUN pnpm install --frozen-lockfile --filter @synch/api...
 
 FROM build-deps AS builder
@@ -37,7 +36,6 @@ COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
 COPY apps/api/package.json apps/api/package.json
 COPY apps/www/package.json apps/www/package.json
 COPY apps/obsidian-plugin/package.json apps/obsidian-plugin/package.json
-COPY packages/tsconfig/package.json packages/tsconfig/package.json
 RUN pnpm install --frozen-lockfile --filter @synch/api... --prod
 
 FROM base AS runtime

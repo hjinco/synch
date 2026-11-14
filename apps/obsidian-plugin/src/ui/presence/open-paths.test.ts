@@ -22,7 +22,6 @@ describe("open markdown presence paths", () => {
         mode: "preview",
         active: false,
         focused: false,
-        content: "reading",
       },
     ]);
 

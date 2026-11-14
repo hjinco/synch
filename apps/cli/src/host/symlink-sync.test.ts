@@ -10,10 +10,8 @@ import {
   encryptSyncMetadata,
   hashBytes,
 } from "@synch/sync-client/core";
-import type {
-  RemoteEntryState,
-  SyncRealtimeSession,
-} from "@synch/sync-client/remote";
+import type { RemoteEntryState } from "../../../../packages/sync-client/src/sync/remote/changes";
+import type { SyncRealtimeSession } from "../../../../packages/sync-client/src/sync/remote/realtime-types";
 import { SyncPullService } from "../../../../packages/sync-client/src/sync/engine/pull-service";
 import { SyncLocalReconcileService } from "../../../../packages/sync-client/src/sync/engine/local-reconcile-service";
 import { SyncPushService } from "../../../../packages/sync-client/src/sync/engine/push-service";

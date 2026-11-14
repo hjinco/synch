@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { setRequestUrlMock } from "obsidian";
+import { setRequestUrlMock } from "../test-stubs/obsidian";
 
 import { defaultHttpClient } from "./http";
 

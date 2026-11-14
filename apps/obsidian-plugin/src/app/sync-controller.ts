@@ -82,7 +82,7 @@ export interface SyncControllerDeps {
   }) => string;
   onSyncStatusChange?: () => void;
   onStorageStatusChange?: () => void;
-  onFileSizeBlockedFilesChange?: () => void;
+  onBlockedSyncFilesChange?: () => void;
   onStorageQuotaExceeded?: () => void | Promise<void>;
   onSyncPaused?: () => void | Promise<void>;
   onRemoteVaultUnavailable?: (
@@ -131,8 +131,8 @@ export class SyncController {
     onPresenceSessionReset: () => {
       this.presenceRelay?.onReset();
     },
-    onFileSizeBlockedFilesChange: () => {
-      this.deps.onFileSizeBlockedFilesChange?.();
+    onBlockedSyncFilesChange: () => {
+      this.deps.onBlockedSyncFilesChange?.();
     },
     onLocalChangeQueued: () => {
       if (
@@ -494,11 +494,6 @@ export class SyncController {
     }
 
     return await this.syncEngine.listBlockedSyncFiles();
-  }
-
-  /** @deprecated Use `listBlockedSyncFiles`. */
-  async listFileSizeBlockedFiles(): Promise<SyncBlockedSyncFile[]> {
-    return await this.listBlockedSyncFiles();
   }
 
   async listEntryVersionsForPath(

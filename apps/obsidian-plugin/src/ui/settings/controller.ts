@@ -44,8 +44,6 @@ export interface SynchSettingsController {
   clearSyncLogs(): void;
   subscribeSyncLogs(listener: () => void): () => void;
   listBlockedSyncFiles(): Promise<SynchBlockedSyncFile[]>;
-  /** @deprecated Use `listBlockedSyncFiles`. */
-  listFileSizeBlockedFiles(): Promise<SynchBlockedSyncFile[]>;
   isSyncEnabled(): boolean;
   setSyncEnabled(enabled: boolean): Promise<void>;
   getConflictPolicy(): SyncConflictPolicy;

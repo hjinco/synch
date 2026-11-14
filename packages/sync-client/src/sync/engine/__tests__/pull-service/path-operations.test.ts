@@ -2,7 +2,7 @@ import { createTestContentRuntime } from "../../../../test-support/content-runti
 import { describe, expect, it, vi } from "vitest";
 
 import { SyncPullService } from "../../pull-service";
-import { listBlockedSyncFiles, listFileSizeBlockedFiles } from "../../file-size-blocked";
+import { listBlockedSyncFiles } from "../../file-size-blocked";
 import { isPortableVaultPath } from "../../../core/portable-path";
 import { createTestSyncStore } from "../../../../test-support/in-memory-sync-store";
 import {
@@ -146,7 +146,6 @@ describe("SyncPullService path operations", () => {
         encryptedSizeBytes: null,
         maxFileSizeBytes: null,
       }]);
-      await expect(listFileSizeBlockedFiles(store, TEST_VAULT_KEY)).resolves.toEqual([]);
       expect(onRemoteStatesChange).toHaveBeenCalledTimes(1);
 
       const deleted = operation === "delete";

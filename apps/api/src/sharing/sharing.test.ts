@@ -434,7 +434,7 @@ describe("organization vault sharing", () => {
 		expect(await access.require("alice", "vault-a")).toBeGreaterThan(1);
 	});
 	it("suspends shared vaults when Plus expires, preserves access records and resumes only active members", async () => {
-		const { service, store, access, setPlan } = await setup();
+		const { service, access, setPlan } = await setup();
 		const a = await service.invite(actor("owner"), "org", {
 			email: actor("alice").email,
 			role: "member",

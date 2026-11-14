@@ -216,7 +216,7 @@ export class SynchPluginController implements SynchSettingsController {
     onStorageStatusChange: () => {
       this.emitUiEvent({ type: "storage-status-changed" });
     },
-    onFileSizeBlockedFilesChange: () => {
+    onBlockedSyncFilesChange: () => {
       this.emitUiEvent({ type: "file-size-blocked-changed" });
     },
     onSyncPaused: async () => {
@@ -812,11 +812,6 @@ export class SynchPluginController implements SynchSettingsController {
 
   async listBlockedSyncFiles(): Promise<SynchBlockedSyncFile[]> {
     return await this.syncController.listBlockedSyncFiles();
-  }
-
-  /** @deprecated Use `listBlockedSyncFiles`. */
-  async listFileSizeBlockedFiles(): Promise<SynchBlockedSyncFile[]> {
-    return await this.listBlockedSyncFiles();
   }
 
   async previewDeletedFile(

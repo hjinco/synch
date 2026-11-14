@@ -1,35 +1,18 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
-  Plugin,
   resetObsidianMocks,
   setRequestUrlMock,
 } from "../test-stubs/obsidian";
 import { DEFAULT_SYNC_FILE_RULES, DEFAULT_VAULT_CONFIG_SYNC_RULES } from "@synch/sync-client/core";
 
-import { SYNCH_SETTINGS_KEY, type SynchPluginSettings } from "../settings/schema";
+import { DEFAULT_SYNCH_PLUGIN_SETTINGS, type SynchPluginSettings } from "../settings/schema";
 import { SynchPluginController } from "./plugin-controller";
-
-const TestPlugin = Plugin as unknown as new () => Plugin;
-
-function createPluginWithSettings(settings: SynchPluginSettings): Plugin & {
-  savedData: Record<string, unknown> | null;
-} {
-  const plugin = new TestPlugin() as Plugin & {
-    savedData: Record<string, unknown> | null;
-  };
-  plugin.savedData = null;
-  plugin.loadData = async () => ({
-    [SYNCH_SETTINGS_KEY]: settings,
-  });
-  plugin.saveData = async (value: unknown) => {
-    plugin.savedData = value as Record<string, unknown>;
-  };
-  return plugin;
-}
+import { createPluginWithSettings } from "./__tests__/readiness-helpers";
 
 function createOfficialCloudSettings(): SynchPluginSettings {
   return {
+    ...DEFAULT_SYNCH_PLUGIN_SETTINGS,
     apiBaseUrl: "https://api.synch.run",
     fileRules: DEFAULT_SYNC_FILE_RULES,
     vaultConfigSync: DEFAULT_VAULT_CONFIG_SYNC_RULES,
@@ -48,13 +31,8 @@ describe("SynchPluginController community plugin update check", () => {
   });
 
   it("deduplicates in-flight update checks", async () => {
-    let resolveRequest: ((value: unknown) => void) | null = null;
-    const request = vi.fn(
-      async () =>
-        await new Promise((resolve) => {
-          resolveRequest = resolve;
-        }),
-    );
+    const response = Promise.withResolvers<unknown>();
+    const request = vi.fn(() => response.promise);
     const controller = new SynchPluginController({
       plugin: createPluginWithSettings(createOfficialCloudSettings()),
       refreshUi: vi.fn(),
@@ -71,7 +49,7 @@ describe("SynchPluginController community plugin update check", () => {
     });
     expect(request).toHaveBeenCalledTimes(1);
 
-    resolveRequest?.({
+    response.resolve({
       status: 200,
       text: '<guid isPermaLink="false">release:plugin:synch:0.0.2</guid>',
     });

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { resetObsidianMocks } from "obsidian";
+import { resetObsidianMocks } from "../../test-stubs/obsidian";
 
 import { t } from "../../i18n";
 import {

@@ -314,6 +314,9 @@ export class CliAppContext {
   async close(): Promise<void> {
     this.changeSource.stop();
     this.engine.stopAutoSync();
+    // Finish writes while the store is open and the vault lock is still held.
+    await this.engine.flushDebouncedPushAndWaitForInFlight();
+    await this.engine.dispose();
     if (this.engine.hasStore()) {
       await this.engine.closeStore();
     } else {

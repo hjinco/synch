@@ -17,9 +17,9 @@ let source: NodeFsChangeSource;
 const rules: SyncFileRules = { ...DEFAULT_SYNC_FILE_RULES, includedHiddenFolders: [] };
 
 function createContext() {
-  const recordUpsert = vi.fn(async () => true);
-  const recordDelete = vi.fn(async () => true);
-  const recordRename = vi.fn(async () => true);
+  const recordUpsert = vi.fn<SyncChangeSourceContext["eventRecorder"]["recordUpsert"]>(async () => true);
+  const recordDelete = vi.fn<SyncChangeSourceContext["eventRecorder"]["recordDelete"]>(async () => true);
+  const recordRename = vi.fn<SyncChangeSourceContext["eventRecorder"]["recordRename"]>(async () => true);
   const notifyLocalChange = vi.fn();
   const errors: unknown[] = [];
   const context: SyncChangeSourceContext = {
@@ -91,7 +91,7 @@ describe("NodeFsChangeSource", { timeout: 15_000 }, () => {
 
   it("lets the recorder read file contents under its state coordination", async () => {
     const { context, recordUpsert, notifyLocalChange } = createContext();
-    const recordUpsertFromFile = vi.fn(async (_path: string, _read: () => Promise<Uint8Array>) => true);
+    const recordUpsertFromFile = vi.fn<NonNullable<SyncChangeSourceContext["eventRecorder"]["recordUpsertFromFile"]>>(async () => true);
     context.eventRecorder.recordUpsertFromFile = recordUpsertFromFile;
     source.start(context);
     await source.whenReady();
@@ -101,13 +101,9 @@ describe("NodeFsChangeSource", { timeout: 15_000 }, () => {
     await vi.waitFor(() => {
       expect(recordUpsertFromFile).toHaveBeenCalled();
     }, { timeout: 10_000 });
-    const [recordedPath, readBytes, stat] = recordUpsertFromFile.mock.calls[0] as unknown as [
-      string,
-      () => Promise<Uint8Array>,
-      { mtime: number; size: number },
-    ];
+    const [recordedPath, readBytes, stat] = recordUpsertFromFile.mock.calls[0]!;
     expect(recordedPath).toBe("note.md");
-    expect(stat.size).toBe(5);
+    expect(stat?.size).toBe(5);
     expect(recordUpsert).not.toHaveBeenCalled();
     // A queued recorder reads the current file, not bytes captured by the watcher.
     fs.writeFileSync(path.join(vaultPath, "note.md"), "newer");
@@ -162,7 +158,7 @@ describe("NodeFsChangeSource", { timeout: 15_000 }, () => {
         expect.anything(),
       );
     }, { timeout: 10_000 });
-    const recordedPaths = recordUpsert.mock.calls.map((call) => call[0] as unknown);
+    const recordedPaths = recordUpsert.mock.calls.map(([filePath]) => filePath);
     expect(recordedPaths).toEqual(["real.md"]);
     expect(recordDelete).not.toHaveBeenCalled();
   });

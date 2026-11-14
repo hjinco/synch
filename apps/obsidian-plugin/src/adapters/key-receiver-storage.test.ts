@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { Plugin } from "obsidian";
+import { createMockPlugin } from "../test-stubs/obsidian";
 import { ObsidianKeyReceiverStore } from "./key-receiver-storage";
 import { getOrCreateSecretScopeId } from "./secret-scope";
 
@@ -12,7 +12,7 @@ describe("approval request secret storage", () => {
   });
 
   it("persists and clears requests within Obsidian's secret ID limit", async () => {
-    const plugin = new Plugin();
+    const plugin = createMockPlugin();
     const write = vi.spyOn(plugin.app.secretStorage, "setSecret");
     const store = new ObsidianKeyReceiverStore(plugin);
     const scope = "https://api.example.com/user/vault";
@@ -27,7 +27,7 @@ describe("approval request secret storage", () => {
   });
 
   it("isolates requests by remote scope and local vault on shared secret storage", async () => {
-    const plugin = new Plugin();
+    const plugin = createMockPlugin();
     const store = new ObsidianKeyReceiverStore(plugin);
     const value = receiver();
     await store.write("remote-a", value);
@@ -42,7 +42,7 @@ describe("approval request secret storage", () => {
   });
 
   it("removes expired private keys", async () => {
-    const plugin = new Plugin();
+    const plugin = createMockPlugin();
     const store = new ObsidianKeyReceiverStore(plugin);
     await store.write("remote", { ...receiver(), expiresAt: Date.now() - 1 });
     const write = vi.spyOn(plugin.app.secretStorage, "setSecret");

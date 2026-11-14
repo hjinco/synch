@@ -317,11 +317,12 @@ describe("SynchSettingTab sync status", () => {
     vi.stubGlobal("navigator", { clipboard: { writeText } });
     let logText = "Synch sync diagnostics\nentry";
     let logCount = 1;
-    let notifyLogChanged: (() => void) | null = null;
+    const logListeners = new Set<() => void>();
+    const notifyLogChanged = () => { for (const listener of logListeners) listener(); };
     const clearSyncLogs = vi.fn(() => {
       logCount = 0;
       logText = "Synch sync diagnostics";
-      notifyLogChanged?.();
+      notifyLogChanged();
     });
     const tab = createSettingsTab({
       hasAuthenticatedSession: () => true,
@@ -332,8 +333,8 @@ describe("SynchSettingTab sync status", () => {
       }),
       clearSyncLogs,
       subscribeSyncLogs: (listener) => {
-        notifyLogChanged = listener;
-        return () => {};
+        logListeners.add(listener);
+        return () => { logListeners.delete(listener); };
       },
     });
 
@@ -348,7 +349,7 @@ describe("SynchSettingTab sync status", () => {
       "Warning: Logs include file names and vault-relative folder paths. Review them before sharing. File contents, keys, and tokens are not included.",
     );
     logText = "Synch sync diagnostics\nentry\nfile_sync_completed";
-    notifyLogChanged?.();
+    notifyLogChanged();
     expect(getTextComponents().at(-1)?.inputEl.value).toBe(logText);
     const copyButton = getButtonComponents().find(
       (button) => button.text === t("diagnostics.copy"),
@@ -415,7 +416,7 @@ describe("SynchSettingTab sync status", () => {
         completedEntries: 4000,
         totalEntries: 4001,
       }),
-      listBlockedSyncFiles: vi.fn(async () => [
+      listBlockedSyncFiles: vi.fn<SynchSettingsController["listBlockedSyncFiles"]>(async () => [
         {
           path: "large.bin",
           reason: "file_too_large",

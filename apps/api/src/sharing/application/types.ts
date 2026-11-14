@@ -1,6 +1,5 @@
 import type { VaultKeyEnvelope } from "../../vault/domain/types";
 
-export type OrganizationRole = "owner" | "admin" | "member";
 export type TransferEnvelope = {
 	version: 1;
 	algorithm: "rsa-oaep-sha256";

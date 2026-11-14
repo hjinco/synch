@@ -7,6 +7,14 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+function mockStdin(): PassThrough {
+  const stdin = new PassThrough();
+  // Non-TTY input only needs the readable stream API; process.stdin's terminal
+  // methods and file descriptor are intentionally absent from this fixture.
+  vi.spyOn(process, "stdin", "get").mockReturnValue(stdin as unknown as typeof process.stdin);
+  return stdin;
+}
+
 it.each([
   { input: "first\nsecond\n", expected: "first" },
   { input: "first\r\nsecond\r\n", expected: "first" },
@@ -14,8 +22,7 @@ it.each([
   { input: "\n", expected: "" },
   { input: "", expected: "" },
 ])("reads one piped line from $input", async ({ input, expected }) => {
-  const stdin = new PassThrough();
-  vi.spyOn(process, "stdin", "get").mockReturnValue(stdin as typeof process.stdin);
+  const stdin = mockStdin();
 
   const answer = promptHidden("Password: ");
   stdin.end(input);
@@ -24,8 +31,7 @@ it.each([
 });
 
 it("preserves a piped Unicode password when UTF-8 bytes arrive separately", async () => {
-  const stdin = new PassThrough();
-  vi.spyOn(process, "stdin", "get").mockReturnValue(stdin as typeof process.stdin);
+  const stdin = mockStdin();
 
   const answer = promptHidden("Password: ");
   for (const byte of Buffer.from("비밀번호🔐\r\nignored\n", "utf8")) {
@@ -38,8 +44,7 @@ it("preserves a piped Unicode password when UTF-8 bytes arrive separately", asyn
 });
 
 it("propagates piped input errors", async () => {
-  const stdin = new PassThrough();
-  vi.spyOn(process, "stdin", "get").mockReturnValue(stdin as typeof process.stdin);
+  const stdin = mockStdin();
   const error = new Error("input failed");
 
   const answer = promptHidden("Password: ");

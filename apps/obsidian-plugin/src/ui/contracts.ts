@@ -45,9 +45,6 @@ export interface SynchBlockedSyncFile {
   maxFileSizeBytes: number | null;
 }
 
-/** @deprecated Use `SynchBlockedSyncFile`. */
-export type SynchFileSizeBlockedFile = SynchBlockedSyncFile;
-
 export type SynchCommunityPluginUpdateStatus =
   | {
       state: "idle" | "checking";

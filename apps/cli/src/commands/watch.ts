@@ -20,43 +20,47 @@ export async function runWatch(ctx: CliAppContext): Promise<number> {
   };
 
   let reconcilePromise: Promise<void> | null = null;
+  let reconcileRequested = false;
+  let stopping = false;
   ctx.onReconcileRequested = () => {
+    if (stopping) {
+      return;
+    }
+    reconcileRequested = true;
     if (reconcilePromise) {
       return;
     }
-    reconcilePromise = (async () => {
+    reconcilePromise = Promise.resolve().then(async () => {
       try {
-        await ctx.engine.reconcileOnce();
-        // Removing a symlink can make remote-only files eligible again without
-        // queuing any local mutation. Wake the pull loop for those paths too.
-        ctx.engine.notifyLocalChange();
-      } catch (error) {
-        ctx.logger.error(`reconcile failed: ${describeError(error)}`);
+        while (reconcileRequested && !stopping) {
+          reconcileRequested = false;
+          try {
+            await ctx.engine.reconcileOnce();
+            // Removing a symlink can make remote-only files eligible again without
+            // queuing any local mutation. Wake the pull loop for those paths too.
+            if (!stopping) ctx.engine.notifyLocalChange();
+          } catch (error) {
+            ctx.logger.error(`reconcile failed: ${describeError(error)}`);
+          }
+        }
       } finally {
         reconcilePromise = null;
       }
-    })();
+    });
   };
 
-  ctx.logger.log(`Watching ${ctx.vaultPath}`);
-  ctx.engine.registerVaultEvents();
-  await ctx.engine.reconcileOnce();
-  await ctx.engine.waitForLocalMutationWork();
   const watchEnd = waitForWatchEnd(ctx);
   try {
+    ctx.logger.log(`Watching ${ctx.vaultPath}`);
+    ctx.engine.registerVaultEvents();
+    await ctx.engine.reconcileOnce();
+    await ctx.engine.waitForLocalMutationWork();
     await ctx.engine.startAutoSync();
     await ctx.engine.syncNow();
-    if (watchEnd.isSettled()) {
-      const result = await watchEnd.promise;
-      if (result.kind === "terminal_stop") {
-        return reportTerminalStop(ctx, result.reason);
-      }
-      ctx.logger.log("Stopping...");
-      return 0;
+    if (!watchEnd.isSettled()) {
+      watchEnd.listenForShutdownSignals();
+      ctx.logger.log("Watching for changes. Press Ctrl+C to stop.");
     }
-
-    watchEnd.listenForShutdownSignals();
-    ctx.logger.log("Watching for changes. Press Ctrl+C to stop.");
     const result = await watchEnd.promise;
     if (result.kind === "signal") {
       ctx.logger.log("Stopping...");
@@ -64,8 +68,14 @@ export async function runWatch(ctx: CliAppContext): Promise<number> {
     }
     return reportTerminalStop(ctx, result.reason);
   } finally {
+    stopping = true;
+    ctx.onReconcileRequested = null;
+    ctx.onSyncStatusChange = null;
     watchEnd.dispose();
     ctx.onSyncTerminalStop = null;
+    ctx.changeSource.stop();
+    ctx.engine.stopAutoSync();
+    await reconcilePromise;
   }
 }
 

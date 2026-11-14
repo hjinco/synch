@@ -1,0 +1,12 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    // Tests run in Node; the production configuration keeps its ES2020 checks.
+    "lib": ["DOM", "ES2024"],
+    "paths": {
+      // Match the CodeMirror state deduplication in vitest.config.mts.
+      "@codemirror/state": ["./node_modules/@codemirror/state"]
+    }
+  },
+  "exclude": []
+}

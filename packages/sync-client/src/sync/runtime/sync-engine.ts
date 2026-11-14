@@ -44,10 +44,7 @@ import {
 } from "../remote/realtime-client";
 import type { WebSocketFactory } from "../remote/realtime-types";
 import type { SyncStore } from "../store/store";
-import {
-  getOrCreateStoredLocalVaultId,
-  readStoredSyncConnection,
-} from "../store/connection";
+import { getOrCreateStoredLocalVaultId } from "../store/connection";
 import type { UserVisibleSyncState } from "./user-visible-status";
 import type {
   SyncOperationProgress,
@@ -66,7 +63,6 @@ import {
 } from "./version-history-service";
 import {
   listBlockedSyncFiles,
-  listFileSizeBlockedFiles,
   type SyncBlockedSyncFile,
 } from "../engine/file-size-blocked";
 import {
@@ -119,7 +115,7 @@ export interface SyncEngineDeps {
   onPresenceCleared?: (presenceId: string) => void;
   onPresenceAvailabilityChanged?: (enabled: boolean) => void;
   onPresenceSessionReset?: () => void;
-  onFileSizeBlockedFilesChange?: () => void;
+  onBlockedSyncFilesChange?: () => void;
   onLocalChangeQueued?: () => void;
   onStorageQuotaExceeded?: () => void | Promise<void>;
   onRemoteVaultUnavailable?: (
@@ -181,8 +177,8 @@ export class SyncEngine {
       blobClient: this.syncBlobClient,
       contentRuntime: this.contentRuntime,
       onConflict: (event) => this.deps.notifySyncConflict(event),
-      onFileSizeBlockedFilesChange: () => {
-        this.deps.onFileSizeBlockedFilesChange?.();
+      onBlockedSyncFilesChange: () => {
+        this.deps.onBlockedSyncFilesChange?.();
       },
       onFileSyncStarted: (event) => {
         this.deps.diagnostics.record({
@@ -246,7 +242,7 @@ export class SyncEngine {
             session.maxFileSizeBytes,
           );
           if (unblocked > 0) {
-            this.deps.onFileSizeBlockedFilesChange?.();
+            this.deps.onBlockedSyncFilesChange?.();
           }
           return unblocked;
         }),
@@ -331,7 +327,7 @@ export class SyncEngine {
     });
     this.syncPullService = new SyncPullService({
       getConflictPolicy: this.deps.getConflictPolicy,
-      onRemoteStatesChange: () => this.deps.onFileSizeBlockedFilesChange?.(),
+      onRemoteStatesChange: () => this.deps.onBlockedSyncFilesChange?.(),
       getSyncToken: async () => await this.deps.getSyncToken(),
       getSyncStore: () => this.syncStore,
       getRemoteVaultKey: () => this.deps.getRemoteVaultKey(),
@@ -416,7 +412,7 @@ export class SyncEngine {
   }
 
   async readLocalVaultId(): Promise<string> {
-    return (await readStoredSyncConnection(this.requireStore()))?.localVaultId ?? "";
+    return (await this.requireStore().readSyncConnection())?.localVaultId ?? "";
   }
 
   async getEntryIdForPath(path: string): Promise<string | null> {
@@ -668,16 +664,6 @@ export class SyncEngine {
     return await listBlockedSyncFiles(store, this.deps.getRemoteVaultKey());
   }
 
-  /** @deprecated Use `listBlockedSyncFiles`. */
-  async listFileSizeBlockedFiles(): Promise<SyncBlockedSyncFile[]> {
-    const store = this.syncStore;
-    if (!store) {
-      return [];
-    }
-
-    return await listFileSizeBlockedFiles(store, this.deps.getRemoteVaultKey());
-  }
-
   async listEntryVersionsForPath(
     path: string,
     before: EntryVersionPageCursor | null,
@@ -811,5 +797,5 @@ export class SyncEngine {
   }
 }
 
-export type { SyncBlockedSyncFile, SyncFileSizeBlockedFile } from "../engine/file-size-blocked";
+export type { SyncBlockedSyncFile } from "../engine/file-size-blocked";
 export type SyncEngineEntryVersionsPage = SyncEntryVersionsPage;

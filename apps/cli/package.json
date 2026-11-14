@@ -14,7 +14,8 @@
     "dev": "tsx src/main.ts",
     "build": "tsgo --noEmit --skipLibCheck && node esbuild.config.mjs",
     "test": "vitest --config vitest.config.mts",
-    "typecheck": "tsgo --noEmit --skipLibCheck"
+    "typecheck": "tsgo --noEmit --skipLibCheck && pnpm run typecheck:tests",
+    "typecheck:tests": "tsgo --noEmit -p tsconfig.test.json"
   },
   "dependencies": {
     "@synch/sync-client": "workspace:*",

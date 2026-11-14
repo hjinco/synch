@@ -131,7 +131,6 @@ export function createSettingsTab(
     clearSyncLogs: vi.fn(() => {}),
     subscribeSyncLogs: () => () => {},
     listBlockedSyncFiles: vi.fn(async () => []),
-    listFileSizeBlockedFiles: vi.fn(async () => []),
     isSyncEnabled: () => true,
     setSyncEnabled: vi.fn(async () => {}),
     getConflictPolicy: () => "conflict-copy",

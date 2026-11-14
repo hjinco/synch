@@ -54,7 +54,7 @@ describe("SyncPushService drain: limits", () => {
     });
     session.maxFileSizeBytes = 1;
     let uploaded = false;
-    const onFileSizeBlockedFilesChange = vi.fn();
+    const onBlockedSyncFilesChange = vi.fn();
     const service = new SyncPushService({
       contentRuntime: createTestContentRuntime(),
       getSyncToken: async () => createToken(),
@@ -75,7 +75,7 @@ describe("SyncPushService drain: limits", () => {
         },
       },
       onProgress: ignoreProgress,
-      onFileSizeBlockedFilesChange,
+      onBlockedSyncFilesChange,
     });
 
     await expect(service.pushPendingMutations(session)).resolves.toEqual({
@@ -88,7 +88,7 @@ describe("SyncPushService drain: limits", () => {
       shouldPullAfterPush: false,
       hasMore: false,
     });
-    expect(onFileSizeBlockedFilesChange).toHaveBeenCalledTimes(1);
+    expect(onBlockedSyncFilesChange).toHaveBeenCalledTimes(1);
     expect(uploaded).toBe(false);
     expect(await store.listDirtyEntries()).toEqual([]);
     expect(await store.getDirtyEntryMutation("entry-too-large")).toMatchObject({
@@ -149,7 +149,7 @@ describe("SyncPushService drain: limits", () => {
       });
       session.maxFileSizeBytes = 0;
       let uploadAttempts = 0;
-      const onFileSizeBlockedFilesChange = vi.fn();
+      const onBlockedSyncFilesChange = vi.fn();
       const service = new SyncPushService({
         contentRuntime: createTestContentRuntime(),
         getSyncToken: async () => createToken(),
@@ -171,7 +171,7 @@ describe("SyncPushService drain: limits", () => {
           },
         },
         onProgress: ignoreProgress,
-        onFileSizeBlockedFilesChange,
+        onBlockedSyncFilesChange,
       });
 
       await expect(service.pushPendingMutations(session)).resolves.toMatchObject({
@@ -180,7 +180,7 @@ describe("SyncPushService drain: limits", () => {
         hasMore: false,
       });
       expect(uploadAttempts).toBe(1);
-      expect(onFileSizeBlockedFilesChange).toHaveBeenCalledTimes(1);
+      expect(onBlockedSyncFilesChange).toHaveBeenCalledTimes(1);
       expect(await store.listDirtyEntries()).toEqual([]);
       expect(await store.getDirtyEntryMutation("entry-upload-413")).toMatchObject({
         mutationId: "mutation-upload-413",

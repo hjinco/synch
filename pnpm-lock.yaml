@@ -323,8 +323,6 @@ importers:
         specifier: ^8.20.0
         version: 8.21.0
 
-  packages/tsconfig: {}
-
   packages/vault-crypto:
     dependencies:
       hash-wasm:

@@ -73,7 +73,7 @@ describe("SyncVaultEventHandler", () => {
     const callbacks: Partial<Record<VaultEventName, VaultEventCallback>> = {};
     const plugin = createPlugin(callbacks);
     const notifyLocalChange = vi.fn();
-    const runLocalMutationWork = vi.fn(async (work: () => Promise<void>) => await work());
+    const scheduleLocalMutation = vi.fn();
     const recordUpsert = vi.fn();
     const recordRename = vi.fn();
     const recordDelete = vi.fn();
@@ -90,7 +90,10 @@ describe("SyncVaultEventHandler", () => {
         recordDelete,
       } satisfies SyncChangeSourceContext["eventRecorder"],
       notifyLocalChange,
-      runLocalMutationWork,
+      runLocalMutationWork: async (work) => {
+        scheduleLocalMutation();
+        return await work();
+      },
       hasActiveRemoteVaultSession: () => true,
       onError: vi.fn(),
     });
@@ -102,7 +105,7 @@ describe("SyncVaultEventHandler", () => {
     callbacks.delete?.(createFile("large.md", 101));
     await nextTask();
 
-    expect(runLocalMutationWork).not.toHaveBeenCalled();
+    expect(scheduleLocalMutation).not.toHaveBeenCalled();
     expect(recordUpsert).not.toHaveBeenCalled();
     expect(recordRename).not.toHaveBeenCalled();
     expect(recordDelete).not.toHaveBeenCalled();

@@ -4,31 +4,38 @@ import { vi } from "vitest";
 import { encodeBase64 } from "@synch/vault-crypto";
 import { ObsidianAuthSessionTokenStore } from "../../adapters/auth-session-storage";
 import { writeStoredRemoteVaultKeySecret } from "../../adapters/remote-vault-device-storage";
-import { DEFAULT_SYNC_FILE_RULES, DEFAULT_VAULT_CONFIG_SYNC_RULES } from "@synch/sync-client/core";
-
 import type { SyncConnection } from "@synch/sync-client/store";
-import { SYNCH_SETTINGS_KEY, type SynchPluginSettings } from "../../settings/schema";
+import { DEFAULT_SYNCH_PLUGIN_SETTINGS, SYNCH_SETTINGS_KEY, type SynchPluginSettings } from "../../settings/schema";
 import {
-  Plugin as TestPluginClass,
+  createMockPlugin,
   setRequestUrlMock,
 } from "../../test-stubs/obsidian";
 
-const TestPlugin = TestPluginClass as unknown as new () => Plugin;
+export function createPluginWithSettings(
+  settingsOverrides: Partial<SynchPluginSettings> = {},
+): Plugin & { savedData: Record<string, unknown> | null } {
+  const plugin = Object.assign(createMockPlugin(), {
+    savedData: null as Record<string, unknown> | null,
+  });
+  const initial = {
+    [SYNCH_SETTINGS_KEY]: {
+      ...DEFAULT_SYNCH_PLUGIN_SETTINGS,
+      apiBaseUrl: "http://127.0.0.1:8787",
+      ...settingsOverrides,
+    },
+  };
+  plugin.loadData = async () => plugin.savedData ?? initial;
+  plugin.saveData = async (value: unknown) => {
+    plugin.savedData = value as Record<string, unknown>;
+  };
+  return plugin;
+}
 
 export async function createConnectedPlugin(
   settingsOverrides: Partial<SynchPluginSettings> = {},
   options: { legacySecrets?: boolean } = {},
 ): Promise<Plugin & { savedData: Record<string, unknown> | null }> {
-  const plugin = new TestPlugin() as Plugin & {
-    savedData: Record<string, unknown> | null;
-  };
-  plugin.savedData = null;
-  plugin.loadData = async () => ({
-    [SYNCH_SETTINGS_KEY]: settings(settingsOverrides),
-  });
-  plugin.saveData = async (value: unknown) => {
-    plugin.savedData = value as Record<string, unknown>;
-  };
+  const plugin = createPluginWithSettings(settingsOverrides);
   const remoteVaultKey = new Uint8Array(32).fill(1);
   if (options.legacySecrets) {
     plugin.app.secretStorage.setSecret("synch-session-token", "stored-token");
@@ -89,17 +96,5 @@ export function storedConnection(): SyncConnection {
     localVaultId: "local-vault-1",
     remoteVaultId: "vault-1",
     lastPulledCursor: 0,
-  };
-}
-
-function settings(overrides: Partial<SynchPluginSettings>): SynchPluginSettings {
-  return {
-    apiBaseUrl: "http://127.0.0.1:8787",
-    fileRules: DEFAULT_SYNC_FILE_RULES,
-    vaultConfigSync: DEFAULT_VAULT_CONFIG_SYNC_RULES,
-    syncEnabled: true,
-    syncIntervalMs: 0,
-    conflictPolicy: "conflict-copy",
-    ...overrides,
   };
 }

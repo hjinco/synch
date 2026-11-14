@@ -31,24 +31,6 @@ export default defineConfig([
       "obsidianmd/prefer-window-timers": "off",
     },
   },
-  {
-    name: "synch/legacy-host-compatibility",
-    basePath: repositoryRoot,
-    files: [
-      "packages/sync-client/src/sync/engine/push-service.ts",
-      "packages/sync-client/src/sync/runtime/sync-engine.ts",
-    ],
-    rules: {
-      // Only the compatibility implementations may use/re-export these names.
-      // New callers must use the current API; other deprecations still warn.
-      "@typescript-eslint/no-deprecated": ["warn", {
-        allow: [{
-          from: "file",
-          name: ["SyncFileSizeBlockedFile", "listFileSizeBlockedFiles", "onFileSizeBlockedFilesChange"],
-        }],
-      }],
-    },
-  },
   globalIgnores([
     "**/*.js", "**/*.mjs", "**/*.mts", "**/*.json", "**/*.test.ts",
     "**/test-stubs/**", "**/test-support/**", "**/__tests__/**", "**/test/**",

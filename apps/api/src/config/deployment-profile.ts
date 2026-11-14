@@ -1,4 +1,3 @@
-export type RuntimePlatform = "cloudflare" | "node";
 export type ProductEdition = "managed" | "community";
 
 export type DeploymentProfile =

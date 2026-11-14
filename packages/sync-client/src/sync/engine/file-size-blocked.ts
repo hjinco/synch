@@ -11,9 +11,6 @@ export interface SyncBlockedSyncFile {
   reason: PendingMutationBlockedReason;
 }
 
-/** @deprecated Use `SyncBlockedSyncFile`. */
-export type SyncFileSizeBlockedFile = Omit<SyncBlockedSyncFile, "reason">;
-
 export async function listBlockedSyncFiles(
   store: SyncStore,
   remoteVaultKey: Uint8Array,
@@ -56,14 +53,4 @@ export async function listBlockedSyncFiles(
     }
   }
   return [...byPath.values()];
-}
-
-/** @deprecated Use `listBlockedSyncFiles`. */
-export async function listFileSizeBlockedFiles(
-  store: SyncStore,
-  remoteVaultKey: Uint8Array,
-): Promise<SyncBlockedSyncFile[]> {
-  return (await listBlockedSyncFiles(store, remoteVaultKey)).filter(
-    (file) => file.reason === "file_too_large",
-  );
 }

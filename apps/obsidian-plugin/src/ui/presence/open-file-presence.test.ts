@@ -89,11 +89,7 @@ describe("open file presence", () => {
 
 function createHost(
   overrides: Partial<SynchPresenceHost> = {},
-): SynchPresenceHost & {
-  watchPresence: ReturnType<typeof vi.fn>;
-  updatePresence: ReturnType<typeof vi.fn>;
-  clearPresence: ReturnType<typeof vi.fn>;
-} {
+): SynchPresenceHost {
   return {
     hasAuthenticatedSession: () => true,
     hasConnectedRemoteVault: () => true,

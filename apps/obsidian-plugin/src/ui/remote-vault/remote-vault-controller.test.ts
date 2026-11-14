@@ -1,8 +1,7 @@
-import { Plugin } from "obsidian";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { DEFAULT_SYNC_FILE_RULES } from "@synch/sync-client/core";
-import { getButtonComponents, getOpenModals, getCreatedElementTexts, getTextComponents, resetObsidianMocks, setLanguage } from "../../test-stubs/obsidian";
+import { createMockPlugin, getButtonComponents, getOpenModals, getCreatedElementTexts, getTextComponents, resetObsidianMocks, setLanguage } from "../../test-stubs/obsidian";
 import { t } from "../../i18n";
 import type { SharingManager } from "@synch/sync-client/remote";
 import type { RemoteVaultPort } from "./ports";
@@ -27,7 +26,7 @@ describe("SynchRemoteVaultController", () => {
     const open = vi.fn();
     vi.stubGlobal("window", { open });
     const controller = new SynchRemoteVaultController({
-      plugin: new Plugin(),
+      plugin: createMockPlugin(),
       remoteVaultManager: {} as RemoteVaultPort,
       syncController: {} as RemoteVaultSyncPort,
       clearSyncTokenState: vi.fn(),
@@ -58,7 +57,7 @@ const nextTask = () => new Promise((resolve) => setTimeout(resolve, 0));
 const latestButton = (text: string) => getButtonComponents().findLast((button) => button.text === text)!;
 
 function connectionFixture(role: "owner" | "member", files: string[]) {
-  const plugin = new Plugin();
+  const plugin = createMockPlugin();
   Object.assign(plugin.app, {
     vault: {
       configDir: ".obsidian",

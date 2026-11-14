@@ -5,7 +5,6 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   getNotices,
-  Plugin,
   resetObsidianMocks,
   setRequestUrlMock,
 } from "../test-stubs/obsidian";
@@ -13,15 +12,14 @@ import { t } from "../i18n";
 import { DEFAULT_SYNC_FILE_RULES, DEFAULT_VAULT_CONFIG_SYNC_RULES } from "@synch/sync-client/core";
 
 import { SyncController } from "./sync-controller";
-import { SYNCH_SETTINGS_KEY, type SynchPluginSettings } from "../settings/schema";
+import { SYNCH_SETTINGS_KEY } from "../settings/schema";
 import { SynchPluginController } from "./plugin-controller";
 import {
   createConnectedPlugin,
+  createPluginWithSettings,
   mockOnlineReadinessRequests,
   storedConnection,
 } from "./__tests__/readiness-helpers";
-
-const TestPlugin = Plugin as unknown as new () => Plugin;
 
 describe("SynchPluginController sync enabled setting", () => {
   beforeEach(() => {
@@ -393,14 +391,14 @@ describe("SynchPluginController sync enabled setting", () => {
         deps: {
           onSyncStatusChange: () => void;
           onStorageStatusChange: () => void;
-          onFileSizeBlockedFilesChange: () => void;
+          onBlockedSyncFilesChange: () => void;
         };
       };
     };
 
     syncController.deps.onSyncStatusChange();
     syncController.deps.onStorageStatusChange();
-    syncController.deps.onFileSizeBlockedFilesChange();
+    syncController.deps.onBlockedSyncFilesChange();
 
     expect(emitUiEvent.mock.calls.map(([event]) => event)).toEqual([
       { type: "sync-status-changed" },
@@ -410,19 +408,3 @@ describe("SynchPluginController sync enabled setting", () => {
     expect(refreshUi).not.toHaveBeenCalled();
   });
 });
-
-function createPluginWithSettings(settings: SynchPluginSettings): Plugin & {
-  savedData: Record<string, unknown> | null;
-} {
-  const plugin = new TestPlugin() as Plugin & {
-    savedData: Record<string, unknown> | null;
-  };
-  plugin.savedData = null;
-  plugin.loadData = async () => ({
-    [SYNCH_SETTINGS_KEY]: settings,
-  });
-  plugin.saveData = async (value: unknown) => {
-    plugin.savedData = value as Record<string, unknown>;
-  };
-  return plugin;
-}

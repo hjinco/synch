@@ -1,3 +1,5 @@
+import type { Plugin as ObsidianPlugin } from "obsidian";
+
 type RequestUrlMock = (input: unknown) => Promise<unknown>;
 
 let requestUrlMock: RequestUrlMock | null = null;
@@ -391,6 +393,11 @@ export class Plugin {
 }
 
 export const editorInfoField = {};
+
+/** Adapt the deliberately partial Obsidian host at the test boundary. */
+export function createMockPlugin(): ObsidianPlugin {
+  return new Plugin() as unknown as ObsidianPlugin;
+}
 
 export class Modal {
   modalEl = new MockElement();

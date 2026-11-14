@@ -23,7 +23,7 @@ interface FakeFile {
  */
 function createVault(initial: FakeFile[]) {
   const withStat = (file: FakeFile) => {
-    const handle = new TFile(file.path);
+    const handle = Object.assign(new TFile(), { path: file.path });
     // The controller reads `stat`, which Obsidian populates on real vault files.
     Object.assign(handle, { stat: { size: file.size, mtime: file.mtime } });
     return { ...file, handle };
@@ -41,7 +41,7 @@ function createVault(initial: FakeFile[]) {
     trashed: [] as string[],
     getFiles: () => [...files.values()].map((file) => file.handle),
     getAbstractFileByPath: (path: string) =>
-      handleFor(path) ?? (folders.has(path) ? new TFolder(path) : null),
+      handleFor(path) ?? (folders.has(path) ? Object.assign(new TFolder(), { path }) : null),
     cachedRead: async (target: { path: string }) => text(files.get(target.path)!.content),
     // Preserve raw bytes rather than round-tripping through a string, so a
     // binary fixture stays binary.

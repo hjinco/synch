@@ -38,12 +38,6 @@ export const helloMessageSchema = z.object({
 	lastKnownCursor: nonNegativeInteger,
 });
 
-export const commitMutationMessageSchema = z.object({
-	type: z.literal("commit_mutation"),
-	requestId: requestIdSchema,
-	mutation: commitMutationPayloadSchema,
-});
-
 export const commitMutationsMessageSchema = z.object({
 	type: z.literal("commit_mutations"),
 	requestId: requestIdSchema,

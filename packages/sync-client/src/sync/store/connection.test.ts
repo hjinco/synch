@@ -1,10 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  getOrCreateStoredLocalVaultId,
-  readStoredSyncConnection,
-  writeStoredSyncConnection,
-} from "./connection";
+import { getOrCreateStoredLocalVaultId } from "./connection";
 import type { SyncConnection } from "./store";
 import type { SyncConnectionStore } from "./ports";
 
@@ -17,25 +13,10 @@ describe("local vault id storage", () => {
 
     expect(first).toBeTruthy();
     expect(second).toBe(first);
-    expect(await readStoredSyncConnection(store)).toEqual({
+    expect(await store.readSyncConnection()).toEqual({
       localVaultId: first,
       remoteVaultId: "remote-vault-a",
       lastPulledCursor: 0,
-    });
-  });
-
-  it("persists a stored local sync identity through the store", async () => {
-    const store = createStore();
-
-    await writeStoredSyncConnection(store, {
-      localVaultId: "local-vault-a",
-      remoteVaultId: "remote-vault-a",
-      lastPulledCursor: 12,
-    });
-    expect(await readStoredSyncConnection(store)).toEqual({
-      localVaultId: "local-vault-a",
-      remoteVaultId: "remote-vault-a",
-      lastPulledCursor: 12,
     });
   });
 });

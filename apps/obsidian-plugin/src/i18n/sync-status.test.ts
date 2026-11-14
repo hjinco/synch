@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { resetObsidianMocks } from "obsidian";
+import { resetObsidianMocks } from "../test-stubs/obsidian";
 
 import type { UserVisibleSyncState } from "@synch/sync-client/engine";
 import { t } from "./index";

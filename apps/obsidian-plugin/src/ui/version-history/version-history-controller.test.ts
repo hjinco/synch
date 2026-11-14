@@ -66,7 +66,7 @@ describe("SynchVersionHistoryController", () => {
   });
 
   it("includes current file text when previewing an active text version", async () => {
-    const activeFile = new TFile("Folder/active.md");
+    const activeFile = Object.assign(new TFile(), { path: "Folder/active.md" });
     const version = createEntryVersion();
     const workspace = createWorkspaceMock();
     workspace.getActiveFile.mockReturnValue(activeFile);
@@ -78,7 +78,7 @@ describe("SynchVersionHistoryController", () => {
         hasMore: false,
         nextBefore: null,
       })),
-      previewEntryVersionForPath: vi.fn(async () => ({
+      previewEntryVersionForPath: vi.fn<VersionHistorySyncPort["previewEntryVersionForPath"]>(async () => ({
         status: "text",
         path: activeFile.path,
         reason: "auto",
@@ -108,7 +108,7 @@ describe("SynchVersionHistoryController", () => {
   });
 
   it("falls back to plain preview when current file text cannot be read", async () => {
-    const activeFile = new TFile("Folder/active.md");
+    const activeFile = Object.assign(new TFile(), { path: "Folder/active.md" });
     const version = createEntryVersion();
     const workspace = createWorkspaceMock();
     workspace.getActiveFile.mockReturnValue(activeFile);
@@ -120,7 +120,7 @@ describe("SynchVersionHistoryController", () => {
         hasMore: false,
         nextBefore: null,
       })),
-      previewEntryVersionForPath: vi.fn(async () => ({
+      previewEntryVersionForPath: vi.fn<VersionHistorySyncPort["previewEntryVersionForPath"]>(async () => ({
         status: "text",
         path: activeFile.path,
         reason: "auto",
@@ -253,7 +253,7 @@ function createEntryVersion(): Parameters<
     sourceRevision: 1,
     op: "upsert",
     blobId: "blob-1",
-    encryptedMetadata: new Uint8Array(),
+    encryptedMetadata: "encrypted-metadata",
     reason: "auto",
     capturedAt: 1,
   };
