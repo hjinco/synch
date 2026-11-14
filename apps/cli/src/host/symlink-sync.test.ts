@@ -183,6 +183,34 @@ it("keeps legacy unsafe remote paths excluded during subsequent reconciliation",
   expect(await store.listDirtyEntries()).toEqual([]);
 });
 
+it.skipIf(process.platform === "win32")("reconciles normal files alongside excluded local names", async () => {
+  await store.upsertEntry(await remote("bad:name.md", "excluded-name", 1));
+  fs.writeFileSync(path.join(vault, "bad:name.md"), "excluded local content");
+  fs.writeFileSync(path.join(vault, "normal.md"), "normal local content");
+
+  await expect(reconcile()).resolves.toMatchObject({
+    filesScanned: 1,
+    filesQueuedForUpsert: 1,
+    filesQueuedForDelete: 0,
+  });
+  expect(await store.getLocalStateById("excluded-name")).toBeNull();
+  expect(await store.getRemoteStateById("excluded-name")).toMatchObject({ deleted: false });
+  expect(fs.readFileSync(path.join(vault, "bad:name.md"), "utf8")).toBe("excluded local content");
+});
+
+it("queues the missing child deletion after replacing a tracked directory with a file", async () => {
+  await store.upsertEntry(await remote("folder/note.md", "old-child", 1));
+  fs.writeFileSync(path.join(vault, "folder"), "replacement");
+  fs.writeFileSync(path.join(vault, "normal.md"), "unrelated local content");
+
+  await expect(reconcile()).resolves.toMatchObject({
+    filesQueuedForUpsert: 1,
+    filesQueuedForDelete: 1,
+  });
+  expect(await store.getDirtyEntryMutation("old-child")).toMatchObject({ op: "delete" });
+  expect(fs.readFileSync(path.join(vault, "folder"), "utf8")).toBe("replacement");
+});
+
 it("does not turn previously synced excluded files into deletes or rename candidates", async () => {
   const row = await remote("linked/note.md", "excluded", 1);
   await store.upsertEntry(row);

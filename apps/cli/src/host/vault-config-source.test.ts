@@ -41,6 +41,24 @@ it("supports missing configuration directories", async () => {
   expect(await source.listFiles()).toEqual([]);
 });
 
+it.skipIf(process.platform === "win32").each([
+  "bad:name.json",
+  "bad\\name.json",
+  "themes/bad:theme/theme.css",
+  "themes/bad\\theme/theme.css",
+])("skips excluded config names while scanning other settings: %s", async (excluded) => {
+  const config = path.join(vaultPath, ".obsidian");
+  const excludedFile = path.join(config, excluded);
+  fs.mkdirSync(path.dirname(excludedFile), { recursive: true });
+  fs.writeFileSync(excludedFile, "excluded content");
+  fs.writeFileSync(path.join(config, "app.json"), "{}");
+
+  const files = await source.listFiles();
+  expect(files.map((file) => file.path)).toEqual([".obsidian/app.json"]);
+  expect(new TextDecoder().decode(await files[0]!.readBytes())).toBe("{}");
+  expect(fs.readFileSync(excludedFile, "utf8")).toBe("excluded content");
+});
+
 it("checks config paths again when reading previously enumerated files", async () => {
   const config = path.join(vaultPath, ".obsidian");
   fs.mkdirSync(config);

@@ -73,7 +73,12 @@ export class NodeSyncVaultAdapter implements SyncVaultAdapter {
   async statFile(
     vaultRelativePath: string,
   ): Promise<{ mtime: number; size: number } | null> {
-    const absolute = await this.paths.resolve(vaultRelativePath);
+    return await this.statAbsoluteFile(await this.paths.resolve(vaultRelativePath));
+  }
+
+  private async statAbsoluteFile(
+    absolute: string,
+  ): Promise<{ mtime: number; size: number } | null> {
     try {
       const stat = await fs.stat(absolute);
       if (!stat.isFile()) {
@@ -125,7 +130,8 @@ export class NodeSyncVaultAdapter implements SyncVaultAdapter {
   }
 
   private async collectFiles(folder: string, files: SyncVaultFile[]): Promise<void> {
-    const absolute = await this.paths.resolve(folder);
+    const absolute = await this.paths.resolveIfAllowed(folder);
+    if (absolute === null) return;
     let entries;
     try {
       entries = await fs.readdir(absolute, {
@@ -148,7 +154,9 @@ export class NodeSyncVaultAdapter implements SyncVaultAdapter {
         continue;
       }
 
-      const stat = await this.statFile(relativePath);
+      const absoluteFile = await this.paths.resolveIfAllowed(relativePath);
+      if (absoluteFile === null) continue;
+      const stat = await this.statAbsoluteFile(absoluteFile);
       if (!stat) {
         continue;
       }

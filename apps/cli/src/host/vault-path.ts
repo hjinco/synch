@@ -20,11 +20,15 @@ export class VaultPathResolver {
   constructor(private readonly vaultPath: string) {}
 
   async isExcluded(vaultRelativePath: string): Promise<boolean> {
+    return (await this.resolveIfAllowed(vaultRelativePath)) === null;
+  }
+
+  /** Scanners skip excluded paths; direct filesystem operations still reject them. */
+  async resolveIfAllowed(vaultRelativePath: string): Promise<string | null> {
     try {
-      await this.resolve(vaultRelativePath);
-      return false;
+      return await this.resolve(vaultRelativePath);
     } catch (error) {
-      if (error instanceof UnsafeVaultPathError) return true;
+      if (error instanceof UnsafeVaultPathError) return null;
       throw error;
     }
   }
@@ -53,17 +57,21 @@ export class VaultPathResolver {
       try {
         stat = await fs.lstat(current);
       } catch (error) {
-        if ((error as NodeJS.ErrnoException).code === "ENOENT" && index > 0) {
-          // A new path is allowed, but all of its existing ancestors were checked.
+        const code = (error as NodeJS.ErrnoException).code;
+        if ((code === "ENOENT" || code === "ENOTDIR") && index > 0) {
+          // The descendant is missing, and every existing ancestor was checked.
+          // ENOTDIR can occur after replacing a tracked folder with a file; it
+          // must remain a local deletion rather than a filesystem exclusion.
           break;
         }
         throw error;
       }
       if (stat.isSymbolicLink()) {
-        if (index === 0)
+        if (index === 0) {
           throw new Error(
             "The canonical vault root was replaced by a symlink.",
           );
+        }
         throw new UnsafeVaultPathError(
           `Unsafe vault path: ${vaultRelativePath} (symlink: ${current})`,
         );

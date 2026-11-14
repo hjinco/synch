@@ -40,8 +40,8 @@ export class NodeVaultConfigSource implements SyncVaultConfigSource {
   }
 
   private async collectFiles(folder: string, files: SyncVaultFile[]): Promise<void> {
-    if (await this.paths.isExcluded(folder)) return;
-    const absolute = await this.paths.resolve(folder);
+    const absolute = await this.paths.resolveIfAllowed(folder);
+    if (absolute === null) return;
     let entries;
     try {
       entries = await fs.readdir(absolute, {
@@ -62,7 +62,9 @@ export class NodeVaultConfigSource implements SyncVaultConfigSource {
         continue;
       }
 
-      const stat = await fs.stat(await this.paths.resolve(relativePath));
+      const absoluteFile = await this.paths.resolveIfAllowed(relativePath);
+      if (absoluteFile === null) continue;
+      const stat = await fs.stat(absoluteFile);
       files.push({
         path: relativePath,
         mtime: Math.floor(stat.mtimeMs),

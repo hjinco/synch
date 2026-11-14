@@ -75,7 +75,7 @@ export class SyncLocalReconcileService {
       localPaths.add(file.path);
     }
     const snapshot = await store.listReconcileEntryStates();
-    const { retained, cleanupUpdates } = await this.filterKnownEntries(snapshot, store, metadataCrypto);
+    const { retained, cleanupUpdates, excludedEntryIds } = await this.filterKnownEntries(snapshot, metadataCrypto);
     const localByPath = indexLocalEntriesByPath(retained);
     const remoteById = indexRemoteEntriesById(retained);
     const visibleRemoteByPath = indexVisibleRemoteEntriesByPath(retained);
@@ -258,7 +258,12 @@ export class SyncLocalReconcileService {
           ...affected.flatMap((entry) => [entry.local?.path, entry.remote?.path]),
           ...updates.map((update) => update.local?.path),
         ],
-      }), async () => await applyReconcileUpdatesInChunks(store, updates), [prepared]);
+      }), async () => {
+        // Clear excluded local copies only after validating the scan snapshot,
+        // under the same coordination as the rest of the reconcile updates.
+        for (const entryId of excludedEntryIds) await store.clearLocalState(entryId);
+        await applyReconcileUpdatesInChunks(store, updates);
+      }, [prepared]);
     }
 
     return {
@@ -279,14 +284,15 @@ export class SyncLocalReconcileService {
 
   private async filterKnownEntries(
     entries: SyncReconcileEntryState[],
-    store: SyncLocalReconcileStore,
     metadataCrypto: Pick<SyncCryptoContext, "decryptMetadata">,
   ): Promise<{
     retained: SyncReconcileEntryState[];
     cleanupUpdates: SyncReconcileEntryUpdate[];
+    excludedEntryIds: string[];
   }> {
     const retained: SyncReconcileEntryState[] = [];
     const cleanupUpdates: SyncReconcileEntryUpdate[] = [];
+    const excludedEntryIds: string[] = [];
 
     for (const entry of entries) {
       if (this.deps.scanner.isExcludedPath) {
@@ -310,7 +316,7 @@ export class SyncLocalReconcileService {
         if (excluded) {
           // Retain the remote snapshot, but no longer claim a local copy exists.
           // This prevents deletions/rename matching and survives process restarts.
-          await store.clearLocalState(entry.entryId);
+          excludedEntryIds.push(entry.entryId);
           cleanupUpdates.push({ entryId: entry.entryId, clearDirty: true,
             deleteEntry: !entry.remote || entry.remote.revision === 0 });
           continue;
@@ -329,7 +335,7 @@ export class SyncLocalReconcileService {
       });
     }
 
-    return { retained, cleanupUpdates };
+    return { retained, cleanupUpdates, excludedEntryIds };
   }
 
   private async indexPendingDeleteEntriesByPath(

@@ -178,6 +178,21 @@ function seed(relativePath: string, content = "content"): void {
 }
 
 describe("NodeSyncVaultAdapter.listFiles", () => {
+  it.skipIf(process.platform === "win32").each([
+    "bad:name.md",
+    "bad\\name.md",
+    "bad:folder/note.md",
+    "bad\\folder/note.md",
+  ])("skips excluded local names without aborting enumeration: %s", async (excluded) => {
+    seed(excluded, "excluded content");
+    seed("normal.md", "normal content");
+
+    const files = await adapter.listFiles();
+    expect(files.map((file) => file.path)).toEqual(["normal.md"]);
+    expect(new TextDecoder().decode(await files[0]!.readBytes())).toBe("normal content");
+    expect(fs.readFileSync(path.join(vaultPath, excluded), "utf8")).toBe("excluded content");
+  });
+
   it("lists syncable files and skips reserved and hidden paths", async () => {
     seed("notes/a.md");
     seed("image.png");
@@ -223,6 +238,18 @@ describe("NodeSyncVaultAdapter.listFiles", () => {
 });
 
 describe("NodeSyncVaultAdapter file operations", () => {
+  it("treats descendants of ordinary files as missing, not excluded", async () => {
+    seed("folder", "replacement");
+
+    expect(await adapter.isExcludedPath("folder/note.md")).toBe(false);
+    expect(await adapter.statFile("folder/note.md")).toBeNull();
+    expect(await adapter.exists("folder/note.md")).toBe(false);
+    await expect(adapter.writeText("folder/note.md", "remote")).rejects.toMatchObject({
+      code: "ENOTDIR",
+    });
+    expect(fs.readFileSync(path.join(vaultPath, "folder"), "utf8")).toBe("replacement");
+  });
+
   it("writes, reads, renames, and removes files", async () => {
     await adapter.mkdir("folder");
     expect(await adapter.exists("folder")).toBe(true);
