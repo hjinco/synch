@@ -7,6 +7,7 @@ import {
 import type { SyncVaultConfigSource } from "@synch/sync-client/engine";
 import type { SyncVaultFile } from "@synch/sync-client/vault";
 import { VaultPathResolver } from "./vault-path";
+import { isMissingPathError } from "./filesystem-errors";
 
 export interface NodeVaultConfigSourceDeps {
   vaultPath: string;
@@ -47,8 +48,10 @@ export class NodeVaultConfigSource implements SyncVaultConfigSource {
       entries = await fs.readdir(absolute, {
         withFileTypes: true,
       });
-    } catch {
-      return;
+    } catch (error) {
+      // Missing config directories are normal; unreadable ones are not empty.
+      if (isMissingPathError(error)) return;
+      throw error;
     }
 
     for (const entry of entries) {

@@ -32,6 +32,12 @@ Existing credentials without an API URL retain the previous resolution behavior;
 the URL is saved after their session is successfully verified. Logout clears
 both the token and its URL.
 
+A local scan must complete before `synch sync` starts uploading changes.
+Permission and I/O errors, including errors reading Obsidian configuration
+directories, abort the scan and make the command exit with code 1. Files that
+could not be inspected are not treated as deleted. Restore filesystem access
+and retry; genuine local deletions continue to synchronize normally.
+
 ## Filesystem links
 
 The selected vault directory is resolved to its canonical path. Symlinks below

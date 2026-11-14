@@ -28,6 +28,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.restoreAllMocks();
   fs.rmSync(vaultPath, { recursive: true, force: true });
   fs.rmSync(outsidePath, { recursive: true, force: true });
 });
@@ -178,6 +179,28 @@ function seed(relativePath: string, content = "content"): void {
 }
 
 describe("NodeSyncVaultAdapter.listFiles", () => {
+  it.each(["EACCES", "EPERM", "EIO", "ENOENT", "ENOTDIR"])(
+    "rejects an unavailable vault root (%s) instead of returning an empty scan",
+    async (code) => {
+      seed("note.md");
+      const error = Object.assign(new Error("root scan failed"), { code });
+      vi.spyOn(fsPromises, "readdir").mockRejectedValue(error);
+      await expect(adapter.listFiles()).rejects.toBe(error);
+    },
+  );
+
+  it.each(["remove", "replace"])("handles a directory that disappears during traversal: %s", async (operation) => {
+    seed("folder/note.md");
+    const readdir = fsPromises.readdir.bind(fsPromises);
+    vi.spyOn(fsPromises, "readdir").mockImplementationOnce(async (directory, options) => {
+      const entries = await readdir(directory, options);
+      fs.rmSync(path.join(vaultPath, "folder"), { recursive: true });
+      if (operation === "replace") fs.writeFileSync(path.join(vaultPath, "folder"), "replacement");
+      return entries;
+    });
+    await expect(adapter.listFiles()).resolves.toEqual([]);
+  });
+
   it.skipIf(process.platform === "win32").each([
     "bad:name.md",
     "bad\\name.md",
@@ -238,6 +261,16 @@ describe("NodeSyncVaultAdapter.listFiles", () => {
 });
 
 describe("NodeSyncVaultAdapter file operations", () => {
+  it.each(["EACCES", "EPERM", "EIO"])("propagates %s from stat and access instead of reporting absence", async (code) => {
+    seed("note.md");
+    const error = Object.assign(new Error("filesystem failure"), { code });
+    vi.spyOn(fsPromises, "stat").mockRejectedValue(error);
+    await expect(adapter.statFile("note.md")).rejects.toBe(error);
+    await expect(adapter.listFiles()).rejects.toBe(error);
+    vi.spyOn(fsPromises, "access").mockRejectedValue(error);
+    await expect(adapter.exists("note.md")).rejects.toBe(error);
+  });
+
   it("treats descendants of ordinary files as missing, not excluded", async () => {
     seed("folder", "replacement");
 

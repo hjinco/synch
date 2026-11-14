@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 
 import { normalizeVaultPath } from "@synch/sync-client/core";
+import { isMissingPathError } from "./filesystem-errors";
 
 export class UnsafeVaultPathError extends Error {}
 
@@ -57,8 +58,7 @@ export class VaultPathResolver {
       try {
         stat = await fs.lstat(current);
       } catch (error) {
-        const code = (error as NodeJS.ErrnoException).code;
-        if ((code === "ENOENT" || code === "ENOTDIR") && index > 0) {
+        if (isMissingPathError(error) && index > 0) {
           // The descendant is missing, and every existing ancestor was checked.
           // ENOTDIR can occur after replacing a tracked folder with a file; it
           // must remain a local deletion rather than a filesystem exclusion.

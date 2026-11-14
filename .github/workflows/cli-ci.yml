@@ -1,0 +1,46 @@
+name: CLI CI
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "apps/cli/**"
+      - "packages/**"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+      - "tsconfig.base.json"
+      - ".github/workflows/cli-ci.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "apps/cli/**"
+      - "packages/**"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+      - "tsconfig.base.json"
+      - ".github/workflows/cli-ci.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  cli:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 10.33.0
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm -C apps/cli typecheck
+      # The hosted runner is unprivileged so chmod permission regressions run.
+      - run: pnpm -C apps/cli test --run
+      - run: pnpm -C apps/cli build
