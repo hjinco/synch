@@ -4,7 +4,7 @@ import type { SyncContentRuntimeDeps } from "../core/content-runtime";
 import type { SyncEventGateLike } from "./event-gate";
 import type { SyncBlobClient } from "../remote/blob-client";
 import type { SyncRealtimeSession } from "../remote/realtime-client";
-import type { SyncCursorStore } from "../store/ports";
+import type { SyncCursorStore, SyncRemoteEntryStore } from "../store/ports";
 import type { SyncOperationProgress } from "../runtime/user-visible-status";
 import { SyncWorkProgress } from "./work-progress";
 import { loadRecoveryManifest } from "./pull-recovery-manifest";
@@ -56,7 +56,8 @@ export interface SyncPullServiceDeps extends SyncContentRuntimeDeps {
   now?: () => number;
 }
 
-export interface SyncPullStore extends SyncCursorStore, PullEntryStateStore {}
+export interface SyncPullStore extends SyncCursorStore, PullEntryStateStore,
+  Pick<SyncRemoteEntryStore, "listRemoteStates"> {}
 
 export interface PullOnceResult {
   cursor: number;
@@ -136,8 +137,11 @@ export class SyncPullService {
     }
 
     const token = await this.deps.getSyncToken();
-    const requestCursor = await store.getCursor();
-    let cursor = requestCursor;
+    let cursor = await store.getCursor();
+    // Excluded paths keep remote metadata without claiming it was applied.
+    // When a path becomes available, replay a fresh authenticated snapshot;
+    // never reset the persisted checkpoint or apply stale cached remote data.
+    const requestCursor = await this.needsExcludedPathReplay(store) ? 0 : cursor;
     let hasMore = true;
     let targetCursor: number | null = null;
     const progress = new SyncWorkProgress("pull");
@@ -268,6 +272,20 @@ export class SyncPullService {
 
     await store.setCursor(safeCursor);
     return safeCursor;
+  }
+
+  private async needsExcludedPathReplay(store: SyncPullStore): Promise<boolean> {
+    if (!this.deps.vaultAdapter.isExcludedPath) return false;
+    for (const remote of await store.listRemoteStates()) {
+      if (!remote.path ||
+          this.deps.shouldApplyRemotePath?.(remote.path, remote.deleted) === false ||
+          await store.getDirtyEntryMutation(remote.entryId)) continue;
+      const local = await store.getLocalStateById(remote.entryId);
+      if (local && local.path === remote.path && local.deleted === remote.deleted &&
+          local.blobId === remote.blobId && local.hash === remote.hash) continue;
+      if (!await this.deps.vaultAdapter.isExcludedPath(remote.path)) return true;
+    }
+    return false;
   }
 }
 

@@ -14,7 +14,7 @@ import type {
   SyncReconcileEntryState,
   SyncReconcileEntryUpdate,
 } from "../store/store";
-import type { SyncReconcileStore } from "../store/ports";
+import type { SyncReconcileStore, SyncLocalEntryStore } from "../store/ports";
 import type { SyncVaultFile, SyncVaultScanner } from "../vault/ports";
 import { isAutoMergeTextPath } from "./text-merge-policy";
 
@@ -31,7 +31,7 @@ export interface SyncLocalReconcileServiceDeps extends SyncContentRuntimeDeps {
   hashConcurrency?: number;
 }
 
-export type SyncLocalReconcileStore = SyncReconcileStore;
+export type SyncLocalReconcileStore = SyncReconcileStore & Pick<SyncLocalEntryStore, "clearLocalState">;
 
 export interface ReconcileOnceResult {
   filesScanned: number;
@@ -75,7 +75,7 @@ export class SyncLocalReconcileService {
       localPaths.add(file.path);
     }
     const snapshot = await store.listReconcileEntryStates();
-    const { retained, cleanupUpdates } = this.filterKnownEntries(snapshot);
+    const { retained, cleanupUpdates, excludedEntryIds } = await this.filterKnownEntries(snapshot, metadataCrypto);
     const localByPath = indexLocalEntriesByPath(retained);
     const remoteById = indexRemoteEntriesById(retained);
     const visibleRemoteByPath = indexVisibleRemoteEntriesByPath(retained);
@@ -258,7 +258,12 @@ export class SyncLocalReconcileService {
           ...affected.flatMap((entry) => [entry.local?.path, entry.remote?.path]),
           ...updates.map((update) => update.local?.path),
         ],
-      }), async () => await applyReconcileUpdatesInChunks(store, updates), [prepared]);
+      }), async () => {
+        // Clear excluded local copies only after validating the scan snapshot,
+        // under the same coordination as the rest of the reconcile updates.
+        for (const entryId of excludedEntryIds) await store.clearLocalState(entryId);
+        await applyReconcileUpdatesInChunks(store, updates);
+      }, [prepared]);
     }
 
     return {
@@ -277,16 +282,46 @@ export class SyncLocalReconcileService {
     return store;
   }
 
-  private filterKnownEntries(
+  private async filterKnownEntries(
     entries: SyncReconcileEntryState[],
-  ): {
+    metadataCrypto: Pick<SyncCryptoContext, "decryptMetadata">,
+  ): Promise<{
     retained: SyncReconcileEntryState[];
     cleanupUpdates: SyncReconcileEntryUpdate[];
-  } {
+    excludedEntryIds: string[];
+  }> {
     const retained: SyncReconcileEntryState[] = [];
     const cleanupUpdates: SyncReconcileEntryUpdate[] = [];
+    const excludedEntryIds: string[] = [];
 
     for (const entry of entries) {
+      if (this.deps.scanner.isExcludedPath) {
+        const paths = [entry.local?.path, entry.remote?.path];
+        if (entry.dirty) {
+          const pending = entry.dirty;
+          paths.push((await metadataCrypto.decryptMetadata(pending.encryptedMetadata, {
+            entryId: pending.entryId,
+            revision: pending.baseRevision + 1,
+            op: pending.op,
+            blobId: pending.blobId,
+          })).path);
+        }
+        let excluded = false;
+        for (const path of new Set(paths)) {
+          if (path && await this.deps.scanner.isExcludedPath(path)) {
+            excluded = true;
+            break;
+          }
+        }
+        if (excluded) {
+          // Retain the remote snapshot, but no longer claim a local copy exists.
+          // This prevents deletions/rename matching and survives process restarts.
+          excludedEntryIds.push(entry.entryId);
+          cleanupUpdates.push({ entryId: entry.entryId, clearDirty: true,
+            deleteEntry: !entry.remote || entry.remote.revision === 0 });
+          continue;
+        }
+      }
       const local = entry.local;
       if (!local?.path || local.deleted || this.deps.shouldSyncPath(local.path)) {
         retained.push(entry);
@@ -300,7 +335,7 @@ export class SyncLocalReconcileService {
       });
     }
 
-    return { retained, cleanupUpdates };
+    return { retained, cleanupUpdates, excludedEntryIds };
   }
 
   private async indexPendingDeleteEntriesByPath(

@@ -26,10 +26,10 @@ export async function runWatch(ctx: CliAppContext): Promise<number> {
     }
     reconcilePromise = (async () => {
       try {
-        const result = await ctx.engine.reconcileOnce();
-        if (result.filesQueuedForUpsert > 0 || result.filesQueuedForDelete > 0) {
-          ctx.engine.notifyLocalChange();
-        }
+        await ctx.engine.reconcileOnce();
+        // Removing a symlink can make remote-only files eligible again without
+        // queuing any local mutation. Wake the pull loop for those paths too.
+        ctx.engine.notifyLocalChange();
       } catch (error) {
         ctx.logger.error(`reconcile failed: ${describeError(error)}`);
       } finally {

@@ -15,6 +15,7 @@ import type {
   SyncRemoteEntryStore,
 } from "../store/ports";
 import type { PushBlobRetryCache } from "./push-blob-retry-cache";
+import type { SyncVaultPathExclusions } from "../vault/ports";
 
 export interface PushMutationCommitterDeps extends SyncContentRuntimeDeps {
   getRemoteVaultKey: () => Uint8Array;
@@ -28,7 +29,7 @@ export interface PushMutationCommitterDeps extends SyncContentRuntimeDeps {
   now?: () => number;
 }
 
-export interface LocalFileReader {
+export interface LocalFileReader extends SyncVaultPathExclusions {
   readBytes(path: string): Promise<Uint8Array>;
   /** Optional stat lookup used to reserve memory before readBytes starts. */
   getFileSize?(path: string): Promise<number>;
@@ -64,7 +65,7 @@ export interface PreparedPushMutation {
 export interface PushMutationStore
   extends Pick<SyncEntryStore, "getEntryById" | "getEntryByPath">,
     Pick<SyncRemoteEntryStore, "applyRemoteState" | "getRemoteStateById">,
-    Pick<SyncLocalEntryStore, "applyLocalState" | "getLocalStateById">,
+    Pick<SyncLocalEntryStore, "applyLocalState" | "getLocalStateById" | "clearLocalState">,
     Pick<
       SyncMutationStore,
       | "clearDirtyEntryByMutationId"
@@ -77,7 +78,7 @@ export interface PushMutationStore
 
 export interface SkippedPushMutation {
   skipped: true;
-  reason: "file_too_large" | "incompatible_path" | "storage_quota_exceeded";
+  reason: "file_too_large" | "incompatible_path" | "storage_quota_exceeded" | "excluded_path";
 }
 
 export type PreparePushMutationResult = PreparedPushMutation | SkippedPushMutation | null;

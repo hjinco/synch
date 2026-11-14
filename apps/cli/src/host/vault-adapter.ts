@@ -16,6 +16,7 @@ import type {
   SyncVaultAdapter,
   SyncVaultFile,
 } from "@synch/sync-client/vault";
+import { VaultPathResolver } from "./vault-path";
 
 export interface NodeSyncVaultAdapterDeps {
   vaultPath: string;
@@ -27,7 +28,11 @@ export interface NodeSyncVaultAdapterDeps {
 export const VAULT_TMP_FILE_MARKER = ".synch-tmp-";
 
 export class NodeSyncVaultAdapter implements SyncVaultAdapter {
-  constructor(private readonly deps: NodeSyncVaultAdapterDeps) {}
+  private readonly paths: VaultPathResolver;
+
+  constructor(private readonly deps: NodeSyncVaultAdapterDeps) {
+    this.paths = new VaultPathResolver(deps.vaultPath);
+  }
 
   isSyncablePath(vaultRelativePath: string): boolean {
     return shouldSyncPath(
@@ -35,6 +40,10 @@ export class NodeSyncVaultAdapter implements SyncVaultAdapter {
       this.deps.getSyncFileRules(),
       this.deps.getConfigDir(),
     );
+  }
+
+  async isExcludedPath(vaultRelativePath: string): Promise<boolean> {
+    return await this.paths.isExcluded(vaultRelativePath);
   }
 
   isProtectedVaultPath(vaultRelativePath: string): boolean {
@@ -48,11 +57,12 @@ export class NodeSyncVaultAdapter implements SyncVaultAdapter {
   }
 
   async readBytes(vaultRelativePath: string): Promise<Uint8Array> {
-    return new Uint8Array(await fs.readFile(this.absolutePath(vaultRelativePath)));
+    const absolute = await this.paths.resolve(vaultRelativePath);
+    return new Uint8Array(await fs.readFile(absolute));
   }
 
   async getFileSize(vaultRelativePath: string): Promise<number> {
-    const stat = await fs.stat(this.absolutePath(vaultRelativePath));
+    const stat = await fs.stat(await this.paths.resolve(vaultRelativePath));
     if (!stat.isFile()) {
       throw new Error(`Cannot stat vault file: ${vaultRelativePath}`);
     }
@@ -63,8 +73,14 @@ export class NodeSyncVaultAdapter implements SyncVaultAdapter {
   async statFile(
     vaultRelativePath: string,
   ): Promise<{ mtime: number; size: number } | null> {
+    return await this.statAbsoluteFile(await this.paths.resolve(vaultRelativePath));
+  }
+
+  private async statAbsoluteFile(
+    absolute: string,
+  ): Promise<{ mtime: number; size: number } | null> {
     try {
-      const stat = await fs.stat(this.absolutePath(vaultRelativePath));
+      const stat = await fs.stat(absolute);
       if (!stat.isFile()) {
         return null;
       }
@@ -75,8 +91,9 @@ export class NodeSyncVaultAdapter implements SyncVaultAdapter {
   }
 
   async exists(vaultRelativePath: string): Promise<boolean> {
+    const absolute = await this.paths.resolve(vaultRelativePath);
     try {
-      await fs.access(this.absolutePath(vaultRelativePath));
+      await fs.access(absolute);
       return true;
     } catch {
       return false;
@@ -84,7 +101,7 @@ export class NodeSyncVaultAdapter implements SyncVaultAdapter {
   }
 
   async mkdir(vaultRelativePath: string): Promise<void> {
-    await fs.mkdir(this.absolutePath(vaultRelativePath), { recursive: true });
+    await fs.mkdir(await this.paths.resolve(vaultRelativePath), { recursive: true });
   }
 
   async writeText(vaultRelativePath: string, content: string): Promise<void> {
@@ -96,11 +113,13 @@ export class NodeSyncVaultAdapter implements SyncVaultAdapter {
   }
 
   async rename(oldPath: string, newPath: string): Promise<void> {
-    await fs.rename(this.absolutePath(oldPath), this.absolutePath(newPath));
+    const source = await this.paths.resolve(oldPath);
+    const destination = await this.paths.resolve(newPath);
+    await fs.rename(source, destination);
   }
 
   async remove(vaultRelativePath: string): Promise<void> {
-    const absolute = this.absolutePath(vaultRelativePath);
+    const absolute = await this.paths.resolve(vaultRelativePath);
     const stat = await fs.lstat(absolute);
     if (stat.isDirectory()) {
       await fs.rmdir(absolute);
@@ -111,9 +130,11 @@ export class NodeSyncVaultAdapter implements SyncVaultAdapter {
   }
 
   private async collectFiles(folder: string, files: SyncVaultFile[]): Promise<void> {
+    const absolute = await this.paths.resolveIfAllowed(folder);
+    if (absolute === null) return;
     let entries;
     try {
-      entries = await fs.readdir(this.absolutePath(folder), {
+      entries = await fs.readdir(absolute, {
         withFileTypes: true,
       });
     } catch {
@@ -133,7 +154,9 @@ export class NodeSyncVaultAdapter implements SyncVaultAdapter {
         continue;
       }
 
-      const stat = await this.statFile(relativePath);
+      const absoluteFile = await this.paths.resolveIfAllowed(relativePath);
+      if (absoluteFile === null) continue;
+      const stat = await this.statAbsoluteFile(absoluteFile);
       if (!stat) {
         continue;
       }
@@ -178,30 +201,23 @@ export class NodeSyncVaultAdapter implements SyncVaultAdapter {
     vaultRelativePath: string,
     content: string | Uint8Array,
   ): Promise<void> {
-    const absolute = this.absolutePath(vaultRelativePath);
+    const absolute = await this.paths.resolve(vaultRelativePath);
     const tempPath = path.join(
       path.dirname(absolute),
       `${VAULT_TMP_FILE_MARKER}${randomBytes(6).toString("hex")}`,
     );
+    // Exclusive creation cannot follow a pre-existing temp-file symlink. Only
+    // clean up a temp file that this operation successfully created.
+    const temp = await fs.open(tempPath, "wx");
     try {
-      await fs.writeFile(tempPath, content);
+      await temp.writeFile(content);
+      await temp.close();
+      await this.paths.resolve(vaultRelativePath);
       await fs.rename(tempPath, absolute);
     } catch (error) {
+      await temp.close().catch(() => {});
       await fs.unlink(tempPath).catch(() => {});
       throw error;
     }
-  }
-
-  private absolutePath(vaultRelativePath: string): string {
-    const normalized = normalizeVaultPath(vaultRelativePath);
-    if (
-      normalized.split("/").some((segment) => segment === "." || segment === "..")
-    ) {
-      throw new Error(`Unsafe vault path: ${vaultRelativePath}`);
-    }
-
-    return normalized
-      ? path.join(this.deps.vaultPath, ...normalized.split("/"))
-      : this.deps.vaultPath;
   }
 }

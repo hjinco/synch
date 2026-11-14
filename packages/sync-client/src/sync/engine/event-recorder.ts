@@ -25,6 +25,8 @@ export interface SyncEventRecorderDeps extends SyncContentRuntimeDeps {
   getSyncStore: () => SyncEventRecorderStore | null;
   getRemoteVaultKey: () => Uint8Array;
   eventGate?: Pick<SyncEventGateLike, "isSuppressed">;
+  /** Hosts with filesystem exclusions must not delete remote-only entries. */
+  requireLocalStateForDelete?: boolean;
 }
 
 export interface SyncEventRecorderStore
@@ -259,7 +261,7 @@ export class SyncEventRecorder {
     const store = this.requireStore();
     const existing =
       (await store.getLocalStateByPath(path)) ??
-      (await store.getRemoteStateByPath(path));
+      (this.deps.requireLocalStateForDelete ? null : await store.getRemoteStateByPath(path));
     if (!existing) {
       return false;
     }

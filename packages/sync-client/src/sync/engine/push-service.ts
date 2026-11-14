@@ -177,6 +177,10 @@ export class SyncPushService {
             continue;
           }
           if ("skipped" in prepared) {
+            if (prepared.reason === "excluded_path") {
+              progress.complete([mutation.mutationId]);
+              continue;
+            }
             this.deps.onFileSyncFailed?.({
               operation: mutation.op,
               path,
