@@ -1,7 +1,7 @@
 ---
 title: Cloudflare を使わずに Synch をセルフホスト
 description: Docker Compose または systemd で自分のハードウェア上に Synch サーバーを実行できます。Cloudflare やサードパーティサービスは必要ありません。
-updatedDate: 2026-11-05
+updatedDate: 2026-11-14
 ---
 
 Cloudflare をまったく使いたくない場合、Synch のサーバーは通常の Node.js プロセスとしても実行できます。このガイドでは、ホームラボの NAS、小規模な VPS、Incus/LXC コンテナなど、長時間稼働するプロセスを実行してポートを公開できる自分のハードウェア上で、[Docker Compose](#docker-compose-で-デプロイ) または [systemd](#docker-なしで-systemd-を実行) を使って Synch を実行する方法を説明します。
@@ -16,19 +16,20 @@ Cloudflare をまったく使いたくない場合、Synch のサーバーは通
 
 ## Docker Compose でデプロイ
 
-Docker と Docker Compose をインストールしておく必要があります。
+Docker と Docker Compose が必要です。ビルド済みイメージは `linux/amd64` と `linux/arm64` に対応しており、Git、Node.js、ローカルでのビルドは不要です。
 
-1. リポジトリを clone して API ディレクトリに移動します。
+1. 新しいデプロイ用ディレクトリを作成します。
 
    ```bash
-   git clone https://github.com/hjinco/synch.git
-   cd synch/apps/api
+   mkdir synch-server
+   cd synch-server
    ```
 
-2. サンプル環境ファイルをコピーします。
+2. Compose 設定と環境変数のサンプルファイルをダウンロードします。
 
    ```bash
-   cp .env.example .env
+   curl -fsSL https://raw.githubusercontent.com/hjinco/synch/main/apps/api/docker-compose.image.yml -o docker-compose.yml
+   curl -fsSL https://raw.githubusercontent.com/hjinco/synch/main/apps/api/.env.example -o .env
    ```
 
 3. `.env` を編集して、次の値を設定します。
@@ -49,10 +50,35 @@ Docker と Docker Compose をインストールしておく必要があります
 4. サーバーを起動します。
 
    ```bash
+   docker compose pull
    docker compose up -d
    ```
 
 vault と blob のデータは、再起動やアップグレード後も `synch-data` Docker ボリュームに保持されます。新しいホストへ移行する場合は、このボリュームと `.env` ファイルを一緒にコピーしてください。
+
+`latest` はテストに成功した `main` のビルドを追跡します。固定するには `.env` に `SYNCH_IMAGE=ghcr.io/hjinco/synch-api:sha-<完全なコミットSHA>` を設定するか、イメージの digest を使用します。固定した場合、更新には参照先の変更が必要です。
+
+### ソースからビルドする（従来の方法）
+
+サーバーの変更やローカルビルドには、引き続きリポジトリの元の Compose ファイルを使用できます。
+
+```bash
+git clone https://github.com/hjinco/synch.git
+cd synch/apps/api
+cp .env.example .env
+```
+
+上記の説明に従って `.env` を編集し、`docker compose up -d --build` を実行します。既存の環境では従来のコマンドをそのまま使用できます。
+
+既存のソースビルド環境をイメージに切り替えるには、`synch/apps/api` で以下を実行します。同じ `.env`、Compose プロジェクト名（`-p` や `COMPOSE_PROJECT_NAME` の指定を含む）、ボリュームを維持してください。データボリュームを削除する `down -v` は実行しないでください。
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/hjinco/synch/main/apps/api/docker-compose.image.yml -o docker-compose.image.yml
+docker compose -f docker-compose.image.yml pull
+docker compose -f docker-compose.image.yml up -d
+```
+
+このディレクトリでは、以降の更新や再起動を含むすべての Compose コマンドにも `-f docker-compose.image.yml` を指定してください。
 
 ### Blob ストレージ
 
@@ -73,6 +99,15 @@ VERSION_HISTORY_RETENTION_DAYS=30
 保持期間を長くすると、ディスクや S3 に保存する暗号化された過去のファイルが増え、ストレージ使用量や費用が増える可能性があります。履歴の期限が切れても現在のファイルは削除されません。障害からの復旧に備えて、別途バックアップも維持してください。
 
 ### アップグレード
+
+ビルド済みイメージ:
+
+```bash
+docker compose pull
+docker compose up -d
+```
+
+ソースビルド（`synch/apps/api` で実行）:
 
 ```bash
 git pull

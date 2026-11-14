@@ -1,7 +1,7 @@
 ---
 title: Self-host Synch without Cloudflare
 description: Run the Synch server on your own hardware with Docker Compose or plain systemd - no Cloudflare account, no third-party services required.
-updatedDate: 2026-11-05
+updatedDate: 2026-11-14
 ---
 
 If you'd rather not use Cloudflare at all, Synch's server also runs as a plain Node.js process. This guide covers running it on your own hardware - a homelab NAS, a small VPS, an Incus/LXC container, anywhere you can run a long-lived process and expose a port - with either [Docker Compose](#deploy-with-docker-compose) or [systemd](#run-without-docker-systemd).
@@ -16,19 +16,20 @@ Either way, you'll need a way to reach the server from your Obsidian devices - e
 
 ## Deploy with Docker Compose
 
-You'll need Docker and Docker Compose installed.
+Docker and Docker Compose are required. The prebuilt image supports `linux/amd64` and `linux/arm64`; you do not need Git, Node.js, or a local build.
 
-1. Clone the repository and go to the API directory:
+1. Create a new deployment directory:
 
    ```bash
-   git clone https://github.com/hjinco/synch.git
-   cd synch/apps/api
+   mkdir synch-server
+   cd synch-server
    ```
 
-2. Copy the example environment file:
+2. Download the Compose configuration and example environment file:
 
    ```bash
-   cp .env.example .env
+   curl -fsSL https://raw.githubusercontent.com/hjinco/synch/main/apps/api/docker-compose.image.yml -o docker-compose.yml
+   curl -fsSL https://raw.githubusercontent.com/hjinco/synch/main/apps/api/.env.example -o .env
    ```
 
 3. Edit `.env` and fill in:
@@ -50,10 +51,35 @@ You'll need Docker and Docker Compose installed.
 4. Start the server:
 
    ```bash
+   docker compose pull
    docker compose up -d
    ```
 
 Vault and blob data persist in the `synch-data` Docker volume across restarts and upgrades. To move to a new host, copy that volume along with your `.env` file.
+
+`latest` follows successfully tested `main` builds. To pin a build, set `SYNCH_IMAGE=ghcr.io/hjinco/synch-api:sha-<full-commit-SHA>` in `.env`, or use an image digest. Pulling will not advance a pinned image; change the pin to upgrade.
+
+### Build from source (existing method)
+
+To customize the server or keep building locally, use the original Compose file in the repository:
+
+```bash
+git clone https://github.com/hjinco/synch.git
+cd synch/apps/api
+cp .env.example .env
+```
+
+Edit `.env` as described above, then run `docker compose up -d --build`. Existing installations can continue using the same commands.
+
+To switch an existing source installation to the image, run the following from `synch/apps/api`. Keep the same `.env`, Compose project name (including any `-p` or `COMPOSE_PROJECT_NAME` override), and volume. Do not run `down -v`, which deletes the data volume.
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/hjinco/synch/main/apps/api/docker-compose.image.yml -o docker-compose.image.yml
+docker compose -f docker-compose.image.yml pull
+docker compose -f docker-compose.image.yml up -d
+```
+
+For all subsequent Compose commands in this directory, including upgrades and restarts, keep using `-f docker-compose.image.yml`.
 
 ### Blob storage
 
@@ -124,6 +150,15 @@ Discovery runs only when an OIDC operation needs it. Password login, Google/GitH
 On Node, failed initialization can retry after a two-second cooldown. The auth library does not expose cancellation for discovery, so a still-running fetch is retained instead of starting overlapping requests; a late successful response becomes usable automatically. On Cloudflare, initialization is scoped to the OIDC request. The three-second limit applies to initialization, not the subsequent token exchange. Local sign-out does not require contacting the identity provider.
 
 ### Upgrading
+
+Prebuilt image:
+
+```bash
+docker compose pull
+docker compose up -d
+```
+
+Source build (from `synch/apps/api`):
 
 ```bash
 git pull

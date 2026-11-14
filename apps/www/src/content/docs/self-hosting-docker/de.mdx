@@ -1,7 +1,7 @@
 ---
 title: Synch ohne Cloudflare selbst hosten
 description: Betreiben Sie den Synch-Server auf eigener Hardware mit Docker Compose oder systemd – ohne Cloudflare-Konto und ohne Drittanbieterdienste.
-updatedDate: 2026-11-05
+updatedDate: 2026-11-14
 ---
 
 Wenn Sie Cloudflare überhaupt nicht verwenden möchten, lässt sich der Synch-Server auch als gewöhnlicher Node.js-Prozess betreiben. Diese Anleitung beschreibt den Betrieb auf eigener Hardware – einem Homelab-NAS, einem kleinen VPS, einem Incus/LXC-Container oder überall dort, wo Sie einen dauerhaft laufenden Prozess ausführen und einen Port freigeben können – entweder mit [Docker Compose](#mit-docker-compose-bereitstellen) oder mit [systemd](#ohne-docker-ausführen-systemd).
@@ -16,19 +16,20 @@ In beiden Fällen benötigen Sie eine Möglichkeit, den Server von Ihren Obsidia
 
 ## Mit Docker Compose bereitstellen
 
-Sie benötigen installiertes Docker und Docker Compose.
+Docker und Docker Compose sind erforderlich. Das fertige Image unterstützt `linux/amd64` und `linux/arm64`; Git, Node.js und ein lokaler Build sind nicht nötig.
 
-1. Klonen Sie das Repository und wechseln Sie in das API-Verzeichnis:
+1. Erstellen Sie ein neues Deployment-Verzeichnis:
 
    ```bash
-   git clone https://github.com/hjinco/synch.git
-   cd synch/apps/api
+   mkdir synch-server
+   cd synch-server
    ```
 
-2. Kopieren Sie die Beispiel-Umgebungsdatei:
+2. Laden Sie die Compose-Konfiguration und die Beispiel-Umgebungsdatei herunter:
 
    ```bash
-   cp .env.example .env
+   curl -fsSL https://raw.githubusercontent.com/hjinco/synch/main/apps/api/docker-compose.image.yml -o docker-compose.yml
+   curl -fsSL https://raw.githubusercontent.com/hjinco/synch/main/apps/api/.env.example -o .env
    ```
 
 3. Bearbeiten Sie `.env` und tragen Sie Folgendes ein:
@@ -49,10 +50,35 @@ Sie benötigen installiertes Docker und Docker Compose.
 4. Starten Sie den Server:
 
    ```bash
+   docker compose pull
    docker compose up -d
    ```
 
 Vault- und Blob-Daten bleiben im Docker-Volume `synch-data` über Neustarts und Upgrades hinweg erhalten. Um auf einen neuen Host umzuziehen, kopieren Sie dieses Volume zusammen mit Ihrer `.env`-Datei.
+
+`latest` folgt erfolgreich getesteten Builds von `main`. Mit `SYNCH_IMAGE=ghcr.io/hjinco/synch-api:sha-<vollständige-Commit-SHA>` in `.env` oder einem Image-Digest können Sie einen Build festlegen. Zum Aktualisieren müssen Sie diese Referenz ändern.
+
+### Aus dem Quellcode bauen (bisherige Methode)
+
+Für Anpassungen oder lokale Builds verwenden Sie weiterhin die ursprüngliche Compose-Datei im Repository:
+
+```bash
+git clone https://github.com/hjinco/synch.git
+cd synch/apps/api
+cp .env.example .env
+```
+
+Bearbeiten Sie `.env` wie oben beschrieben und führen Sie `docker compose up -d --build` aus. Bestehende Installationen können ihre bisherigen Befehle weiterverwenden.
+
+Zum Wechsel einer bestehenden Quellcode-Installation auf das Image führen Sie Folgendes in `synch/apps/api` aus. Behalten Sie dieselbe `.env`, denselben Compose-Projektnamen (einschließlich `-p` oder `COMPOSE_PROJECT_NAME`) und dasselbe Volume bei. Verwenden Sie nicht `down -v`, da dies das Datenvolume löscht.
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/hjinco/synch/main/apps/api/docker-compose.image.yml -o docker-compose.image.yml
+docker compose -f docker-compose.image.yml pull
+docker compose -f docker-compose.image.yml up -d
+```
+
+Verwenden Sie in diesem Verzeichnis auch bei allen weiteren Compose-Befehlen, einschließlich Updates und Neustarts, `-f docker-compose.image.yml`.
 
 ### Blob-Speicher
 
@@ -73,6 +99,15 @@ Führen Sie nach dem Ändern von `.env` `docker compose up -d --force-recreate` 
 Eine längere Aufbewahrungsdauer hält mehr verschlüsselte frühere Dateiinhalte auf der Festplatte oder in S3 vor und kann den Speicherbedarf und die Speicherkosten erhöhen. Aktuelle Dateien werden beim Ablauf ihres Versionsverlaufs nicht gelöscht. Erstellen Sie weiterhin unabhängige Backups zur Wiederherstellung nach Ausfällen.
 
 ### Aktualisieren
+
+Fertiges Image:
+
+```bash
+docker compose pull
+docker compose up -d
+```
+
+Quellcode-Build (in `synch/apps/api`):
 
 ```bash
 git pull

@@ -1,0 +1,65 @@
+name: Publish API image
+
+# Called only after API CI, including the Docker smoke test, succeeds.
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: publish-api-image
+  # Keep pending publications when an older commit finishes CI later.
+  queue: max
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: github.repository == 'hjinco/synch' && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - uses: docker/setup-qemu-action@v4
+
+      - uses: docker/setup-buildx-action@v4
+
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and publish commit image
+        id: build
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: apps/api/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ghcr.io/hjinco/synch-api:sha-${{ github.sha }}
+          annotations: |
+            index:org.opencontainers.image.revision=${{ github.sha }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/hjinco/synch
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.description=Self-hosted Synch API
+          cache-from: type=gha,scope=api-image
+          cache-to: type=gha,mode=max,scope=api-image
+
+      - name: Advance latest without replacing a newer published commit
+        run: node .github/scripts/promote-api-image.mjs
+        env:
+          IMAGE: ghcr.io/hjinco/synch-api
+          IMAGE_DIGEST: ${{ steps.build.outputs.digest }}
+          IMAGE_REVISION: ${{ github.sha }}

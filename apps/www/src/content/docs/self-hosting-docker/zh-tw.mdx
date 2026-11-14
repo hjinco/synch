@@ -1,7 +1,7 @@
 ---
 title: 不使用 Cloudflare 自行託管 Synch
 description: 使用 Docker Compose 或一般 systemd 在自己的硬體上執行 Synch 伺服器，不需要 Cloudflare 或第三方服務。
-updatedDate: 2026-11-05
+updatedDate: 2026-11-14
 ---
 
 如果你完全不想使用 Cloudflare，Synch 伺服器也可以作為一般 Node.js 程序執行。本指南介紹如何在自己的硬體上執行 Synch——例如家用實驗室 NAS、小型 VPS、Incus/LXC 容器，或任何能夠執行長時間程序並公開連接埠的環境——你可以選擇使用 [Docker Compose](#使用-docker-compose-部署) 或 [systemd](#不使用-docker使用-systemd-執行)。
@@ -16,19 +16,20 @@ updatedDate: 2026-11-05
 
 ## 使用 Docker Compose 部署
 
-你需要先安裝 Docker 和 Docker Compose。
+需要安裝 Docker 和 Docker Compose。預先建置的映像支援 `linux/amd64` 和 `linux/arm64`，無需 Git、Node.js 或本機建置。
 
-1. 複製儲存庫並進入 API 目錄：
+1. 建立新的部署目錄：
 
    ```bash
-   git clone https://github.com/hjinco/synch.git
-   cd synch/apps/api
+   mkdir synch-server
+   cd synch-server
    ```
 
-2. 複製範例環境檔案：
+2. 下載 Compose 設定和環境變數範例檔案：
 
    ```bash
-   cp .env.example .env
+   curl -fsSL https://raw.githubusercontent.com/hjinco/synch/main/apps/api/docker-compose.image.yml -o docker-compose.yml
+   curl -fsSL https://raw.githubusercontent.com/hjinco/synch/main/apps/api/.env.example -o .env
    ```
 
 3. 編輯 `.env` 並填入以下值：
@@ -49,10 +50,35 @@ updatedDate: 2026-11-05
 4. 啟動伺服器：
 
    ```bash
+   docker compose pull
    docker compose up -d
    ```
 
 重新啟動和升級後，vault 與 blob 資料都會保存在 `synch-data` Docker 磁碟區中。遷移到新主機時，請同時複製此磁碟區和 `.env` 檔案。
+
+`latest` 跟隨通過測試的 `main` 建置。要固定版本，請在 `.env` 中設定 `SYNCH_IMAGE=ghcr.io/hjinco/synch-api:sha-<完整提交SHA>`，或使用映像 digest。固定後，升級時需要變更該參照。
+
+### 從原始碼建置（原有方式）
+
+如需修改伺服器或繼續在本機建置，請使用儲存庫中原有的 Compose 檔案：
+
+```bash
+git clone https://github.com/hjinco/synch.git
+cd synch/apps/api
+cp .env.example .env
+```
+
+按照上文編輯 `.env`，然後執行 `docker compose up -d --build`。現有安裝可以繼續使用原來的命令。
+
+若要將現有原始碼安裝切換到映像，請在 `synch/apps/api` 中執行以下命令。保留相同的 `.env`、Compose 專案名稱（包括透過 `-p` 或 `COMPOSE_PROJECT_NAME` 指定的值）和資料卷。請勿執行會刪除資料卷的 `down -v`。
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/hjinco/synch/main/apps/api/docker-compose.image.yml -o docker-compose.image.yml
+docker compose -f docker-compose.image.yml pull
+docker compose -f docker-compose.image.yml up -d
+```
+
+在此目錄中，後續所有 Compose 命令（包括升級和重新啟動）也都需要指定 `-f docker-compose.image.yml`。
 
 ### Blob 儲存
 
@@ -73,6 +99,15 @@ VERSION_HISTORY_RETENTION_DAYS=30
 保留期限越長，磁碟或 S3 中儲存的加密歷史檔案就越多，儲存空間用量和費用也可能增加。歷史記錄到期不會刪除目前的檔案。請繼續保留獨立備份，以便在發生故障時還原資料。
 
 ### 升級
+
+預先建置的映像：
+
+```bash
+docker compose pull
+docker compose up -d
+```
+
+原始碼建置（在 `synch/apps/api` 中執行）：
 
 ```bash
 git pull

@@ -11,6 +11,9 @@ on:
       - "pnpm-workspace.yaml"
       - "scripts/sync-api-lockfile.mjs"
       - ".github/workflows/api-ci.yml"
+      - ".github/workflows/api-image.yml"
+      - ".github/scripts/promote-api-image*.mjs"
+      - ".dockerignore"
       - ".github/actions/detect-affected/action.yml"
   push:
     branches:
@@ -23,6 +26,9 @@ on:
       - "pnpm-workspace.yaml"
       - "scripts/sync-api-lockfile.mjs"
       - ".github/workflows/api-ci.yml"
+      - ".github/workflows/api-image.yml"
+      - ".github/scripts/promote-api-image*.mjs"
+      - ".dockerignore"
       - ".github/actions/detect-affected/action.yml"
 
 jobs:
@@ -45,7 +51,7 @@ jobs:
         uses: ./.github/actions/detect-affected
         with:
           package-dir: apps/api
-          full-run-paths: .github/workflows/api-ci.yml .github/actions/detect-affected/action.yml packages/vault-crypto scripts/sync-api-lockfile.mjs
+          full-run-paths: .github/scripts/promote-api-image*.mjs .github/workflows/api-ci.yml .github/workflows/api-image.yml .dockerignore .github/actions/detect-affected/action.yml packages/vault-crypto scripts/sync-api-lockfile.mjs
 
   api:
     needs: detect
@@ -65,6 +71,8 @@ jobs:
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
+
+      - run: node --test .github/scripts/promote-api-image.test.mjs
 
       - run: pnpm check:api-lockfile
 
@@ -128,3 +136,11 @@ jobs:
           done
           docker logs synch-api-smoke
           exit 1
+
+  publish-image:
+    needs: api
+    if: github.repository == 'hjinco/synch' && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/api-image.yml
