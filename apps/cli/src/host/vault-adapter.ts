@@ -17,6 +17,7 @@ import type {
   SyncVaultFile,
 } from "@synch/sync-client/vault";
 import { VaultPathResolver } from "./vault-path";
+import { isMissingPathError } from "./filesystem-errors";
 
 export interface NodeSyncVaultAdapterDeps {
   vaultPath: string;
@@ -85,8 +86,9 @@ export class NodeSyncVaultAdapter implements SyncVaultAdapter {
         return null;
       }
       return { mtime: Math.floor(stat.mtimeMs), size: stat.size };
-    } catch {
-      return null;
+    } catch (error) {
+      if (isMissingPathError(error)) return null;
+      throw error;
     }
   }
 
@@ -95,8 +97,9 @@ export class NodeSyncVaultAdapter implements SyncVaultAdapter {
     try {
       await fs.access(absolute);
       return true;
-    } catch {
-      return false;
+    } catch (error) {
+      if (isMissingPathError(error)) return false;
+      throw error;
     }
   }
 
@@ -137,8 +140,11 @@ export class NodeSyncVaultAdapter implements SyncVaultAdapter {
       entries = await fs.readdir(absolute, {
         withFileTypes: true,
       });
-    } catch {
-      return;
+    } catch (error) {
+      // A descendant may disappear during traversal, but an unavailable root
+      // or an incomplete scan must never be interpreted as local deletions.
+      if (folder && isMissingPathError(error)) return;
+      throw error;
     }
 
     for (const entry of entries) {
