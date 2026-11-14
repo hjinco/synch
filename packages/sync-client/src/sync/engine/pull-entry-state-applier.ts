@@ -375,6 +375,10 @@ export class PullEntryStateApplier {
     skipped: PullEntryStateManifestItem[],
   ): Promise<void> {
     for (const plan of skipped) {
+      const local = await store.getLocalStateById(plan.state.entryId);
+      if (local?.path && await this.deps.vaultAdapter.isExcludedPath?.(local.path)) {
+        await store.clearLocalState(plan.state.entryId);
+      }
       await store.applyRemoteState({
         entryId: plan.state.entryId,
         path: plan.metadata.path,

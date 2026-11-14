@@ -1,4 +1,5 @@
 import type { SyncedEntryMetadata } from "../core/content";
+import type { SyncVaultPathExclusions } from "../vault/ports";
 import {
   type ConflictFileWriter,
   getAvailableConflictCopyPath,
@@ -29,7 +30,7 @@ type ValidatedManifestItem = PullEntryStateManifestItem & (
 
 interface PullManifestPlannerDeps {
   getRemoteVaultKey: () => Uint8Array;
-  vaultAdapter: ConflictFileWriter;
+  vaultAdapter: ConflictFileWriter & SyncVaultPathExclusions;
   onRollbackDetected?: (event: PullRollbackEvent) => void;
   shouldUseLatestRemoteVersion?: (path: string) => boolean;
   shouldApplyRemotePath?: (path: string, deleted: boolean) => boolean;
@@ -53,7 +54,8 @@ export class PullManifestPlanner {
     const skipped: PullEntryStateManifestItem[] = [];
     for (const input of manifest) {
       const item = this.validateManifestItem(input);
-      if (this.deps.shouldApplyRemotePath?.(item.metadata.path, item.state.deleted) !== false) {
+      if (this.deps.shouldApplyRemotePath?.(item.metadata.path, item.state.deleted) !== false &&
+          !await this.deps.vaultAdapter.isExcludedPath?.(item.metadata.path)) {
         validatedManifest.push(item);
         continue;
       }
@@ -162,7 +164,7 @@ export class PullManifestPlanner {
         continue;
       }
 
-      const existing = await store.getEntryById(state.entryId);
+      let existing = await store.getEntryById(state.entryId);
       // A well-behaved server only ever hands out strictly increasing
       // revisions for a given entry - every legitimate mutation, delete, or
       // restore bumps it. The AEAD binds (entryId, revision, op, blobId), so
@@ -179,6 +181,12 @@ export class PullManifestPlanner {
           remoteRevision: state.revision,
         });
         continue;
+      }
+
+      // A remote rename out of an excluded tree must download into its new
+      // location without reading, moving or deleting the excluded source.
+      if (existing?.path && await this.deps.vaultAdapter.isExcludedPath?.(existing.path)) {
+        existing = null;
       }
 
       let finalPath: string | null = null;
@@ -381,7 +389,9 @@ export class PullManifestPlanner {
     reservedPaths: ReadonlyMap<string, string>,
   ): Promise<PullConflictEvent> {
     let conflictPath = await getAvailableConflictCopyPath(
-      this.deps.vaultAdapter,
+      { exists: async (candidate) =>
+        !!await this.deps.vaultAdapter.isExcludedPath?.(candidate) ||
+        await this.deps.vaultAdapter.exists(candidate) },
       path,
       this.deps.now,
     );

@@ -158,6 +158,7 @@ export class SyncEngine {
     this.vaultAdapter = deps.vaultAdapter;
     this.vaultConfigSource = deps.vaultConfigSource;
     this.syncEventRecorder = new SyncEventRecorder({
+      requireLocalStateForDelete: !!this.vaultAdapter.isExcludedPath,
       getSyncStore: () => this.syncStore,
       getRemoteVaultKey: () => this.deps.getRemoteVaultKey(),
       eventGate: this.syncEventGate,
@@ -211,6 +212,7 @@ export class SyncEngine {
       shouldSyncPath: (path) =>
         this.decideVaultPathSync(path).kind === "sync",
       scanner: {
+        isExcludedPath: this.vaultAdapter.isExcludedPath?.bind(this.vaultAdapter),
         listFiles: async () => {
           const byPath = new Map<string, SyncVaultFile>();
           for (const file of await this.vaultAdapter.listFiles()) {

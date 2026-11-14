@@ -52,6 +52,17 @@ export class PushMutationPreparer {
 
     onMetadataReady?.(metadata);
 
+    if (this.deps.fileReader.isExcludedPath) {
+      const remote = await store.getRemoteStateById(mutation.entryId);
+      for (const path of new Set([metadata.path, remote?.path])) {
+        if (path && await this.deps.fileReader.isExcludedPath(path)) {
+          await store.clearDirtyEntryByMutationId(mutation.mutationId);
+          await store.clearLocalState(mutation.entryId);
+          return { skipped: true, reason: "excluded_path" };
+        }
+      }
+    }
+
     if (mutation.op === "delete") {
       return {
         commitPayload: toCommitPayload(mutation),

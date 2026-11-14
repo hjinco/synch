@@ -56,6 +56,7 @@ export class PullPendingMutationHandler {
       metadataContextFromPendingMutation(pending),
     );
     if (
+      await this.deps.vaultAdapter.isExcludedPath?.(metadata.path) ||
       await isSameEntryPendingMutationAlreadyRemote(
         pending,
         metadata,

@@ -58,6 +58,8 @@ export class NodeFsChangeSource implements SyncChangeSource {
     watcher.on("add", (eventPath) => this.handlePathEvent(eventPath));
     watcher.on("change", (eventPath) => this.handlePathEvent(eventPath));
     watcher.on("unlink", (eventPath) => this.handlePathEvent(eventPath));
+    watcher.on("addDir", () => this.scheduleReconcile());
+    watcher.on("unlinkDir", () => this.scheduleReconcile());
     watcher.on("error", (error) => {
       context.onError(error);
       // Events may have been dropped; fall back to a full reconcile.
@@ -160,6 +162,10 @@ export class NodeFsChangeSource implements SyncChangeSource {
     context: SyncChangeSourceContext,
     relativePath: string,
   ): Promise<void> {
+    if (await this.deps.vaultAdapter.isExcludedPath(relativePath)) {
+      this.scheduleReconcile();
+      return;
+    }
     const syncable =
       this.deps.vaultAdapter.isSyncablePath(relativePath) ||
       (this.deps.isSyncableConfigPath?.(relativePath) ?? false);
@@ -198,6 +204,9 @@ export class NodeFsChangeSource implements SyncChangeSource {
     if (changed) {
       context.onFileQueued?.({ operation: "delete", path: relativePath });
       context.notifyLocalChange();
+    } else {
+      // An excluded file link can disappear without a tracked local delete.
+      this.scheduleReconcile();
     }
   }
 

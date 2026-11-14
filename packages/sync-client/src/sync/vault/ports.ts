@@ -8,11 +8,16 @@ export interface SyncVaultFile {
   readBytes(): Promise<Uint8Array>;
 }
 
-export interface SyncVaultScanner {
+/** Host filesystem exclusions, distinct from missing files and user filters. */
+export interface SyncVaultPathExclusions {
+  isExcludedPath?(path: string): Promise<boolean>;
+}
+
+export interface SyncVaultScanner extends SyncVaultPathExclusions {
   listFiles(): Promise<SyncVaultFile[]>;
 }
 
-export interface SyncVaultAccess extends ConflictFileWriter, SyncVaultWriter {
+export interface SyncVaultAccess extends ConflictFileWriter, SyncVaultWriter, SyncVaultPathExclusions {
   readBytes(path: string): Promise<Uint8Array>;
   getFileSize(path: string): Promise<number>;
 }
