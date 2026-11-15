@@ -55,7 +55,6 @@ jobs:
     runs-on: ubuntu-latest
 
     env:
-      API_BASE_URL: https://synch-api.example.com
       # Empty when root manifests changed, so every package runs.
       SINCE_FILTER: ${{ needs.detect.outputs.since-filter }}
 
@@ -83,4 +82,5 @@ jobs:
       - name: Test affected packages
         run: pnpm -r --if-present $SINCE_FILTER --filter '!@synch/api' --filter '!@synch/cli' run test -- --run
 
-      - run: pnpm -C apps/obsidian-plugin build
+      - name: Build without local environment configuration
+        run: pnpm -C apps/obsidian-plugin build

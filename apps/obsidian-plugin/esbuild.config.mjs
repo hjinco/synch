@@ -11,7 +11,7 @@ loadEnv({ path: path.join(pluginRoot, ".env") });
 
 const production = process.argv[2] === "production";
 const pluginDir = process.env.OBSIDIAN_PLUGIN_DIR?.trim();
-const injectedApiBaseUrl = requireApiBaseUrl();
+const injectedApiBaseUrl = process.env.API_BASE_URL?.trim() || "http://localhost:8787";
 
 const emptyNodeBuiltinPlugin = {
   name: "empty-node-builtins",
@@ -66,15 +66,6 @@ async function copyArtifacts() {
     fs.copyFile(path.join(releaseDir, "styles.css"), path.join(pluginDir, "styles.css")),
   ]);
   console.log(`[synch] copied plugin bundle to ${pluginDir}`);
-}
-
-function requireApiBaseUrl() {
-  const value = process.env.API_BASE_URL?.trim();
-  if (!value) {
-    throw new Error("API_BASE_URL is required to build the Obsidian plugin.");
-  }
-
-  return value;
 }
 
 if (production) {
