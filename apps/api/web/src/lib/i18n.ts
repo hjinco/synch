@@ -54,19 +54,19 @@ export async function translator<P extends Page>(
   let messages = fallback;
   const loader = locale !== "en" && loaders[`../locales/${locale}.json`];
   if (loader) {
-    let timer: ReturnType<typeof setTimeout> | undefined;
+    let timer: number | undefined;
     try {
       const loaded = await Promise.race([
         loader(),
         new Promise<null>((resolve) => {
-          timer = setTimeout(() => resolve(null), 3000);
+          timer = window.setTimeout(() => resolve(null), 3000);
         }),
       ]);
       if (loaded) messages = loaded.default[page] ?? fallback;
     } catch {
       // A failed locale chunk must never block authentication or key setup.
     } finally {
-      clearTimeout(timer);
+      window.clearTimeout(timer);
     }
   }
   return (key, params = {}) =>

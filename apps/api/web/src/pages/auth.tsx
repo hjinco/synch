@@ -82,8 +82,8 @@ export function AuthPage({
   }, [signup, returnTo, t]);
   useEffect(() => {
     if (!cooldown) return;
-    const timer = setTimeout(() => setCooldown((value) => value - 1), 1000);
-    return () => clearTimeout(timer);
+    const timer = window.setTimeout(() => setCooldown((value) => value - 1), 1000);
+    return () => window.clearTimeout(timer);
   }, [cooldown]);
 
   function verify(email: string) {

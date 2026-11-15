@@ -186,9 +186,12 @@
   }
 }
 
-button.synch-button-loading {
+button.synch-button-loading,
+button.synch-button-loading.mod-cta,
+button.synch-button-loading:hover,
+button.synch-button-loading:disabled {
   position: relative;
-  color: transparent !important;
+  color: transparent;
 }
 
 button.synch-button-loading > * {

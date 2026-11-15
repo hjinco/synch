@@ -129,8 +129,8 @@ export function VaultsPage({ t, locale }: PageProps<"vaults">) {
   }, [t, locale, loadVaults, retry]);
   useEffect(() => {
     if (loading || creating || deleting || connecting !== null || !vaults.some(isDeleting)) return;
-    const timer = setTimeout(() => void loadVaults(undefined, true), 2500);
-    return () => clearTimeout(timer);
+    const timer = window.setTimeout(() => void loadVaults(undefined, true), 2500);
+    return () => window.clearTimeout(timer);
   }, [vaults, loading, creating, deleting, connecting, loadVaults]);
   useEffect(() => {
     // Returning from Obsidian can add a vault created in the plugin.
