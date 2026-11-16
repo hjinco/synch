@@ -49,7 +49,6 @@ import type { UserVisibleSyncState } from "./user-visible-status";
 import type {
   SyncOperationProgress,
   UserVisibleSyncProgress,
-  VaultSyncProgress,
 } from "./user-visible-status";
 import type { SyncChangeSource } from "./change-source";
 import type { SyncVaultConfigSource } from "./vault-config-source";
@@ -66,9 +65,9 @@ import {
   type SyncBlockedSyncFile,
 } from "../engine/file-size-blocked";
 import {
-  SyncActivityTracker,
+  SyncActivityReporter,
   type SyncActivityKind,
-} from "../engine/sync-activity-tracker";
+} from "./sync-activity-reporter";
 import { reapplyAllowedRemoteVaultConfig } from "../engine/vault-config-reapply";
 
 const HIDDEN_FOLDER_RECONCILE_INTERVAL_MS = 60_000;
@@ -128,8 +127,7 @@ export class SyncEngine {
   private syncStore: SyncStore | null = null;
   private localMutationQueue: Promise<void> = Promise.resolve();
   private localMutationWorkCount = 0;
-  private readonly activities = new SyncActivityTracker();
-  private readonly activityProgress = new Map<number, SyncOperationProgress>();
+  private readonly activityReporter: SyncActivityReporter;
   private hiddenFolderReconcileTimer: ReturnType<typeof setInterval> | null = null;
   private hiddenFolderReconcilePromise: Promise<void> | null = null;
   private readonly syncEventGate = new SyncEventGate();
@@ -149,6 +147,12 @@ export class SyncEngine {
   private disposed = false;
 
   constructor(private readonly deps: SyncEngineDeps) {
+    this.activityReporter = new SyncActivityReporter({
+      setProgress: (progress) => this.deps.setSyncProgress(progress),
+      getBaselineProgress: async () => this.syncStore
+        ? await this.syncStore.countSyncProgress()
+        : { completedEntries: 0, totalEntries: 0 },
+    });
     this.ownsContentRuntime = !deps.contentRuntime;
     this.contentRuntime = deps.contentRuntime ?? new SyncContentRuntime({ maxBytesInFlight: deps.maxBytesInFlight });
     this.vaultAdapter = deps.vaultAdapter;
@@ -563,16 +567,7 @@ export class SyncEngine {
   }
 
   async refreshSyncProgress(): Promise<void> {
-    const store = this.syncStore;
-    if (!store) {
-      this.reportBaselineProgress({
-        completedEntries: 0,
-        totalEntries: 0,
-      });
-      return;
-    }
-
-    this.reportBaselineProgress(await store.countSyncProgress());
+    await this.activityReporter.refreshBaseline();
   }
 
   async hasPendingMutations(): Promise<boolean> {
@@ -750,34 +745,7 @@ export class SyncEngine {
     kind: SyncActivityKind,
     work: (report: (progress: SyncOperationProgress) => Promise<void>) => Promise<T>,
   ): Promise<T> {
-    const activity = this.activities.begin(kind);
-    try {
-      return await work(async (progress) => {
-        if (!this.activities.contains(activity)) {
-          return;
-        }
-        this.activityProgress.set(activity.id, progress);
-        if (this.activities.visibleRemoteActivity()?.id === activity.id) {
-          this.deps.setSyncProgress(progress);
-        }
-      });
-    } finally {
-      const wasVisible = this.activities.visibleRemoteActivity()?.id === activity.id;
-      this.activities.end(activity);
-      this.activityProgress.delete(activity.id);
-      const visible = this.activities.visibleRemoteActivity();
-      const progress = visible && this.activityProgress.get(visible.id);
-      if (wasVisible && progress) {
-        this.deps.setSyncProgress(progress);
-      }
-      await this.refreshSyncProgress();
-    }
-  }
-
-  private reportBaselineProgress(progress: VaultSyncProgress): void {
-    if (!this.activities.hasActiveActivities()) {
-      this.deps.setSyncProgress(progress);
-    }
+    return await this.activityReporter.run(kind, work);
   }
 
   private requireStore(): SyncStore {

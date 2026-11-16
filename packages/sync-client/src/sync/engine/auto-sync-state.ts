@@ -10,6 +10,7 @@ export type SyncConnectionState = "connecting" | "live" | "reconnecting";
 
 export class SyncAutoLoopState {
   private state: SyncLoopState = "stopped";
+  private runGeneration = 0;
 
   constructor(
     private readonly onConnectionStateChange?: (state: SyncConnectionState) => void,
@@ -19,8 +20,28 @@ export class SyncAutoLoopState {
     return this.state !== "stopped";
   }
 
-  set(state: SyncLoopState): void {
-    if (this.state === state) {
+  get generation(): number {
+    return this.runGeneration;
+  }
+
+  isCurrent(generation: number): boolean {
+    return this.isActive() && generation === this.runGeneration;
+  }
+
+  start(): void {
+    if (!this.isActive()) {
+      this.runGeneration += 1;
+      this.state = "live";
+    }
+  }
+
+  stop(): void {
+    this.state = "stopped";
+  }
+
+  set(state: Exclude<SyncLoopState, "stopped">): void {
+    // Only an explicit start may activate the loop. Late completions cannot.
+    if (!this.isActive() || this.state === state) {
       return;
     }
 

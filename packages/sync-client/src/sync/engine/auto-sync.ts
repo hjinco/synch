@@ -9,7 +9,7 @@ import {
 import type { PushPendingMutationsOptions, PushPendingMutationsResult, StalePushMutation } from "./push-service";
 import { RecoveryPendingDependenciesError } from "./pull-recovery-manifest";
 import {
-  SyncRealtimeClient,
+  type SyncRealtimeClient,
   SyncRealtimeConnectionError,
   SyncRealtimeError,
   type SyncRealtimeSession,
@@ -18,8 +18,10 @@ import {
 } from "../remote/realtime-client";
 import type { SyncCursorStore, SyncMutationStore } from "../store/ports";
 import { SyncAutoLoopState, type SyncConnectionState } from "./auto-sync-state";
+import { SyncSessionSubscriptions } from "./auto-sync-subscriptions";
 import { AutoSyncTimers } from "./auto-sync-timers";
 import { PendingSyncWorkQueue } from "./auto-sync-work-queue";
+import { pullWithReadOnlySession } from "./pull-only-session";
 
 const DEFAULT_PUSH_DEBOUNCE_MS = 100;
 const DEFAULT_RECONNECT_DELAY_MS = 3_000;
@@ -77,24 +79,29 @@ export interface SyncRealtimeClientLike {
 export class SyncAutoLoop {
   private readonly realtimeClient: SyncRealtimeClientLike;
   private realtimeSession: SyncRealtimeSession | null = null;
-  private connectPromise: Promise<void> | null = null;
+  private connectAttempt: { generation: number; promise: Promise<void> } | null = null;
+  private connectionGeneration = 0;
   private drainPromise: Promise<void> | null = null;
+  private pullOnlyPromise: Promise<void> | null = null;
   private readonly timers = new AutoSyncTimers();
   private reconnectAttempt = 0;
   private syncRetryAttempt = 0;
   private pushPriorityEntryIds: string[] = [];
   private readonly state: SyncAutoLoopState;
-  private storageStatusWatching = false;
-  private presenceWatching = false;
-  private presenceWatchEntryIds: string[] = [];
-  private presenceWatchSent = false;
-  private presenceAvailable = false;
-  private presenceSupported = true;
+  private readonly subscriptions: SyncSessionSubscriptions;
   private readonly pendingWork = new PendingSyncWorkQueue();
 
   constructor(private readonly deps: SyncAutoLoopDeps) {
     this.realtimeClient = deps.realtimeClient;
     this.state = new SyncAutoLoopState(deps.onConnectionStateChange);
+    this.subscriptions = new SyncSessionSubscriptions({
+      getSession: () => this.realtimeSession,
+      onStorageStatusChange: (status) => this.deps.onStorageStatusChange?.(status),
+      onPresenceAvailabilityChanged: (enabled) =>
+        this.deps.onPresenceAvailabilityChanged?.(enabled),
+      onPresenceSessionReset: () => this.deps.onPresenceSessionReset?.(),
+      onError: (error) => this.handleError(error),
+    });
   }
 
   async start(): Promise<boolean> {
@@ -102,21 +109,22 @@ export class SyncAutoLoop {
       return false;
     }
 
-    this.state.set("live");
+    this.assertNoPullOnlySession();
+    this.state.start();
     await this.ensureRealtimeSession();
     return true;
   }
 
   stop(): void {
-    this.state.set("stopped");
+    this.state.stop();
+    this.connectionGeneration += 1;
+    const session = this.realtimeSession;
+    this.realtimeSession = null;
     this.pendingWork.clear();
     this.pushPriorityEntryIds = [];
     this.timers.clearAll();
-    this.presenceWatchSent = false;
-    this.setPresenceAvailability(false);
-    this.deps.onPresenceSessionReset?.();
-    this.realtimeSession?.close();
-    this.realtimeSession = null;
+    this.subscriptions.resetPresence();
+    session?.close();
   }
 
   flushDebouncedPush(): void {
@@ -130,6 +138,7 @@ export class SyncAutoLoop {
   }
 
   async waitForInFlightDrain(): Promise<void> {
+    await this.pullOnlyPromise;
     await this.drain();
     while (this.drainPromise) {
       await this.drainPromise;
@@ -137,7 +146,7 @@ export class SyncAutoLoop {
   }
 
   hasInFlightWork(): boolean {
-    return this.drainPromise !== null || this.timers.has("push");
+    return this.pullOnlyPromise !== null || this.drainPromise !== null || this.timers.has("push");
   }
 
   notifyLocalChange(): void {
@@ -163,13 +172,14 @@ export class SyncAutoLoop {
       return false;
     }
 
+    const run = this.state.generation;
     this.timers.clear("push");
     this.deps.onSyncScheduled?.();
     this.requestPullWork(null);
     this.requestPush();
     await this.drain(true);
     return (
-      this.isActive() &&
+      this.state.isCurrent(run) &&
       !this.hasPendingWork() &&
       !this.timers.has("syncRetry") &&
       !this.timers.has("reconnect")
@@ -184,62 +194,25 @@ export class SyncAutoLoop {
    * push. It is intended for read-only replicas such as backup hosts.
    */
   async pullOnlyOnce(): Promise<void> {
-    if (this.isActive() || this.connectPromise || this.drainPromise) {
+    this.assertNoPullOnlySession();
+    if (this.isActive() || this.connectAttempt || this.drainPromise) {
       throw new Error(
         "Pull-only sync requires the auto-sync loop and all in-flight sync work to be stopped.",
       );
     }
 
-    const store = this.deps.getSyncStore();
-    if (!store) {
-      throw new Error("Sync store is not initialized.");
-    }
-
-    const pendingMutations = await store.listDirtyEntries(1);
-    if (pendingMutations.length > 0) {
-      throw new Error(
-        "Pull-only sync requires a read-only replica with no pending local changes. Use a fresh backup directory or resolve the pending changes with `synch sync` first.",
-      );
-    }
-
-    const token = await this.deps.getSyncToken();
-    const cursor = await store.getCursor();
-    let sessionError: Error | null = null;
-    const throwIfSessionFailed = () => {
-      if (sessionError) {
-        throw sessionError;
-      }
-    };
-    const session = await this.realtimeClient.openSession(
-      this.deps.getApiBaseUrl(),
-      token,
-      cursor,
-      {
-        onCursorAdvanced() {},
-        onStorageStatusUpdated() {},
-        onPolicyUpdated() {},
-        onPresenceUpdated() {},
-        onPresenceCleared() {},
-        onPresenceAvailabilityChanged() {},
-        onClose() {},
-        onError(error) {
-          sessionError ??= error;
-        },
-      },
-    );
-
+    const running = pullWithReadOnlySession(this.deps);
+    this.pullOnlyPromise = running;
     try {
-      if (cursor > session.serverCursor) {
-        throw new SyncRealtimeError(
-          "cursor_ahead_of_server",
-          "This device's sync history no longer matches the remote vault. Move .synch/sync.sqlite aside, then run `synch vault connect --vault-id <id>` to rebuild this read-only replica's sync state.",
-        );
-      }
-      throwIfSessionFailed();
-      await this.deps.pullOnce(session);
-      throwIfSessionFailed();
+      await running;
     } finally {
-      session.close();
+      this.pullOnlyPromise = null;
+    }
+  }
+
+  private assertNoPullOnlySession(): void {
+    if (this.pullOnlyPromise) {
+      throw new Error("Sync cannot open another session while a pull-only session is running.");
     }
   }
 
@@ -258,104 +231,61 @@ export class SyncAutoLoop {
   }
 
   setStorageStatusWatching(enabled: boolean): void {
-    if (this.storageStatusWatching === enabled) {
-      return;
-    }
-
-    this.storageStatusWatching = enabled;
-    if (!enabled) {
-      this.deps.onStorageStatusChange?.(null);
-    }
-    this.applyStorageStatusWatch();
+    this.subscriptions.setStorageStatusWatching(enabled);
   }
 
   setPresenceWatching(enabled: boolean): void {
-    if (this.presenceWatching === enabled) {
-      if (enabled && this.realtimeSession && this.presenceSupported && !this.presenceWatchSent) {
-        this.applyPresenceWatch();
-      }
-      return;
-    }
-
-    this.presenceWatching = enabled;
-    if (!enabled) {
-      this.presenceWatchEntryIds = [];
-      this.setPresenceAvailability(false);
-      this.deps.onPresenceSessionReset?.();
-    }
-    this.applyPresenceWatch();
+    this.subscriptions.setPresenceWatching(enabled);
   }
 
   setPresenceWatchEntryIds(entryIds: string[]): void {
-    const normalizedEntryIds = normalizePresenceEntryIds(entryIds);
-    if (samePresenceEntryIds(this.presenceWatchEntryIds, normalizedEntryIds)) {
-      return;
-    }
-
-    this.presenceWatchEntryIds = normalizedEntryIds;
-    this.presenceWatchSent = false;
-    if (this.presenceWatching) {
-      this.applyPresenceWatch();
-    }
+    this.subscriptions.setPresenceWatchEntryIds(entryIds);
   }
 
   updatePresence(entryId: string, selection: PresenceSelection): void {
-    if (!this.presenceWatching || !this.presenceSupported || !this.presenceAvailable) {
-      return;
-    }
-    const session = this.realtimeSession;
-    if (!session) {
-      return;
-    }
-    try {
-      session.updatePresence(entryId, selection);
-    } catch (error) {
-      if (!isRealtimeConnectionError(error)) {
-        this.handleError(error);
-      }
-    }
+    this.subscriptions.updatePresence(entryId, selection);
   }
 
   clearPresence(): void {
-    if (!this.presenceWatching || !this.presenceSupported || !this.presenceAvailable) {
-      return;
-    }
-    const session = this.realtimeSession;
-    if (!session) {
-      return;
-    }
-    try {
-      session.clearPresence();
-    } catch (error) {
-      if (!isRealtimeConnectionError(error)) {
-        this.handleError(error);
-      }
-    }
+    this.subscriptions.clearPresence();
   }
 
   async ensureRealtimeSession(): Promise<void> {
-    if (!this.isActive() || this.realtimeSession || this.connectPromise) {
-      return await (this.connectPromise ?? Promise.resolve());
-    }
-
-    this.connectPromise = this.openRealtimeSession();
-    try {
-      await this.connectPromise;
-    } finally {
-      this.connectPromise = null;
+    const run = this.state.generation;
+    while (this.state.isCurrent(run)) {
+      // The socket is assigned before initialization finishes. Every caller
+      // must join that initialization before treating the session as ready.
+      if (!this.connectAttempt && this.realtimeSession) return;
+      const attempt = this.connectAttempt ?? {
+        generation: this.connectionGeneration,
+        promise: this.openRealtimeSession(this.connectionGeneration),
+      };
+      this.connectAttempt = attempt;
+      try {
+        await attempt.promise;
+      } finally {
+        if (this.connectAttempt === attempt) this.connectAttempt = null;
+      }
+      // A restart can wait for an obsolete attempt, but must then open its own
+      // session with fresh credentials. Ordinary failures retain their backoff.
+      if (attempt.generation === this.connectionGeneration || this.timers.has("reconnect")) {
+        return;
+      }
     }
   }
 
   async withRealtimeSession<T>(
     work: (session: SyncRealtimeSession) => Promise<T>,
   ): Promise<T> {
+    this.assertNoPullOnlySession();
     if (!this.isActive()) {
-      this.state.set("live");
+      this.state.start();
     }
 
+    const run = this.state.generation;
     await this.ensureRealtimeSession();
     const session = this.realtimeSession;
-    if (!session) {
+    if (!this.state.isCurrent(run) || !session) {
       throw new Error("Sync realtime session is not connected.");
     }
 
@@ -373,7 +303,7 @@ export class SyncAutoLoop {
   }
 
   async resumeConnection(): Promise<void> {
-    if (!this.isActive() || this.realtimeSession) {
+    if (!this.isActive()) {
       return;
     }
 
@@ -381,7 +311,13 @@ export class SyncAutoLoop {
     await this.ensureRealtimeSession();
   }
 
-  private async openRealtimeSession(): Promise<void> {
+  private isCurrentConnection(generation: number): boolean {
+    return this.isActive() && generation === this.connectionGeneration;
+  }
+
+  private async openRealtimeSession(generation: number): Promise<void> {
+    const run = this.state.generation;
+    let session: SyncRealtimeSession | null = null;
     try {
       this.state.set("connecting");
       const store = this.deps.getSyncStore();
@@ -390,31 +326,40 @@ export class SyncAutoLoop {
       }
 
       const token = await this.deps.getSyncToken();
+      if (!this.isCurrentConnection(generation)) return;
       const cursor = await store.getCursor();
-      const session = await this.realtimeClient.openSession(
+      if (!this.isCurrentConnection(generation)) return;
+      session = await this.realtimeClient.openSession(
         this.deps.getApiBaseUrl(),
         token,
         cursor,
         {
           onCursorAdvanced: (nextCursor) => {
+            if (!this.isCurrentConnection(generation)) return;
             this.requestPull(nextCursor);
           },
           onStorageStatusUpdated: (status) => {
+            if (!this.isCurrentConnection(generation)) return;
             this.deps.onStorageStatusChange?.(status);
           },
           onPolicyUpdated: (_policy, storageStatus) => {
-            void this.handlePolicyUpdated(storageStatus);
+            if (!this.isCurrentConnection(generation)) return;
+            void this.handlePolicyUpdated(storageStatus, generation);
           },
           onPresenceUpdated: (update) => {
+            if (!this.isCurrentConnection(generation)) return;
             this.deps.onPresenceUpdated?.(update);
           },
           onPresenceCleared: (presenceId) => {
+            if (!this.isCurrentConnection(generation)) return;
             this.deps.onPresenceCleared?.(presenceId);
           },
           onPresenceAvailabilityChanged: (enabled) => {
-            this.setPresenceAvailability(enabled);
+            if (!this.isCurrentConnection(generation)) return;
+            this.subscriptions.setPresenceAvailability(enabled);
           },
           onClose: (event) => {
+            if (!this.isCurrentConnection(generation)) return;
             if (isSyncPausedClose(event)) {
               this.handleError(new SyncRealtimeError("sync_paused", "vault sync is temporarily paused for repair"));
               return;
@@ -431,6 +376,7 @@ export class SyncAutoLoop {
             this.markRealtimeDisconnected();
           },
           onError: (error) => {
+            if (!this.isCurrentConnection(generation)) return;
             if (
               !isRealtimeConnectionError(error) &&
               !isCursorAheadOfServerError(error)
@@ -440,53 +386,43 @@ export class SyncAutoLoop {
           },
         },
       );
-      if (!this.isActive()) {
+      if (!this.isCurrentConnection(generation)) {
         session.close();
         return;
       }
 
       this.realtimeSession = session;
-      try {
-        if (cursor > session.serverCursor) {
-          throw new SyncRealtimeError(
-            "cursor_ahead_of_server",
-            "Sync was paused because this device's sync history no longer matches the remote vault. To resume syncing, disconnect and reconnect the remote vault in Synch settings.",
-          );
-        }
-        this.reconnectAttempt = 0;
-        this.presenceSupported = session.presenceSupported !== false;
-        this.presenceWatchSent = false;
-        this.setPresenceAvailability(false);
-        if (this.storageStatusWatching) {
-          this.applyStorageStatusWatch();
-        }
-        if (this.presenceWatching && this.presenceSupported) {
-          this.applyPresenceWatch();
-        }
-        const unblockedFileSizeMutations =
-          (await this.deps.unblockFileSizeBlockedMutations?.(session)) ?? 0;
-        if (unblockedFileSizeMutations > 0) {
-          this.requestPush();
-          this.reportQueuedWork();
-        }
-        if (session.serverCursor > cursor) {
-          this.requestPullWork(session.serverCursor);
-          this.reportQueuedWork();
-        }
-        this.state.set("live");
-        if (this.hasPendingWork() && !this.shouldDeferSyncWork()) {
-          void this.drain();
-        } else if (!this.hasPendingWork()) {
-          this.deps.onIdle?.();
-        }
-      } catch (error) {
-        if (this.realtimeSession === session) {
-          this.realtimeSession = null;
-        }
-        session.close();
-        throw error;
+      if (cursor > session.serverCursor) {
+        throw new SyncRealtimeError(
+          "cursor_ahead_of_server",
+          "Sync was paused because this device's sync history no longer matches the remote vault. To resume syncing, disconnect and reconnect the remote vault in Synch settings.",
+        );
+      }
+      this.reconnectAttempt = 0;
+      this.timers.clear("reconnect");
+      this.subscriptions.restore(session);
+      if (!this.isCurrentConnection(generation)) return;
+      await this.unblockFileSizeBlockedMutations(session, run);
+      if (!this.isCurrentConnection(generation)) return;
+      if (session.serverCursor > cursor) {
+        this.requestPullWork(session.serverCursor);
+        this.reportQueuedWork();
+      }
+      this.state.set("live");
+      if (this.hasPendingWork() && !this.shouldDeferSyncWork()) {
+        void this.drain();
+      } else if (!this.hasPendingWork()) {
+        this.deps.onIdle?.();
       }
     } catch (error) {
+      if (!this.isCurrentConnection(generation)) return;
+      // Invalidate callbacks before closing; close may synchronously emit events.
+      this.connectionGeneration += 1;
+      this.realtimeSession = null;
+      if (session) {
+        this.subscriptions.disconnect();
+        session.close();
+      }
       if (isCursorAheadOfServerError(error)) {
         this.stop();
         this.handleError(error);
@@ -527,107 +463,58 @@ export class SyncAutoLoop {
     }
 
     const session = this.realtimeSession;
+    this.connectionGeneration += 1;
     this.realtimeSession = null;
-    this.presenceWatchSent = false;
-    this.deps.onStorageStatusChange?.(null);
-    this.setPresenceAvailability(false);
-    this.deps.onPresenceSessionReset?.();
+    this.subscriptions.disconnect();
     session?.close();
     if (scheduleReconnect) {
       this.scheduleReconnect();
     }
   }
 
-  private setPresenceAvailability(enabled: boolean): void {
-    if (this.presenceAvailable === enabled) {
-      return;
-    }
-    this.presenceAvailable = enabled;
-    this.deps.onPresenceAvailabilityChanged?.(enabled);
-  }
-
-  private async handlePolicyUpdated(storageStatus: SyncStorageStatus): Promise<void> {
-    if (!this.isActive()) {
+  private async handlePolicyUpdated(storageStatus: SyncStorageStatus, generation: number): Promise<void> {
+    if (!this.isCurrentConnection(generation)) {
       return;
     }
 
-    if (this.storageStatusWatching) {
-      this.deps.onStorageStatusChange?.(storageStatus);
-    }
+    this.subscriptions.reportPolicyStorageStatus(storageStatus);
 
     const session = this.realtimeSession;
     if (!session) {
       return;
     }
 
+    const run = this.state.generation;
     try {
-      const unblockedFileSizeMutations =
-        (await this.deps.unblockFileSizeBlockedMutations?.(session)) ?? 0;
-      if (unblockedFileSizeMutations > 0) {
-        this.requestPush();
-        this.reportQueuedWork();
+      if (await this.unblockFileSizeBlockedMutations(session, run)) {
         if (!this.shouldDeferSyncWork()) {
           void this.drain();
         }
       }
     } catch (error) {
+      if (!this.isCurrentConnection(generation)) return;
       if (!isRealtimeConnectionError(error)) {
         this.handleError(error);
       }
     }
   }
 
-  private applyStorageStatusWatch(): void {
-    const session = this.realtimeSession;
-    if (!session) {
-      return;
-    }
+  private async unblockFileSizeBlockedMutations(
+    session: SyncRealtimeSession,
+    run: number,
+  ): Promise<boolean> {
+    const unblocked = (await this.deps.unblockFileSizeBlockedMutations?.(session)) ?? 0;
+    if (!this.state.isCurrent(run) || unblocked === 0) return false;
 
-    try {
-      if (this.storageStatusWatching) {
-        session.watchStorageStatus();
-        this.deps.onStorageStatusChange?.({
-          storageUsedBytes: session.storageUsedBytes,
-          storageLimitBytes: session.storageLimitBytes,
-        });
-      } else {
-        session.unwatchStorageStatus();
-      }
-    } catch (error) {
-      if (!isRealtimeConnectionError(error)) {
-        this.handleError(error);
-      }
-    }
-  }
-
-  private applyPresenceWatch(): void {
-    const session = this.realtimeSession;
-    if (!session || !this.presenceSupported) {
-      return;
-    }
-
-    try {
-      if (this.presenceWatching) {
-        if (this.presenceWatchSent) {
-          return;
-        }
-        session.watchPresence(this.presenceWatchEntryIds);
-        this.presenceWatchSent = true;
-      } else {
-        if (!this.presenceWatchSent) {
-          return;
-        }
-        session.unwatchPresence();
-        this.presenceWatchSent = false;
-      }
-    } catch (error) {
-      if (!isRealtimeConnectionError(error)) {
-        this.handleError(error);
-      }
-    }
+    // These changes are already durable. A reconnect within this run must keep
+    // their upload notification even when the originating session was replaced.
+    this.requestPush();
+    this.reportQueuedWork();
+    return true;
   }
 
   private async drain(force = false): Promise<void> {
+    const run = this.state.generation;
     if (
       !this.isActive() ||
       (!force && (this.shouldDeferSyncWork() || this.timers.has("syncRetry")))
@@ -635,13 +522,15 @@ export class SyncAutoLoop {
       return await (this.drainPromise ?? Promise.resolve());
     }
     if (this.drainPromise) {
-      return await this.drainPromise;
+      await this.drainPromise;
+      if (this.state.isCurrent(run)) await this.drain(force);
+      return;
     }
     if (!this.hasPendingWork()) {
       return;
     }
 
-    const running = this.drainUntilIdle();
+    const running = this.drainUntilIdle(run);
     this.drainPromise = running;
     try {
       await running;
@@ -655,14 +544,14 @@ export class SyncAutoLoop {
     }
   }
 
-  private async drainUntilIdle(): Promise<void> {
-    await this.runDrainLoop();
-    while (this.shouldContinueDrain()) {
-      await this.runDrainLoop();
+  private async drainUntilIdle(run: number): Promise<void> {
+    await this.runDrainLoop(run);
+    while (this.state.isCurrent(run) && this.shouldContinueDrain()) {
+      await this.runDrainLoop(run);
     }
 
     if (
-      this.isActive() &&
+      this.state.isCurrent(run) &&
       !this.hasPendingWork() &&
       !this.timers.has("reconnect") &&
       !this.timers.has("syncRetry")
@@ -682,9 +571,9 @@ export class SyncAutoLoop {
     );
   }
 
-  private async runDrainLoop(): Promise<void> {
+  private async runDrainLoop(run: number): Promise<void> {
     this.state.set("draining");
-    while (this.isActive() && this.hasPendingWork()) {
+    while (this.state.isCurrent(run) && this.hasPendingWork()) {
       const work = this.takePendingWork();
       const shouldPush = work.push;
       const shouldPull = work.pullTargetCursor !== null;
@@ -696,6 +585,7 @@ export class SyncAutoLoop {
         let session: SyncRealtimeSession | null = null;
         if (shouldPush || shouldPullNow) {
           await this.ensureRealtimeSession();
+          if (!this.state.isCurrent(run)) return;
           session = this.realtimeSession;
           if (!session) {
             if (shouldPush) {
@@ -716,6 +606,7 @@ export class SyncAutoLoop {
             throw new Error("Sync realtime session is not connected.");
           }
           await this.deps.pullOnce(session);
+          if (!this.state.isCurrent(run)) return;
           shouldPullNow = false;
         }
         if (shouldPush) {
@@ -724,9 +615,10 @@ export class SyncAutoLoop {
           }
           const pushResult = await this.deps.pushPendingMutations(
             session,
-            () => !this.isActive() || this.pendingWork.pullTargetCursor !== null,
+            () => !this.state.isCurrent(run) || this.pendingWork.pullTargetCursor !== null,
             { priorityEntryIds: this.pushPriorityEntryIds },
           );
+          if (!this.state.isCurrent(run)) return;
           pushCompleted = true;
           if (!pushResult.hasMore) this.pushPriorityEntryIds = [];
           staleMutations = pushResult.staleMutations ?? [];
@@ -734,8 +626,10 @@ export class SyncAutoLoop {
             try {
               await this.deps.onStorageQuotaExceeded?.();
             } finally {
-              this.stop();
-              this.deps.onTerminalStop?.({ type: "storage_quota_exceeded" });
+              if (this.state.isCurrent(run)) {
+                this.stop();
+                this.deps.onTerminalStop?.({ type: "storage_quota_exceeded" });
+              }
             }
             return;
           }
@@ -749,13 +643,17 @@ export class SyncAutoLoop {
             throw new Error("Sync realtime session is not connected.");
           }
           await this.deps.pullOnce(session);
+          if (!this.state.isCurrent(run)) return;
           shouldPullNow = false;
         }
         if (session && staleMutations.length > 0) {
           let unresolved = await this.unresolvedStaleEntries(staleMutations);
+          if (!this.state.isCurrent(run)) return;
           if (unresolved.length > 0 && this.deps.recoverEntryStates) {
             await this.deps.recoverEntryStates(session, unresolved);
+            if (!this.state.isCurrent(run)) return;
             unresolved = await this.unresolvedStaleEntries(staleMutations);
+            if (!this.state.isCurrent(run)) return;
           }
           if (unresolved.length > 0) {
             // An empty delta is not progress. Keep the pending mutations and
@@ -768,6 +666,7 @@ export class SyncAutoLoop {
         }
         this.resetSyncRetry();
       } catch (error) {
+        if (!this.state.isCurrent(run)) return;
         if (error instanceof RecoveryPendingDependenciesError) {
           this.pushPriorityEntryIds = error.entryIds;
           this.requestPush();
@@ -908,17 +807,4 @@ function isCursorAheadOfServerError(error: unknown): error is SyncRealtimeError 
   return (
     error instanceof SyncRealtimeError && error.code === "cursor_ahead_of_server"
   );
-}
-
-function normalizePresenceEntryIds(entryIds: string[]): string[] {
-  return [...new Set(entryIds.map((entryId) => entryId.trim()).filter(Boolean))].slice(0, 100);
-}
-
-function samePresenceEntryIds(left: string[], right: string[]): boolean {
-  if (left.length !== right.length) {
-    return false;
-  }
-
-  const rightSet = new Set(right);
-  return left.every((entryId) => rightSet.has(entryId));
 }

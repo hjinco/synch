@@ -1,9 +1,7 @@
 import type { SyncedEntryMetadata } from "../core/content";
 import type { RemoteEntryState } from "../remote/changes";
 import type {
-  LocalSyncEntryRow,
   PendingMutationRow,
-  RemoteSyncEntryRow,
   SyncEntryRow,
 } from "../store/store";
 
@@ -99,11 +97,6 @@ export type PreparedManifestApplication = {
   pendingConflicts: PreparedPendingConflict[];
   batches: PreparedPathBatch[];
   deferred: PullEntryStateManifestItem[];
-};
-
-export type SnapshotEntryState = {
-  remote: RemoteSyncEntryRow | null;
-  local: LocalSyncEntryRow | null;
 };
 
 export function uniqueSyncPaths(

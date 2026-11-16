@@ -7,7 +7,6 @@ import type { ContentReservation, SyncContentRuntimeDeps } from "../core/content
 import type { SyncTokenResponse } from "../remote/client";
 import type { RemoteEntryState } from "../remote/changes";
 import type { SyncBlobClient } from "../remote/blob-client";
-import type { PendingMutationRow } from "../store/store";
 import type {
   SyncBlobStore,
   SyncEntryStore,
@@ -24,6 +23,7 @@ import type { SyncVaultAccess } from "../vault/ports";
 import type { SyncEventGateLike } from "./event-gate";
 import { groupPullApplications, pullPlanFilePaths } from "./pull-application-groups";
 import { runPullPreparationPipeline } from "./pull-preparation-pipeline";
+import { capturePullStoreSnapshot } from "./pull-store-snapshot";
 import { PullBlobPreparer } from "./pull-blob-preparer";
 import { PullManifestPlanner, type PullManifestStore } from "./pull-manifest-planner";
 import { PullPendingMutationHandler } from "./pull-pending-mutation-handler";
@@ -38,7 +38,6 @@ import {
   type PullRollbackEvent,
   type PlannedEntryState,
   type PreparedManifestApplication,
-  type SnapshotEntryState,
   uniquePendingConflicts,
   uniqueSyncPaths,
 } from "./pull-entry-state-internal";
@@ -454,8 +453,7 @@ export class PullEntryStateApplier {
     store: PullEntryStateStore,
     prepared: PreparedManifestApplication,
   ): Promise<number> {
-    const originalEntries = await this.snapshotManifestEntries(store, prepared);
-    const originalDirtyEntries = await this.snapshotDirtyEntries(store, prepared);
+    const snapshot = await capturePullStoreSnapshot(store, prepared);
     const pendingConflictsByPlan = groupPendingConflictsByPlan(prepared.pendingConflicts);
     const fileEvents = prepared.plans.map((plan) => ({
       operation: plan.state.deleted ? "delete" as const : "upsert" as const,
@@ -562,8 +560,7 @@ export class PullEntryStateApplier {
           reason: "apply_failed",
         });
       }
-      await this.restoreManifestEntries(store, originalEntries);
-      await this.restoreDirtyEntries(store, originalDirtyEntries);
+      await snapshot.restore();
       throw error;
     }
   }
@@ -687,105 +684,6 @@ export class PullEntryStateApplier {
         localMtime: null,
         localSize: null,
       });
-    }
-  }
-
-  private async snapshotManifestEntries(
-    store: PullEntryStateStore,
-    prepared: PreparedManifestApplication,
-  ): Promise<Map<string, SnapshotEntryState>> {
-    const entryIds = new Set<string>();
-    for (const plan of prepared.plans) {
-      entryIds.add(plan.state.entryId);
-      if (plan.adoptedLocalEntry) {
-        entryIds.add(plan.adoptedLocalEntry.entry.entryId);
-      }
-      if (plan.supersededPathOwner) {
-        entryIds.add(plan.supersededPathOwner.entryId);
-      }
-    }
-    for (const entry of [...prepared.superseded, ...prepared.skipped]) {
-      entryIds.add(entry.state.entryId);
-    }
-
-    const entries = new Map<string, SnapshotEntryState>();
-    for (const entryId of entryIds) {
-      entries.set(entryId, {
-        remote: await store.getRemoteStateById(entryId),
-        local: await store.getLocalStateById(entryId),
-      });
-    }
-    return entries;
-  }
-
-  private async snapshotDirtyEntries(
-    store: PullEntryStateStore,
-    prepared: PreparedManifestApplication,
-  ): Promise<Map<string, PendingMutationRow | null>> {
-    const entryIds = new Set<string>();
-    for (const plan of prepared.plans) {
-      entryIds.add(plan.state.entryId);
-      if (plan.adoptedLocalEntry) {
-        entryIds.add(plan.adoptedLocalEntry.entry.entryId);
-      }
-      if (plan.supersededPathOwner) {
-        entryIds.add(plan.supersededPathOwner.entryId);
-      }
-    }
-    for (const entry of prepared.superseded) {
-      entryIds.add(entry.state.entryId);
-    }
-    for (const pendingConflict of prepared.pendingConflicts) {
-      entryIds.add(pendingConflict.pending.entryId);
-    }
-
-    const dirtyEntries = new Map<string, PendingMutationRow | null>();
-    for (const entryId of entryIds) {
-      dirtyEntries.set(entryId, await store.getDirtyEntryMutation(entryId));
-    }
-    return dirtyEntries;
-  }
-
-  private async restoreManifestEntries(
-    store: PullEntryStateStore,
-    entries: ReadonlyMap<string, SnapshotEntryState>,
-  ): Promise<void> {
-    for (const entryId of entries.keys()) {
-      await store.clearRemoteState(entryId);
-      await store.clearLocalState(entryId);
-    }
-
-    for (const [entryId, entry] of entries) {
-      if (entry.remote) {
-        await store.applyRemoteState(entry.remote);
-      } else {
-        await store.clearRemoteState(entryId);
-      }
-
-      if (entry.local) {
-        await store.applyLocalState(entry.local);
-      } else {
-        await store.clearLocalState(entryId);
-      }
-
-      if (!entry.remote && !entry.local && !(await store.getDirtyEntryMutation(entryId))) {
-        await store.deleteEntry(entryId);
-      }
-    }
-  }
-
-  private async restoreDirtyEntries(
-    store: PullEntryStateStore,
-    entries: ReadonlyMap<string, PendingMutationRow | null>,
-  ): Promise<void> {
-    for (const [entryId, mutation] of entries) {
-      const current = await store.getDirtyEntryMutation(entryId);
-      if (current) {
-        await store.clearDirtyEntryByMutationId(current.mutationId);
-      }
-      if (mutation) {
-        await store.markEntryDirty(mutation);
-      }
     }
   }
 

@@ -10,6 +10,46 @@ import {
 } from "./helpers";
 
 describe("SyncAutoLoop pull-only", () => {
+  it.each(["success", "failure"])("excludes other sessions until a pull-only %s completes", async (outcome) => {
+    const store = createTestSyncStore();
+    let finish!: () => void;
+    const pending = new Promise<void>((resolve) => { finish = resolve; });
+    const pullOnce = vi.fn(async () => {
+      await pending;
+      if (outcome === "failure") throw new Error("pull failed");
+    });
+    const openSession = vi.fn(createRealtimeClient().openSession);
+    const autoLoop = new SyncAutoLoop({
+      getApiBaseUrl: () => "http://127.0.0.1:8787",
+      getSyncToken: async () => createToken(),
+      getSyncStore: () => store,
+      pushPendingMutations: vi.fn(async () => createPushResult()),
+      pullOnce,
+      realtimeClient: { openSession },
+    });
+    const pull = autoLoop.pullOnlyOnce();
+    const result = pull.catch((error: unknown) => error);
+    try {
+      await vi.waitFor(() => expect(pullOnce).toHaveBeenCalledTimes(1));
+      expect(autoLoop.hasInFlightWork()).toBe(true);
+      await expect(autoLoop.start()).rejects.toThrow("pull-only session");
+      await expect(autoLoop.withRealtimeSession(async () => {})).rejects.toThrow("pull-only session");
+      await expect(autoLoop.pullOnlyOnce()).rejects.toThrow("pull-only session");
+      expect(openSession).toHaveBeenCalledTimes(1);
+      finish();
+      if (outcome === "failure") expect(await result).toEqual(new Error("pull failed"));
+      else expect(await result).toBeUndefined();
+      expect(autoLoop.hasInFlightWork()).toBe(false);
+      expect(await autoLoop.start()).toBe(true);
+      expect(openSession).toHaveBeenCalledTimes(2);
+    } finally {
+      finish();
+      await result;
+      autoLoop.stop();
+      await store.close();
+    }
+  });
+
   it("pulls once without scheduling pending local mutations for push", async () => {
     const store = createTestSyncStore();
     await store.setCursor(4);
