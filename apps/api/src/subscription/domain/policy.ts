@@ -27,11 +27,6 @@ export type SubscriptionPlanPolicy = {
 	id: SubscriptionPlanId;
 	name: string;
 	badge?: string;
-	pricing: {
-		monthlyUsd: number;
-		annualMonthlyUsd: number;
-		annualUsd: number;
-	} | null;
 	limits: {
 		syncedVaults: number;
 		storageLimitBytes: number;
@@ -63,11 +58,6 @@ export const SUBSCRIPTION_PLAN_POLICIES = {
 	free: {
 		id: "free",
 		name: "Sync Free",
-		pricing: {
-			monthlyUsd: 0,
-			annualMonthlyUsd: 0,
-			annualUsd: 0,
-		},
 		limits: {
 			syncedVaults: 1,
 			storageLimitBytes: 30 * BYTES_PER_MB,
@@ -83,11 +73,6 @@ export const SUBSCRIPTION_PLAN_POLICIES = {
 		id: "starter",
 		name: "Sync Starter",
 		badge: "$1/month",
-		pricing: {
-			monthlyUsd: 1,
-			annualMonthlyUsd: 10 / 12,
-			annualUsd: 10,
-		},
 		limits: {
 			syncedVaults: 1,
 			storageLimitBytes: BYTES_PER_GB,
@@ -102,12 +87,6 @@ export const SUBSCRIPTION_PLAN_POLICIES = {
 	plus: {
 		id: "plus",
 		name: "Sync Plus",
-		// Flat organization pricing includes up to three members, including the owner.
-		pricing: {
-			monthlyUsd: 9,
-			annualMonthlyUsd: 90 / 12,
-			annualUsd: 90,
-		},
 		limits: {
 			syncedVaults: 3,
 			storageLimitBytes: 5 * BYTES_PER_GB,
@@ -119,11 +98,6 @@ export const SUBSCRIPTION_PLAN_POLICIES = {
 	self_hosted: {
 		id: "self_hosted",
 		name: "Self Hosted",
-		pricing: {
-			monthlyUsd: 0,
-			annualMonthlyUsd: 0,
-			annualUsd: 0,
-		},
 		limits: {
 			syncedVaults: 0,
 			storageLimitBytes: 0,
