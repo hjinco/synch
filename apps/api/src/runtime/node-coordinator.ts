@@ -95,7 +95,7 @@ export function createNodeCoordinatorRuntime(
 		// Node policies are process configuration. Refresh lazily opened existing
 		// vaults before requests or maintenance; historical expiry dates stay intact.
 		await application.refreshVaultPolicy(vaultId);
-		maintenanceScheduler.ensureArmed();
+		await maintenanceScheduler.ensureArmed();
 	})();
 
 	return {

@@ -1,5 +1,5 @@
 import { DrizzleVaultStore } from "../vault/adapters/outbound/drizzle-vault-store";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { createClient, type Client } from "@libsql/client";
 import { drizzle } from "drizzle-orm/libsql";
 import { migrate } from "drizzle-orm/libsql/migrator";
@@ -8,15 +8,18 @@ import { eq } from "drizzle-orm";
 import { createLibsqlDb } from "../db/client";
 import * as s from "../db/d1";
 import { DrizzleSharingStore } from "./adapters/drizzle-sharing-store";
-import { SharingService } from "./application/service";
+import { createSharingService, type SharingConfig } from "./application/service";
+import { EmailInvitationSender } from "./adapters/email-invitation-sender";
+import { createSharingFeature } from "../composition/features/create-sharing-feature";
 import { SharingAccess } from "./application/access";
 import { getSubscriptionPlanPolicy } from "../subscription/domain/policy";
 
 const clients: Client[] = [];
 afterEach(() => {
 	clients.splice(0).forEach((c) => c.close());
+	vi.restoreAllMocks();
 });
-async function setup() {
+async function setup(config: Partial<SharingConfig> = {}) {
 	const client = createClient({ url: ":memory:" });
 	clients.push(client);
 	await migrate(drizzle(client), {
@@ -58,11 +61,11 @@ async function setup() {
 	const policy = {
 		readOrganizationPolicy: async () => getSubscriptionPlanPolicy(plan),
 	};
-	const service = new SharingService(
+	const service = createSharingService(
 		store,
 		policy,
 		{ refreshSharingAccess: async () => {} },
-		{ baseURL: "https://example.com", requireVerifiedEmail: true },
+		{ baseURL: "https://example.com", requireVerifiedEmail: true, ...config },
 	);
 	return {
 		db,
@@ -94,6 +97,70 @@ const wrapper = (userId: string) => ({
 });
 
 describe("organization vault sharing", () => {
+	it("retains invitations when email fails and enforces the cooldown before retrying", async () => {
+		const now = Date.now();
+		const clock = vi.spyOn(Date, "now").mockReturnValue(now);
+		const send = vi.fn().mockRejectedValueOnce(new Error("mail unavailable")).mockResolvedValue(undefined);
+		const { service, store } = await setup({
+			invitationEmail: new EmailInvitationSender({ send }, "Synch <hello@example.com>"),
+		});
+		const { invite, resend } = service;
+		const invitation = await invite(actor("owner"), "org", { email: " Alice@Example.com ", role: "member" });
+		expect(invitation.emailSent).toBe(false);
+		expect(await store.invitation(invitation.id)).toMatchObject({ email: "alice@example.com", status: "pending" });
+		await expect(resend("owner", "org", invitation.id)).rejects.toMatchObject({ code: "delivery_rate_limited" });
+		expect(send).toHaveBeenCalledTimes(1);
+		clock.mockReturnValue(now + 60_000);
+		expect(await resend("owner", "org", invitation.id)).toEqual({ ...invitation, emailSent: true });
+		expect(send).toHaveBeenLastCalledWith({
+			from: "Synch <hello@example.com>",
+			to: "alice@example.com",
+			subject: "Invitation to a Synch organization",
+			text: `Sign in with this email address to review your Synch invitation:\n\n${invitation.url}\n\nYour vault password and encryption keys are never included in invitations.`,
+		});
+	});
+
+	it.each([
+		{ transport: false, from: undefined, sent: false },
+		{ transport: true, from: undefined, sent: false },
+		{ transport: false, from: "hello@example.com", sent: false },
+		{ transport: true, from: "", sent: false },
+		{ transport: true, from: "hello@example.com", sent: true },
+	])("wires invitation delivery for $transport / $from", async ({ transport, from, sent }) => {
+		const { db } = await setup();
+		const send = vi.fn(async () => {});
+		const { service } = createSharingFeature({
+			db,
+			policyReader: { readOrganizationPolicy: async () => getSubscriptionPlanPolicy("plus") },
+			invalidator: { refreshSharingAccess: async () => {} },
+		}, {
+			baseURL: "https://example.com",
+			requireVerifiedEmail: true,
+			email: transport ? { send } : undefined,
+			emailFrom: from,
+		});
+		const invitation = await service.invite(actor("owner"), "org", { email: "alice@example.com", role: "member" });
+		expect(invitation.emailSent).toBe(sent);
+		expect(send).toHaveBeenCalledTimes(sent ? 1 : 0);
+		if (!sent) {
+			expect((await service.resend("owner", "org", invitation.id)).emailSent).toBe(false);
+		}
+	});
+
+	it("preserves invitation allowlists and recipient verification after service composition", async () => {
+		const { service, db, store } = await setup({ allowedEmails: " Alice@Example.com , " });
+		await expect(service.invite(actor("owner"), "org", { email: "bob@example.com", role: "member" }))
+			.rejects.toMatchObject({ code: "email_not_allowed" });
+		expect(await store.invitations("org")).toEqual([]);
+		const invitation = await service.invite(actor("owner"), "org", { email: "alice@example.com", role: "member" });
+		await db.update(s.user).set({ emailVerified: false }).where(eq(s.user.id, "alice"));
+		await expect(service.respond(actor("alice"), invitation.id, true)).rejects.toMatchObject({ code: "verify_email" });
+		expect(await store.membership("org", "alice")).toBeNull();
+		await db.update(s.user).set({ emailVerified: true }).where(eq(s.user.id, "alice"));
+		await service.respond(actor("alice"), invitation.id, true);
+		expect(await store.membership("org", "alice")).toMatchObject({ role: "member" });
+	});
+
 	it.each(["admin", "member"] as const)("gives %s every current and future vault while requiring key approval", async (role) => {
 		const { service, store, db, access } = await setup();
 		const invite = await service.invite(actor("owner"), "org", { email: actor("alice").email, role });
@@ -348,7 +415,7 @@ describe("organization vault sharing", () => {
 			),
 		).rejects.toMatchObject({ code: "request_changed" });
 		expect(await store.passwordWrapper("vault-a", "alice")).toEqual(newWrapper);
-		const failing = new SharingService(
+		const failing = createSharingService(
 			store,
 			{ readOrganizationPolicy: async () => getSubscriptionPlanPolicy("plus") },
 			{

@@ -1,6 +1,4 @@
-import { DrizzleSharingStore } from "../sharing/adapters/drizzle-sharing-store";
-import { SharingService } from "../sharing/application/service";
-import { SharingAccess } from "../sharing/application/access";
+import { createSharingFeature } from "./features/create-sharing-feature";
 import { createApp } from "../app";
 import type { AuthFeatureConfig } from "../auth/better-auth";
 import type { BillingApplicationConfig } from "../billing/application";
@@ -88,25 +86,22 @@ export function createApiApplication(
 		},
 		billingFeature.authPlugin ? [billingFeature.authPlugin] : [],
 	);
-	const sharingStore = new DrizzleSharingStore(deps.db);
-	const sharingAccess = new SharingAccess(
-		sharingStore,
-		subscriptionFeature.policyReader,
-	);
-	const sharing = new SharingService(
-		sharingStore,
-		subscriptionFeature.policyReader,
-		coordinatorProxyRepository,
-		{
-			...config.auth,
-			billingBaseURL: config.billing?.wwwBaseUrl,
-			requireVerifiedEmail:
-				capabilities.emailVerification === "required" && !config.auth.devMode,
-		},
-	);
+	const sharingFeature = createSharingFeature({
+		db: deps.db,
+		policyReader: subscriptionFeature.policyReader,
+		invalidator: coordinatorProxyRepository,
+	}, {
+		baseURL: config.auth.baseURL,
+		billingBaseURL: config.billing?.wwwBaseUrl,
+		requireVerifiedEmail:
+			capabilities.emailVerification === "required" && !config.auth.devMode,
+		allowedEmails: config.auth.allowedEmails,
+		email: config.auth.email,
+		emailFrom: config.auth.emailFrom,
+	});
 	const syncAccessFeature = createSyncAccessFeature({
 		vaultService: vaultFeature.service,
-		accessReader: (userId, vaultId) => sharingAccess.require(userId, vaultId),
+		accessReader: (userId, vaultId) => sharingFeature.access.require(userId, vaultId),
 		accessVerifier: async (claims, token) =>
 			coordinatorProxyRepository.authorizeSync(claims.vaultId, token, claims),
 		coordinatorNamespace: deps.coordinatorNamespace,
@@ -120,10 +115,10 @@ export function createApiApplication(
 		objectKeyBuilder: { blobObjectKey, blobObjectKeyPrefix },
 	});
 	return {
-		flushSharingRefreshes: () => sharing.flushRefreshes(),
+		flushSharingRefreshes: () => sharingFeature.service.flushRefreshes(),
 		app: createApp(
 			{
-				sharing,
+				sharing: sharingFeature.service,
 				authHttpHandler: authFeature.authHttpHandler,
 				sessionReader: authFeature.sessionReader,
 				syncTokenIssuer: syncAccessFeature.tokenIssuer,

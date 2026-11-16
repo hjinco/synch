@@ -22,3 +22,20 @@ export async function flushSharingRefreshes(
 	}
 	return complete;
 }
+
+export class SharingRefreshService {
+	constructor(
+		private readonly store: SharingStore,
+		private readonly invalidator: SharingInvalidator,
+	) {}
+
+	async refresh(vaultId: string): Promise<void> {
+		await this.store.queueRefresh(vaultId);
+		await this.flush();
+	}
+
+	async flush(): Promise<boolean> {
+		await this.store.pruneExpiredRequests();
+		return flushSharingRefreshes(this.store, this.invalidator);
+	}
+}

@@ -23,17 +23,7 @@ import { defaultOrganizationSlug } from "./policies/organization";
 import type { OidcProviderConfig } from "./policies/oidc";
 import { recordOidcDiagnostic, shouldEmitOidcDiagnostic } from "./oidc-diagnostics";
 
-export type OutgoingEmail = {
-	from: string;
-	to: string;
-	subject: string;
-	text?: string;
-	html?: string;
-};
-
-export type EmailSender = {
-	send(message: OutgoingEmail): Promise<unknown>;
-};
+import type { EmailSender } from "../platform/email";
 
 export type AuthFeatureConfig = {
 	baseURL: string;

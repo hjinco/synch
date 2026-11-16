@@ -1,4 +1,4 @@
-import type { SharingService } from "./sharing/application/service";
+import type { SharingService } from "./sharing/application";
 import { registerSharingRoutes } from "./sharing/adapters/routes";
 import { Hono } from "hono";
 import { cors } from "hono/cors";

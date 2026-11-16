@@ -1,4 +1,4 @@
-import { logServerError } from "../../../errors";
+import { logServerError } from "../../../platform/logging";
 import type {
 	SubscriptionAccessReader,
 	SubscriptionBillingInterval,

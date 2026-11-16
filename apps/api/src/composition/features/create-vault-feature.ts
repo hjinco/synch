@@ -1,3 +1,4 @@
+import { isOrganizationManager } from "../../sharing/domain/policy";
 import { DrizzleSharingStore } from "../../sharing/adapters/drizzle-sharing-store";
 import type { AppDb } from "../../db/client";
 import type { SubscriptionPolicyReader } from "../../subscription/application";
@@ -44,6 +45,7 @@ export type VaultFeatureConfig = {
 
 export function createVaultFeature(config: VaultFeatureConfig): VaultFeature {
 	const store = new DrizzleVaultStore(config.db);
+	const sharingStore = new DrizzleSharingStore(config.db);
 	const retentionEmailQueue = config.retentionEmailQueue
 		? new CloudflareVaultRetentionEmailQueue(config.retentionEmailQueue)
 		: undefined;
@@ -70,7 +72,10 @@ export function createVaultFeature(config: VaultFeatureConfig): VaultFeature {
 			store,
 			config.policyReader,
 			purgeQueue,
-			async (userId, organizationId) => { const member = await new DrizzleSharingStore(config.db).membership(organizationId, userId); return member?.role === "owner" || member?.role === "admin"; },
+			async (userId, organizationId) => {
+				const member = await sharingStore.membership(organizationId, userId);
+				return isOrganizationManager(member?.role);
+			},
 		),
 		organizationReader: new VaultOrganizationService(store),
 		purgeConsumer,

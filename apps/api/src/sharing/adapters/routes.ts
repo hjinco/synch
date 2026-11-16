@@ -4,7 +4,7 @@ import { z } from "zod";
 import type { SessionReader } from "../../auth/session";
 import { createEnsureAuthenticatedSession } from "../../platform/http/authenticated-session";
 import { vaultKeyEnvelopeSchema } from "../../vault/application/dto/vault-key-envelope";
-import type { SharingService } from "../application/service";
+import type { SharingService } from "../application";
 import { SharingError } from "../application/types";
 
 const id = z.uuid();

@@ -1,7 +1,7 @@
 import { createLibsqlDb } from "../db/client";
 import * as schema from "../db/d1";
 import { DrizzleSharingStore } from "./adapters/drizzle-sharing-store";
-import { SharingService } from "./application/service";
+import { createSharingService } from "./application/service";
 import { getSubscriptionPlanPolicy } from "../subscription/domain/policy";
 import { readMigrationFiles } from "drizzle-orm/migrator";
 import { createClient } from "@libsql/client";
@@ -112,7 +112,7 @@ it("migrates organization access without changing existing keys or restoring rev
 		expect((await store.vault("unassigned"))?.sharedAt).not.toBeNull();
 		expect((await store.vault("personal"))?.sharedAt).toBeNull();
 		expect((await store.refreshes()).map(task => task.vaultId)).toEqual(["unassigned"]);
-		const service = new SharingService(store, { readOrganizationPolicy: async () => getSubscriptionPlanPolicy("self_hosted") }, { refreshSharingAccess: async () => {} }, { baseURL: "https://example.com", requireVerifiedEmail: true });
+		const service = createSharingService(store, { readOrganizationPolicy: async () => getSubscriptionPlanPolicy("self_hosted") }, { refreshSharingAccess: async () => {} }, { baseURL: "https://example.com", requireVerifiedEmail: true });
 		expect((await service.organization("existing", "org")).vaults.map(v => [v.id, v.status])).toEqual([["shared", "active"], ["unassigned", "pending_key"]]);
 		expect((await service.organization("revoked", "org")).vaults.every(v => v.status === "pending_key")).toBe(true);
 		await expect(service.organization("outsider", "org")).rejects.toMatchObject({ code: "forbidden" });
