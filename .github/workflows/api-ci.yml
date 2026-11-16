@@ -31,6 +31,11 @@ on:
       - ".dockerignore"
       - ".github/actions/detect-affected/action.yml"
 
+concurrency:
+  # Only supersede runs for the same PR; main publications keep their own queue.
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   detect:
     runs-on: ubuntu-latest
@@ -53,7 +58,7 @@ jobs:
           package-dir: apps/api
           full-run-paths: .github/scripts/promote-api-image*.mjs .github/workflows/api-ci.yml .github/workflows/api-image.yml .dockerignore .github/actions/detect-affected/action.yml packages/vault-crypto scripts/sync-api-lockfile.mjs
 
-  api:
+  checks:
     needs: detect
     if: needs.detect.outputs.api-affected == 'true'
     runs-on: ubuntu-latest
@@ -84,13 +89,73 @@ jobs:
 
       - run: pnpm -C apps/api test:unit
 
+  node-e2e:
+    needs: detect
+    if: needs.detect.outputs.api-affected == 'true'
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 10.33.0
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
       - run: pnpm -C apps/api test:e2e:node
+
+  cloudflare-integration:
+    needs: detect
+    if: needs.detect.outputs.api-affected == 'true'
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 10.33.0
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # The Node tests used to prepare these assets in the sequential job.
+      - run: pnpm -C apps/api build:public
 
       - run: pnpm -C apps/api test:integration:cloudflare
         env:
           BETTER_AUTH_URL: http://127.0.0.1:8787
           BETTER_AUTH_SECRET: ci-better-auth-secret-that-is-long-enough
           SYNC_TOKEN_SECRET: ci-sync-token-secret-that-is-long-enough
+
+  build:
+    needs: detect
+    if: needs.detect.outputs.api-affected == 'true'
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 10.33.0
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
 
       - name: Build Node artifact
         run: pnpm -C apps/api build:node
@@ -114,8 +179,22 @@ jobs:
       - name: Build Cloudflare managed artifact
         run: pnpm -C apps/api build:cloudflare:managed
 
+      - uses: docker/setup-buildx-action@v4
+
       - name: Build Docker image
-        run: docker build -f apps/api/Dockerfile -t synch-api:ci .
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: apps/api/Dockerfile
+          platforms: linux/amd64
+          load: true
+          tags: synch-api:ci
+          cache-from: |
+            type=gha,scope=api-ci-amd64
+            type=gha,scope=api-image
+          # PRs restore main's cache; only main refreshes this shared scope.
+          # Keep it separate from the publisher's multi-platform cache.
+          cache-to: ${{ github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && 'type=gha,mode=max,scope=api-ci-amd64' || '' }}
 
       - name: Smoke test Docker image
         run: |
@@ -137,9 +216,32 @@ jobs:
           docker logs synch-api-smoke
           exit 1
 
+  # Preserve the existing api check name while collecting every parallel result.
+  api:
+    needs: [detect, checks, node-e2e, cloudflare-integration, build]
+    if: always()
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Require all API checks to pass
+        env:
+          DETECT_RESULT: ${{ needs.detect.result }}
+          API_AFFECTED: ${{ needs.detect.outputs.api-affected }}
+          CHECK_RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          test "$DETECT_RESULT" = success
+          if [ "$API_AFFECTED" = false ]; then
+            echo "API is unaffected."
+            exit 0
+          fi
+          test "$API_AFFECTED" = true
+          for result in $CHECK_RESULTS; do
+            test "$result" = success
+          done
+
   publish-image:
-    needs: api
-    if: github.repository == 'hjinco/synch' && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    needs: [detect, api]
+    if: needs.detect.outputs.api-affected == 'true' && github.repository == 'hjinco/synch' && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     permissions:
       contents: read
       packages: write

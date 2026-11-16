@@ -54,7 +54,9 @@ jobs:
             org.opencontainers.image.source=https://github.com/hjinco/synch
             org.opencontainers.image.revision=${{ github.sha }}
             org.opencontainers.image.description=Self-hosted Synch API
-          cache-from: type=gha,scope=api-image
+          cache-from: |
+            type=gha,scope=api-image
+            type=gha,scope=api-ci-amd64
           cache-to: type=gha,mode=max,scope=api-image
 
       - name: Advance latest without replacing a newer published commit

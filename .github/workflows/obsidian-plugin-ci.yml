@@ -26,13 +26,13 @@ on:
       - ".github/workflows/obsidian-plugin-ci.yml"
       - ".github/actions/detect-affected/action.yml"
 
-jobs:
-  detect:
-    runs-on: ubuntu-latest
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
-    outputs:
-      plugin-affected: ${{ steps.affected.outputs.affected }}
-      since-filter: ${{ steps.affected.outputs.since-filter }}
+jobs:
+  obsidian-plugin:
+    runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v6
@@ -49,38 +49,31 @@ jobs:
           package-dir: apps/obsidian-plugin
           full-run-paths: eslint.config.mjs .github/workflows/obsidian-plugin-ci.yml .github/actions/detect-affected/action.yml
 
-  obsidian-plugin:
-    needs: detect
-    if: needs.detect.outputs.plugin-affected == 'true'
-    runs-on: ubuntu-latest
-
-    env:
-      # Empty when root manifests changed, so every package runs.
-      SINCE_FILTER: ${{ needs.detect.outputs.since-filter }}
-
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          fetch-depth: 0
-
-      - uses: pnpm/action-setup@v6
-        with:
-          version: 10.33.0
-
       - uses: actions/setup-node@v6
+        if: steps.affected.outputs.affected == 'true'
         with:
           node-version: 24
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
+        if: steps.affected.outputs.affected == 'true'
 
       - run: pnpm -C apps/obsidian-plugin lint
+        if: steps.affected.outputs.affected == 'true'
 
       - name: Typecheck affected packages
+        if: steps.affected.outputs.affected == 'true'
+        env:
+          # Empty when root manifests changed, so every package runs.
+          SINCE_FILTER: ${{ steps.affected.outputs.since-filter }}
         run: pnpm -r --if-present $SINCE_FILTER --filter '!@synch/api' --filter '!@synch/cli' run typecheck
 
       - name: Test affected packages
+        if: steps.affected.outputs.affected == 'true'
+        env:
+          SINCE_FILTER: ${{ steps.affected.outputs.since-filter }}
         run: pnpm -r --if-present $SINCE_FILTER --filter '!@synch/api' --filter '!@synch/cli' run test -- --run
 
       - name: Build without local environment configuration
+        if: steps.affected.outputs.affected == 'true'
         run: pnpm -C apps/obsidian-plugin build
