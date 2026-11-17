@@ -115,6 +115,10 @@ See the deployment guides:
 
 After deployment, set the custom API base URL in the plugin settings.
 
+## One-Click Deploy
+
+[![Deploy on RepoCloud](https://d16t0pc4846x52.cloudfront.net/deploylobe.svg)](https://repocloud.io/details/Synch/)
+
 ## Safety notes
 
 Always create a full backup of your vault before:
