@@ -66,6 +66,51 @@ function createSubscriptionsTest(
 }
 
 describe("SyncAutoLoop subscriptions", () => {
+  it("sends empty presence once until an update or availability reset", async () => {
+    const { autoLoop, sessions, callbacks } = createSubscriptionsTest();
+    autoLoop.setPresenceWatchEntryIds(["entry-1"]);
+    autoLoop.setPresenceWatching(true);
+    await autoLoop.start();
+    callbacks[0]!.onPresenceAvailabilityChanged(true);
+
+    autoLoop.clearPresence();
+    autoLoop.clearPresence();
+    expect(sessions[0]!.clearPresence).toHaveBeenCalledTimes(1);
+
+    autoLoop.updatePresence("entry-1", {
+      anchor: { line: 0, ch: 0 }, head: { line: 0, ch: 0 },
+    });
+    autoLoop.clearPresence();
+    autoLoop.clearPresence();
+    expect(sessions[0]!.clearPresence).toHaveBeenCalledTimes(2);
+
+    callbacks[0]!.onPresenceAvailabilityChanged(false);
+    autoLoop.clearPresence();
+    expect(sessions[0]!.clearPresence).toHaveBeenCalledTimes(2);
+    callbacks[0]!.onPresenceAvailabilityChanged(true);
+    autoLoop.clearPresence();
+    autoLoop.clearPresence();
+    expect(sessions[0]!.clearPresence).toHaveBeenCalledTimes(3);
+  });
+
+  it("retries a failed clear instead of remembering it as sent", async () => {
+    const clearPresence = vi.fn()
+      .mockImplementationOnce(() => { throw new SyncRealtimeConnectionError("closed"); })
+      .mockImplementation(() => {});
+    const { autoLoop, callbacks, onError } = createSubscriptionsTest((session) => {
+      session.clearPresence = clearPresence;
+    });
+    autoLoop.setPresenceWatching(true);
+    await autoLoop.start();
+    callbacks[0]!.onPresenceAvailabilityChanged(true);
+
+    autoLoop.clearPresence();
+    autoLoop.clearPresence();
+    autoLoop.clearPresence();
+    expect(clearPresence).toHaveBeenCalledTimes(2);
+    expect(onError).not.toHaveBeenCalled();
+  });
+
   it("restores subscriptions on reconnect and waits for fresh presence availability", async () => {
     const context = createSubscriptionsTest();
     const { autoLoop, sessions, callbacks } = context;
@@ -74,6 +119,9 @@ describe("SyncAutoLoop subscriptions", () => {
     autoLoop.setPresenceWatching(true);
     await autoLoop.start();
     callbacks[0]!.onPresenceAvailabilityChanged(true);
+    autoLoop.clearPresence();
+    autoLoop.clearPresence();
+    expect(sessions[0]!.clearPresence).toHaveBeenCalledTimes(1);
 
     callbacks[0]!.onClose({ code: 1006, reason: "connection closed" });
 
@@ -94,6 +142,7 @@ describe("SyncAutoLoop subscriptions", () => {
     autoLoop.clearPresence();
     expect(sessions[1]!.clearPresence).not.toHaveBeenCalled();
     callbacks[1]!.onPresenceAvailabilityChanged(true);
+    autoLoop.clearPresence();
     autoLoop.clearPresence();
     expect(sessions[1]!.clearPresence).toHaveBeenCalledTimes(1);
   });

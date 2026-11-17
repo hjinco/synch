@@ -25,7 +25,6 @@ import {
 import type { PresenceRelay, PresenceUpdatedPush } from "./presence-relay";
 
 const PUBLISH_THROTTLE_MS = 400;
-const REANNOUNCE_MS = 15_000;
 
 export interface SynchPresenceHost {
   hasAuthenticatedSession(): boolean;
@@ -91,11 +90,6 @@ export class SynchOpenFilePresence implements PresenceRelay {
         this.schedulePublish();
       }),
     );
-    this.plugin.registerInterval(
-      window.setInterval(() => {
-        void this.publishNow();
-      }, REANNOUNCE_MS),
-    );
     this.plugin.register(() => {
       this.host.setPresenceRelay(null);
       void this.stop();
@@ -135,6 +129,12 @@ export class SynchOpenFilePresence implements PresenceRelay {
 
   async syncSession(): Promise<void> {
     if (this.shouldRun()) {
+      if (this.started) {
+        // Sync progress can assign IDs to open files. Refresh their watches
+        // without reannouncing presence for every progress notification.
+        await this.syncPresenceWatch();
+        return;
+      }
       this.started = true;
       this.handleWorkspaceChange(true);
       return;
@@ -169,7 +169,9 @@ export class SynchOpenFilePresence implements PresenceRelay {
     ) {
       return;
     }
-    this.applyPresenceWatch(entryIds);
+    if (this.applyPresenceWatch(entryIds)) {
+      this.schedulePublish();
+    }
   }
 
   private shouldRun(): boolean {
@@ -272,7 +274,7 @@ export class SynchOpenFilePresence implements PresenceRelay {
     return this.host.hasAuthenticatedSession();
   }
 
-  private applyPresenceWatch(entryIds: string[]): void {
+  private applyPresenceWatch(entryIds: string[]): boolean {
     const nextEntryIds = uniquePresenceEntryIds(entryIds);
     const nextWatchedEntryIds = new Set(nextEntryIds);
     let changed = nextWatchedEntryIds.size !== this.watchedEntryIds.size;
@@ -303,6 +305,7 @@ export class SynchOpenFilePresence implements PresenceRelay {
       this.render();
     }
     this.host.watchPresence(nextEntryIds);
+    return changed;
   }
 
   private invalidateRoster(): void {

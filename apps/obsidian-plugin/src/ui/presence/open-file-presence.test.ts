@@ -1,5 +1,5 @@
 import type { Plugin } from "obsidian";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   SynchOpenFilePresence,
@@ -8,7 +8,65 @@ import {
 import type { PresenceWorkspace } from "./open-paths";
 import type { PresenceUpdatedPush } from "./presence-relay";
 
+beforeEach(() => vi.useFakeTimers());
+afterEach(() => {
+  vi.clearAllTimers();
+  vi.useRealTimers();
+});
+
 describe("open file presence", () => {
+  it("does not republish presence for sync progress or while idle", async () => {
+    const workspace = createWorkspace("A.md", true);
+    const host = createHost({ getPresenceEntryId: async () => "entry-a" });
+    const presence = new SynchOpenFilePresence(createPlugin(workspace.workspace), host);
+    presence.initialize();
+    await vi.advanceTimersByTimeAsync(400);
+    expect(host.updatePresence).toHaveBeenCalledTimes(1);
+
+    for (let i = 0; i < 4; i++) {
+      await presence.syncSession();
+      await vi.advanceTimersByTimeAsync(500);
+    }
+    expect(host.updatePresence).toHaveBeenCalledTimes(1);
+
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(host.updatePresence).toHaveBeenCalledTimes(1);
+    expect(host.clearPresence).not.toHaveBeenCalled();
+  });
+
+  it("refreshes watches when sync assigns an entry ID to an open file", async () => {
+    const workspace = createWorkspace("A.md", true);
+    let entryId: string | null = null;
+    const host = createHost({ getPresenceEntryId: async () => entryId });
+    const presence = new SynchOpenFilePresence(createPlugin(workspace.workspace), host);
+    presence.initialize();
+    await vi.advanceTimersByTimeAsync(400);
+    expect(host.watchPresence).toHaveBeenLastCalledWith([]);
+
+    entryId = "entry-a";
+    await presence.syncSession();
+    await flushPromises();
+    expect(host.watchPresence).toHaveBeenLastCalledWith(["entry-a"]);
+    await vi.advanceTimersByTimeAsync(400);
+    expect(host.updatePresence).toHaveBeenCalledExactlyOnceWith("entry-a", {
+      anchor: { line: 0, ch: 0 }, head: { line: 0, ch: 0 },
+    });
+  });
+
+  it("publishes again when peer availability returns", async () => {
+    const workspace = createWorkspace("A.md");
+    const host = createHost();
+    const presence = new SynchOpenFilePresence(createPlugin(workspace.workspace), host);
+    presence.initialize();
+    await vi.advanceTimersByTimeAsync(400);
+    expect(host.clearPresence).toHaveBeenCalledTimes(1);
+
+    presence.onReset();
+    presence.onAvailabilityChanged(true);
+    await flushPromises();
+    expect(host.clearPresence).toHaveBeenCalledTimes(2);
+  });
+
   it("watches every open markdown entry", async () => {
     const workspace = createWorkspace(["Active.md", "Other.md"]);
     const host = createHost({
@@ -110,22 +168,27 @@ function createPlugin(workspace: PresenceWorkspace): Plugin {
     registerEditorExtension: vi.fn(),
     registerDomEvent: vi.fn(),
     registerEvent: vi.fn(),
-    registerInterval: (id: number) => {
-      window.clearInterval(id);
-      return id;
-    },
+    registerInterval: (id: number) => id,
     register: vi.fn(),
   } as unknown as Plugin;
 }
 
-function createWorkspace(paths: string | string[]) {
+function createWorkspace(paths: string | string[], focused = false) {
   const listeners = new Map<string, () => void>();
   const dispatch = vi.fn();
   const workspaceLeaves = (Array.isArray(paths) ? paths : [paths]).map((path) => ({
     view: {
+      getMode: () => "source",
       file: { path },
       editor: {
-        cm: { dispatch },
+        cm: {
+          dispatch,
+          hasFocus: focused,
+          state: {
+            selection: { main: { anchor: 0, head: 0 } },
+            doc: { lineAt: () => ({ number: 1, from: 0 }) },
+          },
+        },
       },
     },
   }));

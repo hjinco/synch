@@ -21,6 +21,7 @@ export class SyncSessionSubscriptions {
   private presenceWatchSent = false;
   private presenceAvailable = false;
   private presenceSupported = true;
+  private presenceCleared = false;
 
   constructor(private readonly deps: SyncSessionSubscriptionsDeps) {}
 
@@ -101,18 +102,27 @@ export class SyncSessionSubscriptions {
       return;
     }
     this.presenceAvailable = enabled;
+    this.presenceCleared = false;
     this.deps.onPresenceAvailabilityChanged?.(enabled);
   }
 
   updatePresence(entryId: string, selection: PresenceSelection): void {
     if (this.canPublishPresence()) {
-      this.withSession((session) => session.updatePresence(entryId, selection));
+      this.withSession((session) => {
+        session.updatePresence(entryId, selection);
+        this.presenceCleared = false;
+      });
     }
   }
 
   clearPresence(): void {
-    if (this.canPublishPresence()) {
-      this.withSession((session) => session.clearPresence());
+    if (this.canPublishPresence() && !this.presenceCleared) {
+      this.withSession((session) => {
+        session.clearPresence();
+        // Remember only a successful send. Availability changes reset this
+        // so a restored session can synchronize its empty state again.
+        this.presenceCleared = true;
+      });
     }
   }
 
