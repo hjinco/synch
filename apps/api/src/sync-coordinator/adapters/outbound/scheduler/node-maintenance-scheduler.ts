@@ -4,6 +4,9 @@ import {
 	type MaintenanceAlarm,
 } from "./persistent-maintenance-scheduler";
 
+// Node reduces delays above the signed 32-bit limit to 1 ms.
+const MAX_TIMEOUT_MS = 2_147_483_647;
+
 /** One process-local wake-up timer per vault; jobs themselves remain in SQLite. */
 class NodeMaintenanceAlarm implements MaintenanceAlarm {
 	private timer: ReturnType<typeof setTimeout> | null = null;
@@ -18,11 +21,16 @@ class NodeMaintenanceAlarm implements MaintenanceAlarm {
 	setAlarm(at: number): void {
 		this.deleteAlarm();
 		this.armedFor = at;
+		const delay = Math.min(MAX_TIMEOUT_MS, Math.max(0, at - Date.now()));
 		this.timer = setTimeout(() => {
 			this.timer = null;
+			if (Date.now() < at) {
+				this.setAlarm(at);
+				return;
+			}
 			this.armedFor = null;
 			void this.onAlarmDue();
-		}, Math.max(0, at - Date.now()));
+		}, delay);
 	}
 
 	deleteAlarm(): void {

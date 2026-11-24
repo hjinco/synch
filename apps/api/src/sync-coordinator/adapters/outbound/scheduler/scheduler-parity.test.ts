@@ -114,6 +114,34 @@ describe.each(["cloudflare", "node"] as const)("%s durable maintenance", (runtim
 	});
 });
 
+it.each([30, 100])("fires a %i-day Node alarm once using bounded timers", async (days) => {
+	const { handle } = await createSqliteCoordinator();
+	const due = vi.fn(async () => {});
+	const scheduler = new NodeMaintenanceScheduler(handle, due);
+	cleanups.push(() => scheduler.dispose());
+	const delay = days * 24 * 60 * 60 * 1_000;
+	const maxTimeout = 2_147_483_647;
+	const timer = vi.spyOn(globalThis, "setTimeout");
+	cleanups.push(() => timer.mockRestore());
+	await scheduler.defer("health_summary_flush", Date.now() + delay);
+
+	let remaining = delay;
+	let calls = 1;
+	while (remaining > maxTimeout) {
+		expect(timer).toHaveBeenNthCalledWith(calls, expect.any(Function), maxTimeout);
+		await vi.advanceTimersByTimeAsync(maxTimeout);
+		remaining -= maxTimeout;
+		calls++;
+	}
+	expect(timer).toHaveBeenNthCalledWith(calls, expect.any(Function), remaining);
+	await vi.advanceTimersByTimeAsync(remaining - 1);
+	expect(due).not.toHaveBeenCalled();
+	await vi.advanceTimersByTimeAsync(1);
+	expect(due).toHaveBeenCalledTimes(1);
+	expect(timer).toHaveBeenCalledTimes(calls);
+	expect(vi.getTimerCount()).toBe(0);
+});
+
 it("keeps Node alarm retries earlier than jobs and disposes timers without losing work", async () => {
 	const { handle } = await createSqliteCoordinator();
 	const due = vi.fn(async () => {});
