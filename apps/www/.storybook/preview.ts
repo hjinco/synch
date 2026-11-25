@@ -1,14 +1,19 @@
 import type { AstroRenderer } from "@storybook-astro/framework";
 import type { ProjectAnnotations } from "storybook/internal/types";
-import { initialize, mswLoader } from "msw-storybook-addon";
+import { setupWorker } from "msw/browser";
+import { mswLoader } from "msw-storybook-addon/csf3";
 import { defaults } from "../stories/mocks";
 import "../src/styles/global.css";
 import "./preview.css";
 
-initialize({ onUnhandledRequest: "bypass" }, defaults);
-
 const preview: ProjectAnnotations<AstroRenderer> = {
-  loaders: [mswLoader],
+  loaders: [
+    mswLoader(async () => {
+      const worker = setupWorker(...defaults);
+      await worker.start({ onUnhandledFrame: "bypass" });
+      return worker;
+    }),
+  ],
   parameters: {
     layout: "fullscreen",
     viewport: {
