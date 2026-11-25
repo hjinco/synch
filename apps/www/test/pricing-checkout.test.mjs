@@ -12,7 +12,8 @@ class Button {
   classList = { toggle() {} };
   constructor(billingInterval) { this.dataset = { billingInterval }; }
   addEventListener(event, listener) { this.listeners[event] = listener; }
-  setAttribute() {}
+  attributes = new Map();
+  setAttribute(name, value) { this.attributes.set(name, value); }
   click() { return this.listeners.click(); }
 }
 
@@ -61,8 +62,11 @@ test("pending checkout blocks both plans and failure allows retry", async () => 
   assert.ok([...buttons.values()].every(button => button.disabled));
   await buttons.get("starter-checkout-button").click();
   assert.equal(requests.length, 1);
+  assert.equal(buttons.get("plus-checkout-button").attributes.get("aria-busy"), "true");
+  assert.equal(buttons.get("starter-checkout-button").attributes.has("aria-busy"), false);
   finish({ ok: false, status: 500 });
   await pending;
+  assert.equal(buttons.get("plus-checkout-button").attributes.get("aria-busy"), "false");
   assert.ok([...buttons.values()].every(button => !button.disabled));
 });
 

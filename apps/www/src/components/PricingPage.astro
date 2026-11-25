@@ -153,9 +153,10 @@ const plusFeatures = [
           <button
             id="starter-checkout-button"
             type="button"
-            class="w-full cursor-pointer py-2 px-4 text-center text-xs bg-zinc-200 text-[#0a0a0a] hover:bg-white disabled:bg-zinc-800/50 disabled:text-zinc-500 disabled:cursor-not-allowed rounded transition-colors"
+            class="group relative inline-flex items-center justify-center w-full cursor-pointer py-2 px-4 text-center text-xs bg-zinc-200 text-[#0a0a0a] hover:bg-white disabled:bg-zinc-800/50 disabled:text-zinc-500 disabled:cursor-not-allowed rounded transition-colors"
           >
-            {checkoutLabel}
+            <span aria-hidden="true" class="absolute hidden size-3 rounded-full border border-current border-r-transparent group-aria-busy:inline-block motion-safe:animate-spin"></span>
+            <span class="group-aria-busy:opacity-0">{checkoutLabel}</span>
           </button>
         </div>
 
@@ -203,9 +204,10 @@ const plusFeatures = [
           <button
             id="plus-checkout-button"
             type="button"
-            class="w-full cursor-pointer py-2 px-4 text-center text-xs bg-zinc-200 text-[#0a0a0a] hover:bg-white disabled:bg-zinc-800/50 disabled:text-zinc-500 disabled:cursor-not-allowed rounded transition-colors"
+            class="group relative inline-flex items-center justify-center w-full cursor-pointer py-2 px-4 text-center text-xs bg-zinc-200 text-[#0a0a0a] hover:bg-white disabled:bg-zinc-800/50 disabled:text-zinc-500 disabled:cursor-not-allowed rounded transition-colors"
           >
-            {checkoutLabel}
+            <span aria-hidden="true" class="absolute hidden size-3 rounded-full border border-current border-r-transparent group-aria-busy:inline-block motion-safe:animate-spin"></span>
+            <span class="group-aria-busy:opacity-0">{checkoutLabel}</span>
           </button>
         </div>
       </div>
@@ -322,6 +324,7 @@ const plusFeatures = [
       if (checkoutPending) return;
       checkoutError.textContent = "";
       checkoutPending = true;
+      button.setAttribute("aria-busy", "true");
       for (const option of billingOptionButtons) option.disabled = true;
       for (const { button } of checkoutButtons) button.disabled = true;
 
@@ -371,6 +374,7 @@ const plusFeatures = [
       } catch {
         if (!checkoutError.textContent) checkoutError.textContent = checkoutFailure;
         checkoutPending = false;
+        button.setAttribute("aria-busy", "false");
         for (const option of billingOptionButtons) option.disabled = false;
         for (const { button } of checkoutButtons) button.disabled = false;
       }
