@@ -1,4 +1,4 @@
-export type BillingWebPage = "pricing" | "billing";
+export type BillingWebPage = "upgrade" | "billing";
 export type BillingWebLocale = "en" | "ko" | "ja" | "zh-cn" | "zh-tw" | "de";
 
 export function buildBillingWebPageUrl(

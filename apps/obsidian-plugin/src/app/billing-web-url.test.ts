@@ -7,8 +7,8 @@ describe("billing web URL helpers", () => {
     expect(buildBillingWebPageUrl("https://api.synch.run", "billing", "en")).toBe(
       "https://synch.run/billing",
     );
-    expect(buildBillingWebPageUrl("https://preview.api.synch.run", "pricing", "en")).toBe(
-      "https://synch.run/pricing",
+    expect(buildBillingWebPageUrl("https://preview.api.synch.run", "upgrade", "en")).toBe(
+      "https://synch.run/upgrade",
     );
   });
 
@@ -16,8 +16,8 @@ describe("billing web URL helpers", () => {
     expect(buildBillingWebPageUrl("http://127.0.0.1:8787", "billing", "en")).toBe(
       "http://localhost:4321/billing",
     );
-    expect(buildBillingWebPageUrl("http://localhost:8787", "pricing", "en")).toBe(
-      "http://localhost:4321/pricing",
+    expect(buildBillingWebPageUrl("http://localhost:8787", "upgrade", "en")).toBe(
+      "http://localhost:4321/upgrade",
     );
   });
 
@@ -25,8 +25,8 @@ describe("billing web URL helpers", () => {
     expect(buildBillingWebPageUrl("https://api.synch.run", "billing", "ko")).toBe(
       "https://synch.run/ko/billing",
     );
-    expect(buildBillingWebPageUrl("https://api.synch.run", "pricing", "ko")).toBe(
-      "https://synch.run/ko/pricing",
+    expect(buildBillingWebPageUrl("https://api.synch.run", "upgrade", "ko")).toBe(
+      "https://synch.run/ko/upgrade",
     );
   });
 
@@ -34,14 +34,14 @@ describe("billing web URL helpers", () => {
     expect(buildBillingWebPageUrl("https://api.synch.run", "billing", "ja")).toBe(
       "https://synch.run/ja/billing",
     );
-    expect(buildBillingWebPageUrl("https://api.synch.run", "pricing", "zh-cn")).toBe(
-      "https://synch.run/zh-cn/pricing",
+    expect(buildBillingWebPageUrl("https://api.synch.run", "upgrade", "zh-cn")).toBe(
+      "https://synch.run/zh-cn/upgrade",
     );
     expect(buildBillingWebPageUrl("https://api.synch.run", "billing", "zh-tw")).toBe(
       "https://synch.run/zh-tw/billing",
     );
-    expect(buildBillingWebPageUrl("https://api.synch.run", "pricing", "de")).toBe(
-      "https://synch.run/de/pricing",
+    expect(buildBillingWebPageUrl("https://api.synch.run", "upgrade", "de")).toBe(
+      "https://synch.run/de/upgrade",
     );
   });
 });

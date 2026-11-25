@@ -39,7 +39,7 @@ export function populateSubscriptionSetting(
 
   setting.addButton((button) =>
     button.setButtonText(t("subscription.upgrade")).onClick(() => {
-      controller.openPricingPage();
+      controller.openUpgradePage();
     }),
   );
 }

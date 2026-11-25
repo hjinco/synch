@@ -156,6 +156,9 @@ export const ui = {
 			},
 		},
 		pricing: {
+			upgradeHeading: "Upgrade your plan",
+			continueToCheckout: "Continue",
+			checkoutError: "Could not start checkout. Please try again.",
 			heading: "Simple, transparent pricing.",
 			subheading: "Start syncing your vaults for free.",
 			freePlan: "Sync Free",
@@ -326,6 +329,9 @@ export const ui = {
 			},
 		},
 		pricing: {
+			upgradeHeading: "요금제 업그레이드",
+			continueToCheckout: "계속",
+			checkoutError: "결제를 시작할 수 없어요. 다시 시도해 주세요.",
 			heading: "간단하고 투명한 요금제.",
 			subheading: "무료로 vault 동기화를 시작하세요.",
 			freePlan: "Sync Free",
@@ -496,6 +502,9 @@ export const ui = {
 			},
 		},
 		pricing: {
+			upgradeHeading: "プランをアップグレード",
+			continueToCheckout: "続ける",
+			checkoutError: "決済を開始できませんでした。もう一度お試しください。",
 			heading: "シンプルで透明な料金。",
 			subheading: "無料でvault同期を始められます。",
 			freePlan: "Sync Free",
@@ -666,6 +675,9 @@ export const ui = {
 			},
 		},
 		pricing: {
+			upgradeHeading: "升级方案",
+			continueToCheckout: "继续",
+			checkoutError: "无法开始结账，请重试。",
 			heading: "简单透明的价格。",
 			subheading: "免费开始同步你的 vault。",
 			freePlan: "Sync Free",
@@ -836,6 +848,9 @@ export const ui = {
 			},
 		},
 		pricing: {
+			upgradeHeading: "升級方案",
+			continueToCheckout: "繼續",
+			checkoutError: "無法開始結帳，請再試一次。",
 			heading: "簡單透明的價格。",
 			subheading: "免費開始同步你的 vault。",
 			freePlan: "Sync Free",
@@ -1006,6 +1021,9 @@ export const ui = {
 			},
 		},
 		pricing: {
+			upgradeHeading: "Tarif upgraden",
+			continueToCheckout: "Weiter",
+			checkoutError: "Der Bezahlvorgang konnte nicht gestartet werden. Bitte versuche es erneut.",
 			heading: "Einfache, transparente Preise.",
 			subheading: "Starten Sie die Vault-Synchronisierung kostenlos.",
 			freePlan: "Sync Free",

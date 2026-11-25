@@ -153,7 +153,7 @@ export function createSettingsTab(
     ensureSubscriptionStatusCheck: vi.fn(async () => {}),
     retrySubscriptionStatusCheck: vi.fn(async () => {}),
     openBillingManagementPage: vi.fn(() => {}),
-    openPricingPage: vi.fn(() => {}),
+    openUpgradePage: vi.fn(() => {}),
     getStorageStatus: () => null,
     getStorageDisplayState: () =>
       resolveStorageDisplayState(

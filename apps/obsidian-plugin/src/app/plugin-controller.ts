@@ -376,8 +376,8 @@ export class SynchPluginController implements SynchSettingsController {
     this.subscriptionService.openBillingManagementPage();
   }
 
-  openPricingPage(): void {
-    this.subscriptionService.openPricingPage();
+  openUpgradePage(): void {
+    this.subscriptionService.openUpgradePage();
   }
 
   getAuthStatusLabel(): string {

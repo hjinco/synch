@@ -7,10 +7,12 @@ import { PLUS_PRICING_USD } from "../billing/pricing";
 
 interface Props {
   locale: Locale;
+  upgrade?: boolean;
 }
 
-const { locale } = Astro.props;
+const { locale, upgrade = false } = Astro.props;
 const t = ui[locale];
+const checkoutLabel = upgrade ? t.pricing.continueToCheckout : t.home.getStarted;
 const apiUrl = import.meta.env.PUBLIC_API_URL || "";
 const authBaseUrl = apiUrl || Astro.url.origin;
 const vaultsUrl = new URL("/vaults", authBaseUrl);
@@ -44,21 +46,22 @@ const plusFeatures = [
 ---
 
 <Layout
-  title={t.meta.pricingTitle}
+  title={upgrade ? t.pricing.upgradeHeading + " - Synch" : t.meta.pricingTitle}
+  noindex={upgrade}
   description={t.meta.pricingDescription}
   locale={locale}
 >
   <div class="max-w-5xl mx-auto px-6 w-full flex-1 flex flex-col">
-    <Header locale={locale} />
+    {!upgrade && <Header locale={locale} />}
 
-    <main class="flex-1 flex flex-col py-16">
+    <main class:list={["flex flex-col", upgrade ? "my-auto py-8" : "flex-1 py-16"]}>
       <div class="space-y-4 mb-12 text-center">
         <h1 class="text-2xl sm:text-3xl text-zinc-200 tracking-tight">
-          {t.pricing.heading}
+          {upgrade ? t.pricing.upgradeHeading : t.pricing.heading}
         </h1>
-        <p class="text-zinc-500 max-w-md leading-relaxed mx-auto">
+        {!upgrade && <p class="text-zinc-500 max-w-md leading-relaxed mx-auto">
           {t.pricing.subheading}
-        </p>
+        </p>}
       </div>
 
       <div class="flex justify-center mb-6">
@@ -67,6 +70,7 @@ const plusFeatures = [
         >
           <button
             type="button"
+            aria-pressed="true"
             data-billing-interval="monthly"
             class="starter-billing-option min-w-20 cursor-pointer px-3 py-2 rounded text-xs text-zinc-950 bg-zinc-200"
           >
@@ -74,6 +78,7 @@ const plusFeatures = [
           </button>
           <button
             type="button"
+            aria-pressed="false"
             data-billing-interval="annual"
             class="starter-billing-option min-w-20 cursor-pointer px-3 py-2 rounded text-xs text-zinc-400 hover:text-zinc-200"
           >
@@ -82,8 +87,8 @@ const plusFeatures = [
         </div>
       </div>
 
-      <div class="grid gap-6 md:grid-cols-3 max-w-5xl mx-auto w-full">
-        <div
+      <div class:list={["grid gap-6 mx-auto w-full", upgrade ? "md:grid-cols-2 max-w-3xl" : "md:grid-cols-3 max-w-5xl"]}>
+        {!upgrade && <div
           class="p-6 rounded-lg border border-zinc-800/50 bg-zinc-900/20 flex flex-col"
         >
           <div class="mb-8">
@@ -111,7 +116,7 @@ const plusFeatures = [
           >
             {t.home.getStarted}
           </a>
-        </div>
+        </div>}
 
         <div
           class="p-6 rounded-lg border border-zinc-800/50 bg-zinc-900/20 flex flex-col"
@@ -150,7 +155,7 @@ const plusFeatures = [
             type="button"
             class="w-full cursor-pointer py-2 px-4 text-center text-xs bg-zinc-200 text-[#0a0a0a] hover:bg-white disabled:bg-zinc-800/50 disabled:text-zinc-500 disabled:cursor-not-allowed rounded transition-colors"
           >
-            {t.home.getStarted}
+            {checkoutLabel}
           </button>
         </div>
 
@@ -200,22 +205,25 @@ const plusFeatures = [
             type="button"
             class="w-full cursor-pointer py-2 px-4 text-center text-xs bg-zinc-200 text-[#0a0a0a] hover:bg-white disabled:bg-zinc-800/50 disabled:text-zinc-500 disabled:cursor-not-allowed rounded transition-colors"
           >
-            {t.home.getStarted}
+            {checkoutLabel}
           </button>
         </div>
       </div>
-      <p id="checkout-error" role="alert" class="mt-6 text-sm text-red-400"></p>
+      <p id="checkout-error" role="alert" class="mt-6 empty:mt-0 text-sm text-red-400"></p>
     </main>
 
-    <Footer locale={locale} />
+    {!upgrade && <Footer locale={locale} />}
   </div>
 </Layout>
 
 <script
   define:vars={{
     apiUrl,
+    upgrade,
+    checkoutFailure: t.pricing.checkoutError,
     signupUrl: signupUrl.toString(),
     billingUrl,
+    pricingPath: localizedPath(locale, "/pricing"),
     monthLabel: t.pricing.month,
     yearLabel: t.pricing.year,
     plusPricing: PLUS_PRICING_USD,
@@ -279,6 +287,7 @@ const plusFeatures = [
 
     for (const button of billingOptionButtons) {
       const isSelected = button.dataset.billingInterval === billingInterval;
+      button.setAttribute("aria-pressed", String(isSelected));
       button.classList.toggle("bg-zinc-200", isSelected);
       button.classList.toggle("text-zinc-950", isSelected);
       button.classList.toggle("text-zinc-400", !isSelected);
@@ -292,11 +301,28 @@ const plusFeatures = [
     });
   }
 
+  const organizationId = new URLSearchParams(location.search).get("organizationId");
+  const pricingUrl = new URL(pricingPath, location.origin);
+  if (organizationId) pricingUrl.searchParams.set("organizationId", organizationId);
+
+  if (upgrade) {
+    fetch(`${apiUrl}/api/auth/get-session`, { credentials: "include" })
+      .then(async (response) => {
+        if (response.status === 401 || (response.ok && !(await response.json())?.user)) {
+          window.location.replace(pricingUrl.href);
+        }
+      })
+      .catch(() => {
+        // Checkout still checks the session if the initial lookup is unavailable.
+      });
+  }
+
   for (const { planId, button } of checkoutButtons) {
     button.addEventListener("click", async () => {
       if (checkoutPending) return;
       checkoutError.textContent = "";
       checkoutPending = true;
+      for (const option of billingOptionButtons) option.disabled = true;
       for (const { button } of checkoutButtons) button.disabled = true;
 
       try {
@@ -308,14 +334,20 @@ const plusFeatures = [
             "content-type": "application/json",
           },
           body: JSON.stringify({
-            organizationId: new URLSearchParams(location.search).get("organizationId") || undefined,
+            organizationId: organizationId || undefined,
             planId,
             billingInterval: selectedBillingInterval,
           }),
         });
 
         if (response.status === 401) {
-          const target = new URL(signupUrl); target.searchParams.set("return_to", location.href); window.location.href = target.toString();
+          if (upgrade) {
+            window.location.replace(pricingUrl.href);
+            return;
+          }
+          const target = new URL(signupUrl);
+          target.searchParams.set("return_to", location.href);
+          window.location.href = target.toString();
           return;
         }
         if (response.status === 409) {
@@ -324,7 +356,9 @@ const plusFeatures = [
             checkoutError.textContent = billingEmailUnavailable;
             throw new Error("billing email unavailable");
           }
-          const target = new URL(billingUrl, location.origin); const organizationId = new URLSearchParams(location.search).get("organizationId"); if (organizationId) target.searchParams.set("organizationId", organizationId); window.location.href = target.toString();
+          const target = new URL(billingUrl, location.origin);
+          if (organizationId) target.searchParams.set("organizationId", organizationId);
+          window.location.href = target.toString();
           return;
         }
 
@@ -335,7 +369,9 @@ const plusFeatures = [
         const checkout = await response.json();
         window.location.href = checkout.url;
       } catch {
+        if (!checkoutError.textContent) checkoutError.textContent = checkoutFailure;
         checkoutPending = false;
+        for (const option of billingOptionButtons) option.disabled = false;
         for (const { button } of checkoutButtons) button.disabled = false;
       }
     });

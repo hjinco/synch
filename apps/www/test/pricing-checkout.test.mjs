@@ -12,22 +12,27 @@ class Button {
   classList = { toggle() {} };
   constructor(billingInterval) { this.dataset = { billingInterval }; }
   addEventListener(event, listener) { this.listeners[event] = listener; }
+  setAttribute() {}
   click() { return this.listeners.click(); }
 }
 
-function setup(fetchResponse) {
+function setup(fetchResponse, href = "https://synch.example/pricing?organizationId=org-1", session = { ok: true, json: async () => ({ user: { id: "user" } }) }) {
   const buttons = new Map(["starter", "plus"].map(plan => [`${plan}-checkout-button`, new Button()]));
   const intervals = [new Button("monthly"), new Button("annual")];
-  const location = { origin: "https://synch.example", search: "?organizationId=org-1", href: "https://synch.example/pricing?organizationId=org-1" };
+  const location = new URL(href);
+  location.replace = target => { location.href = target; };
   const requests = [];
   const checkoutError = { textContent: "" };
   vm.runInNewContext(script, {
     URL, URLSearchParams, HTMLButtonElement: Button, location, window: { location },
     apiUrl: "https://api.example", signupUrl: "https://api.example/signup", billingUrl: "/billing",
+    pricingPath: location.pathname.replace(/upgrade\/?$/, "pricing/"),
     monthLabel: "/ month", yearLabel: "/ year", plusPricing: { monthly: 9, annual: 90 },
+    upgrade: location.pathname.includes("/upgrade"), checkoutFailure: "Try again.",
     billingEmailUnavailable: "Use a different billing email.",
     document: { getElementById: id => id === "checkout-error" ? checkoutError : buttons.get(id), querySelectorAll: () => intervals },
     fetch: async (url, options) => {
+      if (url.endsWith("/get-session")) return session;
       requests.push({ url, ...options, body: JSON.parse(options.body) });
       return fetchResponse();
     },
@@ -81,4 +86,34 @@ test("a billing email conflict stays on pricing and explains how to proceed", as
   assert.equal(location.href, originalUrl);
   assert.equal(checkoutError.textContent, "Use a different billing email.");
   assert.ok([...buttons.values()].every(button => !button.disabled));
+});
+
+const upgradeUrl = "https://synch.example/ko/upgrade/?organizationId=org-1";
+const pricingUrl = "https://synch.example/ko/pricing/?organizationId=org-1";
+
+for (const session of [{ ok: true, json: async () => null }, { status: 401 }]) {
+  test(`signed-out upgrade redirects on session lookup (${session.status ?? 200})`, async () => {
+    const { location, requests } = setup(null, upgradeUrl, session);
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(location.href, pricingUrl);
+    assert.equal(requests.length, 0);
+  });
+}
+
+test("an expired checkout session redirects from upgrade to localized pricing", async () => {
+  const { buttons, location } = setup(() => ({ status: 401 }), upgradeUrl);
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(location.href, upgradeUrl);
+  await buttons.get("plus-checkout-button").click();
+  assert.equal(location.href, pricingUrl);
+});
+
+test("a failed session lookup does not redirect a user who can check out", async () => {
+  const { buttons, location } = setup(() => ({
+    ok: true, json: async () => ({ url: "https://checkout.example/" }),
+  }), upgradeUrl, { status: 503 });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(location.href, upgradeUrl);
+  await buttons.get("starter-checkout-button").click();
+  assert.equal(location.href, "https://checkout.example/");
 });

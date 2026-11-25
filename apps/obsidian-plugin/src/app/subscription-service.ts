@@ -1,7 +1,7 @@
 import { ContextRequestCache } from "./context-request-cache";
 import { BillingClient } from "@synch/sync-client/billing";
 import { defaultHttpClient } from "../adapters/http";
-import { buildBillingWebPageUrl } from "./billing-web-url";
+import { buildBillingWebPageUrl, type BillingWebPage } from "./billing-web-url";
 import { getServerDeployment } from "../config";
 import { getSynchLocale } from "../i18n";
 import { openExternalUrl } from "../adapters/external-browser";
@@ -76,11 +76,11 @@ export class SynchSubscriptionService {
     this.openBillingWebPage("billing");
   }
 
-  openPricingPage(): void {
-    this.openBillingWebPage("pricing");
+  openUpgradePage(): void {
+    this.openBillingWebPage("upgrade");
   }
 
-  private openBillingWebPage(page: "pricing" | "billing"): void {
+  private openBillingWebPage(page: BillingWebPage): void {
     const url = buildBillingWebPageUrl(
       this.deps.getApiBaseUrl(),
       page,

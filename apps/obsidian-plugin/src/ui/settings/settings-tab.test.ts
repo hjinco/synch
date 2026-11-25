@@ -381,8 +381,8 @@ describe("SynchSettingTab", () => {
     expect(getSettingDescriptions()).not.toContain(t("subscription.checking"));
   });
 
-  it("opens pricing from free subscription settings", async () => {
-    const openPricingPage = vi.fn();
+  it("opens the upgrade page from free subscription settings", async () => {
+    const openUpgradePage = vi.fn();
     const tab = createSettingsTab({
       hasAuthenticatedSession: () => true,
       hasConnectedRemoteVault: () => true,
@@ -395,7 +395,7 @@ describe("SynchSettingTab", () => {
         cancelAtPeriodEnd: false,
         periodEnd: null,
       }),
-      openPricingPage,
+      openUpgradePage,
     });
 
     tab.open();
@@ -406,7 +406,7 @@ describe("SynchSettingTab", () => {
     );
     await upgradeButton?.click();
 
-    expect(openPricingPage).toHaveBeenCalledTimes(1);
+    expect(openUpgradePage).toHaveBeenCalledTimes(1);
   });
 
   it("opens billing management from paid subscription settings", async () => {

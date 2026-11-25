@@ -34,7 +34,7 @@ export interface SynchSettingsController {
   ensureSubscriptionStatusCheck(): Promise<void>;
   retrySubscriptionStatusCheck(): Promise<void>;
   openBillingManagementPage(): void;
-  openPricingPage(): void;
+  openUpgradePage(): void;
   getAuthReadiness(): AuthReadiness;
   getAuthStatusLabel(): string;
   getSyncState(): SynchSyncState;
