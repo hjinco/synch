@@ -1,8 +1,0 @@
----
-import { getEntry, render } from "astro:content";
-import BlogPostPage from "../src/components/BlogPostPage.astro";
-const post = await getEntry("blog", "obsidian-sync-alternatives/en");
-if (!post) throw new Error("Missing English example blog post");
-const { Content } = await render(post);
----
-<BlogPostPage Content={Content} post={post} locale="en" />

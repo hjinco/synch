@@ -5,12 +5,9 @@
   "packageManager": "pnpm@10.33.0",
   "scripts": {
     "dev:api": "pnpm --filter @synch/api dev",
-    "dev:www": "pnpm --filter www dev",
     "dev:plugin": "pnpm --filter @synch/obsidian-plugin dev",
     "dev": "pnpm -r --parallel --filter @synch/api --filter @synch/obsidian-plugin run dev",
     "build": "pnpm -r --if-present build",
-    "build:www": "pnpm -C apps/www build",
-    "deploy:www": "pnpm -C apps/www deploy",
     "build:plugin": "pnpm -C apps/obsidian-plugin build",
     "release:plugin": "pnpm -C apps/obsidian-plugin release:prepare",
     "sync:api-lockfile": "node ./scripts/sync-api-lockfile.mjs",

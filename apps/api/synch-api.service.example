@@ -6,7 +6,7 @@
 ##   sudo systemctl enable --now synch-api
 ##
 ## Edit the paths, User/Group, and EnvironmentFile below to match your setup.
-## See apps/www/src/content/docs/self-hosting-docker/en.mdx for the full guide.
+## See https://synch.run/self-hosting-docker/ for the full guide.
 
 [Unit]
 Description=Synch API (self-hosted)

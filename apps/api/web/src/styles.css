@@ -2,7 +2,7 @@
  * Shared stylesheet for the static public pages (signin, signup, device,
  * vaults). Hand-written replacement for the Tailwind CDN; color values mirror
  * the Tailwind zinc palette so the pages keep the same dark look as
- * apps/www.
+ * synch.run.
  */
 
 :root {
