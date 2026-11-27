@@ -1,5 +1,0 @@
-{
-  "extends": "../tsconfig.json",
-  "compilerOptions": { "skipLibCheck": true },
-  "include": ["*.ts", "../stories/**/*.ts", "../.astro/types.d.ts"]
-}

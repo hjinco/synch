@@ -3,7 +3,7 @@
 # Installs and starts the self-hosted Synch API as a systemd service.
 # Tested on Debian/Ubuntu; should work on other apt-based distros with
 # systemd. For other Linux distros, follow the manual steps in
-# apps/www/src/content/docs/self-hosting-docker/en.mdx instead.
+# https://synch.run/self-hosting-docker/ instead.
 #
 # Usage (from a clone of the repo, run as root or with sudo):
 #   cd synch/apps/api

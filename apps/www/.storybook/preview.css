@@ -1,8 +1,0 @@
-/* Astro layouts put a flex child directly under body. Storybook inserts its
-   canvas root between them; preserve that full-height layout in the preview. */
-#storybook-root {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  min-height: 100vh;
-}

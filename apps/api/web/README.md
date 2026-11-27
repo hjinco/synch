@@ -162,6 +162,3 @@ This is a manual preview catalog, not a screenshot regression suite. The mock
 worker is served only by Storybook and is not copied to the API's public build.
 When upgrading MSW, regenerate it with
 `pnpm -C apps/api exec msw init .storybook/public --save`.
-
-The Astro website has its own Storybook at port 6007; see
-[`apps/www/stories/README.md`](../../www/stories/README.md).

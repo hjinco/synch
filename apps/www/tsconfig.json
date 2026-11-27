@@ -1,8 +1,0 @@
-{
-  "extends": "astro/tsconfigs/strict",
-  "compilerOptions": {
-    "types": ["astro/client", "@cloudflare/workers-types"]
-  },
-  "include": [".astro/types.d.ts", "**/*"],
-  "exclude": ["dist", "storybook-static"]
-}

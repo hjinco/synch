@@ -23,7 +23,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends python3 make g+
 FROM native-deps AS build-deps
 COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
 COPY apps/api/package.json apps/api/package.json
-COPY apps/www/package.json apps/www/package.json
 COPY apps/obsidian-plugin/package.json apps/obsidian-plugin/package.json
 RUN pnpm install --frozen-lockfile --filter @synch/api...
 
@@ -34,7 +33,6 @@ RUN pnpm -C apps/api build:node
 FROM native-deps AS production-deps
 COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
 COPY apps/api/package.json apps/api/package.json
-COPY apps/www/package.json apps/www/package.json
 COPY apps/obsidian-plugin/package.json apps/obsidian-plugin/package.json
 RUN pnpm install --frozen-lockfile --filter @synch/api... --prod
 
