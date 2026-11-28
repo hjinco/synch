@@ -44,7 +44,7 @@ export interface SyncEntryStore {
   listEntries(): Promise<SyncEntryRow[]>;
   countSyncProgress(): Promise<SyncProgressCounts>;
   getOrCreateEntryId(path: string): Promise<string>;
-  upsertEntry(entry: SyncEntryRow): Promise<void>;
+  upsertEntry(entry: SyncEntryRow, localPath?: string): Promise<void>;
   deleteEntry(entryId: string): Promise<void>;
 }
 

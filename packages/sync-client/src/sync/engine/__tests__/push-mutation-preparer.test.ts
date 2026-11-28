@@ -19,7 +19,7 @@ describe("PushMutationPreparer encrypted payload retention", () => {
     const fixture = await createRetryFixture("Notes/a:b.md");
     try {
       await expect(fixture.prepare()).resolves.toEqual({
-        skipped: true,
+        kind: "blocked",
         reason: "incompatible_path",
       });
       expect(fixture.encrypt).not.toHaveBeenCalled();
@@ -89,9 +89,7 @@ describe("PushMutationPreparer encrypted payload retention", () => {
         0,
       );
 
-      expect(prepared).not.toBeNull();
-      expect(prepared).not.toHaveProperty("skipped");
-      if (!prepared || "skipped" in prepared) {
+      if (prepared.kind !== "ready") {
         throw new Error("expected a prepared mutation");
       }
       expect(uploadedBytes).toBeInstanceOf(Uint8Array);
@@ -139,7 +137,7 @@ describe("PushMutationPreparer retries", () => {
         const retry = await fixture.prepare();
         expect(fixture.encrypt).toHaveBeenCalledTimes(1);
         expect(fixture.upload).toHaveBeenCalledTimes(1);
-        if (!first || "skipped" in first || !retry || "skipped" in retry) {
+        if (first.kind !== "ready" || retry.kind !== "ready") {
           throw new Error("expected prepared mutations");
         }
         if (path.endsWith(".md")) {
@@ -151,7 +149,7 @@ describe("PushMutationPreparer retries", () => {
           expect(retry.encryptedBytes).toBeNull();
         }
         fixture.changeContents(encodeUtf8("edited while commit was pending"));
-        expect(await fixture.prepare()).toBeNull();
+        expect(await fixture.prepare()).toEqual({ kind: "retry" });
         expect(fixture.upload).toHaveBeenCalledTimes(1);
         const pending = await fixture.store.getDirtyEntryMutation(fixture.mutation.entryId);
         expect(pending?.hash).toBe(await hashBytes(encodeUtf8("edited while commit was pending")));
@@ -169,7 +167,7 @@ describe("PushMutationPreparer retries", () => {
       const retry = await fixture.prepare();
       expect(fixture.upload).toHaveBeenCalledTimes(1);
       expect(fixture.encrypt).toHaveBeenCalledTimes(2);
-      if (!retry || "skipped" in retry || !retry.encryptedBytes) {
+      if (retry.kind !== "ready" || !retry.encryptedBytes) {
         throw new Error("expected a merge base");
       }
       expect(await fixture.crypto.decryptBlob(retry.encryptedBytes, {
@@ -189,13 +187,13 @@ describe("PushMutationPreparer retries", () => {
       expect(encryptedSyncBlobSize(encodeUtf8("original").byteLength)).toBe(actual.byteLength);
       fixture.encrypt.mockClear();
       expect(await fixture.prepare(actual.byteLength - 1)).toMatchObject({
-        skipped: true, reason: "file_too_large",
+        kind: "blocked", reason: "file_too_large",
       });
       expect(fixture.encrypt).not.toHaveBeenCalled();
       expect(fixture.upload).not.toHaveBeenCalled();
-      expect(await fixture.prepare(actual.byteLength)).not.toHaveProperty("skipped");
+      expect(await fixture.prepare(actual.byteLength)).toMatchObject({ kind: "ready" });
       expect(await fixture.prepare(actual.byteLength - 1)).toMatchObject({
-        skipped: true, reason: "file_too_large",
+        kind: "blocked", reason: "file_too_large",
       });
       expect(fixture.upload).toHaveBeenCalledTimes(1);
     } finally {

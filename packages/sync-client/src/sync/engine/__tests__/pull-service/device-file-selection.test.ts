@@ -45,7 +45,8 @@ function setup() {
     });
   }
   const uploadBlob = vi.fn(async () => {});
-  const push = (realtime = session(0)) => new SyncPushService({
+  const push = (realtime = session(0), getDeviceFileRulesVersion?: () => number) => new SyncPushService({
+    getDeviceFileRulesVersion,
     ...common, getSyncToken: async () => createToken(), fileReader: vault, blobClient: { uploadBlob },
   }).pushPendingMutations(realtime);
   return { fileRules, pull, push, reconcile, commit, download, uploadBlob, store, vault };
@@ -123,6 +124,26 @@ describe("device file selection", () => {
     await reconcile();
     expect(await store.listDirtyEntries()).toEqual([]);
     expect(vault.text("paper.pdf")).toBe("local");
+  });
+
+  it("keeps a pending upload when other file rules change before commit", async () => {
+    const { vault, reconcile, push, uploadBlob, store, fileRules } = setup();
+    await vault.writeText("note.md", "local edit");
+    await reconcile();
+    const pending = await store.listDirtyEntries();
+    expect(pending).toHaveLength(1);
+    let version = 0;
+    uploadBlob.mockImplementationOnce(async () => {
+      fileRules.includePdf = true;
+      version++;
+    });
+    const realtime = session(0);
+    const send = vi.spyOn(realtime, "commitMutations");
+    await expect(push(realtime, () => version)).rejects.toThrow("rules changed");
+    expect(uploadBlob).toHaveBeenCalledTimes(1);
+    expect(send).not.toHaveBeenCalled();
+    expect(await store.listDirtyEntries()).toEqual(pending);
+    expect(await store.getCursor()).toBe(0);
   });
 
   it("reads just the changed entry when 10,000 excluded files are already known", async () => {

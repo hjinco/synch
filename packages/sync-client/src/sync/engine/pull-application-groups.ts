@@ -1,14 +1,54 @@
 import { syncStateKeys, type SyncStateResources } from "./sync-state-coordinator";
-import type { PlannedEntryState, PullEntryStateManifestItem } from "./pull-entry-state-internal";
+import type {
+  PlannedEntryState,
+  PreparedConflictCopy,
+  PreparedPathBatch,
+  PreparedPendingConflict,
+  PullEntryStateManifestItem,
+} from "./pull-entry-state-internal";
 
 export interface PullApplicationGroup {
   plans: PlannedEntryState[];
   superseded: PullEntryStateManifestItem[];
   skipped: PullEntryStateManifestItem[];
-  resources: {
-    entryIds: Array<string | null | undefined>;
-    paths: Array<string | null | undefined>;
-  };
+  targets: PullApplicationTargets;
+}
+
+export interface PreparedManifestApplication extends PullApplicationGroup {
+  supersededPathsToRemove: string[];
+  pathsToWrite: string[];
+  pendingConflicts: PreparedPendingConflict[];
+  conflictCopies: PreparedConflictCopy[];
+  batches: PreparedPathBatch[];
+}
+
+export class PullApplicationTargets {
+  readonly entryStateIds = new Set<string>();
+  readonly dirtyEntryIds = new Set<string>();
+  private readonly paths = new Set<string>();
+
+  includeManifestItem(kind: "plan" | "superseded" | "skipped", resources: SyncStateResources): void {
+    for (const id of resources.entryIds ?? []) {
+      if (id == null) continue;
+      this.entryStateIds.add(id);
+      // Skipped items update only the local and remote entry state.
+      if (kind !== "skipped") this.dirtyEntryIds.add(id);
+    }
+    for (const path of resources.paths ?? []) {
+      if (path) this.paths.add(path);
+    }
+  }
+
+  includePendingConflict({ pending, event }: PreparedConflictCopy): void {
+    // A pending delete may have no visible path and still needs a lock and rollback.
+    this.dirtyEntryIds.add(pending.entryId);
+    if (event?.originalPath) this.paths.add(event.originalPath);
+    if (event?.conflictPath) this.paths.add(event.conflictPath);
+  }
+
+  lockResources(): SyncStateResources {
+    return { entryIds: [...this.entryStateIds, ...this.dirtyEntryIds], paths: [...this.paths] };
+  }
 }
 
 /** Include store ownership as well as vault paths: adoption, supersession and
@@ -54,13 +94,12 @@ export function groupPullApplications(
     const id = root(index);
     let group = groups.get(id);
     if (!group) {
-      group = { plans: [], superseded: [], skipped: [], resources: { entryIds: [], paths: [] } };
+      group = { plans: [], superseded: [], skipped: [], targets: new PullApplicationTargets() };
       groups.set(id, group);
     }
     if (node.kind === "plan") group.plans.push(node.item);
     else group[node.kind].push(node.item);
-    group.resources.entryIds.push(...node.resources.entryIds ?? []);
-    group.resources.paths.push(...node.resources.paths ?? []);
+    group.targets.includeManifestItem(node.kind, node.resources);
   });
   return [...groups.values()];
 }

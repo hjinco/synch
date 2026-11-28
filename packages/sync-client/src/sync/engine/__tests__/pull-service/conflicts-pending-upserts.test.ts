@@ -206,11 +206,12 @@ describe("SyncPullService pending upsert conflict resolution", () => {
     await expect(service.pullOnce(session)).resolves.toEqual({
       cursor: 3,
       entriesApplied: 1,
-      filesWritten: 1,
+      filesWritten: 0,
       filesDeleted: 0,
       conflictsCreated: 0,
     });
     expect(adapter.text("Folder/note.md")).toBe(body);
+    expect(adapter.writes).toEqual([]);
     expect(adapter.text("Folder/note.sync-conflict-20260422-101112.md")).toBeNull();
     expect(conflicts).toEqual([]);
     expect(await store.listDirtyEntries()).toEqual([]);

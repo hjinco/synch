@@ -1,3 +1,4 @@
+export { getAvailableConflictCopyPath } from "./sync/core/conflict-file";
 export * from "./sync/core/content";
 export * from "./sync/core/conflict-policy";
 export * from "./sync/core/content-runtime";

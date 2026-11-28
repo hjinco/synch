@@ -1,3 +1,4 @@
+import { metadataContextFromPendingMutation } from "../core/mutation-metadata";
 import { retrySyncStateWork, syncStateCoordinator, syncStateKeys, type SyncStateSnapshot } from "./sync-state-coordinator";
 import {
   type SyncContentRuntime,
@@ -7,6 +8,7 @@ import { createSyncCryptoContext, type SyncCryptoContext } from "../core/crypto"
 import {
   buildLocalDeleteMutation,
   buildLocalUpsertMutation,
+  pathForLocalEdit,
 } from "../core/mutation-queue";
 import type {
   LocalSyncEntryRow,
@@ -109,7 +111,7 @@ export class SyncLocalReconcileService {
 
     const hashInputs: ReconcileHashInput[] = [];
     for (const file of localFiles) {
-      const existing = localByPath.get(file.path) ?? null;
+      const existing = localByPath.get(file.path)?.local ?? null;
       const pendingDeleteEntry = pendingDeleteEntriesByPath.get(file.path) ?? null;
       const existingHasPendingDelete =
         !!existing && pendingDeleteEntry?.entryId === existing.entryId;
@@ -180,7 +182,10 @@ export class SyncLocalReconcileService {
 
       const queued = await buildLocalUpsertMutation({
         metadataCrypto,
-        path: file.path,
+        path: await pathForLocalEdit({
+          path: file.path, localPath: existing?.path, remotePath: remote?.path, vault: this.deps.scanner,
+          getPending: () => localByPath.get(file.path)?.dirty ?? null, getRemoteVaultKey: this.deps.getRemoteVaultKey,
+        }),
         entryId,
         base: remote,
         previousLocal: entry,
@@ -317,12 +322,11 @@ export class SyncLocalReconcileService {
         const paths = [entry.local?.path, entry.remote?.path];
         if (entry.dirty) {
           const pending = entry.dirty;
-          paths.push((await metadataCrypto.decryptMetadata(pending.encryptedMetadata, {
-            entryId: pending.entryId,
-            revision: pending.baseRevision + 1,
-            op: pending.op,
-            blobId: pending.blobId,
-          })).path);
+          const metadata = await metadataCrypto.decryptMetadata(
+            pending.encryptedMetadata,
+            metadataContextFromPendingMutation(pending),
+          );
+          paths.push(metadata.path);
         }
         let excluded = false;
         for (const path of new Set(paths)) {
@@ -343,10 +347,10 @@ export class SyncLocalReconcileService {
       const local = entry.local;
       if (entry.dirty && this.deps.isDeviceFileExcluded) {
         const pending = entry.dirty;
-        const path = local?.path ?? (await metadataCrypto.decryptMetadata(pending.encryptedMetadata, {
-          entryId: pending.entryId, revision: pending.baseRevision + 1,
-          op: pending.op, blobId: pending.blobId,
-        })).path;
+        const path = local?.path ?? (await metadataCrypto.decryptMetadata(
+          pending.encryptedMetadata,
+          metadataContextFromPendingMutation(pending),
+        )).path;
         if (this.deps.isDeviceFileExcluded(path)) {
           excludedMutations.push(entry);
         }
@@ -387,12 +391,10 @@ export class SyncLocalReconcileService {
         continue;
       }
 
-      const metadata = await metadataCrypto.decryptMetadata(pending.encryptedMetadata, {
-        entryId: pending.entryId,
-        revision: pending.baseRevision + 1,
-        op: pending.op,
-        blobId: pending.blobId,
-      });
+      const metadata = await metadataCrypto.decryptMetadata(
+        pending.encryptedMetadata,
+        metadataContextFromPendingMutation(pending),
+      );
       const pendingEntry = entry.local;
       if (pendingEntry) {
         result.set(metadata.path, pendingEntry);
@@ -475,12 +477,12 @@ function takeRenameCandidate(
 
 function indexLocalEntriesByPath(
   entries: SyncReconcileEntryState[],
-): Map<string, LocalSyncEntryRow> {
-  const result = new Map<string, LocalSyncEntryRow>();
+): Map<string, SyncReconcileEntryState> {
+  const result = new Map<string, SyncReconcileEntryState>();
   for (const entry of entries) {
     const local = entry.local;
     if (local?.path && !local.deleted) {
-      result.set(local.path, local);
+      result.set(local.path, entry);
     }
   }
   return result;

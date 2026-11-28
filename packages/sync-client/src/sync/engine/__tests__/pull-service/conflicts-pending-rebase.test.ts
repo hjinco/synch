@@ -22,12 +22,71 @@ import {
 const conflictTimestamp = () => new Date(2026, 3, 22, 10, 11, 12).getTime();
 
 describe("SyncPullService pending upsert rebase conflict resolution", () => {
-  it.each([undefined, "prefer-remote"] as const)("rebases clean markdown before applying conflict policy %s", async (policy) => {
+  const independentEdits = {
+    baseBody: "Title\n\noriginal line\n",
+    localBody: "Title\n\nlocal line\n",
+    remoteBody: "Remote title\n\noriginal line\n",
+    mergedBody: "Remote title\n\nlocal line\n",
+  };
+  it.each(["identical", "included by remote"] as const)("preserves a later save when the pending edit is %s", async (initial) => {
+    const path = "note.md";
+    const baseBody = "one\ntwo\nthree\nfour\nfive\n";
+    const remoteBody = "ONE\ntwo\nTHREE\nfour\nfive\n";
+    const localBody = initial === "identical" ? remoteBody : "ONE\ntwo\nthree\nfour\nfive\n";
+    const laterBody = localBody.replace("five", "FIVE");
+    const finalBody = remoteBody.replace("five", "FIVE");
+    const remoteHash = await hashText(remoteBody);
     const store = createTestSyncStore();
-    const baseBody = "Title\n\noriginal line\n";
-    const localBody = "Title\n\nlocal line\n";
-    const remoteBody = "Remote title\n\noriginal line\n";
-    const mergedBody = "Remote title\n\nlocal line\n";
+    const vault = createVaultAdapter({ [path]: localBody });
+    const encode = (body: string) => new TextEncoder().encode(body);
+    await arrangePendingUpsertWithCachedBase(store, {
+      entryId: "note", path, baseRevision: 2, baseBlobId: "base",
+      baseHash: await hashText(baseBody), baseBytes: encode(baseBody),
+      localBlobId: "local", localHash: await hashText(localBody), createdAt: 3,
+    });
+    const commit = createCommit({
+      cursor: 3, entryId: "note", revision: 3, blobId: "remote",
+      encryptedMetadata: await encryptRemoteMetadata({
+        entryId: "note", revision: 3, blobId: "remote", path, hash: remoteHash,
+      }),
+    });
+    let saved = false;
+    const service = new SyncPullService({
+      contentRuntime: createTestContentRuntime(), getSyncToken: async () => createToken(),
+      getSyncStore: () => store, getRemoteVaultKey: () => TEST_VAULT_KEY,
+      vaultAdapter: vault, onProgress: ignoreProgress,
+      blobClient: createBlobClient({ blobs: { remote: await encryptTestBlob("remote", encode(remoteBody)) } }),
+      onFileSyncStarted() {
+        if (!saved) {
+          saved = true;
+          vault.files.set(path, encode(laterBody));
+        }
+      },
+    });
+    const session = createRealtimeSession({ pages: [{ cursor: 3, hasMore: false, commits: [commit] }] });
+    await expect(service.pullOnce(session)).resolves.toMatchObject({ cursor: 3, conflictsCreated: 0 });
+    expect(vault.text(path)).toBe(finalBody);
+    expect(await store.getDirtyEntryMutation("note")).toMatchObject({
+      baseRevision: 3, baseHash: remoteHash, hash: await hashText(finalBody),
+    });
+    await store.close();
+  });
+
+  it.each([
+    { name: "independent lines", policy: undefined, ...independentEdits },
+    { name: "independent lines", policy: "prefer-remote", ...independentEdits },
+    {
+      name: "first-line insertion in a note with a BOM", policy: "prefer-remote",
+      baseBody: "\uFEFFone\ntwo\n", localBody: "\uFEFFintro\none\ntwo\n",
+      remoteBody: "\uFEFFONE\ntwo\n", mergedBody: "\uFEFFintro\nONE\ntwo\n",
+    },
+    {
+      name: "note containing Unicode line and paragraph separators", policy: "prefer-remote",
+      baseBody: "\uFEFFkeep\u2028also keep\u2029a\nb\nc\n", localBody: "\uFEFFkeep\u2028also keep\u2029A\nb\nc\n",
+      remoteBody: "\uFEFFkeep\u2028also keep\u2029a\nb\nC\n", mergedBody: "\uFEFFkeep\u2028also keep\u2029A\nb\nC\n",
+    },
+  ] as const)("rebases $name before applying conflict policy $policy", async ({ policy, baseBody, localBody, remoteBody, mergedBody }) => {
+    const store = createTestSyncStore();
     const baseHash = await hashText(baseBody);
     const localHash = await hashText(localBody);
     const remoteHash = await hashText(remoteBody);
@@ -107,7 +166,7 @@ describe("SyncPullService pending upsert rebase conflict resolution", () => {
       filesDeleted: 0,
       conflictsCreated: 0,
     });
-    expect(adapter.text("Folder/note.md")).toBe(mergedBody);
+    expect(await adapter.readBytes("Folder/note.md")).toEqual(new TextEncoder().encode(mergedBody));
     expect(conflicts).toEqual([]);
     expect(await store.getRemoteStateById("entry-note")).toMatchObject({
       revision: 3,

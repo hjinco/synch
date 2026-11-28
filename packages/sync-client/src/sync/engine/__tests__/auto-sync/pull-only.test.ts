@@ -108,7 +108,7 @@ describe("SyncAutoLoop pull-only", () => {
     await store.close();
   });
 
-  it("refuses to pull when the store contains pending local changes", async () => {
+  it.each([null, "file_too_large", "incompatible_path"] as const)("refuses to pull with a pending local change (blocked reason %s)", async (blockedReason) => {
     const store = createTestSyncStore();
     await store.markEntryDirty({
       mutationId: "mutation-1",
@@ -117,6 +117,8 @@ describe("SyncAutoLoop pull-only", () => {
       baseRevision: 0,
       blobId: null,
       hash: null,
+      status: blockedReason ? "blocked" : "pending",
+      blockedReason,
       encryptedMetadata: "encrypted-metadata",
       createdAt: 1,
     });

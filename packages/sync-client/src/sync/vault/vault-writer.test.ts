@@ -18,6 +18,17 @@ describe("vault writer", () => {
     expect(writer.binaryFiles.has("Folder/Nested/note.md")).toBe(false);
   });
 
+  it("preserves a UTF-8 BOM and falls back to binary for non-UTF-8 Markdown", async () => {
+    const writer = new MemoryVaultWriter();
+    const withBom = new TextEncoder().encode("\uFEFFnote\r\n");
+    await writeVaultBytes(writer, "bom.md", withBom);
+    expect(new TextEncoder().encode(writer.textFiles.get("bom.md"))).toEqual(withBom);
+
+    const malformed = Uint8Array.of(0xff, 0xfe, 0x61, 0);
+    await writeVaultBytes(writer, "legacy.md", malformed);
+    expect(writer.binaryFiles.get("legacy.md")).toEqual(malformed);
+  });
+
   it("writes non-markdown bytes as binary", async () => {
     const writer = new MemoryVaultWriter();
     const bytes = new Uint8Array([1, 2, 3]);

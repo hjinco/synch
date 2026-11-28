@@ -1,3 +1,4 @@
+import { metadataContextFromPendingMutation } from "../core/mutation-metadata";
 import { withSyncState } from "./sync-state-coordinator";
 import type { SyncedEntryMetadata } from "../core/content";
 import { writeConflictCopy } from "../core/conflict-file";
@@ -19,7 +20,6 @@ import { PushMutationPreparer } from "./push-mutation-preparer";
 import {
   isLocalAheadStaleRevision,
   isPullResolvableStaleRevision,
-  metadataContextFromMutation,
 } from "./push-mutation-shared";
 import { isAutoMergeTextPath } from "./text-merge-policy";
 import type {
@@ -39,7 +39,6 @@ export type {
   PushMutationRejectionResult,
   PushMutationCommitterDeps,
   PushMutationStore,
-  SkippedPushMutation,
 } from "./push-mutation-types";
 
 export class PushMutationCommitter {
@@ -148,7 +147,7 @@ export class PushMutationCommitter {
 
     const metadata = await this.getSyncCryptoContext().decryptMetadata(
       mutation.encryptedMetadata,
-      metadataContextFromMutation(mutation),
+      metadataContextFromPendingMutation(mutation),
     );
     return await withSyncState(store, { entryIds: [mutation.entryId], paths: [metadata.path] }, async () => {
       const current = await store.getDirtyEntryMutation(mutation.entryId);

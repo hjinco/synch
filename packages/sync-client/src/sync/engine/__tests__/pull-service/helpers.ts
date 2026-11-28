@@ -347,6 +347,10 @@ export function createVaultAdapter(initialFiles: Record<string, string | Uint8Ar
     async exists(path: string): Promise<boolean> {
       return files.has(path) || directories.has(path);
     },
+    async statKind(path: string): Promise<"file" | "folder" | null> {
+      if (files.has(path)) return "file";
+      return directories.has(path) ? "folder" : null;
+    },
     async mkdir(path: string): Promise<void> {
       directories.add(path);
     },

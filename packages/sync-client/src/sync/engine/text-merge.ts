@@ -13,9 +13,27 @@ type Replacement = {
   lines: string[];
 };
 
+const BOM = "\uFEFF";
 const MAX_LCS_CELLS = 2_000_000;
 
 export function mergeText3(base: string, local: string, remote: string): TextMergeResult {
+  // Inserting a new first line moves the BOM to that line. Merge the encoding
+  // marker separately so the insertion does not also replace the old first line.
+  const baseHasBom = base.startsWith(BOM);
+  const localHasBom = local.startsWith(BOM);
+  const remoteHasBom = remote.startsWith(BOM);
+  const hasBom = localHasBom === baseHasBom ? remoteHasBom : localHasBom;
+  const merged = mergeBody(
+    baseHasBom ? base.slice(1) : base,
+    localHasBom ? local.slice(1) : local,
+    remoteHasBom ? remote.slice(1) : remote,
+  );
+  return merged.status === "clean" && hasBom
+    ? { status: "clean", text: BOM + merged.text }
+    : merged;
+}
+
+function mergeBody(base: string, local: string, remote: string): TextMergeResult {
   if (local === remote) {
     return { status: "clean", text: local };
   }
@@ -47,7 +65,7 @@ function splitLines(text: string): string[] {
     return [];
   }
 
-  const lines = text.match(/.*(?:\r\n|\n|\r|$)/g) ?? [];
+  const lines = text.match(/[^\r\n\u2028\u2029]*(?:\r\n|[\r\n\u2028\u2029]|$)/g) ?? [];
   if (lines[lines.length - 1] === "") {
     lines.pop();
   }

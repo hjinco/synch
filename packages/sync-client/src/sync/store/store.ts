@@ -102,6 +102,65 @@ export interface PendingMutationRow {
   createdAt: number;
 }
 
+/** Durable until the merged file and its rebased upload are both committed. */
+export interface TextMergeIntent {
+  kind?: "merge";
+  entryId: string;
+  path: string;
+  sourceHash: string;
+  sourceMutationId: string;
+  installed?: boolean;
+  /** Keep the live source and install this merge as a sibling conflict copy. */
+  keepSource?: boolean;
+  /** Authenticated ciphertext. Older journals contain only the hashes. */
+  staged?: {
+    sourceBlobId: string;
+    sourceCiphertext: string;
+    mergedCiphertext: string;
+  };
+  remoteUpdatedAt: number;
+  mutation: PendingMutationRow & {
+    op: "upsert";
+    hash: string;
+    blobId: string;
+    baseHash: string;
+    baseBlobId: string;
+  };
+}
+
+/** A cached Markdown base can be referenced directly. Other bytes live only
+ * for the duration of the install, encrypted with a blob-specific context. */
+export interface JournalBlob {
+  blobId: string;
+  hash: string;
+  ciphertext?: string;
+}
+
+export interface RemoteWriteIntent {
+  kind: "download";
+  entryId: string;
+  path: string;
+  /** Physical spelling when a shared directory keeps its local name. */
+  localPath?: string;
+  revision: number;
+  remoteUpdatedAt: number;
+  journalId: string;
+  createdAt: number;
+  source: JournalBlob | null;
+  target: JournalBlob;
+  pendingMutationId: string | null;
+  displaced?: { path: string; restorePrevious: boolean };
+}
+
+export type PullWriteIntent = TextMergeIntent | RemoteWriteIntent;
+
+export interface TextMergeJournal {
+  get(entryId: string): Promise<PullWriteIntent | undefined>;
+  listEntryIds(): Promise<string[]>;
+  put(intent: PullWriteIntent): Promise<void>;
+  remove(entryId: string): Promise<void>;
+}
+
 export interface MarkEntryDirtyOptions {
   requireBaseBlob?: boolean;
 }
@@ -154,6 +213,7 @@ export interface SyncStore
     SyncReconcileStore,
     SyncBlobStore,
     SyncStoreLifecycle {
+  readonly textMerges: TextMergeJournal;
   /** Present on hosts offering device-specific file selection. */
   readonly deferredFiles?: DeferredSyncFileStore;
 }

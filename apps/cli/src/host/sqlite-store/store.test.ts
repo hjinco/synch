@@ -8,6 +8,7 @@ import { encryptSyncMetadata } from "@synch/sync-client/core";
 import type {
   AcceptedPushMutationRow,
   PendingMutationRow,
+  TextMergeIntent,
   SyncStore,
 } from "@synch/sync-client/store";
 import { SqliteSyncStore } from "./store";
@@ -68,6 +69,26 @@ describe("SqliteSyncStore basics", () => {
 
     store = SqliteSyncStore.open(path.join(tempDir, "sync.sqlite"));
     expect(await store.readLocalVaultId()).toBe(localVaultId);
+  });
+
+  it("reopens an interrupted text merge with the same upload identity", async () => {
+    const intent: TextMergeIntent = {
+      entryId: "note", path: "note.md", sourceHash: "local-hash", sourceMutationId: "original",
+      installed: true, staged: { sourceBlobId: "backup", sourceCiphertext: "c291cmNl", mergedCiphertext: "bWVyZ2Vk" },
+      remoteUpdatedAt: 3,
+      mutation: {
+        entryId: "note", mutationId: "rebased", op: "upsert", baseRevision: 3,
+        baseBlobId: "remote", baseHash: "remote-hash", blobId: "local", hash: "merged-hash",
+        encryptedMetadata: "encrypted-metadata", createdAt: 4,
+      },
+    };
+    await store.textMerges.put(intent);
+    await store.close();
+    store = SqliteSyncStore.open(path.join(tempDir, "sync.sqlite"));
+    expect(await store.textMerges.listEntryIds()).toEqual([intent.entryId]);
+    expect(await store.textMerges.get(intent.entryId)).toEqual(intent);
+    await store.textMerges.remove(intent.entryId);
+    expect(await store.textMerges.listEntryIds()).toEqual([]);
   });
 
   it("stores and reads the sync connection and cursor", async () => {

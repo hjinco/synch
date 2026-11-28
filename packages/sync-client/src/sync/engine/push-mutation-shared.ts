@@ -1,6 +1,5 @@
 import type { CommitMutationPayload } from "../remote/realtime-client";
 import { SyncRealtimeError } from "../remote/realtime-client";
-import type { PendingMutationRow } from "../store/store";
 export function toCommitPayload(mutation: {
   mutationId: string;
   entryId: string;
@@ -16,15 +15,6 @@ export function toCommitPayload(mutation: {
     baseRevision: mutation.baseRevision,
     blobId: mutation.blobId,
     encryptedMetadata: mutation.encryptedMetadata,
-  };
-}
-
-export function metadataContextFromMutation(mutation: PendingMutationRow) {
-  return {
-    entryId: mutation.entryId,
-    revision: mutation.baseRevision + 1,
-    op: mutation.op,
-    blobId: mutation.blobId,
   };
 }
 

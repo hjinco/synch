@@ -1,4 +1,4 @@
-import { DeviceFileRulesChangedError } from "./device-file-selection";
+import { DeviceFileRulesChangedError } from "./device-file-rules-version";
 import { isSyncPausedError, isSyncPausedClose } from "../remote/sync-pause";
 import type { SyncTokenResponse } from "../remote/client";
 import type { PresenceSelection } from "../core/presence";
@@ -10,6 +10,7 @@ import {
 import type { PushPendingMutationsOptions, PushPendingMutationsResult, StalePushMutation } from "./push-service";
 import { RecoveryPendingDependenciesError } from "./pull-recovery-manifest";
 import {
+  type SyncRealtimeCallbacks,
   type SyncRealtimeClient,
   SyncRealtimeConnectionError,
   SyncRealtimeError,
@@ -23,6 +24,7 @@ import { SyncSessionSubscriptions } from "./auto-sync-subscriptions";
 import { AutoSyncTimers } from "./auto-sync-timers";
 import { PendingSyncWorkQueue } from "./auto-sync-work-queue";
 import { pullWithReadOnlySession } from "./pull-only-session";
+import type { PullMode } from "./pull-entry-state-internal";
 
 const DEFAULT_PUSH_DEBOUNCE_MS = 100;
 const DEFAULT_RECONNECT_DELAY_MS = 3_000;
@@ -44,7 +46,7 @@ export interface SyncAutoLoopDeps {
   ) => Promise<number>;
   isDeferredEntry?: (id: string) => Promise<boolean>;
   hasNewlyIncludedFiles?: () => Promise<boolean>;
-  pullOnce: (session: SyncRealtimeSession) => Promise<unknown>;
+  pullOnce: (session: SyncRealtimeSession, mode?: PullMode) => Promise<unknown>;
   recoverEntryStates?: (session: SyncRealtimeSession, entryIds: string[]) => Promise<void>;
   realtimeClient: SyncRealtimeClientLike;
   pushDebounceMs?: number;
@@ -318,6 +320,53 @@ export class SyncAutoLoop {
     return this.isActive() && generation === this.connectionGeneration;
   }
 
+  private callbacksForConnection(generation: number, vaultId: string): SyncRealtimeCallbacks {
+    return guardRealtimeCallbacks(() => this.isCurrentConnection(generation), {
+      onCursorAdvanced: (nextCursor) => {
+        this.requestPull(nextCursor);
+      },
+      onStorageStatusUpdated: (status) => {
+        this.deps.onStorageStatusChange?.(status);
+      },
+      onPolicyUpdated: (_policy, storageStatus) => {
+        void this.handlePolicyUpdated(storageStatus, generation);
+      },
+      onPresenceUpdated: (update) => {
+        this.deps.onPresenceUpdated?.(update);
+      },
+      onPresenceCleared: (presenceId) => {
+        this.deps.onPresenceCleared?.(presenceId);
+      },
+      onPresenceAvailabilityChanged: (enabled) => {
+        this.subscriptions.setPresenceAvailability(enabled);
+      },
+      onClose: (event) => {
+        if (isSyncPausedClose(event)) {
+          this.handleError(new SyncRealtimeError("sync_paused", "vault sync is temporarily paused for repair"));
+          return;
+        }
+        const unavailable = remoteVaultUnavailableFromWebSocketClose(
+          event,
+          vaultId,
+        );
+        if (unavailable) {
+          this.handleRemoteVaultUnavailable(unavailable);
+          return;
+        }
+
+        this.markRealtimeDisconnected();
+      },
+      onError: (error) => {
+        if (
+          !isRealtimeConnectionError(error) &&
+          !isCursorAheadOfServerError(error)
+        ) {
+          this.handleError(error);
+        }
+      },
+    });
+  }
+
   private async openRealtimeSession(generation: number): Promise<void> {
     const run = this.state.generation;
     let session: SyncRealtimeSession | null = null;
@@ -336,58 +385,7 @@ export class SyncAutoLoop {
         this.deps.getApiBaseUrl(),
         token,
         cursor,
-        {
-          onCursorAdvanced: (nextCursor) => {
-            if (!this.isCurrentConnection(generation)) return;
-            this.requestPull(nextCursor);
-          },
-          onStorageStatusUpdated: (status) => {
-            if (!this.isCurrentConnection(generation)) return;
-            this.deps.onStorageStatusChange?.(status);
-          },
-          onPolicyUpdated: (_policy, storageStatus) => {
-            if (!this.isCurrentConnection(generation)) return;
-            void this.handlePolicyUpdated(storageStatus, generation);
-          },
-          onPresenceUpdated: (update) => {
-            if (!this.isCurrentConnection(generation)) return;
-            this.deps.onPresenceUpdated?.(update);
-          },
-          onPresenceCleared: (presenceId) => {
-            if (!this.isCurrentConnection(generation)) return;
-            this.deps.onPresenceCleared?.(presenceId);
-          },
-          onPresenceAvailabilityChanged: (enabled) => {
-            if (!this.isCurrentConnection(generation)) return;
-            this.subscriptions.setPresenceAvailability(enabled);
-          },
-          onClose: (event) => {
-            if (!this.isCurrentConnection(generation)) return;
-            if (isSyncPausedClose(event)) {
-              this.handleError(new SyncRealtimeError("sync_paused", "vault sync is temporarily paused for repair"));
-              return;
-            }
-            const unavailable = remoteVaultUnavailableFromWebSocketClose(
-              event,
-              token.vaultId,
-            );
-            if (unavailable) {
-              this.handleRemoteVaultUnavailable(unavailable);
-              return;
-            }
-
-            this.markRealtimeDisconnected();
-          },
-          onError: (error) => {
-            if (!this.isCurrentConnection(generation)) return;
-            if (
-              !isRealtimeConnectionError(error) &&
-              !isCursorAheadOfServerError(error)
-            ) {
-              this.handleError(error);
-            }
-          },
-        },
+        this.callbacksForConnection(generation, token.vaultId),
       );
       if (!this.isCurrentConnection(generation)) {
         session.close();
@@ -478,10 +476,6 @@ export class SyncAutoLoop {
   }
 
   private async handlePolicyUpdated(storageStatus: SyncStorageStatus, generation: number): Promise<void> {
-    if (!this.isCurrentConnection(generation)) {
-      return;
-    }
-
     this.subscriptions.reportPolicyStorageStatus(storageStatus);
 
     const session = this.realtimeSession;
@@ -803,6 +797,28 @@ export class SyncAutoLoop {
     this.deps.onTerminalStop?.({ type: "remote_vault_unavailable", error });
     void this.deps.onRemoteVaultUnavailable?.(error);
   }
+}
+
+function guardRealtimeCallbacks(
+  isCurrent: () => boolean,
+  callbacks: SyncRealtimeCallbacks,
+): SyncRealtimeCallbacks {
+  function guard<Args extends unknown[]>(callback: (...args: Args) => void) {
+    return (...args: Args) => {
+      if (isCurrent()) callback(...args);
+    };
+  }
+
+  return {
+    onCursorAdvanced: guard(callbacks.onCursorAdvanced.bind(callbacks)),
+    onStorageStatusUpdated: guard(callbacks.onStorageStatusUpdated.bind(callbacks)),
+    onPolicyUpdated: guard(callbacks.onPolicyUpdated.bind(callbacks)),
+    onPresenceUpdated: guard(callbacks.onPresenceUpdated.bind(callbacks)),
+    onPresenceCleared: guard(callbacks.onPresenceCleared.bind(callbacks)),
+    onPresenceAvailabilityChanged: guard(callbacks.onPresenceAvailabilityChanged.bind(callbacks)),
+    onClose: guard(callbacks.onClose.bind(callbacks)),
+    onError: guard(callbacks.onError.bind(callbacks)),
+  };
 }
 
 function isRealtimeConnectionError(error: unknown): boolean {

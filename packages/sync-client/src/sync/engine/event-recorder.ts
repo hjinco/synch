@@ -1,3 +1,4 @@
+import { metadataContextFromPendingMutation } from "../core/mutation-metadata";
 import {
   type SyncContentRuntime,
   type SyncContentRuntimeDeps,
@@ -7,7 +8,9 @@ import type { SyncEventGateLike } from "./event-gate";
 import {
   queueLocalDeleteMutation,
   queueLocalUpsertMutation,
+  pathForLocalEdit,
 } from "../core/mutation-queue";
+import type { SyncVaultPathAliases } from "../vault/ports";
 import type {
   LocalSyncEntryRow,
   RemoteSyncEntryRow,
@@ -21,7 +24,7 @@ import type {
 import { withSyncState } from "./sync-state-coordinator";
 import { isAutoMergeTextPath } from "./text-merge-policy";
 
-export interface SyncEventRecorderDeps extends SyncContentRuntimeDeps {
+export interface SyncEventRecorderDeps extends SyncContentRuntimeDeps, SyncVaultPathAliases {
   getSyncStore: () => SyncEventRecorderStore | null;
   getRemoteVaultKey: () => Uint8Array;
   eventGate?: Pick<SyncEventGateLike, "isSuppressed">;
@@ -94,10 +97,23 @@ export class SyncEventRecorder {
     );
   }
 
+  /** The pull already holds a byte reservation. Read after locking the path
+   * so a delayed observation cannot replace a newer queued edit. A legacy
+   * entry without a cached merge base can still produce a conflict copy. */
+  async recordFileDuringPull(path: string, readHash: () => Promise<string | null>): Promise<boolean> {
+    return await withSyncState(this.requireStore(), { paths: [path] }, async () => {
+      const hash = await readHash();
+      return hash === null
+        ? await this.recordDeleteWithState(path)
+        : await this.recordUpsertWithHash(path, hash, null, false);
+    });
+  }
+
   private async recordUpsertWithHash(
     path: string,
     hash: string,
     localStat: LocalFileStat | null,
+    requireCachedBase = true,
   ): Promise<boolean> {
     if (this.isSuppressed(path)) {
       return false;
@@ -130,12 +146,15 @@ export class SyncEventRecorder {
 
     const queued = await queueLocalUpsertMutation(store, {
       remoteVaultKey: this.deps.getRemoteVaultKey(),
-      path,
+      path: await pathForLocalEdit({
+        path, localPath: existing?.path, remotePath: remote?.path, vault: this.deps,
+        getPending: () => store.getDirtyEntryMutation(entryId), getRemoteVaultKey: this.deps.getRemoteVaultKey,
+      }),
       entryId,
       base: remote,
       previousLocal: existing,
       hash,
-      requireBaseBlob: shouldRequireBaseBlob(path, remote),
+      requireBaseBlob: requireCachedBase && shouldRequireBaseBlob(path, remote),
     });
     const nextEntry = buildLocalEntrySnapshot(existing, {
       entryId: queued.entryId,
@@ -200,7 +219,9 @@ export class SyncEventRecorder {
     const store = this.requireStore();
     const existing =
       (await store.getLocalStateByPath(oldPath)) ??
-      (await store.getLocalStateByPath(nextPath));
+      (await store.getLocalStateByPath(nextPath)) ??
+      // A scan or recovery can observe the missing path before the rename event.
+      (await this.findPendingDeleteLocalEntryByPath(store, oldPath));
     if (!existing) {
       return await this.recordUpsertWithHash(nextPath, hash, localStat);
     }
@@ -322,12 +343,7 @@ export class SyncEventRecorder {
       const metadata = await decryptSyncMetadata(
         remoteVaultKey,
         pending.encryptedMetadata,
-        {
-          entryId: pending.entryId,
-          revision: pending.baseRevision + 1,
-          op: pending.op,
-          blobId: pending.blobId,
-        },
+        metadataContextFromPendingMutation(pending),
       );
       if (metadata.path !== path) {
         continue;

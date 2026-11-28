@@ -1,8 +1,10 @@
+import { commitTextMerge, PullWriteRecovery } from "./pull-text-merge-journal";
+import type { TextMergeJournal } from "../store/store";
 import type { DeviceFileSelection } from "./device-file-selection";
 import type { SyncDiagnostics } from "../diagnostics/types";
 import type { SyncEventRecorderStore } from "./event-recorder";
 import { PullLocalFileSnapshots, PullLocalFilesChangedError } from "./pull-local-file-snapshots";
-import { retrySyncStateWork, syncStateCoordinator, withSyncState, type SyncStateSnapshot, type SyncStateResources } from "./sync-state-coordinator";
+import { retrySyncStateWork, SyncStateChangedError, syncStateCoordinator, withSyncState, type SyncStateSnapshot } from "./sync-state-coordinator";
 import type { SyncConflictPolicy } from "../core/conflict-policy";
 import { decryptSyncMetadata } from "../core/crypto";
 import type { ContentReservation, SyncContentRuntimeDeps } from "../core/content-runtime";
@@ -15,15 +17,18 @@ import type {
   SyncLocalEntryStore,
   SyncMutationStore,
   SyncRemoteEntryStore,
+  SyncReconcileStore,
 } from "../store/ports";
 import {
+  renameAliasedVaultPath,
   renameVaultPath,
   removeVaultPathIfExists,
+  replaceVaultTextIfUnchanged,
   writeVaultBytes,
 } from "../vault/vault-writer";
 import type { SyncVaultAccess } from "../vault/ports";
 import type { SyncEventGateLike } from "./event-gate";
-import { groupPullApplications, pullPlanFilePaths } from "./pull-application-groups";
+import { groupPullApplications, pullPlanFilePaths, type PreparedManifestApplication } from "./pull-application-groups";
 import { runPullPreparationPipeline } from "./pull-preparation-pipeline";
 import { capturePullStoreSnapshot } from "./pull-store-snapshot";
 import { PullBlobPreparer } from "./pull-blob-preparer";
@@ -38,8 +43,8 @@ import {
   type PullConflictEvent,
   type PullEntryStateManifestItem,
   type PullRollbackEvent,
+  type PullMode,
   type PlannedEntryState,
-  type PreparedManifestApplication,
   uniquePendingConflicts,
   uniqueSyncPaths,
 } from "./pull-entry-state-internal";
@@ -55,6 +60,7 @@ export interface PullEntryStateApplierDeps extends SyncContentRuntimeDeps {
   shouldApplyRemotePath?: (path: string, deleted: boolean) => boolean;
   shouldUseLatestRemoteVersion?: (path: string) => boolean;
   prepareConcurrency?: number;
+  onLocalMutationQueued?: () => void;
   onConflict?: (event: PullConflictEvent) => void;
   onRollbackDetected?: (event: PullRollbackEvent) => void;
   onFileSyncStarted?: (event: {
@@ -87,6 +93,7 @@ export type PullEntryStateVaultAdapter = SyncVaultAccess;
 
 export interface PullEntryStateStore
   extends PullManifestStore, SyncEventRecorderStore,
+    Pick<SyncReconcileStore, "applyReconcileEntryUpdates">,
     Pick<
       SyncEntryStore,
       "deleteEntry" | "getEntryStateById" | "upsertEntry"
@@ -106,7 +113,9 @@ export interface PullEntryStateStore
       | "markEntryDirty"
       | "replaceDirtyEntry"
     >,
-    Pick<SyncBlobStore, "getBlob" | "putBlob"> {}
+    Pick<SyncBlobStore, "getBlob" | "putBlob"> {
+  readonly textMerges: TextMergeJournal;
+}
 
 export type PullEntryStateWindowApplyResult = PullEntryStateApplyResult & {
   completedStates: Array<{ entryId: string; revision: number }>;
@@ -115,17 +124,20 @@ export type PullEntryStateWindowApplyResult = PullEntryStateApplyResult & {
 
 interface PullWindowOptions {
   finalWindow: boolean;
-  selection?: Pick<DeviceFileSelection, "hasMovedFrom" | "hasDeferred">;
+  mode?: PullMode;
+  selection?: Pick<DeviceFileSelection, "hasMovedFrom">;
   checkSelection?: () => void;
 }
 
 export class PullEntryStateApplier {
+  readonly writeRecovery: PullWriteRecovery;
   private readonly blobPreparer: PullBlobPreparer;
   private readonly manifestPlanner: PullManifestPlanner;
   private readonly pendingMutations: PullPendingMutationHandler;
   private readonly localFiles: PullLocalFileSnapshots;
 
   constructor(private readonly deps: PullEntryStateApplierDeps) {
+    this.writeRecovery = new PullWriteRecovery(deps);
     this.blobPreparer = new PullBlobPreparer(deps);
     this.manifestPlanner = new PullManifestPlanner(deps);
     this.pendingMutations = new PullPendingMutationHandler(deps);
@@ -213,6 +225,7 @@ export class PullEntryStateApplier {
     const completed = new Set<string>();
     const totals = { entriesApplied: 0, filesWritten: 0, filesDeleted: 0, conflictsCreated: 0 };
     const deferred = await retrySyncStateWork(async () => {
+      if (options.mode !== "read-only") await this.writeRecovery.recover(store);
       const snapshot = syncStateCoordinator(store).watch();
       try {
         return await this.applyManifestWindowAttempt(store, token, manifest, options, snapshot, completed, totals);
@@ -241,7 +254,9 @@ export class PullEntryStateApplier {
     const { plans, deferred, superseded, skipped } = await this.manifestPlanner.planManifest(
       store, manifest, { deferExternalPathOwners: !options.finalWindow, appliedEntryIds: completed, selection: options.selection },
     );
-    await this.markAlreadyCurrentVaultWrites(store, plans);
+    // A replica may have been edited since a partial pull committed this entry
+    // but before it checkpointed the window. Reinstall even a replayed version.
+    if (options.mode !== "read-only") await this.markAlreadyCurrentVaultWrites(store, plans);
     const withExistingPaths = async (items: PullEntryStateManifestItem[]) =>
       await Promise.all(items.map(async (item) => ({
         item, existingPath: (await store.getEntryById(item.state.entryId))?.path ?? null,
@@ -252,15 +267,15 @@ export class PullEntryStateApplier {
     const groups: Array<{
       prepared: PreparedManifestApplication;
       estimate: number;
-      resources: SyncStateResources;
       pathsToSnapshot: string[];
       localFiles: Map<string, string | null>;
+      needsReplan: boolean;
       reservation?: ContentReservation;
     }> = [];
     for (const group of groupPullApplications(plans, supersededWithPaths, skippedWithPaths)) {
       let estimate = 0;
       const supersededPathsToRemove = await this.findSupersededPathsToRemove(store, group.superseded, plans);
-      const pathsToSnapshot = uniqueSyncPaths([
+      const pathsToSnapshot = options.mode === "read-only" ? [] : uniqueSyncPaths([
         ...group.plans.flatMap(pullPlanFilePaths), ...supersededPathsToRemove,
       ]);
       for (const plan of group.plans) {
@@ -277,16 +292,16 @@ export class PullEntryStateApplier {
       }
       groups.push({
         estimate,
-        resources: group.resources,
         pathsToSnapshot,
         localFiles: new Map(),
+        needsReplan: false,
         prepared: {
-          plans: group.plans,
-          superseded: group.superseded,
-          skipped: group.skipped,
+          ...group,
           supersededPathsToRemove,
           pathsToWrite: uniqueSyncPaths(group.plans.filter((plan) => !plan.skipVaultWrite).map((plan) => plan.finalPath)),
-          completedStates: [], deferred: [], pendingConflicts: [], batches: [],
+          pendingConflicts: [],
+          conflictCopies: [],
+          batches: [],
         },
       });
     }
@@ -301,41 +316,14 @@ export class PullEntryStateApplier {
         try {
           options.checkSelection?.();
           group.localFiles = await this.localFiles.capture(group.pathsToSnapshot, reservation);
-          // An edit to a retained file can reach disk before its watcher runs.
-          // Record it before a returning entry or a replacement takes the path.
-          const retainedPaths = new Set<string>();
-          for (const plan of prepared.plans) {
-            if (plan.finalPath && options.selection?.hasDeferred(plan.state.entryId)) {
-              retainedPaths.add(plan.finalPath);
-            }
-            for (const owner of [plan.existing, plan.supersededPathOwner]) {
-              if (owner?.path && !owner.deleted && options.selection?.hasDeferred(owner.entryId)) {
-                retainedPaths.add(owner.path);
-              }
-            }
-          }
-          const unrecorded: string[] = [];
-          for (const path of retainedPaths) {
-            const diskHash = group.localFiles.get(path);
-            if (diskHash === undefined) continue;
-            const local = await store.getLocalStateByPath(path);
-            if (diskHash !== (local?.hash ?? null)) unrecorded.push(path);
-          }
-          if (unrecorded.length) {
-            await this.localFiles.recordChanges(store, unrecorded, reservation);
-            throw new PullLocalFilesChangedError(unrecorded);
-          }
-          await this.prepareApplicationGroup(store, token, prepared, reservation, options.checkSelection);
-          for (const conflict of prepared.pendingConflicts) {
+          group.needsReplan = await this.localFiles.recordUnobservedEdits(store, prepared.plans, group.localFiles, reservation);
+          if (group.needsReplan) return;
+          await this.prepareApplicationGroup(store, token, prepared, reservation, options);
+          for (const conflict of prepared.conflictCopies) {
             const path = conflict.event?.conflictPath;
             // Conflict copies were allocated only after checking nonexistence.
             if (path && !group.localFiles.has(path)) group.localFiles.set(path, null);
           }
-          // Pending deletes can refer to an entry with no visible local path.
-          group.resources.entryIds = [...(group.resources.entryIds ?? []),
-            ...prepared.pendingConflicts.map((conflict) => conflict.pending.entryId)];
-          group.resources.paths = [...(group.resources.paths ?? []),
-            ...prepared.pendingConflicts.flatMap((conflict) => [conflict.event?.originalPath, conflict.event?.conflictPath])];
         } catch (error) {
           for (const plan of prepared.plans) {
             this.deps.onFileSyncFailed?.({
@@ -346,17 +334,19 @@ export class PullEntryStateApplier {
           throw error;
         }
       },
-      apply: async ({ prepared, resources, localFiles, reservation }) => {
+      apply: async ({ prepared, localFiles, reservation, needsReplan }) => {
+        if (needsReplan) return;
         try {
-          await withSyncState(store, resources, async () => {
+          await withSyncState(store, prepared.targets.lockResources(), async () => {
             const current = await this.localFiles.capture([...localFiles.keys()], reservation!);
             const changedPaths = [...localFiles].filter(([path, hash]) => current.get(path) !== hash).map(([path]) => path);
             if (changedPaths.length > 0) throw new PullLocalFilesChangedError(changedPaths);
-            totals.filesDeleted += await this.applyPreparedManifest(store, prepared, options.checkSelection);
+            const applied = await this.applyPreparedManifest(store, prepared, reservation!, current, options.checkSelection);
+            totals.filesDeleted += applied.filesDeleted;
             totals.entriesApplied += prepared.plans.length + prepared.superseded.length;
             totals.filesWritten += prepared.pathsToWrite.length;
-            totals.conflictsCreated += prepared.plans.filter((plan) => plan.pathConflict?.conflictPath).length
-              + prepared.pendingConflicts.filter((conflict) => conflict.event?.conflictPath).length;
+            totals.conflictsCreated += applied.mergeCopies + prepared.plans.filter((plan) => plan.pathConflict?.conflictPath).length
+              + prepared.conflictCopies.filter((conflict) => conflict.event?.conflictPath).length;
             for (const item of [...prepared.plans, ...prepared.superseded, ...prepared.skipped]) {
               completed.add(item.state.entryId);
             }
@@ -371,8 +361,11 @@ export class PullEntryStateApplier {
       clear: ({ prepared }) => {
         prepared.batches.length = 0;
         prepared.pendingConflicts.length = 0;
+        prepared.conflictCopies.length = 0;
       },
     });
+    // Gather edits from the entire window before spending a retry on replanning.
+    if (groups.some((group) => group.needsReplan)) throw new SyncStateChangedError();
     return deferred;
   }
 
@@ -381,14 +374,15 @@ export class PullEntryStateApplier {
     token: SyncTokenResponse,
     prepared: PreparedManifestApplication,
     reservation: ContentReservation,
-    checkSelection?: () => void,
+    options: PullWindowOptions,
   ): Promise<void> {
-    const blobs = await this.blobPreparer.preparePathBatchBlobs(store, token, prepared.plans, reservation, checkSelection);
+    const blobs = await this.blobPreparer.preparePathBatchBlobs(store, token, prepared.plans, reservation, options.checkSelection);
     prepared.batches.push({
       plans: prepared.plans,
       pathsToRemove: uniqueSyncPaths(prepared.plans.flatMap(pathsToRemoveForPlan)),
       blobs,
     });
+    if (options.mode === "read-only") return;
     const blobByPlan = new Map(blobs.map((blob) => [blob.plan, blob]));
     const pendingIds = new Set<string>();
     for (const plan of prepared.plans) {
@@ -399,6 +393,21 @@ export class PullEntryStateApplier {
         if (pendingIds.has(conflict.pending.mutationId)) continue;
         pendingIds.add(conflict.pending.mutationId);
         prepared.pendingConflicts.push(conflict);
+        if (conflict.merge?.kind === "already-present" || conflict.merge?.kind === "keep-source") {
+          prepared.pathsToWrite = prepared.pathsToWrite.filter((path) => path !== plan.finalPath);
+        }
+        if (conflict.event) prepared.conflictCopies.push(conflict);
+        prepared.targets.includePendingConflict(conflict);
+      }
+    }
+    // A losing managed destination can still have an edited ordinary source.
+    for (const { state } of prepared.superseded) {
+      const pending = await store.getDirtyEntryMutation(state.entryId);
+      if (!pending || pendingIds.has(pending.mutationId)) continue;
+      const conflict = await this.pendingMutations.prepareSupersededConflict(pending, reservation);
+      if (conflict) {
+        prepared.conflictCopies.push(conflict);
+        prepared.targets.includePendingConflict(conflict);
       }
     }
   }
@@ -433,6 +442,9 @@ export class PullEntryStateApplier {
       // Path-collision plans still need their conflict copy materialized.
       if (
         (plan.adoptedLocalEntry?.hashMatches &&
+          // Removing the old name before the write can unlink its adopted
+          // destination when the filesystem treats the two paths as aliases.
+          !pathsToRemoveForPlan(plan).some(Boolean) &&
           plan.adoptedLocalEntry.entry.path === plan.finalPath) ||
         (await this.isAlreadyAppliedToVault(store, plan))
       ) {
@@ -486,11 +498,15 @@ export class PullEntryStateApplier {
   private async applyPreparedManifest(
     store: PullEntryStateStore,
     prepared: PreparedManifestApplication,
+    reservation: ContentReservation,
+    diskHashes: ReadonlyMap<string, string | null>,
     checkSelection?: () => void,
-  ): Promise<number> {
-    const snapshot = await capturePullStoreSnapshot(store, prepared);
+  ): Promise<{ filesDeleted: number; mergeCopies: number }> {
+    const snapshot = await capturePullStoreSnapshot(store, prepared.targets);
     checkSelection?.();
     const pendingConflictsByPlan = groupPendingConflictsByPlan(prepared.pendingConflicts);
+    const merges = new Map(prepared.pendingConflicts.flatMap(({ plan, merge }) =>
+      merge && merge.kind !== "remote" ? [[plan, merge] as const] : []));
     const fileEvents = prepared.plans.map((plan) => ({
       operation: plan.state.deleted ? "delete" as const : "upsert" as const,
       path: plan.finalPath ?? plan.metadata.path ?? "<unavailable>",
@@ -503,8 +519,11 @@ export class PullEntryStateApplier {
       });
     }
 
+    const downloadJournals = new Set<string>();
+    const sourceHashes = new Map(diskHashes);
+    let filesDeleted: number;
+    let mergeCopies = 0;
     try {
-      let filesDeleted = 0;
       filesDeleted = await this.runWithSuppressedPaths(
         [
           ...prepared.supersededPathsToRemove,
@@ -518,7 +537,7 @@ export class PullEntryStateApplier {
           let removedTotal = 0;
           // Materialize local conflict copies before releasing their owner's
           // path or dirty record, including when the process exits mid-apply.
-          for (const conflict of prepared.pendingConflicts) {
+          for (const conflict of prepared.conflictCopies) {
             await this.pendingMutations.applyPreparedPendingConflict(store, conflict);
           }
           await this.applySkippedRemoteStates(store, prepared.skipped);
@@ -527,6 +546,7 @@ export class PullEntryStateApplier {
             if (await removeVaultPathIfExists(this.deps.vaultAdapter, path)) {
               removedTotal += 1;
             }
+            sourceHashes.set(path, null);
           }
           for (const batch of prepared.batches) {
             const batchPendingConflicts = uniquePendingConflicts(
@@ -535,13 +555,17 @@ export class PullEntryStateApplier {
             await this.applyAdoptedLocalEntries(store, batch.plans);
             await this.clearChangingStorePaths(store, batch.plans);
 
+            const localPaths = new Map<PlannedEntryState, string>();
             for (const plan of batch.plans) {
               if (plan.vaultMove) {
-                await renameVaultPath(
-                  this.deps.vaultAdapter,
-                  plan.vaultMove.from,
-                  plan.vaultMove.to,
-                );
+                const { kind, from, to } = plan.vaultMove;
+                if (kind === "alias") {
+                  localPaths.set(plan, await renameAliasedVaultPath(this.deps.vaultAdapter, from, to));
+                } else {
+                  await renameVaultPath(this.deps.vaultAdapter, from, to);
+                }
+                sourceHashes.set(plan.vaultMove.to, sourceHashes.get(plan.vaultMove.from) ?? null);
+                sourceHashes.set(plan.vaultMove.from, null);
               }
             }
 
@@ -550,19 +574,62 @@ export class PullEntryStateApplier {
               if (await removeVaultPathIfExists(this.deps.vaultAdapter, path)) {
                 removed += 1;
               }
+              sourceHashes.set(path, null);
             }
 
-            for (const { plan, bytes, transfer } of batch.blobs) {
+            for (const blob of batch.blobs) {
+              const { plan, bytes, transfer } = blob;
               if (!plan.finalPath || plan.skipVaultWrite) {
                 continue;
               }
               const path = plan.finalPath;
-              await transfer.run("write", () => writeVaultBytes(this.deps.vaultAdapter, path, bytes));
+              const merge = merges.get(plan);
+              if (merge?.kind === "keep-source") continue;
+              if (merge?.kind === "already-present") {
+                const current = await this.localFiles.capture([path], reservation);
+                if (current.get(path) !== plan.hash) throw new PullLocalFilesChangedError([path]);
+              } else if ((!merge || merge.kind === "remote-text") &&
+                  !this.deps.vaultAdapter.atomicWrites && diskHashes.has(path)) {
+                // Read-only pulls do not reconcile disk into uploads and have no snapshots.
+                const pending = pendingConflictsByPlan.get(plan)?.find(({ pending }) => pending.entryId === plan.state.entryId);
+                await this.writeRecovery.downloads.install(
+                  store, blob, sourceHashes.get(path) ?? null, pending?.pending.mutationId ?? null,
+                  reservation, merge?.sourceText, localPaths.get(plan),
+                );
+                downloadJournals.add(plan.state.entryId);
+              } else if (merge) {
+                if (merge.kind === "local") await store.textMerges.put(merge.intent);
+                const replacement = merge.kind === "local" ? merge.bytes : bytes;
+                const installed = await transfer.run("write", () =>
+                  replaceVaultTextIfUnchanged(this.deps.vaultAdapter, path, merge.sourceText, replacement),
+                  (written) => written);
+                if (!installed) {
+                  if (merge.kind === "local") await store.textMerges.remove(plan.state.entryId);
+                  throw new PullLocalFilesChangedError([path]);
+                }
+                if (merge.kind === "local") await store.textMerges.put({ ...merge.intent, installed: true });
+              } else {
+                await transfer.run("write", () => writeVaultBytes(this.deps.vaultAdapter, path, bytes));
+              }
             }
 
             removedTotal += removed;
 
             for (const plan of batch.plans) {
+              const merge = merges.get(plan);
+              if (merge?.kind === "keep-source") {
+                await store.textMerges.put(merge.intent);
+                if (await this.writeRecovery.preserveMergeBesideSource(store, merge.intent, merge.merged, reservation)) {
+                  mergeCopies++;
+                }
+                continue;
+              }
+              if (merge?.kind === "local") {
+                await commitTextMerge(store, merge.intent);
+                continue;
+              }
+              // Store the remote spelling and the filesystem's local spelling
+              // together if a shared parent directory could not be renamed.
               await store.upsertEntry({
                 entryId: plan.state.entryId,
                 path: plan.state.deleted ? plan.metadata.path : plan.finalPath,
@@ -573,10 +640,12 @@ export class PullEntryStateApplier {
                 updatedAt: plan.state.updatedAt,
                 localMtime: this.localMtimeForAppliedPlan(plan),
                 localSize: this.localSizeForAppliedPlan(plan),
-              });
+              }, localPaths.get(plan));
             }
             for (const pendingConflict of batchPendingConflicts) {
-              await this.pendingMutations.applyPreparedPendingMerge(store, pendingConflict);
+              if (pendingConflict.merge && pendingConflict.merge.kind !== "local") {
+                await store.clearDirtyEntryByMutationId(pendingConflict.pending.mutationId);
+              }
             }
           }
 
@@ -590,8 +659,8 @@ export class PullEntryStateApplier {
       for (const event of fileEvents) {
         this.deps.onFileSyncCompleted?.(event);
       }
-      return filesDeleted;
     } catch (error) {
+      this.writeRecovery.invalidate(store);
       for (const event of fileEvents) {
         this.deps.onFileSyncFailed?.({
           operation: event.operation,
@@ -602,6 +671,16 @@ export class PullEntryStateApplier {
       await snapshot.restore();
       throw error;
     }
+    try {
+      const localMerges = [...merges.values()].filter((merge) => merge.kind === "local" || merge.kind === "keep-source");
+      for (const entryId of downloadJournals) await store.textMerges.remove(entryId);
+      for (const { intent } of localMerges) await store.textMerges.remove(intent.entryId);
+      if (localMerges.length) this.deps.onLocalMutationQueued?.();
+    } catch (error) {
+      this.writeRecovery.invalidate(store);
+      throw error;
+    }
+    return { filesDeleted, mergeCopies };
   }
 
   private localMtimeForAppliedPlan(plan: PlannedEntryState): number | null {

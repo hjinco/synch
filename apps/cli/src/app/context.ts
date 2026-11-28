@@ -305,6 +305,7 @@ export class CliAppContext {
 
     this.lock ??= await VaultLock.acquire(vaultLockPath(this.options.vaultPath));
     if (!this.store) {
+      await this.vaultAdapter.recoverInterruptedWrites();
       this.store = SqliteSyncStore.open(vaultSyncStorePath(this.options.vaultPath));
       this.engine.setStore(this.store);
     }

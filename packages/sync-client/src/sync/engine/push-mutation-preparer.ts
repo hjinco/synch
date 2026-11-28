@@ -1,3 +1,4 @@
+import { metadataContextFromPendingMutation } from "../core/mutation-metadata";
 import { FileTransferLog } from "../diagnostics/file-transfer";
 import { SyncStateChangedError, syncStateCoordinator, withSyncState, type SyncStateSnapshot } from "./sync-state-coordinator";
 import type { SyncedEntryMetadata } from "../core/content";
@@ -22,7 +23,6 @@ import type {
   PushMutationStore,
 } from "./push-mutation-types";
 import {
-  metadataContextFromMutation,
   toCommitPayload,
 } from "./push-mutation-shared";
 import { isAutoMergeTextPath } from "./text-merge-policy";
@@ -48,14 +48,14 @@ export class PushMutationPreparer {
     const syncCrypto = this.getSyncCryptoContext();
     const metadata = await syncCrypto.decryptMetadata(
       mutation.encryptedMetadata,
-      metadataContextFromMutation(mutation),
+      metadataContextFromPendingMutation(mutation),
     );
 
     onMetadataReady?.(metadata);
 
     if (this.deps.isDeviceMutationExcluded?.(metadata.path)) {
       // Reconciliation owns the local baseline and can see replacement files.
-      return { skipped: true, reason: "excluded_path" };
+      return { kind: "deferred" };
     }
 
     if (this.deps.fileReader.isExcludedPath) {
@@ -76,14 +76,15 @@ export class PushMutationPreparer {
         }
         return "allowed";
       });
-      if (disposition === "stale") return null;
+      if (disposition === "stale") return { kind: "retry" };
       if (disposition === "excluded") {
-        return { skipped: true, reason: "excluded_path" };
+        return { kind: "deferred" };
       }
     }
 
     if (mutation.op === "delete") {
       return {
+        kind: "ready",
         commitPayload: toCommitPayload(mutation),
         metadata,
         localHash: null,
@@ -93,7 +94,7 @@ export class PushMutationPreparer {
 
     if (!isPortableVaultPath(metadata.path)) {
       await this.blockIncompatiblePathUpsert(store, mutation);
-      return { skipped: true, reason: "incompatible_path" };
+      return { kind: "blocked", reason: "incompatible_path" };
     }
 
     if (!mutation.blobId) {
@@ -125,7 +126,7 @@ export class PushMutationPreparer {
       const { bytes, hash: actualHash } = hashed;
       if (actualHash !== mutation.hash) {
         await this.requeueChangedUpsert(store, mutation, metadata.path, actualHash, snapshot);
-        return null;
+        return { kind: "retry" };
       }
       const blobId = mutation.blobId;
       const encryptedSizeBytes = encryptedSyncBlobSize(bytes.byteLength);
@@ -136,7 +137,7 @@ export class PushMutationPreparer {
           encryptedSizeBytes,
           maxFileSizeBytes,
         );
-        return { skipped: true, reason: "file_too_large" };
+        return { kind: "blocked", reason: "file_too_large" };
       }
 
       const staged = this.deps.remotelyStagedBlobIds.has(blobId);
@@ -156,10 +157,7 @@ export class PushMutationPreparer {
           await this.blobClient.uploadBlob(token.vaultId, blobId, encryptedBytes, transfer, beforeRequest);
         } catch (error) {
           if (isQuotaExceededUploadError(error)) {
-            return {
-              skipped: true,
-              reason: "storage_quota_exceeded",
-            };
+            return { kind: "stopAfterBatch", reason: "storage_quota_exceeded" };
           }
           if (isFileTooLargeUploadError(error)) {
             await this.blockOversizedUpsert(
@@ -168,10 +166,7 @@ export class PushMutationPreparer {
               encryptedBytes.byteLength,
               maxFileSizeBytes > 0 ? maxFileSizeBytes : null,
             );
-            return {
-              skipped: true,
-              reason: "file_too_large",
-            };
+            return { kind: "blocked", reason: "file_too_large" };
           }
 
           throw error;
@@ -185,6 +180,7 @@ export class PushMutationPreparer {
 
       retained = true;
       return {
+        kind: "ready",
         transfer,
         release: () => reservation.release(),
         commitPayload: toCommitPayload(mutation),
@@ -196,7 +192,7 @@ export class PushMutationPreparer {
         encryptedBytes: retainEncryptedBytes ? encryptedBytes : null,
       };
     } catch (error) {
-      if (error instanceof SyncStateChangedError) return null;
+      if (error instanceof SyncStateChangedError) return { kind: "retry" };
       throw error;
     } finally {
       snapshot.dispose();
@@ -290,7 +286,8 @@ export class PushMutationPreparer {
 
       await store.applyLocalState({
         entryId: queued.entryId,
-        path,
+        path: local?.path && local.path !== path && await this.deps.fileReader.areSameFilePaths?.(local.path, path)
+          ? local.path : path,
         blobId: queued.blobId,
         hash,
         deleted: false,

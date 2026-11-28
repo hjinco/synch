@@ -39,6 +39,8 @@ import type {
   SyncReconcileEntryState,
   SyncReconcileEntryUpdate,
   SyncStore,
+  PullWriteIntent,
+  TextMergeJournal,
 } from "@synch/sync-client/store";
 import { SQLITE_STORE_SCHEMA } from "./schema";
 
@@ -122,6 +124,20 @@ export class SqliteSyncStore implements SyncStore {
 
     return new SqliteSyncStore(db, localVaultId);
   }
+
+  readonly textMerges: TextMergeJournal = {
+    get: async (id) => {
+      const row = this.prepare("SELECT intent FROM text_merges WHERE entry_id = ?").get(id);
+      return row ? JSON.parse(String(row.intent)) as PullWriteIntent : undefined;
+    },
+    listEntryIds: async () => this.prepare("SELECT entry_id FROM text_merges").all()
+      .map((row) => String(row.entry_id)),
+    put: async (intent) => {
+      this.prepare("INSERT INTO text_merges (entry_id, intent) VALUES (?, ?) ON CONFLICT(entry_id) DO UPDATE SET intent = excluded.intent")
+        .run(intent.entryId, JSON.stringify(intent));
+    },
+    remove: async (id) => { this.prepare("DELETE FROM text_merges WHERE entry_id = ?").run(id); },
+  };
 
   async readLocalVaultId(): Promise<string> {
     return this.localVaultId;
@@ -336,7 +352,7 @@ export class SqliteSyncStore implements SyncStore {
     return this.getEntryRowByPath(path)?.entryId ?? crypto.randomUUID();
   }
 
-  async upsertEntry(entry: SyncEntryRow): Promise<void> {
+  async upsertEntry(entry: SyncEntryRow, localPath = entry.path): Promise<void> {
     this.putEntry({
       ...createEmptyEntryRecord(entry.entryId),
       remoteKnown: true,
@@ -352,7 +368,7 @@ export class SqliteSyncStore implements SyncStore {
       baseHash: entry.hash,
       baseDeleted: entry.deleted,
       localKnown: true,
-      localPath: entry.path,
+      localPath,
       localBlobId: entry.blobId,
       localHash: entry.hash,
       localDeleted: entry.deleted,

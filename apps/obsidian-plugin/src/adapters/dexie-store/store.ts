@@ -14,6 +14,7 @@ import type {
   SyncReconcileEntryState,
   SyncReconcileEntryUpdate,
   SyncStore,
+  TextMergeJournal,
 } from "@synch/sync-client/store";
 import {
   applyAcceptedPushToEntry,
@@ -54,6 +55,13 @@ export class DexieSyncStore implements SyncStore {
   constructor(private readonly localVaultId: string) {
     this.db = new SyncDexieDatabase(syncStoreDbName(localVaultId));
   }
+
+  readonly textMerges: TextMergeJournal = {
+    get: (id) => this.db.textMerges.get(id),
+    listEntryIds: () => this.db.textMerges.toCollection().primaryKeys(),
+    put: async (intent) => { await this.db.textMerges.put(intent); },
+    remove: (id) => this.db.textMerges.delete(id),
+  };
 
   readonly deferredFiles: DeferredSyncFileStore = {
     get: (id) => this.db.deferredFiles.get(id),
@@ -286,7 +294,7 @@ export class DexieSyncStore implements SyncStore {
     return crypto.randomUUID();
   }
 
-  async upsertEntry(entry: SyncEntryRow): Promise<void> {
+  async upsertEntry(entry: SyncEntryRow, localPath = entry.path): Promise<void> {
     const row = normalizeEntryRecord({
       ...createEmptyEntryRecord(entry.entryId),
       remoteKnown: true,
@@ -302,7 +310,7 @@ export class DexieSyncStore implements SyncStore {
       baseHash: entry.hash,
       baseDeleted: entry.deleted,
       localKnown: true,
-      localPath: entry.path,
+      localPath,
       localBlobId: entry.blobId,
       localHash: entry.hash,
       localDeleted: entry.deleted,

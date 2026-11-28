@@ -68,8 +68,41 @@ export class ObsidianSyncVaultAdapter implements SyncVaultAdapter {
     return stat.size;
   }
 
+  async statKind(path: string): Promise<"file" | "folder" | null> {
+    try {
+      return (await this.plugin.app.vault.adapter.stat(path))?.type ?? null;
+    } catch (error) {
+      if (typeof error === "object" && error !== null && "code" in error &&
+          (error.code === "ENOENT" || error.code === "ENOTDIR")) return null;
+      throw error;
+    }
+  }
+
   async exists(path: string): Promise<boolean> {
     return await this.plugin.app.vault.adapter.exists(path);
+  }
+
+  async areSameFilePaths(first: string, second: string): Promise<boolean> {
+    if (first === second) return true;
+    if (first.normalize("NFC").toLowerCase() !== second.normalize("NFC").toLowerCase()) return false;
+    const adapter = this.plugin.app.vault.adapter;
+    if (!await adapter.exists(first) || !await adapter.exists(second)) return false;
+    const left = first.split("/");
+    const right = second.split("/");
+    for (let index = 0; index < left.length; index++) {
+      if (left[index] === right[index]) continue;
+      // Obsidian's sensitive check compares the basename in its parent directory.
+      if (await adapter.exists(left.slice(0, index + 1).join("/"), true) &&
+          await adapter.exists(right.slice(0, index + 1).join("/"), true)) return false;
+    }
+    return true;
+  }
+
+  async isOnlyChild(path: string): Promise<boolean> {
+    const parts = path.split("/");
+    parts.pop();
+    const { files, folders } = await this.plugin.app.vault.adapter.list(parts.join("/"));
+    return files.length + folders.length === 1 && (files[0] ?? folders[0]) === path;
   }
 
   async mkdir(path: string): Promise<void> {
@@ -80,8 +113,64 @@ export class ObsidianSyncVaultAdapter implements SyncVaultAdapter {
     await this.plugin.app.vault.adapter.write(path, content);
   }
 
+  canCompareTextForWrite(expected: string | Uint8Array): boolean {
+    const text = typeof expected === "string" ? expected : new TextDecoder("utf-8", { ignoreBOM: true }).decode(expected);
+    // process() decodes malformed bytes to U+FFFD, so it cannot distinguish
+    // those bytes from a literal replacement character in a valid note.
+    return !text.includes("\uFFFD");
+  }
+
+  async writeTextIfUnchanged(path: string, expected: string | Uint8Array, replacement: string): Promise<boolean> {
+    const expectedText = typeof expected === "string" ? expected : new TextDecoder("utf-8", { ignoreBOM: true }).decode(expected);
+    if (!this.canCompareTextForWrite(expectedText)) return false;
+    const changed = new Error("Vault file changed during merge.");
+    try {
+      await this.plugin.app.vault.adapter.process(path, (current) => {
+        if (current !== expectedText) throw changed;
+        return replacement;
+      });
+      return true;
+    } catch (error) {
+      if (error === changed || await this.statKind(path) !== "file") return false;
+      throw error;
+    }
+  }
+
   async writeBinary(path: string, content: Uint8Array): Promise<void> {
     await this.plugin.app.vault.adapter.writeBinary(path, toArrayBuffer(content));
+  }
+
+  async writeBytesIfAbsent(path: string, bytes: Uint8Array, operationId: string): Promise<boolean> {
+    const adapter = this.plugin.app.vault.adapter;
+    const scratch = this.stagedWritePath(operationId);
+    try {
+      await adapter.writeBinary(scratch, toArrayBuffer(bytes));
+      try {
+        // DataAdapter.copy fails if another writer already created the destination.
+        await adapter.copy(scratch, path);
+        return true;
+      } catch (error) {
+        // A failed copy may have created a partial destination. Only a
+        // confirmed name collision lets the caller discard the write journal.
+        if (typeof error === "object" && error !== null &&
+            ("code" in error ? error.code === "EEXIST" :
+              "message" in error && error.message === "Destination file already exists!")) return false;
+        throw error;
+      }
+    } finally {
+      await this.discardStagedWrite(operationId);
+    }
+  }
+
+  async discardStagedWrite(operationId: string): Promise<void> {
+    const path = this.stagedWritePath(operationId);
+    if (await this.exists(path)) await this.plugin.app.vault.adapter.remove(path);
+  }
+
+  private stagedWritePath(operationId: string): string {
+    const manifest = this.plugin.manifest;
+    const dir = manifest.dir ?? `${this.configDir()}/plugins/${manifest.id}`;
+    return `${dir}/.synch-write-${encodeURIComponent(operationId)}.tmp`;
   }
 
   async rename(oldPath: string, newPath: string): Promise<void> {

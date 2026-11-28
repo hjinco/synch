@@ -17,6 +17,22 @@ describe("mergeText3", () => {
     });
   });
 
+  it.each([
+    { base: "", local: "\uFEFF", remote: "", expected: "\uFEFF" },
+    { base: "", local: "", remote: "\uFEFF", expected: "\uFEFF" },
+    { base: "\uFEFF", local: "", remote: "\uFEFF", expected: "" },
+    { base: "\uFEFF", local: "\uFEFF", remote: "", expected: "" },
+  ])("merges a unilateral BOM change separately from first-line edits %#", (bom) => {
+    expect(mergeText3(bom.base + "one\n", bom.local + "intro\none\n", bom.remote + "ONE\n"))
+      .toEqual({ status: "clean", text: bom.expected + "intro\nONE\n" });
+  });
+
+  it("preserves mixed line endings when merging edits separated by Unicode line breaks", () => {
+    const base = "first\u2028unchanged\u2029last\r\n";
+    expect(mergeText3(base, base.replace("first", "FIRST"), base.replace("last", "LAST")))
+      .toEqual({ status: "clean", text: "FIRST\u2028unchanged\u2029LAST\r\n" });
+  });
+
   it("reports overlapping edits as conflicts", () => {
     expect(mergeText3("one\n", "local\n", "remote\n")).toEqual({
       status: "conflict",

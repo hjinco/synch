@@ -1,8 +1,30 @@
-import { createSyncCryptoContext, type SyncCryptoContext } from "./crypto";
+import { metadataContextFromPendingMutation } from "./mutation-metadata";
+import { createSyncCryptoContext, decryptSyncMetadata, type SyncCryptoContext } from "./crypto";
+import type { SyncVaultPathAliases } from "../vault/ports";
 import type { SyncMutationStore } from "../store/ports";
 import type { PendingMutationRow } from "../store/store";
 
 export type PendingMutationWriter = Pick<SyncMutationStore, "replaceDirtyEntry">;
+
+/** Content edits retain the remote spelling of a path mapped onto a shared
+ * local directory. An explicit pending rename already carries its own spelling. */
+export async function pathForLocalEdit({
+  path, localPath, remotePath, vault, getPending, getRemoteVaultKey,
+}: {
+  path: string;
+  localPath: string | null | undefined;
+  remotePath: string | null | undefined;
+  vault: SyncVaultPathAliases;
+  getPending: () => PendingMutationRow | null | Promise<PendingMutationRow | null>;
+  getRemoteVaultKey: () => Uint8Array;
+}): Promise<string> {
+  if (path !== localPath || !remotePath || remotePath === path ||
+      !await vault.areSameFilePaths?.(path, remotePath)) return path;
+  const pending = await getPending();
+  if (pending?.op !== "upsert") return remotePath;
+  return (await decryptSyncMetadata(getRemoteVaultKey(), pending.encryptedMetadata,
+    metadataContextFromPendingMutation(pending))).path;
+}
 
 export interface QueueLocalUpsertMutationInput {
   remoteVaultKey: Uint8Array;
@@ -65,26 +87,19 @@ export async function buildLocalUpsertMutation({
   const entryId = input.entryId;
   const baseRevision = input.base?.revision ?? 0;
   const blobId = createNextBlobId(input.previousLocal ?? input.base, input.hash);
+  const identity = { entryId, baseRevision, op: "upsert" as const, blobId };
   const mutation: PendingMutationRow = {
+    ...identity,
     mutationId: crypto.randomUUID(),
-    entryId,
-    op: "upsert",
-    baseRevision,
     baseBlobId: input.base?.blobId ?? null,
     baseHash: input.base?.hash ?? null,
-    blobId,
     hash: input.hash,
     encryptedMetadata: await metadataCrypto.encryptMetadata(
       {
         path: input.path,
         hash: input.hash,
       },
-      {
-        entryId,
-        revision: baseRevision + 1,
-        op: "upsert",
-        blobId,
-      },
+      metadataContextFromPendingMutation(identity),
     ),
     createdAt: Date.now(),
   };
@@ -129,26 +144,24 @@ export async function buildLocalDeleteMutation({
   metadataCrypto,
   ...input
 }: BuildLocalDeleteMutationInput): Promise<PendingMutationRow> {
-  return {
-    mutationId: crypto.randomUUID(),
+  const identity = {
     entryId: input.entryId,
-    op: "delete",
     baseRevision: input.base.revision,
+    op: "delete" as const,
+    blobId: null,
+  };
+  return {
+    ...identity,
+    mutationId: crypto.randomUUID(),
     baseBlobId: input.base.blobId,
     baseHash: input.base.hash,
-    blobId: null,
     hash: null,
     encryptedMetadata: await metadataCrypto.encryptMetadata(
       {
         path: input.path,
         hash: null,
       },
-      {
-        entryId: input.entryId,
-        revision: input.base.revision + 1,
-        op: "delete",
-        blobId: null,
-      },
+      metadataContextFromPendingMutation(identity),
     ),
     createdAt: Date.now(),
   };

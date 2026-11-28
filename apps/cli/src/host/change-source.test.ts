@@ -34,6 +34,28 @@ function createContext() {
   return { context, recordUpsert, recordDelete, notifyLocalChange, errors };
 }
 
+async function startWatching(context: SyncChangeSourceContext): Promise<void> {
+  const probe = ".watch-ready";
+  const stat = vi.spyOn(NodeSyncVaultAdapter.prototype, "statFile");
+  try {
+    source.start(context);
+    await source.whenReady();
+    // Chokidar emits ready after its scan. The polling backend can still be
+    // taking its first directory snapshot. Observe a real event on an excluded
+    // dotfile before making the single change under test.
+    fs.writeFileSync(path.join(vaultPath, probe), "");
+    await vi.waitFor(() => {
+      if (!stat.mock.calls.some(([filePath]) => filePath === probe)) {
+        const now = new Date();
+        fs.utimesSync(vaultPath, now, now);
+      }
+      expect(stat).toHaveBeenCalledWith(probe);
+    }, { timeout: 10_000 });
+  } finally {
+    stat.mockRestore();
+  }
+}
+
 beforeEach(() => {
   // Resolve symlinked tmpdirs (e.g. /var -> /private/var on macOS) so watcher
   // event paths match the configured vault path.
@@ -73,8 +95,7 @@ describe("NodeFsChangeSource", { timeout: 15_000 }, () => {
       usePolling: true,
     });
     const { context, recordUpsert, recordDelete, errors } = createContext();
-    source.start(context);
-    await source.whenReady();
+    await startWatching(context);
     const outside = fs.mkdtempSync(path.join(os.tmpdir(), "synch-watch-outside-"));
     try {
       const target = path.join(outside, "note.md");
@@ -93,8 +114,7 @@ describe("NodeFsChangeSource", { timeout: 15_000 }, () => {
     const { context, recordUpsert, notifyLocalChange } = createContext();
     const recordUpsertFromFile = vi.fn<NonNullable<SyncChangeSourceContext["eventRecorder"]["recordUpsertFromFile"]>>(async () => true);
     context.eventRecorder.recordUpsertFromFile = recordUpsertFromFile;
-    source.start(context);
-    await source.whenReady();
+    await startWatching(context);
 
     fs.writeFileSync(path.join(vaultPath, "note.md"), "hello");
 
@@ -113,8 +133,7 @@ describe("NodeFsChangeSource", { timeout: 15_000 }, () => {
 
   it("records upserts for files inside newly created folders", async () => {
     const { context, recordUpsert } = createContext();
-    source.start(context);
-    await source.whenReady();
+    await startWatching(context);
 
     fs.mkdirSync(path.join(vaultPath, "notes", "deep"), { recursive: true });
     fs.writeFileSync(path.join(vaultPath, "notes", "deep", "a.md"), "x");
@@ -131,8 +150,7 @@ describe("NodeFsChangeSource", { timeout: 15_000 }, () => {
   it("records a delete when a file is removed", async () => {
     fs.writeFileSync(path.join(vaultPath, "gone.md"), "bye");
     const { context, recordDelete } = createContext();
-    source.start(context);
-    await source.whenReady();
+    await startWatching(context);
 
     fs.unlinkSync(path.join(vaultPath, "gone.md"));
 
@@ -143,8 +161,7 @@ describe("NodeFsChangeSource", { timeout: 15_000 }, () => {
 
   it("ignores the .synch state dir and atomic-write temp files", async () => {
     const { context, recordUpsert, recordDelete } = createContext();
-    source.start(context);
-    await source.whenReady();
+    await startWatching(context);
 
     fs.mkdirSync(path.join(vaultPath, ".synch"));
     fs.writeFileSync(path.join(vaultPath, ".synch", "sync.sqlite"), "db");
@@ -165,8 +182,7 @@ describe("NodeFsChangeSource", { timeout: 15_000 }, () => {
 
   it("stops delivering events after stop()", async () => {
     const { context, recordUpsert } = createContext();
-    source.start(context);
-    await source.whenReady();
+    await startWatching(context);
     source.stop();
 
     fs.writeFileSync(path.join(vaultPath, "late.md"), "late");

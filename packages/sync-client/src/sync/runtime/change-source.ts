@@ -1,5 +1,7 @@
 import type { SyncEventRecorder } from "../engine/event-recorder";
 
+type FileOperation = "create" | "modify" | "rename" | "delete";
+
 export interface SyncChangeSourceContext {
   eventRecorder: Pick<
     SyncEventRecorder,
@@ -9,16 +11,16 @@ export interface SyncChangeSourceContext {
       Pick<SyncEventRecorder, "recordUpsertFromFile" | "recordRenameFromFile">
     >;
   notifyLocalChange: () => void;
-  runLocalMutationWork: <T>(work: () => Promise<T>) => Promise<T>;
+  runLocalMutationWork: <T>(work: () => Promise<T>, operation?: FileOperation) => Promise<T>;
   hasActiveRemoteVaultSession: () => boolean;
   onError: (error: unknown) => void;
   onFileQueued?: (event: {
-    operation: "create" | "modify" | "rename" | "delete";
+    operation: FileOperation;
     path: string;
     oldPath?: string;
   }) => void;
   onFileError?: (event: {
-    operation: "create" | "modify" | "rename" | "delete";
+    operation: FileOperation;
     path: string;
     oldPath?: string;
     error: unknown;

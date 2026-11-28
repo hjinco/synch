@@ -11,7 +11,7 @@ interface PullOnlySessionDeps {
   getSyncToken: () => Promise<SyncTokenResponse>;
   getSyncStore: () => (SyncCursorStore & SyncMutationStore) | null;
   realtimeClient: Pick<SyncRealtimeClient, "openSession">;
-  pullOnce: (session: SyncRealtimeSession) => Promise<unknown>;
+  pullOnce: (session: SyncRealtimeSession, mode: "read-only") => Promise<unknown>;
 }
 
 /** The caller must stop automatic sync and wait for in-flight work first. */
@@ -22,7 +22,9 @@ export async function pullWithReadOnlySession(deps: PullOnlySessionDeps): Promis
   }
 
   const pendingMutations = await store.listDirtyEntries(1);
-  if (pendingMutations.length > 0) {
+  if (pendingMutations.length > 0 ||
+      (await store.listBlockedDirtyEntriesByReason("file_too_large")).length > 0 ||
+      (await store.listBlockedDirtyEntriesByReason("incompatible_path")).length > 0) {
     throw new Error(
       "Pull-only sync requires a read-only replica with no pending local changes. Use a fresh backup directory or resolve the pending changes with `synch sync` first.",
     );
@@ -62,7 +64,7 @@ export async function pullWithReadOnlySession(deps: PullOnlySessionDeps): Promis
       );
     }
     throwIfSessionFailed();
-    await deps.pullOnce(session);
+    await deps.pullOnce(session, "read-only");
     throwIfSessionFailed();
   } finally {
     session.close();

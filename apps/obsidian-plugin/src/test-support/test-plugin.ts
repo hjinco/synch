@@ -115,6 +115,7 @@ export function createTestPlugin(
           },
           async readBinary(path: string): Promise<ArrayBuffer> {
             const file = files.get(path);
+            if (typeof file === "string") return new TextEncoder().encode(file).buffer;
             if (!(file instanceof Uint8Array)) {
               throw new Error(`missing test file: ${path}`);
             }
@@ -124,8 +125,24 @@ export function createTestPlugin(
           async write(path: string, value: string): Promise<void> {
             files.set(path, value);
           },
+          async process(path: string, transform: (value: string) => string): Promise<string> {
+            const current = files.get(path);
+            if (current === undefined) throw new Error(`missing test file: ${path}`);
+            const replacement = transform(typeof current === "string" ? current :
+              new TextDecoder("utf-8", { ignoreBOM: true }).decode(current));
+            files.set(path, replacement);
+            return replacement;
+          },
           async writeBinary(path: string, value: ArrayBuffer): Promise<void> {
             files.set(path, new Uint8Array(value));
+          },
+          async copy(source: string, destination: string): Promise<void> {
+            const value = files.get(source);
+            if (value === undefined) throw new Error(`missing test file: ${source}`);
+            if (files.has(destination) || directories.has(destination)) {
+              throw Object.assign(new Error("Destination exists"), { code: "EEXIST" });
+            }
+            files.set(destination, typeof value === "string" ? value : value.slice());
           },
           async rename(oldPath: string, newPath: string): Promise<void> {
             const value = files.get(oldPath);

@@ -33,6 +33,20 @@ afterEach(() => {
   fs.rmSync(outsidePath, { recursive: true, force: true });
 });
 
+it("keeps a competing file created while a recovery copy is being installed", async () => {
+  const copy = fsPromises.copyFile.bind(fsPromises);
+  vi.spyOn(fsPromises, "copyFile").mockImplementationOnce(async (source, target, flags) => {
+    await fsPromises.writeFile(target, "editor save", { flag: "wx" });
+    await copy(source, target, flags);
+  });
+  const content = new TextEncoder().encode("recovered");
+  await expect(adapter.writeBytesIfAbsent("copy.md", content)).resolves.toBe(false);
+  expect(fs.readFileSync(path.join(vaultPath, "copy.md"), "utf8")).toBe("editor save");
+  await expect(adapter.writeBytesIfAbsent("next.md", content)).resolves.toBe(true);
+  expect(fs.readFileSync(path.join(vaultPath, "next.md"), "utf8")).toBe("recovered");
+  expect(fs.readdirSync(vaultPath).sort()).toEqual(["copy.md", "next.md"]);
+});
+
 describe("NodeSyncVaultAdapter symlink boundary", () => {
   beforeEach(() => {
     fs.writeFileSync(path.join(outsidePath, "existing.md"), "outside content");
@@ -303,6 +317,19 @@ describe("NodeSyncVaultAdapter file operations", () => {
 
     await adapter.remove("folder/renamed.md");
     expect(await adapter.exists("folder/renamed.md")).toBe(false);
+  });
+
+  it("preserves intervening saves and missing paths when installing a merge", async () => {
+    seed("note.md", "\uFEFFnewer content");
+    expect(await adapter.writeTextIfUnchanged("note.md", "older content", "merge")).toBe(false);
+    expect(fs.readFileSync(path.join(vaultPath, "note.md"), "utf8")).toBe("\uFEFFnewer content");
+    expect(await adapter.writeTextIfUnchanged("note.md", "\uFEFFnewer content", "\uFEFFmerge")).toBe(true);
+    expect(fs.readFileSync(path.join(vaultPath, "note.md"), "utf8")).toBe("\uFEFFmerge");
+    expect(await adapter.writeTextIfUnchanged("missing.md", "", "merge")).toBe(false);
+    expect(await adapter.writeTextIfUnchanged("missing/note.md", "", "merge")).toBe(false);
+    expect(await adapter.writeTextIfUnchanged("note.md/child.md", "", "merge")).toBe(false);
+    expect(fs.readdirSync(path.join(vaultPath, ".synch/merge-writes"))).toEqual([]);
+    expect(fs.readdirSync(vaultPath).sort()).toEqual([".synch", "note.md"]);
   });
 
   it("does not leave temp files behind after writes", async () => {
