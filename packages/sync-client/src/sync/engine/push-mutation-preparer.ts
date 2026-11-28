@@ -53,6 +53,11 @@ export class PushMutationPreparer {
 
     onMetadataReady?.(metadata);
 
+    if (this.deps.isDeviceMutationExcluded?.(metadata.path)) {
+      // Reconciliation owns the local baseline and can see replacement files.
+      return { skipped: true, reason: "excluded_path" };
+    }
+
     if (this.deps.fileReader.isExcludedPath) {
       const disposition = await withSyncState(store, {
         entryIds: [mutation.entryId], paths: [metadata.path],
@@ -146,7 +151,9 @@ export class PushMutationPreparer {
 
       if (!staged && encryptedBytes) {
         try {
-          await this.blobClient.uploadBlob(token.vaultId, blobId, encryptedBytes, transfer);
+          const beforeRequest = () => this.deps.assertUploadAllowed?.(metadata.path);
+          beforeRequest();
+          await this.blobClient.uploadBlob(token.vaultId, blobId, encryptedBytes, transfer, beforeRequest);
         } catch (error) {
           if (isQuotaExceededUploadError(error)) {
             return {

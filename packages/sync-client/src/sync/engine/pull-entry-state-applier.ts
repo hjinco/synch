@@ -1,3 +1,4 @@
+import type { DeviceFileSelection } from "./device-file-selection";
 import type { SyncDiagnostics } from "../diagnostics/types";
 import type { SyncEventRecorderStore } from "./event-recorder";
 import { PullLocalFileSnapshots, PullLocalFilesChangedError } from "./pull-local-file-snapshots";
@@ -50,6 +51,7 @@ export interface PullEntryStateApplierDeps extends SyncContentRuntimeDeps {
   vaultAdapter: PullEntryStateVaultAdapter;
   eventGate?: SyncEventGateLike;
   blobClient: Pick<SyncBlobClient, "downloadBlob">;
+  isDeviceFileExcluded?: (path: string) => boolean;
   shouldApplyRemotePath?: (path: string, deleted: boolean) => boolean;
   shouldUseLatestRemoteVersion?: (path: string) => boolean;
   prepareConcurrency?: number;
@@ -110,6 +112,12 @@ export type PullEntryStateWindowApplyResult = PullEntryStateApplyResult & {
   completedStates: Array<{ entryId: string; revision: number }>;
   deferred: PullEntryStateManifestItem[];
 };
+
+interface PullWindowOptions {
+  finalWindow: boolean;
+  selection?: Pick<DeviceFileSelection, "hasMovedFrom" | "hasDeferred">;
+  checkSelection?: () => void;
+}
 
 export class PullEntryStateApplier {
   private readonly blobPreparer: PullBlobPreparer;
@@ -189,9 +197,7 @@ export class PullEntryStateApplier {
     store: PullEntryStateStore,
     token: SyncTokenResponse,
     manifest: PullEntryStateManifestItem[],
-    options: {
-      finalWindow: boolean;
-    },
+    options: PullWindowOptions,
   ): Promise<PullEntryStateWindowApplyResult> {
     if (manifest.length === 0) {
       return {
@@ -227,13 +233,13 @@ export class PullEntryStateApplier {
     store: PullEntryStateStore,
     token: SyncTokenResponse,
     manifest: PullEntryStateManifestItem[],
-    options: { finalWindow: boolean },
+    options: PullWindowOptions,
     snapshot: SyncStateSnapshot,
     completed: Set<string>,
     totals: PullEntryStateApplyResult,
   ): Promise<PullEntryStateManifestItem[]> {
     const { plans, deferred, superseded, skipped } = await this.manifestPlanner.planManifest(
-      store, manifest, { deferExternalPathOwners: !options.finalWindow, appliedEntryIds: completed },
+      store, manifest, { deferExternalPathOwners: !options.finalWindow, appliedEntryIds: completed, selection: options.selection },
     );
     await this.markAlreadyCurrentVaultWrites(store, plans);
     const withExistingPaths = async (items: PullEntryStateManifestItem[]) =>
@@ -293,8 +299,33 @@ export class PullEntryStateApplier {
         const { prepared } = group;
         group.reservation = reservation;
         try {
+          options.checkSelection?.();
           group.localFiles = await this.localFiles.capture(group.pathsToSnapshot, reservation);
-          await this.prepareApplicationGroup(store, token, prepared, reservation);
+          // An edit to a retained file can reach disk before its watcher runs.
+          // Record it before a returning entry or a replacement takes the path.
+          const retainedPaths = new Set<string>();
+          for (const plan of prepared.plans) {
+            if (plan.finalPath && options.selection?.hasDeferred(plan.state.entryId)) {
+              retainedPaths.add(plan.finalPath);
+            }
+            for (const owner of [plan.existing, plan.supersededPathOwner]) {
+              if (owner?.path && !owner.deleted && options.selection?.hasDeferred(owner.entryId)) {
+                retainedPaths.add(owner.path);
+              }
+            }
+          }
+          const unrecorded: string[] = [];
+          for (const path of retainedPaths) {
+            const diskHash = group.localFiles.get(path);
+            if (diskHash === undefined) continue;
+            const local = await store.getLocalStateByPath(path);
+            if (diskHash !== (local?.hash ?? null)) unrecorded.push(path);
+          }
+          if (unrecorded.length) {
+            await this.localFiles.recordChanges(store, unrecorded, reservation);
+            throw new PullLocalFilesChangedError(unrecorded);
+          }
+          await this.prepareApplicationGroup(store, token, prepared, reservation, options.checkSelection);
           for (const conflict of prepared.pendingConflicts) {
             const path = conflict.event?.conflictPath;
             // Conflict copies were allocated only after checking nonexistence.
@@ -321,11 +352,11 @@ export class PullEntryStateApplier {
             const current = await this.localFiles.capture([...localFiles.keys()], reservation!);
             const changedPaths = [...localFiles].filter(([path, hash]) => current.get(path) !== hash).map(([path]) => path);
             if (changedPaths.length > 0) throw new PullLocalFilesChangedError(changedPaths);
-            totals.filesDeleted += await this.applyPreparedManifest(store, prepared);
+            totals.filesDeleted += await this.applyPreparedManifest(store, prepared, options.checkSelection);
             totals.entriesApplied += prepared.plans.length + prepared.superseded.length;
             totals.filesWritten += prepared.pathsToWrite.length;
-            totals.conflictsCreated += prepared.plans.reduce((count, plan) => count +
-              (plan.pathConflict?.conflictPath ? 1 : 0) + (plan.pendingConflict?.conflictPath ? 1 : 0), 0);
+            totals.conflictsCreated += prepared.plans.filter((plan) => plan.pathConflict?.conflictPath).length
+              + prepared.pendingConflicts.filter((conflict) => conflict.event?.conflictPath).length;
             for (const item of [...prepared.plans, ...prepared.superseded, ...prepared.skipped]) {
               completed.add(item.state.entryId);
             }
@@ -350,8 +381,9 @@ export class PullEntryStateApplier {
     token: SyncTokenResponse,
     prepared: PreparedManifestApplication,
     reservation: ContentReservation,
+    checkSelection?: () => void,
   ): Promise<void> {
-    const blobs = await this.blobPreparer.preparePathBatchBlobs(store, token, prepared.plans, reservation);
+    const blobs = await this.blobPreparer.preparePathBatchBlobs(store, token, prepared.plans, reservation, checkSelection);
     prepared.batches.push({
       plans: prepared.plans,
       pathsToRemove: uniqueSyncPaths(prepared.plans.flatMap(pathsToRemoveForPlan)),
@@ -360,14 +392,14 @@ export class PullEntryStateApplier {
     const blobByPlan = new Map(blobs.map((blob) => [blob.plan, blob]));
     const pendingIds = new Set<string>();
     for (const plan of prepared.plans) {
-      if (plan.adoptedLocalEntry?.hashMatches) continue;
-      const conflict = await this.pendingMutations.prepareConflictingPendingMutation(
+      const conflicts = await this.pendingMutations.prepareConflictingPendingMutations(
         store, plan, blobByPlan.get(plan) ?? null, reservation,
       );
-      if (!conflict || pendingIds.has(conflict.pending.mutationId)) continue;
-      pendingIds.add(conflict.pending.mutationId);
-      plan.pendingConflict = conflict.event;
-      prepared.pendingConflicts.push(conflict);
+      for (const conflict of conflicts) {
+        if (pendingIds.has(conflict.pending.mutationId)) continue;
+        pendingIds.add(conflict.pending.mutationId);
+        prepared.pendingConflicts.push(conflict);
+      }
     }
   }
 
@@ -454,8 +486,10 @@ export class PullEntryStateApplier {
   private async applyPreparedManifest(
     store: PullEntryStateStore,
     prepared: PreparedManifestApplication,
+    checkSelection?: () => void,
   ): Promise<number> {
     const snapshot = await capturePullStoreSnapshot(store, prepared);
+    checkSelection?.();
     const pendingConflictsByPlan = groupPendingConflictsByPlan(prepared.pendingConflicts);
     const fileEvents = prepared.plans.map((plan) => ({
       operation: plan.state.deleted ? "delete" as const : "upsert" as const,
@@ -482,6 +516,11 @@ export class PullEntryStateApplier {
         ],
         async () => {
           let removedTotal = 0;
+          // Materialize local conflict copies before releasing their owner's
+          // path or dirty record, including when the process exits mid-apply.
+          for (const conflict of prepared.pendingConflicts) {
+            await this.pendingMutations.applyPreparedPendingConflict(store, conflict);
+          }
           await this.applySkippedRemoteStates(store, prepared.skipped);
           await this.applySupersededRemoteEntries(store, prepared);
           for (const path of prepared.supersededPathsToRemove) {
@@ -493,9 +532,6 @@ export class PullEntryStateApplier {
             const batchPendingConflicts = uniquePendingConflicts(
               batch.plans.flatMap((plan) => pendingConflictsByPlan.get(plan) ?? []),
             );
-            for (const pendingConflict of batchPendingConflicts) {
-              await this.pendingMutations.applyPreparedPendingConflict(store, pendingConflict);
-            }
             await this.applyAdoptedLocalEntries(store, batch.plans);
             await this.clearChangingStorePaths(store, batch.plans);
 
@@ -665,9 +701,10 @@ export class PullEntryStateApplier {
     const paths: Array<string | null> = [];
     for (const item of superseded) {
       const existing = await store.getEntryById(item.state.entryId);
-      paths.push(
-        existing?.path && !existing.deleted && !claimedPaths.has(existing.path) ? existing.path : null,
-      );
+      if (existing?.path && !existing.deleted && !claimedPaths.has(existing.path) &&
+          !this.deps.isDeviceFileExcluded?.(existing.path)) {
+        paths.push(existing.path);
+      }
     }
     return uniqueSyncPaths(paths);
   }

@@ -137,7 +137,7 @@ export const zhTw = {
     "excluded.selectHint": "選擇不應從此裝置同步的資料夾。",
     "fileSync.audioDesc": "在此裝置上同步音訊附件。",
     "fileSync.header": "檔案同步",
-    "fileSync.hint": "檔案同步規則僅適用於此裝置。在這裡排除檔案不會自動刪除已上傳到伺服器的檔案。",
+    "fileSync.hint": "選擇此裝置要上傳與下載的檔案。排除檔案後，此裝置與伺服器上既有的副本都會保留。",
     "fileSync.imagesDesc": "在此裝置上同步圖片附件。",
     "fileSync.other": "其他檔案類型",
     "fileSync.otherDesc": "在此裝置上同步其他非 Markdown 檔案類型。",

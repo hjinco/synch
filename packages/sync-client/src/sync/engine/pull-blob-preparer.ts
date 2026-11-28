@@ -39,6 +39,7 @@ export class PullBlobPreparer {
     token: SyncTokenResponse,
     plans: PlannedEntryState[],
     reservation?: ContentReservation,
+    checkSelection?: () => void,
   ): Promise<PreparedEntryBlob[]> {
     const contentPlans = plans.filter((plan) => {
       if (!plan.finalPath || plan.state.deleted) {
@@ -58,6 +59,7 @@ export class PullBlobPreparer {
       contentPlans,
       reservation ? 1 : this.deps.prepareConcurrency ?? DEFAULT_PREPARE_CONCURRENCY,
       async (plan): Promise<PreparedEntryBlob | null> => {
+        checkSelection?.();
         if (this.canReuseAdoptedLocalContent(plan)) {
           await this.prepareAdoptedLocalBase(store, plan, reservation);
           return null;
@@ -68,7 +70,7 @@ export class PullBlobPreparer {
         return {
           transfer,
           plan,
-          bytes: await this.downloadAndVerifyEntryBlob(store, token, plan, transfer, reservation),
+          bytes: await this.downloadAndVerifyEntryBlob(store, token, plan, transfer, reservation, checkSelection),
         };
       },
     );
@@ -137,12 +139,14 @@ export class PullBlobPreparer {
     plan: PlannedEntryState,
     transfer: FileTransferLog,
     reservation?: ContentReservation,
+    checkSelection?: () => void,
   ): Promise<Uint8Array> {
     const blobId = requireBlobId(plan.state);
     let encryptedForMerge: Uint8Array | undefined;
     let plaintext: Uint8Array;
     {
-      const encrypted = await this.deps.blobClient.downloadBlob(token.vaultId, blobId, transfer);
+      const encrypted = await this.deps.blobClient.downloadBlob(token.vaultId, blobId, transfer, checkSelection);
+      checkSelection?.();
       if (plan.state.blobSize != null && encrypted.byteLength !== plan.state.blobSize) {
         throw new Error(`Entry state ${plan.state.entryId} blob size does not match metadata.`);
       }

@@ -23,6 +23,8 @@ export interface PushMutationCommitterDeps extends SyncContentRuntimeDeps {
   diagnostics?: SyncDiagnostics;
   getRemoteVaultKey: () => Uint8Array;
   getSyncCryptoContext?: () => SyncCryptoContext;
+  isDeviceMutationExcluded?: (path: string) => boolean;
+  assertUploadAllowed?: (path: string) => void;
   fileReader: LocalFileReader;
   conflictFileWriter?: ConflictFileWriter;
   blobClient: Pick<SyncBlobClient, "uploadBlob">;

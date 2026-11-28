@@ -15,9 +15,11 @@ export class SyncBlobClient {
     blobId: string,
     bytes: Uint8Array,
     transfer?: FileTransferLog,
+    beforeRequest?: () => void,
   ): Promise<void> {
     return await this.schedule("upload", transfer, async () => {
       const { response } = await this.requestClient.request({
+        beforeRequest,
         path: () =>
           `/v1/vaults/${encodeURIComponent(vaultId)}/blobs/${encodeURIComponent(blobId)}`,
         method: "PUT",
@@ -31,9 +33,15 @@ export class SyncBlobClient {
     });
   }
 
-  async downloadBlob(vaultId: string, blobId: string, transfer?: FileTransferLog): Promise<Uint8Array> {
+  async downloadBlob(
+    vaultId: string,
+    blobId: string,
+    transfer?: FileTransferLog,
+    beforeRequest?: () => void,
+  ): Promise<Uint8Array> {
     return await this.schedule("download", transfer, async () => {
       const { response } = await this.requestClient.request({
+        beforeRequest,
         path: () =>
           `/v1/vaults/${encodeURIComponent(vaultId)}/blobs/${encodeURIComponent(blobId)}`,
       });

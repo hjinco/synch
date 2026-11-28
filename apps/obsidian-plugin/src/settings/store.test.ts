@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import type { PluginDataStoreLike } from "../adapters/plugin-data";
 import { DEFAULT_SYNC_FILE_RULES, DEFAULT_VAULT_CONFIG_SYNC_RULES } from "@synch/sync-client/core";
@@ -101,6 +101,12 @@ describe("SynchSettingsStore", () => {
     );
 
     expect(store.getSnapshot().fileRules.includedHiddenFolders).toEqual([".assets"]);
+    const onChange = vi.fn();
+    expect(await store.updateFileRules({
+      ...DEFAULT_SYNC_FILE_RULES, includedHiddenFolders: [".assets", ".obsidian"],
+    }, ".obsidian", onChange)).toBe(false);
+    expect(onChange).not.toHaveBeenCalled();
+    expect(pluginDataStore.saveCount).toBe(1);
   });
 
   it("rejects invalid API base URL updates without saving", async () => {

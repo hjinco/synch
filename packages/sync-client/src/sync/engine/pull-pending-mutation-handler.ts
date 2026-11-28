@@ -39,23 +39,40 @@ export class PullPendingMutationHandler {
     this.contentRuntime = deps.contentRuntime;
   }
 
-  async prepareConflictingPendingMutation(
+  async prepareConflictingPendingMutations(
     store: PullEntryStateStore,
     plan: PlannedEntryState,
     remoteBlob: PreparedEntryBlob | null,
     reservation?: ContentReservation,
-  ): Promise<PreparedPendingConflict | null> {
-    const pending = await this.findConflictingPendingMutation(store, plan);
-    if (!pending) {
-      return null;
+  ): Promise<PreparedPendingConflict[]> {
+    const adoption = plan.adoptedLocalEntry;
+    const primary = adoption
+      ? await store.getDirtyEntryMutation(plan.state.entryId)
+      : await this.findConflictingPendingMutation(store, plan);
+    const owner = plan.supersededPathOwner;
+    const displaced = owner && owner.entryId !== primary?.entryId
+      ? await store.getDirtyEntryMutation(owner.entryId) : null;
+    const conflicts: PreparedPendingConflict[] = [];
+    for (const pending of [primary, displaced, adoption?.hashMatches ? null : adoption?.pending]) {
+      if (pending) conflicts.push(await this.preparePendingConflict(store, plan, pending, remoteBlob, reservation));
     }
+    return conflicts;
+  }
 
+  private async preparePendingConflict(
+    store: PullEntryStateStore,
+    plan: PlannedEntryState,
+    pending: PendingMutationRow,
+    remoteBlob: PreparedEntryBlob | null,
+    reservation?: ContentReservation,
+  ): Promise<PreparedPendingConflict> {
     const metadata = await decryptSyncMetadata(
       this.deps.getRemoteVaultKey(),
       pending.encryptedMetadata,
       metadataContextFromPendingMutation(pending),
     );
     if (
+      this.deps.isDeviceFileExcluded?.(metadata.path) ||
       await this.deps.vaultAdapter.isExcludedPath?.(metadata.path) ||
       await isSameEntryPendingMutationAlreadyRemote(
         pending,
@@ -212,7 +229,7 @@ export class PullPendingMutationHandler {
     const base = entryState?.base ?? null;
     if (
       dirty?.op !== "upsert" ||
-      !entryState ||
+      entryState?.entryId !== plan.state.entryId ||
       plan.state.deleted ||
       !plan.finalPath ||
       !local?.path ||

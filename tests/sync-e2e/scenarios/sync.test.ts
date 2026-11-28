@@ -1,4 +1,4 @@
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { createVault, signUp, type TestVault } from "../harness/account";
 import { Device } from "../harness/device";
 import { startServer, type Runtime, type TestServer } from "../harness/server";
@@ -95,6 +95,78 @@ for (const runtime of runtimes) describe(`encrypted sync (${runtime})`, () => {
     await settle(a, b);
     expect(await b.snapshot()).toEqual({});
     await stable();
+  });
+
+  it("skips excluded attachment and folder downloads and catches up when the device reconnects at the same cursor", async () => {
+    b.updateFileRules({ includePdf: false, excludedFolders: ["Archive"] });
+    await a.connect();
+    await a.write("paper.pdf", "desktop PDF");
+    await a.write("Archive/notes.md", "archived");
+    await a.write("today.md", "visible");
+    await settle(a);
+    await b.connect();
+    await settle(b);
+    expect(b.network.downloads).toHaveLength(1);
+    expect(await b.vault.readText("today.md")).toBe("visible");
+    expect(await b.vault.exists("paper.pdf")).toBe(false);
+    expect(await b.vault.exists("Archive/notes.md")).toBe(false);
+    expect(await b.store.getCursor()).toBe(await a.store.getCursor());
+    await b.disconnect();
+
+    b.updateFileRules({ includePdf: true });
+    await b.connect();
+    await expect.poll(() => b.vault.exists("paper.pdf")).toBe(true);
+    expect(await b.vault.readText("paper.pdf")).toBe("desktop PDF");
+    expect(await b.vault.exists("Archive/notes.md")).toBe(false);
+    expect(b.network.downloads).toHaveLength(2);
+  });
+
+  it("keeps a phone edit through a failed inclusion scan and a subsequent realtime update", async () => {
+    await seed("paper.pdf", "base");
+    b.updateFileRules({ includePdf: false });
+    await a.connect();
+    await a.write("paper.pdf", "desktop edit");
+    await settle(a);
+    await b.connect();
+    await settle(b);
+    await b.vault.writeText("paper.pdf", "phone-only edit");
+    await b.vault.writeText("unrelated.md", "unreadable during scan");
+    const read = b.vault.readBytes.bind(b.vault);
+    const faultyDisk = vi.spyOn(b.vault, "readBytes").mockImplementation(async (path) => {
+      if (path === "unrelated.md") throw new Error("disk read failed");
+      return read(path);
+    });
+    b.updateFileRules({ includePdf: true });
+    await expect(b.engine.reconcileOnce()).rejects.toThrow("disk read failed");
+    const downloads = b.network.downloads.length;
+    await a.write("other.md", "new realtime update");
+    await settle(a);
+    await expect.poll(() => b.errors.some((error) => String(error).includes("disk read failed"))).toBe(true);
+    expect(await b.vault.readText("paper.pdf")).toBe("phone-only edit");
+    expect(b.network.downloads).toHaveLength(downloads);
+    faultyDisk.mockRestore();
+    b.errors.length = 0;
+    await b.engine.syncNow();
+    await expect.poll(() => b.vault.readText("paper.pdf")).toBe("desktop edit");
+    const copies = (await b.vault.listFiles()).filter((file) => file.path.includes(".sync-conflict-"));
+    expect(await Promise.all(copies.map((file) => b.vault.readText(file.path)))).toEqual(["phone-only edit"]);
+  });
+
+  it("syncs the replacement at a reused path while its original file is excluded", async () => {
+    await seed("a.pdf", "original");
+    await b.rename("a.pdf", "Archive/a.pdf");
+    await b.write("a.pdf", "replacement");
+    b.updateFileRules({ excludedFolders: ["Archive"] });
+    await syncInOrder(b, a);
+    expect(await a.vault.readText("a.pdf")).toBe("replacement");
+    expect(await a.vault.exists("Archive/a.pdf")).toBe(false);
+    expect(await b.vault.readText("Archive/a.pdf")).toBe("original");
+
+    b.updateFileRules({ excludedFolders: [] });
+    await settle(b, a);
+    expect(await a.vault.readText("Archive/a.pdf")).toBe("original");
+    expect(await a.vault.readText("a.pdf")).toBe("replacement");
+    expect(b.conflicts).toEqual([]);
   });
 
   it("catches up after offline edits", async () => {

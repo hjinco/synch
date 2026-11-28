@@ -41,7 +41,6 @@ export type PlannedEntryState = {
   finalPath: string | null;
   hash: string | null;
   pathConflict: PullConflictEvent | null;
-  pendingConflict: PullConflictEvent | null;
   supersededPathOwner: SyncEntryRow | null;
 };
 

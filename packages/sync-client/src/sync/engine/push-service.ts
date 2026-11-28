@@ -1,4 +1,5 @@
 import type { SyncDiagnostics } from "../diagnostics/types";
+import { DeviceFileRulesChangedError } from "./device-file-selection";
 import { withSyncState } from "./sync-state-coordinator";
 import { preparePushBatches } from "./push-preparation-pipeline";
 import { SyncWorkProgress } from "./work-progress";
@@ -21,6 +22,7 @@ import type {
 import type {
   AcceptedPushMutationRow,
   PendingMutationRow,
+  SyncStore,
 } from "../store/store";
 import type {
   SyncCursorStore,
@@ -44,6 +46,8 @@ export interface SyncPushServiceDeps extends SyncContentRuntimeDeps {
   getSyncToken: () => Promise<SyncTokenResponse>;
   getSyncStore: () => SyncPushStore | null;
   getRemoteVaultKey: () => Uint8Array;
+  isDeviceFileExcluded?: (path: string) => boolean;
+  getDeviceFileRulesVersion?: () => number;
   fileReader: LocalFileReader;
   conflictFileWriter?: ConflictFileWriter;
   blobClient: Pick<SyncBlobClient, "uploadBlob">;
@@ -69,7 +73,7 @@ export interface SyncPushServiceDeps extends SyncContentRuntimeDeps {
 }
 
 export interface SyncPushStore
-  extends SyncCursorStore,
+  extends SyncCursorStore, Pick<SyncStore, "deferredFiles">,
     Pick<
       SyncMutationStore,
       "listBlockedDirtyEntriesByReason" | "listDirtyEntries" | "updateDirtyEntry"
@@ -117,6 +121,12 @@ export class SyncPushService {
       throw new Error("Sync store is not initialized.");
     }
 
+    const rulesVersion = this.deps.getDeviceFileRulesVersion?.();
+    const assertUploadAllowed = (path: string) => {
+      if (rulesVersion !== this.deps.getDeviceFileRulesVersion?.() || this.deps.isDeviceFileExcluded?.(path)) {
+        throw new DeviceFileRulesChangedError();
+      }
+    };
     const progress = new SyncWorkProgress("push");
     await onProgress(progress.snapshot());
     const token = await this.deps.getSyncToken();
@@ -144,11 +154,29 @@ export class SyncPushService {
     let stopAfterCurrentBatch = false;
     let stopReason: PushPendingMutationsResult["stopReason"];
 
+    // An entry may have moved remotely from an included path into an excluded
+    // folder. Its queued local mutation still names the old path.
+    const deferredIds = new Set<string>();
+    const listReady = async (limit: number, excluded: ReadonlySet<string>) => {
+      while (true) {
+        const ids = deferredIds.size ? new Set([...excluded, ...deferredIds]) : excluded;
+        const rows = await store.listDirtyEntries(limit, ids);
+        const files = store.deferredFiles;
+        if (!files || !rows.length) return rows;
+        const markers = await files.getMany(rows.map((row) => row.entryId));
+        for (const file of markers) {
+          if (file) deferredIds.add(file.entryId);
+        }
+        const ready = rows.filter((row) => !deferredIds.has(row.entryId));
+        if (ready.length) return ready;
+      }
+    };
     const remoteVaultKey = this.deps.getRemoteVaultKey();
     const syncCryptoContext = createSyncCryptoContext(remoteVaultKey);
     const mutationCommitter = this.createMutationCommitter(
       remoteVaultKey,
       syncCryptoContext,
+      assertUploadAllowed,
     );
     try {
       for await (const preparedMutations of this.preparePendingMutations(
@@ -159,6 +187,8 @@ export class SyncPushService {
         progress,
         () => shouldYield() || shouldPullAfterPush || requeueLimitReached,
         options,
+        listReady,
+        deferredIds,
       )) {
         const committable: Array<{
           mutation: (typeof preparedMutations)[number]["mutation"];
@@ -179,6 +209,7 @@ export class SyncPushService {
           }
           if ("skipped" in prepared) {
             if (prepared.reason === "excluded_path") {
+              deferredIds.add(mutation.entryId);
               progress.complete([mutation.mutationId]);
               continue;
             }
@@ -212,6 +243,7 @@ export class SyncPushService {
         let committed;
         try {
           await Promise.all(committable.flatMap(({ prepared }) => prepared.transfer ? [prepared.transfer.start("commit")] : []));
+          for (const { path } of committable) assertUploadAllowed(path);
           committed = await session.commitMutations(
             committable.map(({ prepared }) => prepared.commitPayload),
           );
@@ -357,7 +389,7 @@ export class SyncPushService {
         }
       }
 
-      hasMore = (await store.listDirtyEntries(1)).length > 0;
+      hasMore = (await listReady(1, new Set())).length > 0;
       checkpointCursor = getContiguousAcceptedCursor(
         checkpointCursor,
         acceptedCursors,
@@ -431,10 +463,13 @@ export class SyncPushService {
   private createMutationCommitter(
     remoteVaultKey: Uint8Array,
     syncCryptoContext: SyncCryptoContext,
+    assertUploadAllowed: (path: string) => void,
   ): PushMutationCommitter {
     return new PushMutationCommitter({
       getRemoteVaultKey: () => remoteVaultKey,
       getSyncCryptoContext: () => syncCryptoContext,
+      isDeviceMutationExcluded: this.deps.isDeviceFileExcluded,
+      assertUploadAllowed,
       fileReader: this.deps.fileReader,
       conflictFileWriter: this.deps.conflictFileWriter,
       blobClient: this.deps.blobClient,
@@ -455,6 +490,8 @@ export class SyncPushService {
     progress: SyncWorkProgress,
     shouldYield: () => boolean,
     options: PushPendingMutationsOptions,
+    listReady: (limit: number, excluded: ReadonlySet<string>) => Promise<PendingMutationRow[]>,
+    deferredIds: ReadonlySet<string>,
   ): AsyncGenerator<
     Array<{
       mutation: PendingMutationRow;
@@ -467,6 +504,7 @@ export class SyncPushService {
         if (options.priorityEntryIds?.length) {
           const priority: PendingMutationRow[] = [];
           for (const entryId of new Set(options.priorityEntryIds)) {
+            if (deferredIds.has(entryId) || await store.deferredFiles?.get(entryId)) continue;
             const mutation = await store.getDirtyEntryMutation(entryId);
             if (mutation && mutation.status !== "blocked") priority.push(mutation);
           }
@@ -477,7 +515,7 @@ export class SyncPushService {
             return priority.filter((mutation) => !excluded.has(mutation.entryId)).slice(0, limit);
           }
         }
-        return await store.listDirtyEntries(limit, excluded);
+        return await listReady(limit, excluded);
       },
       this.deps.prepareConcurrency ?? DEFAULT_PUSH_PREPARE_CONCURRENCY,
       async (mutation) => {

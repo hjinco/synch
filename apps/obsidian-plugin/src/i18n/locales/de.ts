@@ -146,7 +146,7 @@ export const de = {
     "excluded.selectHint": "Wählen Sie Ordner, die von diesem Gerät nie synchronisiert werden sollen.",
     "fileSync.audioDesc": "Audioanhänge auf diesem Gerät synchronisieren.",
     "fileSync.header": "Dateisynchronisierung",
-    "fileSync.hint": "Regeln zur Dateisynchronisierung gelten nur für dieses Gerät. Bereits auf den Server hochgeladene Dateien werden nicht automatisch entfernt, wenn Sie sie hier ausschließen.",
+    "fileSync.hint": "Wählen Sie aus, welche Dateien dieses Gerät hoch- und herunterlädt. Beim Ausschließen einer Datei bleiben vorhandene Kopien auf diesem Gerät und auf dem Server erhalten.",
     "fileSync.imagesDesc": "Bildanhänge auf diesem Gerät synchronisieren.",
     "fileSync.other": "Andere Dateitypen",
     "fileSync.otherDesc": "Weitere Nicht-Markdown-Dateitypen auf diesem Gerät synchronisieren.",

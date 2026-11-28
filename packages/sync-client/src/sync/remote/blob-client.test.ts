@@ -58,6 +58,26 @@ describe("SyncBlobClient", () => {
     },
   );
 
+  it.each(["upload", "download"] as const)("checks selection on queued %s requests and authorization retries", async direction => {
+    const pending: Array<(response: HttpResponseLike) => void> = [];
+    const client = new SyncBlobClient(new SyncAuthorizedRequestClient({
+      getApiBaseUrl: () => "https://sync.example",
+      getSyncToken: async () => ({ token: "token", expiresAt: 1000, vaultId: "v", localVaultId: "l" }),
+      invalidateSyncToken: () => {},
+      httpClient: { request: async () => new Promise<HttpResponseLike>((resolve) => pending.push(resolve)) },
+    }));
+    let included = true;
+    const checkSelection = () => { if (!included) throw new Error("rules changed"); };
+    const results = Promise.allSettled(Array.from({ length: 10 }, (_, i) => direction === "upload"
+      ? client.uploadBlob("v", String(i), new Uint8Array([1]), undefined, checkSelection)
+      : client.downloadBlob("v", String(i), undefined, checkSelection)));
+    await vi.waitFor(() => expect(pending).toHaveLength(8));
+    included = false;
+    pending.forEach((finish, i) => finish(i === 0 ? { status: 401 } : { status: 200, arrayBuffer: new ArrayBuffer(1) }));
+    expect((await results).filter((job) => job.status === "rejected")).toHaveLength(3);
+    expect(pending).toHaveLength(8);
+  });
+
   it.each(["upload", "download"] as const)(
     "refreshes authorization for a %s without changing the blob request",
     async (operation) => {

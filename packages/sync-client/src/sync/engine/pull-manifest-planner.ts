@@ -1,3 +1,4 @@
+import type { DeviceFileSelection } from "./device-file-selection";
 import type { SyncedEntryMetadata } from "../core/content";
 import type { SyncVaultPathExclusions } from "../vault/ports";
 import {
@@ -33,6 +34,7 @@ interface PullManifestPlannerDeps {
   vaultAdapter: ConflictFileWriter & SyncVaultPathExclusions;
   onRollbackDetected?: (event: PullRollbackEvent) => void;
   shouldUseLatestRemoteVersion?: (path: string) => boolean;
+  isDeviceFileExcluded?: (path: string) => boolean;
   shouldApplyRemotePath?: (path: string, deleted: boolean) => boolean;
   now?: () => number;
 }
@@ -43,7 +45,11 @@ export class PullManifestPlanner {
   async planManifest(
     store: PullManifestStore,
     manifest: PullEntryStateManifestItem[],
-    options: { deferExternalPathOwners: boolean; appliedEntryIds?: ReadonlySet<string> },
+    options: {
+      deferExternalPathOwners: boolean;
+      appliedEntryIds?: ReadonlySet<string>;
+      selection?: Pick<DeviceFileSelection, "hasMovedFrom">;
+    },
   ): Promise<{
     plans: PlannedEntryState[];
     deferred: PullEntryStateManifestItem[];
@@ -53,7 +59,7 @@ export class PullManifestPlanner {
     const validatedManifest: ValidatedManifestItem[] = [];
     const skipped: PullEntryStateManifestItem[] = [];
     for (const input of manifest) {
-      const item = this.validateManifestItem(input);
+      const item = validateManifestItem(input);
       if (this.deps.shouldApplyRemotePath?.(item.metadata.path, item.state.deleted) !== false &&
           !await this.deps.vaultAdapter.isExcludedPath?.(item.metadata.path)) {
         validatedManifest.push(item);
@@ -131,6 +137,7 @@ export class PullManifestPlanner {
             !adoptedLocalEntry;
           if (
             externalPathOwner &&
+            !await options.selection?.hasMovedFrom(pathOwner.entryId, metadata.path) &&
             !this.deps.shouldUseLatestRemoteVersion?.(metadata.path)
           ) {
             deferredEntryIds.add(state.entryId);
@@ -185,7 +192,8 @@ export class PullManifestPlanner {
 
       // A remote rename out of an excluded tree must download into its new
       // location without reading, moving or deleting the excluded source.
-      if (existing?.path && await this.deps.vaultAdapter.isExcludedPath?.(existing.path)) {
+      if (existing?.path && (this.deps.isDeviceFileExcluded?.(existing.path) ||
+          await this.deps.vaultAdapter.isExcludedPath?.(existing.path))) {
         existing = null;
       }
 
@@ -209,8 +217,9 @@ export class PullManifestPlanner {
           pathOwner.entryId !== state.entryId &&
           !deltaEntryIds.has(pathOwner.entryId) &&
           !adoptedLocalEntry;
+        const ownerMovedAway = externalPathOwner && await options.selection?.hasMovedFrom(pathOwner.entryId, metadata.path);
         if (
-          externalPathOwner &&
+          externalPathOwner && !ownerMovedAway &&
           options.deferExternalPathOwners &&
           !this.deps.shouldUseLatestRemoteVersion?.(metadata.path)
         ) {
@@ -218,7 +227,7 @@ export class PullManifestPlanner {
           continue;
         }
         if (duplicateEntryId || externalPathOwner) {
-          if (this.deps.shouldUseLatestRemoteVersion?.(metadata.path)) {
+          if ((!duplicateEntryId && ownerMovedAway) || this.deps.shouldUseLatestRemoteVersion?.(metadata.path)) {
             supersededPathOwner =
               pathOwner && pathOwner.entryId !== state.entryId ? pathOwner : null;
             finalPath = metadata.path;
@@ -258,30 +267,11 @@ export class PullManifestPlanner {
         finalPath,
         hash,
         pathConflict,
-        pendingConflict: null,
         supersededPathOwner,
       });
     }
 
     return { plans, deferred, superseded, skipped };
-  }
-
-  private validateManifestItem(item: PullEntryStateManifestItem): ValidatedManifestItem {
-    const { state, metadata } = item;
-    if (!state.deleted) {
-      if (!state.blobId) {
-        throw new Error(`Entry state ${state.entryId}@${state.revision} is missing a blob.`);
-      }
-      if (!metadata.hash) {
-        throw new Error(`Entry state ${state.entryId}@${state.revision} is missing a hash.`);
-      }
-      return { ...item, kind: "live", metadata: { ...metadata, hash: metadata.hash } };
-    }
-
-    if (metadata.hash !== null) {
-      throw new Error(`Deleted entry state ${state.entryId}@${state.revision} has a hash.`);
-    }
-    return { ...item, kind: "deleted", metadata: { ...metadata, hash: null } };
   }
 
   private findLatestManagedEntryByPath(
@@ -420,3 +410,21 @@ export class PullManifestPlanner {
 export interface PullManifestStore
   extends Pick<SyncEntryStore, "getEntryById" | "getEntryByPath">,
     Pick<SyncMutationStore, "getDirtyEntryMutation"> {}
+
+export function validateManifestItem(item: PullEntryStateManifestItem): ValidatedManifestItem {
+  const { state, metadata } = item;
+  if (!state.deleted) {
+    if (!state.blobId) {
+      throw new Error(`Entry state ${state.entryId}@${state.revision} is missing a blob.`);
+    }
+    if (!metadata.hash) {
+      throw new Error(`Entry state ${state.entryId}@${state.revision} is missing a hash.`);
+    }
+    return { ...item, kind: "live", metadata: { ...metadata, hash: metadata.hash } };
+  }
+
+  if (metadata.hash !== null) {
+    throw new Error(`Deleted entry state ${state.entryId}@${state.revision} has a hash.`);
+  }
+  return { ...item, kind: "deleted", metadata: { ...metadata, hash: null } };
+}

@@ -10,3 +10,5 @@
 - Sync reads each downloaded attachment buffer once and releases its reference to encrypted attachments earlier.
 
 ## Fixed
+
+- Excluding a file type or folder on this device now skips uploads and downloads, keeps existing copies in place, and resumes sync under your conflict policy when you include it again.

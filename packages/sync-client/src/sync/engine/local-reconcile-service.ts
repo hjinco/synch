@@ -28,6 +28,7 @@ export interface SyncLocalReconcileServiceDeps extends SyncContentRuntimeDeps {
   getRemoteVaultKey: () => Uint8Array;
   scanner: LocalFileScanner;
   shouldSyncPath(path: string): boolean;
+  isDeviceFileExcluded?: (path: string) => boolean;
   hashConcurrency?: number;
 }
 
@@ -46,7 +47,7 @@ export class SyncLocalReconcileService {
     this.contentRuntime = deps.contentRuntime;
   }
 
-  async reconcileOnce(): Promise<ReconcileOnceResult> {
+  async reconcileOnce(checkSelection?: () => void): Promise<ReconcileOnceResult> {
     const store = this.requireStore();
     const remoteVaultKey = this.deps.getRemoteVaultKey();
     const metadataCrypto = createSyncCryptoContext(remoteVaultKey);
@@ -54,7 +55,7 @@ export class SyncLocalReconcileService {
       return await retrySyncStateWork(async () => {
         const snapshot = syncStateCoordinator(store).watch();
         try {
-          return await this.reconcileWithMetadataCrypto(store, metadataCrypto, snapshot);
+          return await this.reconcileWithMetadataCrypto(store, metadataCrypto, snapshot, checkSelection);
         } finally {
           snapshot.dispose();
         }
@@ -68,14 +69,17 @@ export class SyncLocalReconcileService {
     store: SyncLocalReconcileStore,
     metadataCrypto: Pick<SyncCryptoContext, "encryptMetadata" | "decryptMetadata">,
     prepared: SyncStateSnapshot,
+    checkSelection?: () => void,
   ): Promise<ReconcileOnceResult> {
-    const localFiles = await this.deps.scanner.listFiles();
+    const scannedFiles = await this.deps.scanner.listFiles();
+    const excludes = this.deps.isDeviceFileExcluded;
+    const localFiles = excludes ? scannedFiles.filter(file => !excludes(file.path)) : scannedFiles;
     const localPaths = new Set<string>();
     for (const file of localFiles) {
       localPaths.add(file.path);
     }
     const snapshot = await store.listReconcileEntryStates();
-    const { retained, cleanupUpdates, excludedEntryIds } = await this.filterKnownEntries(snapshot, metadataCrypto);
+    const { retained, cleanupUpdates, excludedEntryIds, baselines } = await this.filterKnownEntries(snapshot, metadataCrypto);
     const localByPath = indexLocalEntriesByPath(retained);
     const remoteById = indexRemoteEntriesById(retained);
     const visibleRemoteByPath = indexVisibleRemoteEntriesByPath(retained);
@@ -249,20 +253,31 @@ export class SyncLocalReconcileService {
       filesQueuedForDelete += 1;
     }
 
-    if (updates.length > 0) {
-      const updatedIds = new Set(updates.map((update) => update.entryId));
+    if (updates.length > 0 || baselines.size > 0) {
+      const remaining: SyncReconcileEntryUpdate[] = [];
+      for (const update of updates) {
+        const baseline = baselines.get(update.entryId);
+        if (baseline) baselines.set(update.entryId, { ...baseline, ...update });
+        else remaining.push(update);
+      }
+      const updatedIds = new Set([...baselines.keys(), ...remaining.map((update) => update.entryId)]);
       const affected = snapshot.filter((entry) => updatedIds.has(entry.entryId));
       await syncStateCoordinator(store).run(syncStateKeys({
         entryIds: [...updatedIds],
         paths: [
           ...affected.flatMap((entry) => [entry.local?.path, entry.remote?.path]),
           ...updates.map((update) => update.local?.path),
+          ...Array.from(baselines.values(), (update) => update.local?.path),
         ],
       }), async () => {
+        checkSelection?.();
         // Clear excluded local copies only after validating the scan snapshot,
         // under the same coordination as the rest of the reconcile updates.
         for (const entryId of excludedEntryIds) await store.clearLocalState(entryId);
-        await applyReconcileUpdatesInChunks(store, updates);
+        // A reused path must change owners in one transaction, even across
+        // normal scan chunk boundaries.
+        if (baselines.size) await store.applyReconcileEntryUpdates([...baselines.values()]);
+        await applyReconcileUpdatesInChunks(store, remaining);
       }, [prepared]);
     }
 
@@ -289,10 +304,13 @@ export class SyncLocalReconcileService {
     retained: SyncReconcileEntryState[];
     cleanupUpdates: SyncReconcileEntryUpdate[];
     excludedEntryIds: string[];
+    baselines: Map<string, SyncReconcileEntryUpdate>;
   }> {
     const retained: SyncReconcileEntryState[] = [];
     const cleanupUpdates: SyncReconcileEntryUpdate[] = [];
     const excludedEntryIds: string[] = [];
+    const safeEntries: SyncReconcileEntryState[] = [];
+    const excludedMutations: SyncReconcileEntryState[] = [];
 
     for (const entry of entries) {
       if (this.deps.scanner.isExcludedPath) {
@@ -323,6 +341,25 @@ export class SyncLocalReconcileService {
         }
       }
       const local = entry.local;
+      if (entry.dirty && this.deps.isDeviceFileExcluded) {
+        const pending = entry.dirty;
+        const path = local?.path ?? (await metadataCrypto.decryptMetadata(pending.encryptedMetadata, {
+          entryId: pending.entryId, revision: pending.baseRevision + 1,
+          op: pending.op, blobId: pending.blobId,
+        })).path;
+        if (this.deps.isDeviceFileExcluded(path)) {
+          excludedMutations.push(entry);
+        }
+      }
+      safeEntries.push(entry);
+    }
+
+    const baselines = restoreScanBaselines(excludedMutations, safeEntries);
+    for (const original of safeEntries) {
+      const reset = baselines.get(original.entryId);
+      if (reset?.deleteEntry) continue;
+      const entry = reset ? { ...original, local: reset.local ?? null, dirty: null } : original;
+      const local = entry.local;
       if (!local?.path || local.deleted || this.deps.shouldSyncPath(local.path)) {
         retained.push(entry);
         continue;
@@ -335,7 +372,7 @@ export class SyncLocalReconcileService {
       });
     }
 
-    return { retained, cleanupUpdates, excludedEntryIds };
+    return { retained, cleanupUpdates, excludedEntryIds, baselines };
   }
 
   private async indexPendingDeleteEntriesByPath(
@@ -367,6 +404,37 @@ export class SyncLocalReconcileService {
 }
 
 const RECONCILE_UPDATE_CHUNK_SIZE = 500;
+
+/** Undo excluded mutations in the scan snapshot first. If a pending rename
+ * vacated a path that has since been reused, compare the bytes now at that path
+ * to its original remote entry. No vault files are moved or removed here. */
+function restoreScanBaselines(
+  excluded: SyncReconcileEntryState[],
+  entries: SyncReconcileEntryState[],
+): Map<string, SyncReconcileEntryUpdate> {
+  const updates = new Map<string, SyncReconcileEntryUpdate>();
+  if (!excluded.length) return updates;
+  const owners = new Map<string, SyncReconcileEntryState>();
+  for (const entry of entries) {
+    if (entry.local?.path && !entry.local.deleted) owners.set(entry.local.path, entry);
+  }
+  const queue = [...excluded];
+  for (const entry of queue) {
+    if (updates.has(entry.entryId)) continue;
+    const remote = entry.remote;
+    if (!remote || remote.revision === 0) {
+      updates.set(entry.entryId, { entryId: entry.entryId, deleteEntry: true });
+      continue;
+    }
+    updates.set(entry.entryId, {
+      entryId: entry.entryId, clearDirty: true,
+      local: { ...remote, localMtime: null, localSize: null },
+    });
+    const owner = !remote.deleted && remote.path ? owners.get(remote.path) : undefined;
+    if (owner && owner !== entry) queue.push(owner);
+  }
+  return updates;
+}
 
 interface ReconcileHashInput {
   file: LocalSyncFile;

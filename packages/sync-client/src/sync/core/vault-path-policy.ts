@@ -44,6 +44,12 @@ export function decideVaultPathSync(
   return { kind: "ignore-local" };
 }
 
+/** Managed configuration has its own selection and conflict policy. */
+export function isExcludedByDeviceFileRules(path: string, rules: VaultPathPolicyRules): boolean {
+  return classifySyncPath(path, rules.configDir) === "normal" &&
+    !shouldSyncPath(path, rules.fileRules, rules.configDir);
+}
+
 export function shouldApplyRemoteVaultPath(
   path: string,
   rules: VaultPathPolicyRules,
