@@ -810,14 +810,14 @@ function guardRealtimeCallbacks(
   }
 
   return {
-    onCursorAdvanced: guard(callbacks.onCursorAdvanced),
-    onStorageStatusUpdated: guard(callbacks.onStorageStatusUpdated),
-    onPolicyUpdated: guard(callbacks.onPolicyUpdated),
-    onPresenceUpdated: guard(callbacks.onPresenceUpdated),
-    onPresenceCleared: guard(callbacks.onPresenceCleared),
-    onPresenceAvailabilityChanged: guard(callbacks.onPresenceAvailabilityChanged),
-    onClose: guard(callbacks.onClose),
-    onError: guard(callbacks.onError),
+    onCursorAdvanced: guard(callbacks.onCursorAdvanced.bind(callbacks)),
+    onStorageStatusUpdated: guard(callbacks.onStorageStatusUpdated.bind(callbacks)),
+    onPolicyUpdated: guard(callbacks.onPolicyUpdated.bind(callbacks)),
+    onPresenceUpdated: guard(callbacks.onPresenceUpdated.bind(callbacks)),
+    onPresenceCleared: guard(callbacks.onPresenceCleared.bind(callbacks)),
+    onPresenceAvailabilityChanged: guard(callbacks.onPresenceAvailabilityChanged.bind(callbacks)),
+    onClose: guard(callbacks.onClose.bind(callbacks)),
+    onError: guard(callbacks.onError.bind(callbacks)),
   };
 }
 

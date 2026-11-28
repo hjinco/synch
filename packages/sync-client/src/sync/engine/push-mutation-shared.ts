@@ -1,6 +1,5 @@
 import type { CommitMutationPayload } from "../remote/realtime-client";
 import { SyncRealtimeError } from "../remote/realtime-client";
-import type { PendingMutationRow } from "../store/store";
 export function toCommitPayload(mutation: {
   mutationId: string;
   entryId: string;

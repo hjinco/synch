@@ -9,7 +9,7 @@ export function captureDeviceFileRulesVersion<T extends number | undefined>(read
   const version = readVersion();
   return {
     version,
-    assertCurrent() {
+    assertCurrent: () => {
       if (readVersion() !== version) throw new DeviceFileRulesChangedError();
     },
   };
