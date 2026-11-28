@@ -60,8 +60,9 @@ export class SyncBlobClient {
       );
     }
 
-    if (response.arrayBuffer instanceof ArrayBuffer) {
-      return new Uint8Array(response.arrayBuffer);
+    const buffer = response.arrayBuffer;
+    if (buffer instanceof ArrayBuffer) {
+      return new Uint8Array(buffer);
     }
 
     throw new Error("blob download response did not include an ArrayBuffer body");

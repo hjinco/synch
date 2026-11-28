@@ -105,6 +105,23 @@ describe("SyncBlobClient", () => {
     },
   );
 
+  it("reads the download buffer once and reuses it for the returned bytes", async () => {
+    const buffer = new Uint8Array([1, 2, 3]).buffer;
+    let reads = 0;
+    const client = createBlobClient([], {
+      status: 200,
+      get arrayBuffer() {
+        reads++;
+        return buffer;
+      },
+    });
+
+    const bytes = await client.downloadBlob("vault-1", "blob-1");
+
+    expect(reads).toBe(1);
+    expect(bytes.buffer).toBe(buffer);
+  });
+
   it("passes a full-buffer payload without making an upload copy", async () => {
     const requests: HttpRequestInput[] = [];
     const client = createBlobClient(requests);
@@ -139,7 +156,7 @@ describe("SyncBlobClient", () => {
   });
 });
 
-function createBlobClient(requests: HttpRequestInput[]): SyncBlobClient {
+function createBlobClient(requests: HttpRequestInput[], response: HttpResponseLike = { status: 201 }): SyncBlobClient {
   const requestClient = new SyncAuthorizedRequestClient({
     getApiBaseUrl: () => "http://127.0.0.1:8787",
     getSyncToken: async () => ({
@@ -152,7 +169,7 @@ function createBlobClient(requests: HttpRequestInput[]): SyncBlobClient {
     httpClient: {
       async request(input): Promise<HttpResponseLike> {
         requests.push(input);
-        return { status: 201 };
+        return response;
       },
     },
   });
