@@ -1,3 +1,4 @@
+import { metadataContextFromPendingMutation } from "../core/mutation-metadata";
 import { retrySyncStateWork, syncStateCoordinator, syncStateKeys, type SyncStateSnapshot } from "./sync-state-coordinator";
 import {
   type SyncContentRuntime,
@@ -317,12 +318,11 @@ export class SyncLocalReconcileService {
         const paths = [entry.local?.path, entry.remote?.path];
         if (entry.dirty) {
           const pending = entry.dirty;
-          paths.push((await metadataCrypto.decryptMetadata(pending.encryptedMetadata, {
-            entryId: pending.entryId,
-            revision: pending.baseRevision + 1,
-            op: pending.op,
-            blobId: pending.blobId,
-          })).path);
+          const metadata = await metadataCrypto.decryptMetadata(
+            pending.encryptedMetadata,
+            metadataContextFromPendingMutation(pending),
+          );
+          paths.push(metadata.path);
         }
         let excluded = false;
         for (const path of new Set(paths)) {
@@ -343,10 +343,10 @@ export class SyncLocalReconcileService {
       const local = entry.local;
       if (entry.dirty && this.deps.isDeviceFileExcluded) {
         const pending = entry.dirty;
-        const path = local?.path ?? (await metadataCrypto.decryptMetadata(pending.encryptedMetadata, {
-          entryId: pending.entryId, revision: pending.baseRevision + 1,
-          op: pending.op, blobId: pending.blobId,
-        })).path;
+        const path = local?.path ?? (await metadataCrypto.decryptMetadata(
+          pending.encryptedMetadata,
+          metadataContextFromPendingMutation(pending),
+        )).path;
         if (this.deps.isDeviceFileExcluded(path)) {
           excludedMutations.push(entry);
         }
@@ -387,12 +387,10 @@ export class SyncLocalReconcileService {
         continue;
       }
 
-      const metadata = await metadataCrypto.decryptMetadata(pending.encryptedMetadata, {
-        entryId: pending.entryId,
-        revision: pending.baseRevision + 1,
-        op: pending.op,
-        blobId: pending.blobId,
-      });
+      const metadata = await metadataCrypto.decryptMetadata(
+        pending.encryptedMetadata,
+        metadataContextFromPendingMutation(pending),
+      );
       const pendingEntry = entry.local;
       if (pendingEntry) {
         result.set(metadata.path, pendingEntry);

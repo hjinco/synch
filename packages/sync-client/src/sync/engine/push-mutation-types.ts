@@ -16,6 +16,7 @@ import type {
   SyncPushAcceptanceStore,
   SyncRemoteEntryStore,
 } from "../store/ports";
+import type { PendingMutationBlockedReason } from "../store/store";
 import type { PushBlobRetryCache } from "./push-blob-retry-cache";
 import type { SyncVaultPathExclusions } from "../vault/ports";
 
@@ -60,6 +61,7 @@ export type PushMutationRejectionResult =
     };
 
 export interface PreparedPushMutation {
+  kind: "ready";
   transfer?: FileTransferLog;
   commitPayload: CommitMutationPayload;
   metadata: SyncedEntryMetadata;
@@ -82,9 +84,9 @@ export interface PushMutationStore
     Pick<SyncBlobStore, "putBlob">,
     SyncPushAcceptanceStore {}
 
-export interface SkippedPushMutation {
-  skipped: true;
-  reason: "file_too_large" | "incompatible_path" | "storage_quota_exceeded" | "excluded_path";
-}
-
-export type PreparePushMutationResult = PreparedPushMutation | SkippedPushMutation | null;
+export type PreparePushMutationResult =
+  | PreparedPushMutation
+  | { kind: "retry" }
+  | { kind: "deferred" }
+  | { kind: "blocked"; reason: PendingMutationBlockedReason }
+  | { kind: "stopAfterBatch"; reason: "storage_quota_exceeded" };

@@ -1,6 +1,6 @@
+import { metadataContextFromPendingMutation } from "../core/mutation-metadata";
 import { isPortableVaultPath } from "../core/portable-path";
 import { decryptSyncMetadata } from "../core/crypto";
-import { metadataContextFromMutation } from "./push-mutation-shared";
 import type { SyncStore } from "../store/store";
 import type { PendingMutationBlockedReason } from "../store/store";
 
@@ -28,7 +28,7 @@ export async function listBlockedSyncFiles(
     const metadata = await decryptSyncMetadata(
       remoteVaultKey,
       mutation.encryptedMetadata,
-      metadataContextFromMutation(mutation),
+      metadataContextFromPendingMutation(mutation),
     );
     files.push({
       path: metadata.path,

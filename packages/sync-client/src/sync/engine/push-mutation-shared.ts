@@ -19,15 +19,6 @@ export function toCommitPayload(mutation: {
   };
 }
 
-export function metadataContextFromMutation(mutation: PendingMutationRow) {
-  return {
-    entryId: mutation.entryId,
-    revision: mutation.baseRevision + 1,
-    op: mutation.op,
-    blobId: mutation.blobId,
-  };
-}
-
 export interface StaleRevisionLike {
   code: string;
   expectedBaseRevision?: number;

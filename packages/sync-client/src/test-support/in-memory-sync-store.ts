@@ -1,3 +1,4 @@
+import { metadataContextFromPendingMutation } from "../sync/core/mutation-metadata";
 import { decryptSyncMetadata, encryptSyncMetadata } from "../sync/core/crypto";
 import type {
   AcceptedPushMutationRow,
@@ -402,7 +403,7 @@ export class InMemorySyncStore implements SyncStore {
         const metadata = await decryptSyncMetadata(
           options.remoteVaultKey,
           currentPending.encryptedMetadata,
-          mutationMetadataContext(currentPending),
+          metadataContextFromPendingMutation(currentPending),
         );
         const rebased = {
           ...currentPending,
@@ -415,7 +416,7 @@ export class InMemorySyncStore implements SyncStore {
           encryptedMetadata: await encryptSyncMetadata(
             options.remoteVaultKey,
             metadata,
-            mutationMetadataContext(rebased),
+            metadataContextFromPendingMutation(rebased),
           ),
         };
         state.base = remoteToBase(remote);
@@ -531,15 +532,6 @@ function normalizePendingMutation(
       status === "blocked" ? (mutation.blockedMaxFileSizeBytes ?? null) : null,
     baseBlobId: mutation.baseBlobId ?? null,
     baseHash: mutation.baseHash ?? null,
-  };
-}
-
-function mutationMetadataContext(mutation: PendingMutationRow) {
-  return {
-    entryId: mutation.entryId,
-    revision: mutation.baseRevision + 1,
-    op: mutation.op,
-    blobId: mutation.blobId,
   };
 }
 

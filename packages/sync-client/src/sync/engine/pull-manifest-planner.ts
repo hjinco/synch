@@ -1,3 +1,4 @@
+import { metadataContextFromPendingMutation } from "../core/mutation-metadata";
 import type { DeviceFileSelection } from "./device-file-selection";
 import type { SyncedEntryMetadata } from "../core/content";
 import type { SyncVaultPathExclusions } from "../vault/ports";
@@ -17,7 +18,6 @@ import type {
 import {
   type AdoptedLocalEntry,
   isDeferredByCursorThreshold,
-  metadataContextFromPendingMutation,
   type PlannedEntryState,
   type PullConflictEvent,
   type PullEntryStateManifestItem,

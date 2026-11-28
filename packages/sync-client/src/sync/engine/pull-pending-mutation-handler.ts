@@ -1,3 +1,4 @@
+import { metadataContextFromPendingMutation } from "../core/mutation-metadata";
 import {
   type SyncContentRuntime,
   type ContentReservation,
@@ -18,7 +19,6 @@ import {
 } from "../vault/vault-writer";
 import {
   decodeUtf8,
-  metadataContextFromPendingMutation,
   type PlannedEntryState,
   type PreparedEntryBlob,
   type PreparedPendingConflict,
@@ -298,12 +298,12 @@ export class PullPendingMutationHandler {
               path: finalPath,
               hash: mergedHash,
             },
-            {
+            metadataContextFromPendingMutation({
               entryId: entryState.entryId,
-              revision: plan.state.revision + 1,
+              baseRevision: plan.state.revision,
               op: "upsert",
               blobId,
-            },
+            }),
           ),
         };
       },

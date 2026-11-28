@@ -1,4 +1,5 @@
-import { DeviceFileSelection, DeviceFileRulesChangedError } from "./device-file-selection";
+import { captureDeviceFileRulesVersion } from "./device-file-rules-version";
+import { DeviceFileSelection } from "./device-file-selection";
 import type { SyncStore } from "../store/store";
 import type { SyncDiagnostics } from "../diagnostics/types";
 import type { SyncConflictPolicy } from "../core/conflict-policy";
@@ -110,7 +111,7 @@ export class SyncPullService {
     if (entryIds.length === 0) return;
     const store = this.deps.getSyncStore();
     if (!store) throw new Error("Sync store is not initialized.");
-    const checkSelection = this.checkFileRulesVersion();
+    const { assertCurrent: checkSelection } = this.captureFileRules();
     const token = await this.deps.getSyncToken();
     const progress = new SyncWorkProgress("pull");
     await onProgress(progress.snapshot());
@@ -144,13 +145,12 @@ export class SyncPullService {
       throw new Error("Sync store is not initialized.");
     }
 
-    const checkSelection = this.checkFileRulesVersion();
+    const { version, assertCurrent: checkSelection } = this.captureFileRules();
     const token = await this.deps.getSyncToken();
     let cursor = await store.getCursor();
     // Excluded paths keep remote metadata without claiming it was applied.
     // When a path becomes available, replay a fresh authenticated snapshot;
     // never reset the persisted checkpoint or apply stale cached remote data.
-    const version = this.deps.getDeviceFileRulesVersion?.();
     const selection = await this.loadFileSelection(store, !this.alreadyChecked(store, version));
     const recovering = selection.newlyIncluded.size > 0;
     const requestCursor = await this.needsExcludedPathReplay(store) ? 0 : cursor;
@@ -350,12 +350,9 @@ export class SyncPullService {
     return version !== undefined && this.checkedSelection?.store === store && this.checkedSelection.version === version;
   }
 
-  private checkFileRulesVersion(): () => void {
+  private captureFileRules() {
     this.deps.assertFileRulesScanned?.();
-    const version = this.deps.getDeviceFileRulesVersion?.();
-    return () => {
-      if (version !== this.deps.getDeviceFileRulesVersion?.()) throw new DeviceFileRulesChangedError();
-    };
+    return captureDeviceFileRulesVersion(() => this.deps.getDeviceFileRulesVersion?.());
   }
 
   private async needsExcludedPathReplay(store: SyncPullStore): Promise<boolean> {

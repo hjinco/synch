@@ -1,3 +1,4 @@
+import { metadataContextFromPendingMutation } from "../core/mutation-metadata";
 import {
   type SyncContentRuntime,
   type SyncContentRuntimeDeps,
@@ -322,12 +323,7 @@ export class SyncEventRecorder {
       const metadata = await decryptSyncMetadata(
         remoteVaultKey,
         pending.encryptedMetadata,
-        {
-          entryId: pending.entryId,
-          revision: pending.baseRevision + 1,
-          op: pending.op,
-          blobId: pending.blobId,
-        },
+        metadataContextFromPendingMutation(pending),
       );
       if (metadata.path !== path) {
         continue;

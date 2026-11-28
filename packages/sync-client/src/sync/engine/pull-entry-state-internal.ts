@@ -88,18 +88,6 @@ export type PreparedPathBatch = {
   blobs: PreparedEntryBlob[];
 };
 
-export type PreparedManifestApplication = {
-  completedStates: Array<{ entryId: string; revision: number }>;
-  plans: PlannedEntryState[];
-  superseded: PullEntryStateManifestItem[];
-  skipped: PullEntryStateManifestItem[];
-  supersededPathsToRemove: string[];
-  pathsToWrite: string[];
-  pendingConflicts: PreparedPendingConflict[];
-  batches: PreparedPathBatch[];
-  deferred: PullEntryStateManifestItem[];
-};
-
 export function uniqueSyncPaths(
   paths: ReadonlyArray<string | null | undefined>,
 ): Array<string> {
@@ -195,15 +183,6 @@ export function metadataContextFromRemoteState(state: RemoteEntryState) {
     revision: state.revision,
     op: state.deleted ? ("delete" as const) : ("upsert" as const),
     blobId: state.blobId,
-  };
-}
-
-export function metadataContextFromPendingMutation(mutation: PendingMutationRow) {
-  return {
-    entryId: mutation.entryId,
-    revision: mutation.baseRevision + 1,
-    op: mutation.op,
-    blobId: mutation.blobId,
   };
 }
 

@@ -1,3 +1,4 @@
+import { metadataContextFromPendingMutation } from "../core/mutation-metadata";
 import { decryptSyncMetadata, encryptSyncMetadata } from "../core/crypto";
 import type {
   AcceptedPushMutationRow,
@@ -373,7 +374,7 @@ export async function planAcceptedPushApply(
   const pendingMetadata = await decryptSyncMetadata(
     remoteVaultKey,
     currentPending.encryptedMetadata,
-    metadataContextFromMutation(currentPending),
+    metadataContextFromPendingMutation(currentPending),
   );
 
   return {
@@ -382,11 +383,9 @@ export async function planAcceptedPushApply(
       encryptedMetadata: await encryptSyncMetadata(
         remoteVaultKey,
         pendingMetadata,
-        metadataContextFromMutation({
+        metadataContextFromPendingMutation({
           ...currentPending,
           baseRevision: accepted.acceptedRevision,
-          baseBlobId: accepted.remoteBlobId,
-          baseHash: accepted.localHash,
         }),
       ),
     },
@@ -464,13 +463,4 @@ function shouldApplyAcceptedPushToLocal(
     (row.localHash === accepted.mutation.hash &&
       row.localPath === accepted.metadata.path)
   );
-}
-
-function metadataContextFromMutation(mutation: PendingMutationRow) {
-  return {
-    entryId: mutation.entryId,
-    revision: mutation.baseRevision + 1,
-    op: mutation.op,
-    blobId: mutation.blobId,
-  };
 }

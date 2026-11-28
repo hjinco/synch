@@ -2,7 +2,7 @@ import type { DeviceFileSelection } from "./device-file-selection";
 import type { SyncDiagnostics } from "../diagnostics/types";
 import type { SyncEventRecorderStore } from "./event-recorder";
 import { PullLocalFileSnapshots, PullLocalFilesChangedError } from "./pull-local-file-snapshots";
-import { retrySyncStateWork, syncStateCoordinator, withSyncState, type SyncStateSnapshot, type SyncStateResources } from "./sync-state-coordinator";
+import { retrySyncStateWork, syncStateCoordinator, withSyncState, type SyncStateSnapshot } from "./sync-state-coordinator";
 import type { SyncConflictPolicy } from "../core/conflict-policy";
 import { decryptSyncMetadata } from "../core/crypto";
 import type { ContentReservation, SyncContentRuntimeDeps } from "../core/content-runtime";
@@ -23,7 +23,7 @@ import {
 } from "../vault/vault-writer";
 import type { SyncVaultAccess } from "../vault/ports";
 import type { SyncEventGateLike } from "./event-gate";
-import { groupPullApplications, pullPlanFilePaths } from "./pull-application-groups";
+import { groupPullApplications, pullPlanFilePaths, type PreparedManifestApplication } from "./pull-application-groups";
 import { runPullPreparationPipeline } from "./pull-preparation-pipeline";
 import { capturePullStoreSnapshot } from "./pull-store-snapshot";
 import { PullBlobPreparer } from "./pull-blob-preparer";
@@ -39,7 +39,6 @@ import {
   type PullEntryStateManifestItem,
   type PullRollbackEvent,
   type PlannedEntryState,
-  type PreparedManifestApplication,
   uniquePendingConflicts,
   uniqueSyncPaths,
 } from "./pull-entry-state-internal";
@@ -252,7 +251,6 @@ export class PullEntryStateApplier {
     const groups: Array<{
       prepared: PreparedManifestApplication;
       estimate: number;
-      resources: SyncStateResources;
       pathsToSnapshot: string[];
       localFiles: Map<string, string | null>;
       reservation?: ContentReservation;
@@ -277,16 +275,14 @@ export class PullEntryStateApplier {
       }
       groups.push({
         estimate,
-        resources: group.resources,
         pathsToSnapshot,
         localFiles: new Map(),
         prepared: {
-          plans: group.plans,
-          superseded: group.superseded,
-          skipped: group.skipped,
+          ...group,
           supersededPathsToRemove,
           pathsToWrite: uniqueSyncPaths(group.plans.filter((plan) => !plan.skipVaultWrite).map((plan) => plan.finalPath)),
-          completedStates: [], deferred: [], pendingConflicts: [], batches: [],
+          pendingConflicts: [],
+          batches: [],
         },
       });
     }
@@ -331,11 +327,6 @@ export class PullEntryStateApplier {
             // Conflict copies were allocated only after checking nonexistence.
             if (path && !group.localFiles.has(path)) group.localFiles.set(path, null);
           }
-          // Pending deletes can refer to an entry with no visible local path.
-          group.resources.entryIds = [...(group.resources.entryIds ?? []),
-            ...prepared.pendingConflicts.map((conflict) => conflict.pending.entryId)];
-          group.resources.paths = [...(group.resources.paths ?? []),
-            ...prepared.pendingConflicts.flatMap((conflict) => [conflict.event?.originalPath, conflict.event?.conflictPath])];
         } catch (error) {
           for (const plan of prepared.plans) {
             this.deps.onFileSyncFailed?.({
@@ -346,9 +337,9 @@ export class PullEntryStateApplier {
           throw error;
         }
       },
-      apply: async ({ prepared, resources, localFiles, reservation }) => {
+      apply: async ({ prepared, localFiles, reservation }) => {
         try {
-          await withSyncState(store, resources, async () => {
+          await withSyncState(store, prepared.targets.lockResources(), async () => {
             const current = await this.localFiles.capture([...localFiles.keys()], reservation!);
             const changedPaths = [...localFiles].filter(([path, hash]) => current.get(path) !== hash).map(([path]) => path);
             if (changedPaths.length > 0) throw new PullLocalFilesChangedError(changedPaths);
@@ -399,6 +390,7 @@ export class PullEntryStateApplier {
         if (pendingIds.has(conflict.pending.mutationId)) continue;
         pendingIds.add(conflict.pending.mutationId);
         prepared.pendingConflicts.push(conflict);
+        prepared.targets.includePendingConflict(conflict);
       }
     }
   }
@@ -488,7 +480,7 @@ export class PullEntryStateApplier {
     prepared: PreparedManifestApplication,
     checkSelection?: () => void,
   ): Promise<number> {
-    const snapshot = await capturePullStoreSnapshot(store, prepared);
+    const snapshot = await capturePullStoreSnapshot(store, prepared.targets);
     checkSelection?.();
     const pendingConflictsByPlan = groupPendingConflictsByPlan(prepared.pendingConflicts);
     const fileEvents = prepared.plans.map((plan) => ({

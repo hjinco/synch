@@ -1,4 +1,4 @@
-import { DeviceFileRulesChangedError } from "../engine/device-file-selection";
+import { captureDeviceFileRulesVersion, DeviceFileRulesChangedError } from "../engine/device-file-rules-version";
 import type { SyncConflictPolicy } from "../core/conflict-policy";
 import {
   isOffline as detectOffline,
@@ -567,11 +567,9 @@ export class SyncEngine {
     this.deps.onReconcileStatusChange?.(true);
     try {
       return await this.runLocalMutationWork(async () => {
-        const version = this.fileRulesVersion;
-        const result = await this.syncLocalReconcileService.reconcileOnce(() => {
-          if (version !== this.fileRulesVersion) throw new DeviceFileRulesChangedError();
-        });
-        this.scannedFileRulesVersion = version;
+        const rules = captureDeviceFileRulesVersion(() => this.fileRulesVersion);
+        const result = await this.syncLocalReconcileService.reconcileOnce(rules.assertCurrent);
+        this.scannedFileRulesVersion = rules.version;
         return result;
       });
     } finally {

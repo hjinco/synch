@@ -261,24 +261,38 @@ describe("SyncAutoLoop lifecycle", () => {
   });
 
   it("ignores events from a replaced connection", async () => {
-    const context = createLoop();
+    const onPresenceUpdated = vi.fn();
+    const onPresenceCleared = vi.fn();
+    const unblockFileSizeBlockedMutations = vi.fn(async () => 0);
+    const context = createLoop({ onPresenceUpdated, onPresenceCleared, unblockFileSizeBlockedMutations });
     const { autoLoop, callbacks, sessions } = context;
     await autoLoop.start();
     autoLoop.reconnectNow();
     await autoLoop.ensureRealtimeSession();
     vi.clearAllMocks();
 
-    callbacks[0]!.onCursorAdvanced(10);
-    callbacks[0]!.onStorageStatusUpdated({ storageUsedBytes: 100, storageLimitBytes: 200 });
-    callbacks[0]!.onPresenceAvailabilityChanged(true);
-    callbacks[0]!.onClose({ code: 1006, reason: "old connection closed" });
-    callbacks[0]!.onError(new SyncRealtimeError("sync_paused", "old connection paused"));
+    const previous = callbacks[0]!;
+    const status = { storageUsedBytes: 100, storageLimitBytes: 200 };
+    previous.onCursorAdvanced(10);
+    previous.onStorageStatusUpdated(status);
+    previous.onPolicyUpdated({ maxFileSizeBytes: 100, storageLimitBytes: 200 }, status);
+    previous.onPresenceUpdated({
+      presenceId: "old", entryId: "entry", userId: "user", displayName: "User",
+      selection: { anchor: { line: 0, ch: 0 }, head: { line: 0, ch: 0 } },
+    });
+    previous.onPresenceCleared("old");
+    previous.onPresenceAvailabilityChanged(true);
+    previous.onClose({ code: 1006, reason: "old connection closed" });
+    previous.onError(new SyncRealtimeError("sync_paused", "old connection paused"));
     await autoLoop.waitForInFlightDrain();
 
     expect(autoLoop.isActive()).toBe(true);
     expect(sessions[1]!.close).not.toHaveBeenCalled();
     expect(context.pullOnce).not.toHaveBeenCalled();
     expect(context.onStorageStatusChange).not.toHaveBeenCalled();
+    expect(unblockFileSizeBlockedMutations).not.toHaveBeenCalled();
+    expect(onPresenceUpdated).not.toHaveBeenCalled();
+    expect(onPresenceCleared).not.toHaveBeenCalled();
     expect(context.onPresenceAvailabilityChanged).not.toHaveBeenCalled();
     expect(context.onError).not.toHaveBeenCalled();
     expect(context.onTerminalStop).not.toHaveBeenCalled();

@@ -1,5 +1,5 @@
 import type { SyncDiagnostics } from "../diagnostics/types";
-import { DeviceFileRulesChangedError } from "./device-file-selection";
+import { captureDeviceFileRulesVersion, DeviceFileRulesChangedError } from "./device-file-rules-version";
 import { withSyncState } from "./sync-state-coordinator";
 import { preparePushBatches } from "./push-preparation-pipeline";
 import { SyncWorkProgress } from "./work-progress";
@@ -34,6 +34,7 @@ import {
   type PushConflictEvent,
   type PushMutationStore,
   type PreparedPushMutation,
+  type PreparePushMutationResult,
 } from "./push-mutation-committer";
 import { PushBlobRetryCache } from "./push-blob-retry-cache";
 
@@ -121,9 +122,10 @@ export class SyncPushService {
       throw new Error("Sync store is not initialized.");
     }
 
-    const rulesVersion = this.deps.getDeviceFileRulesVersion?.();
+    const rules = captureDeviceFileRulesVersion(() => this.deps.getDeviceFileRulesVersion?.());
     const assertUploadAllowed = (path: string) => {
-      if (rulesVersion !== this.deps.getDeviceFileRulesVersion?.() || this.deps.isDeviceFileExcluded?.(path)) {
+      rules.assertCurrent();
+      if (this.deps.isDeviceFileExcluded?.(path)) {
         throw new DeviceFileRulesChangedError();
       }
     };
@@ -196,40 +198,32 @@ export class SyncPushService {
           path: string;
         }> = [];
 
-        for (const { mutation, prepared, path } of preparedMutations) {
-          if (!prepared) {
-            mutationsRequeued += 1;
-            recordRequeue(mutation.entryId);
-            this.deps.onFileSyncFailed?.({
-              operation: mutation.op,
-              path,
-              reason: "requeued",
-            });
-            continue;
-          }
-          if ("skipped" in prepared) {
-            if (prepared.reason === "excluded_path") {
+        selectForCommit: for (const { mutation, prepared, path } of preparedMutations) {
+          switch (prepared.kind) {
+            case "ready":
+              committable.push({ mutation, prepared, path });
+              break;
+            case "retry":
+              mutationsRequeued += 1;
+              recordRequeue(mutation.entryId);
+              this.deps.onFileSyncFailed?.({ operation: mutation.op, path, reason: "requeued" });
+              break;
+            case "deferred":
               deferredIds.add(mutation.entryId);
               progress.complete([mutation.mutationId]);
-              continue;
-            }
-            this.deps.onFileSyncFailed?.({
-              operation: mutation.op,
-              path,
-              reason: prepared.reason,
-            });
-            if (prepared.reason === "file_too_large" || prepared.reason === "incompatible_path") {
-              blockedSyncFiles += 1;
-            }
-            if (prepared.reason === "storage_quota_exceeded") {
-              stopAfterCurrentBatch = true;
-              stopReason = "storage_quota_exceeded";
               break;
-            }
-            continue;
+            case "blocked":
+              this.deps.onFileSyncFailed?.({ operation: mutation.op, path, reason: prepared.reason });
+              blockedSyncFiles += 1;
+              break;
+            case "stopAfterBatch":
+              this.deps.onFileSyncFailed?.({ operation: mutation.op, path, reason: prepared.reason });
+              stopAfterCurrentBatch = true;
+              stopReason = prepared.reason;
+              break selectForCommit;
+            default:
+              prepared satisfies never;
           }
-
-          committable.push({ mutation, prepared, path });
         }
 
         if (committable.length === 0) {
@@ -495,7 +489,7 @@ export class SyncPushService {
   ): AsyncGenerator<
     Array<{
       mutation: PendingMutationRow;
-      prepared: Awaited<ReturnType<PushMutationCommitter["prepareMutationForCommit"]>>;
+      prepared: PreparePushMutationResult;
       path: string;
     }>
   > {
@@ -544,7 +538,7 @@ export class SyncPushService {
       },
       shouldYield,
       ({ prepared }) => {
-        if (prepared && !("skipped" in prepared)) {
+        if (prepared.kind === "ready") {
           prepared.encryptedBytes = null;
           prepared.release?.();
         }

@@ -4,13 +4,6 @@ import type { PullEntryStateWindowApplyResult } from "./pull-entry-state-applier
 import { validateManifestItem } from "./pull-manifest-planner";
 import type { SyncPullStore } from "./pull-service";
 
-export class DeviceFileRulesChangedError extends Error {
-  constructor() {
-    super("Device file rules changed during sync.");
-    this.name = "DeviceFileRulesChangedError";
-  }
-}
-
 /** A selection snapshot for one pull. The persisted cursor can advance past
  * excluded files without advancing the base revision of their local copies. */
 export class DeviceFileSelection {
