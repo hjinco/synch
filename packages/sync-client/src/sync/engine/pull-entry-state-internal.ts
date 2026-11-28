@@ -1,3 +1,4 @@
+import type { FileTransferLog } from "../diagnostics/file-transfer";
 import type { SyncedEntryMetadata } from "../core/content";
 import type { RemoteEntryState } from "../remote/changes";
 import type {
@@ -56,6 +57,7 @@ export type AdoptedLocalEntry = {
 };
 
 export type PreparedEntryBlob = {
+  transfer: FileTransferLog;
   plan: PlannedEntryState;
   bytes: Uint8Array;
 };

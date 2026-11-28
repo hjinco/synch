@@ -1,3 +1,4 @@
+import type { SyncDiagnostics } from "../diagnostics/types";
 import { withSyncState } from "./sync-state-coordinator";
 import { preparePushBatches } from "./push-preparation-pipeline";
 import { SyncWorkProgress } from "./work-progress";
@@ -39,6 +40,7 @@ import { PushBlobRetryCache } from "./push-blob-retry-cache";
 const DEFAULT_PUSH_PREPARE_CONCURRENCY = 12;
 
 export interface SyncPushServiceDeps extends SyncContentRuntimeDeps {
+  diagnostics?: SyncDiagnostics;
   getSyncToken: () => Promise<SyncTokenResponse>;
   getSyncStore: () => SyncPushStore | null;
   getRemoteVaultKey: () => Uint8Array;
@@ -209,11 +211,13 @@ export class SyncPushService {
 
         let committed;
         try {
+          await Promise.all(committable.flatMap(({ prepared }) => prepared.transfer ? [prepared.transfer.start("commit")] : []));
           committed = await session.commitMutations(
             committable.map(({ prepared }) => prepared.commitPayload),
           );
         } catch (error) {
-          for (const { mutation, path } of committable) {
+          for (const { mutation, path, prepared } of committable) {
+            prepared.transfer?.end("commit", false);
             this.deps.onFileSyncFailed?.({
               operation: mutation.op,
               path,
@@ -239,6 +243,7 @@ export class SyncPushService {
         }> = [];
         for (const { mutation, prepared, path } of committable) {
           const batchResult = resultsByMutationId.get(mutation.mutationId);
+          prepared.transfer?.end("commit", batchResult?.status === "accepted");
           if (!batchResult) {
             throw new Error(`Commit batch did not include ${mutation.mutationId}.`);
           }
@@ -435,6 +440,7 @@ export class SyncPushService {
       blobClient: this.deps.blobClient,
       remotelyStagedBlobIds: this.remotelyStagedBlobIds,
       blobRetryCache: this.blobRetryCache,
+      diagnostics: this.deps.diagnostics,
       contentRuntime: this.contentRuntime,
       onConflict: this.deps.onConflict,
       now: this.deps.now,

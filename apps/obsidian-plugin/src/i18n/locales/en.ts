@@ -120,15 +120,16 @@ export const en = {
     "diagnostics.desc": ({ count }: { count: number }) =>
       count > 0
         ? `${count} recent diagnostic entr${count === 1 ? "y is" : "ies are"} available.`
-        : "No diagnostic logs recorded in this session.",
+        : "No diagnostic logs recorded.",
     "diagnostics.open": "View and copy logs",
     "diagnostics.title": "Sync diagnostics",
     "diagnostics.copy": "Copy logs",
     "diagnostics.copied": "Sync logs copied to the clipboard.",
     "diagnostics.copyFailed": "Could not copy sync logs. Select the text and copy it manually.",
     "diagnostics.clear": "Clear logs",
+    "diagnostics.clearFailed": "Could not clear saved sync logs.",
     "diagnostics.cleared": "Sync logs cleared.",
-    "diagnostics.empty": "No sync diagnostics have been recorded in this session.",
+    "diagnostics.empty": "No sync diagnostics have been recorded.",
     "excluded.availableEmpty": "No folders are currently available to exclude.",
     "excluded.count": ({ count }: { count: number }) => `${count} folder${count === 1 ? "" : "s"} excluded on this device.`,
     "excluded.folderDesc": "Excluded from sync on this device.",

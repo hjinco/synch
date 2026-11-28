@@ -1,3 +1,4 @@
+import { InMemorySyncDiagnostics } from "../../../diagnostics/in-memory";
 import { createTestContentRuntime } from "../../../../test-support/content-runtime";
 import { describe, expect, it } from "vitest";
 
@@ -69,7 +70,9 @@ describe("SyncPushService drain: basic queue", () => {
         revision: mutation.baseRevision + 1,
       };
     });
+    const diagnostics = new InMemorySyncDiagnostics("test");
     const service = new SyncPushService({
+      diagnostics,
       contentRuntime: createTestContentRuntime(),
       getSyncToken: async () => createToken(),
       getSyncStore: () => store,
@@ -84,11 +87,8 @@ describe("SyncPushService drain: basic queue", () => {
         },
       },
       blobClient: {
-        async uploadBlob(_vaultId, blobId, bytes) {
-          uploaded.push({
-            blobId,
-            bytes,
-          });
+        async uploadBlob(_vaultId, blobId, bytes, transfer) {
+          await transfer?.run("upload", async () => { uploaded.push({ blobId, bytes }); });
         },
       },
       onProgress: async (progress) => {
@@ -103,6 +103,18 @@ describe("SyncPushService drain: basic queue", () => {
     });
 
     const result = await service.pushPendingMutations(session);
+    const steps = diagnostics.getSnapshot().text.split("\n")
+      .filter((line) => line.includes("file_transfer_stage"));
+    const ids = new Set(steps.map((line) => line.match(/operationId=(\d+)/)?.[1]));
+    expect(ids.size).toBe(1);
+    for (const id of ids) {
+      const operation = steps.filter((line) => line.includes(`operationId=${id} `));
+      expect(operation.join("\n")).toContain("sizeBytes=");
+      expect(operation.map((line) => line.match(/stage="(\w+)" status="(\w+)"/)?.slice(1))).toEqual(
+        ["read", "verify", "encrypt", "upload", "commit"].flatMap((stage) => [[stage, "started"], [stage, "completed"]]),
+      );
+    }
+
 
     expect(result).toEqual({
       cursor: 12,

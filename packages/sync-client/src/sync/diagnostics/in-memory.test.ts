@@ -2,7 +2,6 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   MAX_SYNC_DIAGNOSTIC_ENTRIES,
-  MAX_SYNC_DIAGNOSTIC_TEXT_LENGTH,
   InMemorySyncDiagnostics,
 } from "./in-memory";
 
@@ -158,32 +157,16 @@ describe("InMemorySyncDiagnostics", () => {
     );
   });
 
-  it("keeps the newest entries within the entry and text limits", () => {
-    const diagnostics = new InMemorySyncDiagnostics("0.3.3");
-
-    for (let index = 0; index < MAX_SYNC_DIAGNOSTIC_ENTRIES + 1; index += 1) {
-      diagnostics.recordError({
-        phase: "auto_sync",
-        error: Object.assign(new Error("not logged"), {
-          code: `entry-${index}`,
-        }),
-      });
+  it("keeps the latest 1,000 records regardless of formatted length", () => {
+    const diagnostics = new InMemorySyncDiagnostics("test");
+    for (let index = 0; index <= MAX_SYNC_DIAGNOSTIC_ENTRIES; index++) {
+      diagnostics.record({ type: "local_file_queued", operation: "modify", path: `note-${index}.md` });
     }
-
-    expect(diagnostics.getSnapshot().count).toBeLessThanOrEqual(
-      MAX_SYNC_DIAGNOSTIC_ENTRIES,
-    );
-
-    for (let index = 0; index < 100; index += 1) {
-      diagnostics.recordError({
-        phase: "auto_sync",
-        error: new Error("x".repeat(1_000)),
-      });
-    }
-
-    expect(diagnostics.getSnapshot().text.length).toBeLessThanOrEqual(
-      MAX_SYNC_DIAGNOSTIC_TEXT_LENGTH,
-    );
+    const snapshot = diagnostics.getSnapshot();
+    expect(snapshot.count).toBe(1000);
+    expect(snapshot.text.length).toBeGreaterThan(65_536);
+    expect(snapshot.text).not.toContain('"note-0.md"');
+    expect(snapshot.text).toContain('"note-1000.md"');
   });
 
   it("notifies subscribers and supports unsubscribe", () => {

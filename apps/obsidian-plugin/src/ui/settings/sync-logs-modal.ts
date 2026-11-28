@@ -5,13 +5,14 @@ import type { SynchSyncLogs } from "../contracts";
 
 export class SyncLogsModal extends Modal {
   private unsubscribe: (() => void) | null = null;
+  private refreshTimer?: number;
   private textArea: HTMLTextAreaElement | null = null;
 
   constructor(
     app: App,
     private readonly options: {
       getSyncLogs: () => SynchSyncLogs;
-      clearSyncLogs: () => void;
+      clearSyncLogs: () => void | Promise<void>;
       subscribeSyncLogs: (listener: () => void) => () => void;
     },
   ) {
@@ -21,24 +22,28 @@ export class SyncLogsModal extends Modal {
   onOpen(): void {
     this.render();
     this.unsubscribe = this.options.subscribeSyncLogs(() => {
-      this.refresh();
+      this.refreshTimer ??= window.setTimeout(() => {
+        this.refreshTimer = undefined;
+        this.refresh();
+      }, 50);
     });
   }
 
   onClose(): void {
     this.unsubscribe?.();
     this.unsubscribe = null;
+    window.clearTimeout(this.refreshTimer);
+    this.refreshTimer = undefined;
     this.textArea = null;
     this.contentEl.empty();
   }
 
-  private render(): void {
+  private render(snapshot = this.options.getSyncLogs()): void {
     const { contentEl } = this;
     contentEl.empty();
     this.textArea = null;
     new Setting(contentEl).setName(t("diagnostics.title")).setHeading();
 
-    const snapshot = this.options.getSyncLogs();
     let textArea: HTMLTextAreaElement | null = null;
     if (snapshot.count === 0) {
       contentEl.createEl("p", {
@@ -63,9 +68,13 @@ export class SyncLogsModal extends Modal {
     if (textArea) {
       const currentTextArea = textArea;
       actions.addButton((button) =>
-        button.setButtonText(t("diagnostics.clear")).onClick(() => {
-          this.options.clearSyncLogs();
-          new Notice(t("diagnostics.cleared"));
+        button.setButtonText(t("diagnostics.clear")).onClick(async () => {
+          try {
+            await this.options.clearSyncLogs();
+            new Notice(t("diagnostics.cleared"));
+          } catch {
+            new Notice(t("diagnostics.clearFailed"));
+          }
         }),
       );
       actions.addButton((button) =>
@@ -93,7 +102,7 @@ export class SyncLogsModal extends Modal {
       this.textArea.value = snapshot.text;
       return;
     }
-    this.render();
+    this.render(snapshot);
   }
 
   private async copyLogs(

@@ -85,7 +85,7 @@ describe("SynchPluginController community plugin update check", () => {
   });
 
   it("refreshes plugin update checks after five minutes", async () => {
-    vi.useFakeTimers();
+    vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(0);
     const request = vi.fn(async () => ({
       status: 200,

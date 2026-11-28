@@ -125,15 +125,16 @@ export const de = {
     "diagnostics.desc": ({ count }: { count: number }) =>
       count > 0
         ? `${count === 1 ? "Ein aktueller Diagnoseeintrag ist" : `${count} aktuelle Diagnoseeinträge sind`} verfügbar.`
-        : "In dieser Sitzung wurden keine Diagnoselogs aufgezeichnet.",
+        : "Es wurden keine Diagnoselogs aufgezeichnet.",
     "diagnostics.open": "Logs anzeigen und kopieren",
     "diagnostics.title": "Sync-Diagnose",
     "diagnostics.copy": "Logs kopieren",
     "diagnostics.copied": "Sync-Logs in die Zwischenablage kopiert.",
     "diagnostics.copyFailed": "Sync-Logs konnten nicht kopiert werden. Markieren Sie den Text und kopieren Sie ihn manuell.",
     "diagnostics.clear": "Logs leeren",
+    "diagnostics.clearFailed": "Gespeicherte Sync-Protokolle konnten nicht gelöscht werden.",
     "diagnostics.cleared": "Sync-Logs geleert.",
-    "diagnostics.empty": "In dieser Sitzung wurden keine Sync-Diagnosen aufgezeichnet.",
+    "diagnostics.empty": "Es wurden keine Sync-Diagnosen aufgezeichnet.",
     "excluded.availableEmpty": "Derzeit können keine Ordner ausgeschlossen werden.",
     "excluded.count": ({ count }: { count: number }) => `${count} Ordner auf diesem Gerät ausgeschlossen.`,
     "excluded.folderDesc": "Auf diesem Gerät von der Synchronisierung ausgeschlossen.",

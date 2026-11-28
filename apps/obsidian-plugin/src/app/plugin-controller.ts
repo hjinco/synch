@@ -72,7 +72,8 @@ import {
   type PresenceSelection,
 } from "@synch/sync-client/core";
 
-import { InMemorySyncDiagnostics, type SyncFailurePhase } from "@synch/sync-client/diagnostics";
+import { ObsidianSyncDiagnostics } from "../adapters/sync-diagnostics";
+import type { SyncFailurePhase } from "@synch/sync-client/diagnostics";
 
 import { SyncController } from "./sync-controller";
 import type { PresenceRelay } from "../ui/presence/presence-relay";
@@ -87,9 +88,7 @@ export interface SynchPluginControllerDeps {
 
 export class SynchPluginController implements SynchSettingsController {
   private readonly plugin = this.deps.plugin;
-  private readonly diagnostics = new InMemorySyncDiagnostics(
-    this.plugin.manifest.version,
-  );
+  private readonly diagnostics = new ObsidianSyncDiagnostics(this.plugin);
   private diagnosticsUnsubscribe: (() => void) | null = null;
   private readonly pluginDataStore = new SynchPluginDataStore(this.plugin);
   private readonly settingsStore = new SynchSettingsStore(this.pluginDataStore);
@@ -292,6 +291,7 @@ export class SynchPluginController implements SynchSettingsController {
   }
 
   async initialize(): Promise<void> {
+    await this.diagnostics.initialize();
     await this.pluginDataStore.initialize();
     await this.sessionStore.migrateLegacySecrets();
     await this.sessionStore.loadStoredRemoteVaultKeySecret();
@@ -306,7 +306,11 @@ export class SynchPluginController implements SynchSettingsController {
   async stop(): Promise<void> {
     this.diagnosticsUnsubscribe?.();
     this.diagnosticsUnsubscribe = null;
-    await this.syncController.stop();
+    try {
+      await this.syncController.stop();
+    } finally {
+      await this.diagnostics.close();
+    }
   }
 
   queueQuitInFlightSyncWait(
@@ -426,12 +430,16 @@ export class SynchPluginController implements SynchSettingsController {
     return this.syncController.getSyncProgress();
   }
 
+  getSyncLogCount(): number {
+    return this.diagnostics.count;
+  }
+
   getSyncLogs(): SynchSyncLogs {
     return this.diagnostics.getSnapshot();
   }
 
-  clearSyncLogs(): void {
-    this.diagnostics.clear();
+  clearSyncLogs(): Promise<void> {
+    return this.diagnostics.clear();
   }
 
   subscribeSyncLogs(listener: () => void): () => void {

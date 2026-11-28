@@ -124,6 +124,7 @@ export function createSettingsTab(
       completedEntries: 0,
       totalEntries: 0,
     }),
+    getSyncLogCount: () => 0,
     getSyncLogs: () => ({
       count: 0,
       text: "Synch sync diagnostics",

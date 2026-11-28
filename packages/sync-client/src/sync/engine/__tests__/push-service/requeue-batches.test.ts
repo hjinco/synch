@@ -1,3 +1,4 @@
+import { InMemorySyncDiagnostics } from "../../../diagnostics/in-memory";
 import { createTestContentRuntime } from "../../../../test-support/content-runtime";
 import { describe, expect, it } from "vitest";
 
@@ -242,7 +243,9 @@ describe("SyncPushService requeue and batches", () => {
         revision: mutation.baseRevision + 1,
       };
     });
+    const logs = new InMemorySyncDiagnostics("test");
     const service = new SyncPushService({
+      diagnostics: logs,
       contentRuntime: createTestContentRuntime(),
       getSyncToken: async () => createToken(),
       getSyncStore: () => store,
@@ -266,6 +269,10 @@ describe("SyncPushService requeue and batches", () => {
 
     const result = await service.pushPendingMutations(session);
 
+    const verification = logs.getSnapshot().text.split("\n").filter(line => line.includes('stage="verify"'));
+    expect(verification.map(line => line.match(/status="(\w+)"/)?.[1])).toEqual([
+      "started", "failed", "started", "completed",
+    ]);
     expect(result).toEqual({
       cursor: 1,
       mutationsPushed: 1,

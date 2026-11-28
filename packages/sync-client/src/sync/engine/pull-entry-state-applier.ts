@@ -1,3 +1,4 @@
+import type { SyncDiagnostics } from "../diagnostics/types";
 import type { SyncEventRecorderStore } from "./event-recorder";
 import { PullLocalFileSnapshots, PullLocalFilesChangedError } from "./pull-local-file-snapshots";
 import { retrySyncStateWork, syncStateCoordinator, withSyncState, type SyncStateSnapshot, type SyncStateResources } from "./sync-state-coordinator";
@@ -43,6 +44,7 @@ import {
 } from "./pull-entry-state-internal";
 
 export interface PullEntryStateApplierDeps extends SyncContentRuntimeDeps {
+  diagnostics?: SyncDiagnostics;
   getRemoteVaultKey: () => Uint8Array;
   getConflictPolicy?: () => SyncConflictPolicy;
   vaultAdapter: PullEntryStateVaultAdapter;
@@ -514,11 +516,12 @@ export class PullEntryStateApplier {
               }
             }
 
-            for (const { plan, bytes } of batch.blobs) {
+            for (const { plan, bytes, transfer } of batch.blobs) {
               if (!plan.finalPath || plan.skipVaultWrite) {
                 continue;
               }
-              await writeVaultBytes(this.deps.vaultAdapter, plan.finalPath, bytes);
+              const path = plan.finalPath;
+              await transfer.run("write", () => writeVaultBytes(this.deps.vaultAdapter, path, bytes));
             }
 
             removedTotal += removed;

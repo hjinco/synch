@@ -1,6 +1,7 @@
 import { extractErrorMessage, type HttpResponseLike } from "../../http/request";
 import { toArrayBuffer } from "@synch/vault-crypto";
-import { TransferScheduler } from "./transfer-scheduler";
+import type { FileTransferLog } from "../diagnostics/file-transfer";
+import { TransferScheduler, type TransferDirection, type TransferResult } from "./transfer-scheduler";
 import type { SyncAuthorizedRequestClient } from "./request-client";
 
 export class SyncBlobClient {
@@ -13,8 +14,9 @@ export class SyncBlobClient {
     vaultId: string,
     blobId: string,
     bytes: Uint8Array,
+    transfer?: FileTransferLog,
   ): Promise<void> {
-    return await this.transfers.run("upload", async () => {
+    return await this.schedule("upload", transfer, async () => {
       const { response } = await this.requestClient.request({
         path: () =>
           `/v1/vaults/${encodeURIComponent(vaultId)}/blobs/${encodeURIComponent(blobId)}`,
@@ -29,8 +31,8 @@ export class SyncBlobClient {
     });
   }
 
-  async downloadBlob(vaultId: string, blobId: string): Promise<Uint8Array> {
-    return await this.transfers.run("download", async () => {
+  async downloadBlob(vaultId: string, blobId: string, transfer?: FileTransferLog): Promise<Uint8Array> {
+    return await this.schedule("download", transfer, async () => {
       const { response } = await this.requestClient.request({
         path: () =>
           `/v1/vaults/${encodeURIComponent(vaultId)}/blobs/${encodeURIComponent(blobId)}`,
@@ -38,6 +40,14 @@ export class SyncBlobClient {
       const bytes = this.readDownloadResponse(response);
       return { value: bytes, bytes: bytes.byteLength };
     });
+  }
+
+  private schedule<T>(
+    direction: TransferDirection,
+    transfer: FileTransferLog | undefined,
+    work: () => Promise<TransferResult<T>>,
+  ): Promise<T> {
+    return this.transfers.run(direction, () => transfer ? transfer.run(direction, work) : work());
   }
 
   private readDownloadResponse(response: HttpResponseLike): Uint8Array {

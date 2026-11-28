@@ -1,3 +1,4 @@
+import { InMemorySyncDiagnostics } from "../../../diagnostics/in-memory";
 import { createTestContentRuntime } from "../../../../test-support/content-runtime";
 import type { UserVisibleSyncProgress } from "../../../runtime/user-visible-status";
 import { describe, expect, it } from "vitest";
@@ -75,7 +76,9 @@ describe("SyncPullService paging", () => {
       },
     });
 
+    const diagnostics = new InMemorySyncDiagnostics("test");
     const service = new SyncPullService({
+      diagnostics,
       contentRuntime: createTestContentRuntime(),
       getSyncToken: async () => createToken(),
       getSyncStore: () => store,
@@ -95,6 +98,18 @@ describe("SyncPullService paging", () => {
     });
 
     const result = await service.pullOnce(session);
+    const steps = diagnostics.getSnapshot().text.split("\n")
+      .filter((line) => line.includes("file_transfer_stage"));
+    const ids = new Set(steps.map((line) => line.match(/operationId=(\d+)/)?.[1]));
+    expect(ids.size).toBe(2);
+    for (const id of ids) {
+      const operation = steps.filter((line) => line.includes(`operationId=${id} `));
+      expect(operation.join("\n")).toContain("sizeBytes=");
+      expect(operation.map((line) => line.match(/stage="(\w+)" status="(\w+)"/)?.slice(1))).toEqual(
+        ["download", "decrypt", "verify", "write"].flatMap((stage) => [[stage, "started"], [stage, "completed"]]),
+      );
+    }
+
 
     expect(result).toEqual({
       cursor: 2,

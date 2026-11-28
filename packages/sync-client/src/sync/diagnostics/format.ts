@@ -60,6 +60,14 @@ export function formatDiagnosticEvent(
   timestamp: string,
 ): SyncDiagnosticRecord {
   switch (event.type) {
+    case "session_started":
+      return createRecord(timestamp, "info", event.type, { pluginVersion: event.pluginVersion });
+    case "file_transfer_stage":
+      return createRecord(timestamp, event.status === "failed" ? "error" : "info", event.type, {
+        direction: event.direction, operationId: event.operationId, stage: event.stage, status: event.status,
+        ...(event.path !== undefined ? { path: event.path } : {}),
+        ...(event.sizeBytes !== undefined ? { sizeBytes: event.sizeBytes ?? "unknown" } : {}),
+      });
     case "sync_started":
       return createRecord(timestamp, "info", event.type, {
         source: event.source,

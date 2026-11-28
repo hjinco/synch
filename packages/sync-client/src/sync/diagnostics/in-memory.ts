@@ -11,15 +11,14 @@ import type {
   SyncDiagnosticsSnapshot,
 } from "./types";
 
-export const MAX_SYNC_DIAGNOSTIC_ENTRIES = 200;
-export const MAX_SYNC_DIAGNOSTIC_TEXT_LENGTH = 64 * 1024;
+export const MAX_SYNC_DIAGNOSTIC_ENTRIES = 1_000;
 
 export interface InMemorySyncDiagnosticsOptions {
   now?: () => Date;
 }
 
 export class InMemorySyncDiagnostics implements SyncDiagnostics {
-  private readonly records: SyncDiagnosticRecord[] = [];
+  protected readonly records: SyncDiagnosticRecord[] = [];
   private readonly listeners = new Set<() => void>();
   private readonly now: () => Date;
 
@@ -38,7 +37,11 @@ export class InMemorySyncDiagnostics implements SyncDiagnostics {
     this.append(formatDiagnosticError(input, this.now().toISOString()));
   }
 
-  clear(): void {
+  get count(): number {
+    return this.records.length;
+  }
+
+  clear(): void | Promise<void> {
     if (this.records.length === 0) {
       return;
     }
@@ -60,25 +63,15 @@ export class InMemorySyncDiagnostics implements SyncDiagnostics {
     };
   }
 
-  private append(record: SyncDiagnosticRecord): void {
+  protected append(record: SyncDiagnosticRecord): void {
     this.records.push(record);
-    this.trim();
+    if (this.records.length > MAX_SYNC_DIAGNOSTIC_ENTRIES) this.records.shift();
     this.notify();
   }
 
-  private notify(): void {
+  protected notify(): void {
     for (const listener of this.listeners) {
       listener();
-    }
-  }
-
-  private trim(): void {
-    while (
-      this.records.length > MAX_SYNC_DIAGNOSTIC_ENTRIES ||
-      formatDiagnosticText(this.pluginVersion, this.records).length >
-        MAX_SYNC_DIAGNOSTIC_TEXT_LENGTH
-    ) {
-      this.records.shift();
     }
   }
 }
