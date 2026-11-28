@@ -1,4 +1,5 @@
 
+import type { FileTransferLog } from "../../../diagnostics/file-transfer";
 import type { SyncTokenResponse } from "../../../remote/client";
 import type { ListEntryStatesResponse } from "../../../remote/changes";
 import { encryptSyncBlob, encryptSyncMetadata } from "../../../core/crypto";
@@ -207,13 +208,15 @@ export function createBlobClient(input: {
     async downloadBlob(
       _vaultId: string,
       blobId: string,
+      transfer?: FileTransferLog,
     ): Promise<Uint8Array> {
       const value = input.blobs?.[blobId];
       if (value === undefined) {
         throw new Error(`missing blob fixture for ${blobId}`);
       }
 
-      return typeof value === "string" ? new TextEncoder().encode(value) : value;
+      const read = async () => typeof value === "string" ? new TextEncoder().encode(value) : value;
+      return transfer ? transfer.run("download", read) : read();
     },
   } as SyncBlobClient;
 }

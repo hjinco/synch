@@ -324,13 +324,12 @@ describe("SynchSettingTab sync status", () => {
       logText = "Synch sync diagnostics";
       notifyLogChanged();
     });
+    const getSyncLogs = vi.fn(() => ({ count: logCount, text: logText }));
     const tab = createSettingsTab({
       hasAuthenticatedSession: () => true,
       hasConnectedRemoteVault: () => true,
-      getSyncLogs: () => ({
-        count: logCount,
-        text: logText,
-      }),
+      getSyncLogCount: () => logCount,
+      getSyncLogs,
       clearSyncLogs,
       subscribeSyncLogs: (listener) => {
         logListeners.add(listener);
@@ -339,6 +338,7 @@ describe("SynchSettingTab sync status", () => {
     });
 
     tab.open();
+    expect(getSyncLogs).not.toHaveBeenCalled();
 
     const openButton = getButtonComponents().find(
       (button) => button.text === t("diagnostics.open"),
@@ -349,8 +349,10 @@ describe("SynchSettingTab sync status", () => {
       "Warning: Logs include file names and vault-relative folder paths. Review them before sharing. File contents, keys, and tokens are not included.",
     );
     logText = "Synch sync diagnostics\nentry\nfile_sync_completed";
-    notifyLogChanged();
-    expect(getTextComponents().at(-1)?.inputEl.value).toBe(logText);
+    for (let i = 0; i < 10; i++) notifyLogChanged();
+    expect(getSyncLogs).toHaveBeenCalledTimes(1);
+    await vi.waitFor(() => expect(getTextComponents().at(-1)?.inputEl.value).toBe(logText));
+    expect(getSyncLogs).toHaveBeenCalledTimes(2);
     const copyButton = getButtonComponents().find(
       (button) => button.text === t("diagnostics.copy"),
     );
@@ -367,9 +369,7 @@ describe("SynchSettingTab sync status", () => {
     );
     await clearButton?.click();
     expect(clearSyncLogs).toHaveBeenCalledTimes(1);
-    expect(getCreatedElements().map((element) => element.text)).toContain(
-      t("diagnostics.empty"),
-    );
+    await vi.waitFor(() => expect(getCreatedElements().map((element) => element.text)).toContain(t("diagnostics.empty")));
     expect(getNotices()).toContainEqual({
       message: t("diagnostics.cleared"),
       timeout: undefined,

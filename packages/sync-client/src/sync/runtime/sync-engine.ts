@@ -173,6 +173,7 @@ export class SyncEngine {
     });
     this.syncBlobClient = new SyncBlobClient(this.syncRequestClient, this.transferScheduler);
     this.syncPushService = new SyncPushService({
+      diagnostics: this.deps.diagnostics,
       getSyncToken: async () => await this.deps.getSyncToken(),
       getSyncStore: () => this.syncStore,
       getRemoteVaultKey: () => this.deps.getRemoteVaultKey(),
@@ -330,6 +331,7 @@ export class SyncEngine {
       },
     });
     this.syncPullService = new SyncPullService({
+      diagnostics: this.deps.diagnostics,
       getConflictPolicy: this.deps.getConflictPolicy,
       onRemoteStatesChange: () => this.deps.onBlockedSyncFilesChange?.(),
       getSyncToken: async () => await this.deps.getSyncToken(),

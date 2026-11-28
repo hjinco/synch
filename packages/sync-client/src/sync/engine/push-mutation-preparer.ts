@@ -1,3 +1,4 @@
+import { FileTransferLog } from "../diagnostics/file-transfer";
 import { SyncStateChangedError, syncStateCoordinator, withSyncState, type SyncStateSnapshot } from "./sync-state-coordinator";
 import type { SyncedEntryMetadata } from "../core/content";
 import {
@@ -101,12 +102,20 @@ export class PushMutationPreparer {
     }
 
     const fileSize = await this.getFileSize(store, mutation, metadata.path);
-    const reservation = await this.contentRuntime.reserve(fileSize);
+    const reservation = await this.contentRuntime.reserve(fileSize ?? 0);
     let retained = false;
     const snapshot = syncStateCoordinator(store).watch();
     try {
-      const hashed = await this.contentRuntime.hashAndReturnBytes(
-        await this.deps.fileReader.readBytes(metadata.path),
+      const transfer = new FileTransferLog(this.deps.diagnostics, "upload", metadata.path, fileSize);
+      const input = await transfer.run("read", async () => {
+        const bytes = await this.deps.fileReader.readBytes(metadata.path);
+        transfer.observeFileSize(bytes.byteLength);
+        return bytes;
+      });
+      const hashed = await transfer.run(
+        "verify",
+        () => this.contentRuntime.hashAndReturnBytes(input),
+        (result) => result.hash === mutation.hash,
       );
       const { bytes, hash: actualHash } = hashed;
       if (actualHash !== mutation.hash) {
@@ -133,15 +142,11 @@ export class PushMutationPreparer {
       const encryptedBytes = staged && !retainEncryptedBytes
         ? null
         : (staged ? this.deps.blobRetryCache?.get(mutation, token.vaultId) : null)
-          ?? await syncCrypto.encryptBlob(bytes, { blobId });
+          ?? await transfer.run("encrypt", () => syncCrypto.encryptBlob(bytes, { blobId }));
 
       if (!staged && encryptedBytes) {
         try {
-          await this.blobClient.uploadBlob(
-            token.vaultId,
-            blobId,
-            encryptedBytes,
-          );
+          await this.blobClient.uploadBlob(token.vaultId, blobId, encryptedBytes, transfer);
         } catch (error) {
           if (isQuotaExceededUploadError(error)) {
             return {
@@ -173,6 +178,7 @@ export class PushMutationPreparer {
 
       retained = true;
       return {
+        transfer,
         release: () => reservation.release(),
         commitPayload: toCommitPayload(mutation),
         metadata,
@@ -195,12 +201,12 @@ export class PushMutationPreparer {
     store: PushMutationStore,
     mutation: PendingMutationRow,
     path: string,
-  ): Promise<number> {
+  ): Promise<number | null> {
     if (this.deps.fileReader.getFileSize) {
       return await this.deps.fileReader.getFileSize(path);
     }
 
-    return (await store.getEntryById(mutation.entryId))?.localSize ?? 0;
+    return (await store.getEntryById(mutation.entryId))?.localSize ?? null;
   }
 
   private getSyncCryptoContext(): SyncCryptoContext {

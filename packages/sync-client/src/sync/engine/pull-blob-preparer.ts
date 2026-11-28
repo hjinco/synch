@@ -1,11 +1,12 @@
+import { FileTransferLog } from "../diagnostics/file-transfer";
+import type { SyncDiagnostics } from "../diagnostics/types";
 import {
   type SyncContentRuntime,
   type ContentReservation,
   type SyncContentRuntimeDeps,
 } from "../core/content-runtime";
-import { createSyncCryptoContext, decryptSyncBlob } from "../core/crypto";
+import { createSyncCryptoContext, decryptSyncBlob, encryptedSyncBlobSize } from "../core/crypto";
 import type { SyncTokenResponse } from "../remote/client";
-import type { RemoteEntryState } from "../remote/changes";
 import type { SyncBlobClient } from "../remote/blob-client";
 import type { SyncBlobStore } from "../store/ports";
 import type { SyncVaultAccess } from "../vault/ports";
@@ -19,6 +20,7 @@ import {
 } from "./pull-entry-state-internal";
 
 interface PullBlobPreparerDeps extends SyncContentRuntimeDeps {
+  diagnostics?: SyncDiagnostics;
   getRemoteVaultKey: () => Uint8Array;
   vaultAdapter: SyncVaultAccess;
   blobClient: Pick<SyncBlobClient, "downloadBlob">;
@@ -61,9 +63,12 @@ export class PullBlobPreparer {
           return null;
         }
 
+        const fileSize = plan.state.blobSize == null ? null : Math.max(0, plan.state.blobSize - encryptedSyncBlobSize(0));
+        const transfer = new FileTransferLog(this.deps.diagnostics, "download", plan.finalPath ?? plan.metadata.path, fileSize);
         return {
+          transfer,
           plan,
-          bytes: await this.downloadAndVerifyEntryBlob(store, token, plan, reservation),
+          bytes: await this.downloadAndVerifyEntryBlob(store, token, plan, transfer, reservation),
         };
       },
     );
@@ -126,63 +131,48 @@ export class PullBlobPreparer {
     }
   }
 
-  private async downloadEntryBlob(
-    token: SyncTokenResponse,
-    state: RemoteEntryState,
-  ): Promise<Uint8Array> {
-    if (!state.blobId) {
-      throw new Error(`Entry state ${state.entryId}@${state.revision} is missing a blob.`);
-    }
-
-    return await this.deps.blobClient.downloadBlob(
-      token.vaultId,
-      state.blobId,
-    );
-  }
-
   private async downloadAndVerifyEntryBlob(
     store: SyncBlobStore,
     token: SyncTokenResponse,
     plan: PlannedEntryState,
+    transfer: FileTransferLog,
     reservation?: ContentReservation,
   ): Promise<Uint8Array> {
     const blobId = requireBlobId(plan.state);
-    let encryptedBytes: Uint8Array | undefined = await this.downloadEntryBlob(token, plan.state);
-    if (plan.state.blobSize != null && encryptedBytes.byteLength !== plan.state.blobSize) {
-      throw new Error(`Entry state ${plan.state.entryId} blob size does not match metadata.`);
+    let encryptedForMerge: Uint8Array | undefined;
+    let plaintext: Uint8Array;
+    {
+      const encrypted = await this.deps.blobClient.downloadBlob(token.vaultId, blobId, transfer);
+      if (plan.state.blobSize != null && encrypted.byteLength !== plan.state.blobSize) {
+        throw new Error(`Entry state ${plan.state.entryId} blob size does not match metadata.`);
+      }
+      transfer.observeFileSize(Math.max(0, encrypted.byteLength - encryptedSyncBlobSize(0)));
+      reservation?.retain(encrypted.byteLength * 3);
+      plaintext = await transfer.run("decrypt", () =>
+        decryptSyncBlob(this.deps.getRemoteVaultKey(), encrypted, { blobId }));
+      if (plan.finalPath && isAutoMergeTextPath(plan.finalPath)) encryptedForMerge = encrypted;
     }
-    // Envelope, plaintext and transient crypto/cache copies. For legacy servers
-    // this updates admission only after the full HTTP body has arrived.
-    reservation?.retain(encryptedBytes.byteLength * 3);
-    let bytes = await decryptSyncBlob(
-      this.deps.getRemoteVaultKey(),
-      encryptedBytes,
-      { blobId },
-    );
-    // Only an auto-merge base needs its ciphertext after decryption.
-    if (!plan.finalPath || !isAutoMergeTextPath(plan.finalPath)) {
-      encryptedBytes = undefined;
-    }
-    const hashed = await this.contentRuntime.hashAndReturnBytes(bytes);
-    bytes = hashed.bytes;
-    const actualHash = hashed.hash;
-    if (actualHash !== plan.hash) {
-      throw new Error(
-        `Entry state ${plan.state.entryId}@${plan.state.revision} hash does not match metadata.`,
-      );
-    }
-    if (encryptedBytes) {
+    const hashed = await transfer.run("verify", async () => {
+      const result = await this.contentRuntime.hashAndReturnBytes(plaintext);
+      if (result.hash !== plan.hash) {
+        throw new Error(
+          `Entry state ${plan.state.entryId}@${plan.state.revision} hash does not match metadata.`,
+        );
+      }
+      return result;
+    });
+    if (encryptedForMerge) {
       await store.putBlob({
         blobId,
-        hash: actualHash,
-        encryptedBytes,
+        hash: hashed.hash,
+        encryptedBytes: encryptedForMerge,
         role: "remote",
         refEntryId: plan.state.entryId,
         cachedAt: Date.now(),
       });
     }
 
-    return bytes;
+    return hashed.bytes;
   }
 }
 

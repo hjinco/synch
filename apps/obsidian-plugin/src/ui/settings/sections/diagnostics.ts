@@ -9,9 +9,10 @@ export function populateSyncDiagnosticsSetting(
   app: App,
   controller: SynchSettingsController,
 ): SyncDiagnosticsSettingControls {
+  let displayedCount = controller.getSyncLogCount();
   setting
     .setName(t("diagnostics.header"))
-    .setDesc(formatSyncDiagnosticsDescription(controller.getSyncLogs()))
+    .setDesc(t("diagnostics.desc", { count: displayedCount }))
     .addButton((button) =>
       button.setButtonText(t("diagnostics.open")).onClick(() => {
         new SyncLogsModal(app, {
@@ -24,13 +25,10 @@ export function populateSyncDiagnosticsSetting(
 
   return {
     refreshSyncLogs(): void {
-      setting.setDesc(formatSyncDiagnosticsDescription(controller.getSyncLogs()));
+      const count = controller.getSyncLogCount();
+      if (count === displayedCount) return;
+      displayedCount = count;
+      setting.setDesc(t("diagnostics.desc", { count }));
     },
   };
-}
-
-function formatSyncDiagnosticsDescription(
-  snapshot: ReturnType<SynchSettingsController["getSyncLogs"]>,
-): string {
-  return t("diagnostics.desc", { count: snapshot.count });
 }

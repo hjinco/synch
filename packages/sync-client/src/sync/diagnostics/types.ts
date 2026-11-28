@@ -35,7 +35,19 @@ export type SyncDiagnosticFileOperation =
 
 export type SyncDiagnosticFileDirection = "upload" | "download";
 
+export type TransferStage = "download" | "decrypt" | "verify" | "write" | "read" | "encrypt" | "upload" | "commit";
+
 export type SyncDiagnosticEvent =
+  | { type: "session_started"; pluginVersion: string }
+  | {
+      type: "file_transfer_stage";
+      direction: SyncDiagnosticFileDirection;
+      operationId: number;
+      stage: TransferStage;
+      status: "started" | "completed" | "failed";
+      path?: string;
+      sizeBytes?: number | null;
+    }
   | {
       type: "sync_started";
       source: SyncDiagnosticSource;
@@ -118,7 +130,8 @@ export interface SyncDiagnosticsSnapshot {
 export interface SyncDiagnostics {
   record(event: SyncDiagnosticEvent): void;
   recordError(input: SyncDiagnosticError): void;
-  clear(): void;
+  flush?(): Promise<void>;
+  clear(): void | Promise<void>;
   getSnapshot(): SyncDiagnosticsSnapshot;
   subscribe(listener: () => void): () => void;
 }

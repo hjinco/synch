@@ -1,3 +1,5 @@
+import type { FileTransferLog } from "../diagnostics/file-transfer";
+import type { SyncDiagnostics } from "../diagnostics/types";
 import type { SyncBlobClient } from "../remote/blob-client";
 import type { ConflictFileWriter } from "../core/conflict-file";
 import type {
@@ -18,6 +20,7 @@ import type { PushBlobRetryCache } from "./push-blob-retry-cache";
 import type { SyncVaultPathExclusions } from "../vault/ports";
 
 export interface PushMutationCommitterDeps extends SyncContentRuntimeDeps {
+  diagnostics?: SyncDiagnostics;
   getRemoteVaultKey: () => Uint8Array;
   getSyncCryptoContext?: () => SyncCryptoContext;
   fileReader: LocalFileReader;
@@ -55,6 +58,7 @@ export type PushMutationRejectionResult =
     };
 
 export interface PreparedPushMutation {
+  transfer?: FileTransferLog;
   commitPayload: CommitMutationPayload;
   metadata: SyncedEntryMetadata;
   localHash: string | null;

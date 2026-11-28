@@ -40,8 +40,9 @@ export interface SynchSettingsController {
   getSyncState(): SynchSyncState;
   getSyncPercent(): number;
   getSyncProgress(): UserVisibleSyncProgress;
+  getSyncLogCount(): number;
   getSyncLogs(): SynchSyncLogs;
-  clearSyncLogs(): void;
+  clearSyncLogs(): void | Promise<void>;
   subscribeSyncLogs(listener: () => void): () => void;
   listBlockedSyncFiles(): Promise<SynchBlockedSyncFile[]>;
   isSyncEnabled(): boolean;

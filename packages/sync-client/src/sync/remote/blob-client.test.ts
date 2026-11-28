@@ -1,3 +1,5 @@
+import { FileTransferLog } from "../diagnostics/file-transfer";
+import { InMemorySyncDiagnostics } from "../diagnostics/in-memory";
 import { isSyncPausedError } from "./sync-pause";
 import { describe, expect, it, vi } from "vitest";
 
@@ -31,11 +33,17 @@ describe("SyncBlobClient", () => {
         },
       }));
       const bytes = new Uint8Array([1]);
-      const jobs = Array.from({ length: 9 }, (_, i) => String(i)).map(id => direction === "upload"
-        ? client.uploadBlob("v", id, bytes)
-        : client.downloadBlob("v", id));
+      const logs = new InMemorySyncDiagnostics("test");
+      const jobs = Array.from({ length: 9 }, (_, i) => {
+        const id = String(i);
+        const transfer = new FileTransferLog(logs, direction, id, 1);
+        return direction === "upload"
+          ? client.uploadBlob("v", id, bytes, transfer)
+          : client.downloadBlob("v", id, transfer);
+      });
       const results = Promise.allSettled(jobs);
       await vi.waitFor(() => expect(pending).toHaveLength(8));
+      expect(logs.getSnapshot().text).not.toContain('path="8"');
       pending[0]!({ status: 503, json: { message: "busy" } });
       await expect(jobs[0]).rejects.toMatchObject({ status: 503, message: "busy" });
       for (const id of [1, 2, 3]) pending[id]!({ status: 200, arrayBuffer: bytes.buffer });
@@ -44,6 +52,7 @@ describe("SyncBlobClient", () => {
       expect(pending).toHaveLength(8);
       pending[4]!({ status: 200, arrayBuffer: bytes.buffer });
       await vi.waitFor(() => expect(pending).toHaveLength(9));
+      expect(logs.getSnapshot().text).toContain('status="started" path="8"');
       for (const id of [5, 6, 7, 8]) pending[id]!({ status: 200, arrayBuffer: bytes.buffer });
       expect((await results).map(result => result.status)).toEqual(["rejected", ...Array(8).fill("fulfilled")]);
     },

@@ -1,3 +1,4 @@
+import type { SyncDiagnostics } from "../diagnostics/types";
 import type { SyncConflictPolicy } from "../core/conflict-policy";
 import type { SyncTokenResponse } from "../remote/client";
 import type { SyncContentRuntimeDeps } from "../core/content-runtime";
@@ -24,6 +25,7 @@ const DEFAULT_PULL_APPLY_WINDOW = 100;
 const DEFAULT_PULL_PREPARE_CONCURRENCY = 10;
 
 export interface SyncPullServiceDeps extends SyncContentRuntimeDeps {
+  diagnostics?: SyncDiagnostics;
   getSyncToken: () => Promise<SyncTokenResponse>;
   getSyncStore: () => SyncPullStore | null;
   getRemoteVaultKey: () => Uint8Array;
@@ -76,6 +78,7 @@ export class SyncPullService {
       vaultAdapter: this.deps.vaultAdapter,
       eventGate: this.deps.eventGate,
       blobClient: this.deps.blobClient,
+      diagnostics: this.deps.diagnostics,
       contentRuntime: this.deps.contentRuntime,
       shouldApplyRemotePath: this.deps.shouldApplyRemotePath,
       shouldUseLatestRemoteVersion: this.deps.shouldUseLatestRemoteVersion,
