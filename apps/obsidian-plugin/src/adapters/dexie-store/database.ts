@@ -7,7 +7,7 @@ import type { DeferredSyncFile, PullWriteIntent } from "@synch/sync-client/store
 import type { BlobRecord, EntryRecord, MetadataRecord } from "./records";
 
 const DB_NAMESPACE_VERSION = "v1";
-const ENTRIES_SCHEMA =
+const V1_ENTRIES_SCHEMA =
   "&entryId,&remotePathKey,&localPathKey,dirty,pendingStatus,pendingMutationId,[dirty+pendingCreatedAt+entryId],[pendingStatus+pendingCreatedAt+entryId]";
 
 export const METADATA_ID = "sync";
@@ -24,11 +24,15 @@ export class SyncDexieDatabase extends Dexie {
     super(name);
     this.version(1).stores({
       metadata: "&id",
-      entries: ENTRIES_SCHEMA,
+      entries: V1_ENTRIES_SCHEMA,
       blobs: "&blobId,hash,role,refEntryId,cachedAt",
     });
     this.version(2).stores({ deferredFiles: "&entryId" });
     this.version(3).stores({ textMerges: "&entryId" });
+    this.version(4).stores({
+      entries: "&entryId,&remotePathKey,&localPathKey,pendingStatus,pendingMutationId,[pendingStatus+pendingCreatedAt+entryId]",
+      blobs: "&blobId",
+    });
   }
 }
 

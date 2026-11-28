@@ -2,6 +2,7 @@ import Dexie from "dexie/dist/dexie.mjs";
 import { getOrCreateLocalVaultId } from "./dexie-store/local-vault";
 import { decryptSyncMetadata, encryptSyncMetadata } from "@synch/sync-client/core";
 import type { PendingMutationRow, TextMergeIntent } from "@synch/sync-client/store";
+import { createEmptyEntryRecord } from "@synch/sync-client/store/entry-record";
 import { SyncDexieDatabase, syncStoreDbName, METADATA_ID } from "./dexie-store/database";
 import { describe, expect, it } from "vitest";
 
@@ -14,6 +15,39 @@ import {
 } from "./dexie-store";
 
 describe("DexieSyncStore", () => {
+  it("preserves both sides of concurrent local and remote writes", async () => {
+    const store = await createDexieSyncStore(createPlugin());
+    const entry = { entryId: "note", path: "note.md", deleted: false, updatedAt: 1 };
+    const local = { ...entry, hash: "local", blobId: "local", localMtime: 2, localSize: 5 };
+    const remote = { ...entry, hash: "remote", blobId: "remote", revision: 1 };
+    try {
+      await Promise.all([store.applyLocalState(local), store.applyRemoteState(remote)]);
+      expect(await store.getEntryStateById(entry.entryId)).toMatchObject({ local, remote });
+      expect(await store.countSyncProgress()).toEqual({ completedEntries: 1, totalEntries: 1 });
+    } finally {
+      await store.close();
+    }
+  });
+
+  it("keeps a replacement mutation when an earlier mutation is cleared concurrently", async () => {
+    const store = await createDexieSyncStore(createPlugin());
+    const previous: PendingMutationRow = {
+      entryId: "note", mutationId: "previous", op: "delete", baseRevision: 1,
+      hash: null, blobId: null, encryptedMetadata: "ciphertext", createdAt: 1,
+    };
+    try {
+      await store.markEntryDirty(previous);
+      await Promise.all([
+        store.markEntryDirty({ ...previous, mutationId: "replacement", createdAt: 2 }),
+        store.clearDirtyEntryByMutationId(previous.mutationId),
+      ]);
+      expect(await store.getDirtyEntryMutation("note")).toMatchObject({ mutationId: "replacement" });
+      expect(await store.countSyncProgress()).toEqual({ completedEntries: 0, totalEntries: 1 });
+    } finally {
+      await store.close();
+    }
+  });
+
   it("swaps local path owners in one scan while preserving their remote baselines", async () => {
     const store = await createDexieSyncStore(createPlugin());
     try {
@@ -75,10 +109,24 @@ describe("DexieSyncStore", () => {
       blobs: "&blobId,hash,role,refEntryId,cachedAt",
     });
     await old.table("metadata").put({ id: METADATA_ID, remoteVaultId: "remote", lastPulledCursor: 12 });
+    const blob = { blobId: "base", hash: "hash", encryptedBytes: new Uint8Array([3, 2, 1]), cachedAt: 1 };
+    await old.table("blobs").put({ ...blob, role: "base", refEntryId: "note" });
+    await old.table("entries").put({
+      ...createEmptyEntryRecord("note"), dirty: true, pendingMutationId: "edit", pendingOp: "delete",
+      pendingStatus: "blocked", pendingBlockedReason: "file_too_large", pendingBaseRevision: 1,
+      pendingCreatedAt: 2, pendingEncryptedMetadata: "ciphertext",
+    });
     old.close();
 
     const store = await createDexieSyncStore(plugin);
     expect(await store.getCursor()).toBe(12);
+    expect(await store.getBlob(blob.blobId)).toEqual(blob);
+    expect(await store.listBlockedDirtyEntriesByReason("file_too_large")).toMatchObject([
+      { mutationId: "edit" },
+    ]);
+    await store.unblockDirtyEntriesByReason("file_too_large");
+    expect(await store.listBlockedDirtyEntriesByReason("file_too_large")).toEqual([]);
+    expect(await store.listDirtyEntries()).toMatchObject([{ mutationId: "edit" }]);
     const file = { entryId: "pdf", path: "report.pdf", revision: 3 };
     await store.deferredFiles?.put([file]);
     await store.close();

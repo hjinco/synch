@@ -116,7 +116,7 @@ export class DexieSyncStore implements SyncStore {
   }
 
   async ensureEntry(entryId: string): Promise<void> {
-    await this.putEntry(await this.getOrCreateEntryRecord(entryId));
+    await this.updateEntry(entryId, (existing) => existing ?? createEmptyEntryRecord(entryId));
   }
 
   async getRemoteStateById(entryId: string): Promise<RemoteSyncEntryRow | null> {
@@ -138,47 +138,40 @@ export class DexieSyncStore implements SyncStore {
   }
 
   async applyRemoteState(entry: RemoteSyncEntryRow): Promise<void> {
-    const existing = await this.getOrCreateEntryRecord(entry.entryId);
-    const updated: EntryRecord = {
-      ...existing,
-      remoteKnown: true,
-      remotePath: entry.path,
-      remoteRevision: entry.revision,
-      remoteBlobId: entry.blobId,
-      remoteHash: entry.hash,
-      remoteDeleted: entry.deleted,
-      remoteUpdatedAt: entry.updatedAt,
-    };
+    await this.updateEntry(entry.entryId, (existing) => {
+      const updated: EntryRecord = {
+        ...(existing ?? createEmptyEntryRecord(entry.entryId)),
+        remoteKnown: true,
+        remotePath: entry.path,
+        remoteRevision: entry.revision,
+        remoteBlobId: entry.blobId,
+        remoteHash: entry.hash,
+        remoteDeleted: entry.deleted,
+        remoteUpdatedAt: entry.updatedAt,
+      };
 
-    if (!existing.dirty) {
-      copyRemoteToBase(updated);
-    }
+      if (!existing?.dirty) {
+        copyRemoteToBase(updated);
+      }
 
-    await this.putEntry(updated);
+      return updated;
+    });
   }
 
   async clearRemoteState(entryId: string): Promise<void> {
-    const existing = await this.db.entries.get(entryId);
-    if (!existing) {
-      return;
-    }
-
-    const updated: EntryRecord = {
-      ...existing,
-      remoteKnown: false,
-      remotePath: null,
-      remoteRevision: 0,
-      remoteBlobId: null,
-      remoteHash: null,
-      remoteDeleted: true,
-      remoteUpdatedAt: 0,
-    };
-    if (!updated.localKnown && !updated.dirty) {
-      await this.deleteEntryRecord(entryId);
-      return;
-    }
-
-    await this.putEntry(updated);
+    await this.updateEntry(entryId, (existing) => {
+      if (!existing || (!existing.localKnown && !existing.dirty)) return null;
+      return {
+        ...existing,
+        remoteKnown: false,
+        remotePath: null,
+        remoteRevision: 0,
+        remoteBlobId: null,
+        remoteHash: null,
+        remoteDeleted: true,
+        remoteUpdatedAt: 0,
+      };
+    });
   }
 
   async getLocalStateById(entryId: string): Promise<LocalSyncEntryRow | null> {
@@ -200,9 +193,8 @@ export class DexieSyncStore implements SyncStore {
   }
 
   async applyLocalState(entry: LocalSyncEntryRow): Promise<void> {
-    const existing = await this.getOrCreateEntryRecord(entry.entryId);
-    await this.putEntry({
-      ...existing,
+    await this.updateEntry(entry.entryId, (existing) => ({
+      ...(existing ?? createEmptyEntryRecord(entry.entryId)),
       localKnown: true,
       localPath: entry.path,
       localBlobId: entry.blobId,
@@ -211,32 +203,24 @@ export class DexieSyncStore implements SyncStore {
       localUpdatedAt: entry.updatedAt,
       localMtime: entry.localMtime,
       localSize: entry.localSize,
-    });
+    }));
   }
 
   async clearLocalState(entryId: string): Promise<void> {
-    const existing = await this.db.entries.get(entryId);
-    if (!existing) {
-      return;
-    }
-
-    const updated: EntryRecord = {
-      ...existing,
-      localKnown: false,
-      localPath: null,
-      localBlobId: null,
-      localHash: null,
-      localDeleted: true,
-      localUpdatedAt: 0,
-      localMtime: null,
-      localSize: null,
-    };
-    if (!updated.remoteKnown && !updated.dirty) {
-      await this.deleteEntryRecord(entryId);
-      return;
-    }
-
-    await this.putEntry(updated);
+    await this.updateEntry(entryId, (existing) => {
+      if (!existing || (!existing.remoteKnown && !existing.dirty)) return null;
+      return {
+        ...existing,
+        localKnown: false,
+        localPath: null,
+        localBlobId: null,
+        localHash: null,
+        localDeleted: true,
+        localUpdatedAt: 0,
+        localMtime: null,
+        localSize: null,
+      };
+    });
   }
 
   async getEntryById(entryId: string): Promise<SyncEntryRow | null> {
@@ -295,7 +279,7 @@ export class DexieSyncStore implements SyncStore {
   }
 
   async upsertEntry(entry: SyncEntryRow, localPath = entry.path): Promise<void> {
-    const row = normalizeEntryRecord({
+    await this.updateEntry(entry.entryId, () => ({
       ...createEmptyEntryRecord(entry.entryId),
       remoteKnown: true,
       remotePath: entry.path,
@@ -317,12 +301,11 @@ export class DexieSyncStore implements SyncStore {
       localUpdatedAt: entry.updatedAt,
       localMtime: entry.localMtime,
       localSize: entry.localSize,
-    });
-    await this.putEntry(row);
+    }));
   }
 
   async deleteEntry(entryId: string): Promise<void> {
-    await this.deleteEntryRecord(entryId);
+    await this.updateEntry(entryId, () => null);
   }
 
   async getCursor(): Promise<number> {
@@ -346,31 +329,24 @@ export class DexieSyncStore implements SyncStore {
     options: MarkEntryDirtyOptions = {},
   ): Promise<void> {
     const normalized = normalizePendingMutation(mutation);
+    const update = () => this.updateEntry(normalized.entryId, (existing) =>
+      toDirtyEntryRecord(existing ?? createEmptyEntryRecord(normalized.entryId), normalized),
+    );
     if (options.requireBaseBlob) {
-      await this.assertRequiredBaseBlob(normalized);
+      await this.db.transaction("rw", this.db.entries, this.db.metadata, this.db.blobs, async () => {
+        await this.assertRequiredBaseBlob(normalized);
+        await update();
+      });
+    } else {
+      await update();
     }
-    const entry = await this.getOrCreateEntryRecord(normalized.entryId);
-    await this.putEntry(toDirtyEntryRecord(entry, normalized));
   }
 
   async replaceDirtyEntry(
     mutation: PendingMutationRow,
     options: MarkEntryDirtyOptions = {},
   ): Promise<void> {
-    const normalized = normalizePendingMutation(mutation);
-    await this.db.transaction(
-      "rw",
-      this.db.entries,
-      this.db.blobs,
-      this.db.metadata,
-      async () => {
-        if (options.requireBaseBlob) {
-          await this.assertRequiredBaseBlob(normalized);
-        }
-        const entry = await this.getOrCreateEntryRecord(normalized.entryId);
-        await this.putEntry(toDirtyEntryRecord(entry, normalized));
-      },
-    );
+    await this.markEntryDirty(mutation, options);
   }
 
   async getDirtyEntryMutation(entryId: string): Promise<PendingMutationRow | null> {
@@ -412,43 +388,27 @@ export class DexieSyncStore implements SyncStore {
   }
 
   async unblockDirtyEntriesByReason(reason: PendingMutationBlockedReason): Promise<void> {
-    const blocked = await this.db.entries
+    await this.db.entries
       .where("pendingStatus")
       .equals("blocked")
       .filter((entry) => entry.pendingBlockedReason === reason)
-      .toArray();
-    await this.db.transaction("rw", this.db.entries, this.db.metadata, async () => {
-      for (const entry of blocked) {
-        await this.putEntry({
-          ...entry,
-          pendingStatus: "pending",
-          pendingBlockedReason: null,
-          pendingBlockedEncryptedSizeBytes: null,
-          pendingBlockedMaxFileSizeBytes: null,
-        });
-      }
-    });
+      .modify({
+        pendingStatus: "pending",
+        pendingBlockedReason: null,
+        pendingBlockedEncryptedSizeBytes: null,
+        pendingBlockedMaxFileSizeBytes: null,
+      });
   }
 
   async clearDirtyEntryByMutationId(mutationId: string): Promise<void> {
-    const entry = await this.db.entries
-      .where("pendingMutationId")
-      .equals(mutationId)
-      .first();
-    if (!entry) {
-      return;
-    }
-
-    await this.putEntry(clearPendingMutation(entry));
+    await this.db.transaction("rw", this.db.entries, this.db.metadata, async () => {
+      const entry = await this.db.entries.where("pendingMutationId").equals(mutationId).first();
+      if (entry) await this.writeEntryChange(entry, clearPendingMutation(entry));
+    });
   }
 
   async markEntryClean(entryId: string): Promise<void> {
-    const entry = await this.db.entries.get(entryId);
-    if (!entry) {
-      return;
-    }
-
-    await this.putEntry(clearPendingMutation(entry));
+    await this.updateEntry(entryId, (existing) => existing && clearPendingMutation(existing));
   }
 
   async listReconcileEntryStates(): Promise<SyncReconcileEntryState[]> {
@@ -636,29 +596,24 @@ export class DexieSyncStore implements SyncStore {
     this.db.close();
   }
 
-  private async getOrCreateEntryRecord(entryId: string): Promise<EntryRecord> {
-    return (await this.db.entries.get(entryId)) ?? createEmptyEntryRecord(entryId);
-  }
-
-  private async putEntry(entry: EntryRecord): Promise<void> {
-    const normalized = normalizeEntryRecord(entry);
+  private async updateEntry(
+    entryId: string,
+    update: (existing: EntryRecord | null) => EntryRecord | null,
+  ): Promise<void> {
     await this.db.transaction("rw", this.db.entries, this.db.metadata, async () => {
-      const existing = await this.db.entries.get(normalized.entryId);
-      await this.db.entries.put(normalized);
-      await this.applyProgressDelta(getProgressDelta(existing ?? null, normalized));
+      const existing = (await this.db.entries.get(entryId)) ?? null;
+      await this.writeEntryChange(existing, update(existing));
     });
   }
 
-  private async deleteEntryRecord(entryId: string): Promise<void> {
-    await this.db.transaction("rw", this.db.entries, this.db.metadata, async () => {
-      const existing = await this.db.entries.get(entryId);
-      if (!existing) {
-        return;
-      }
-
-      await this.db.entries.delete(entryId);
-      await this.applyProgressDelta(getProgressDelta(existing, null));
-    });
+  private async writeEntryChange(before: EntryRecord | null, after: EntryRecord | null): Promise<void> {
+    if (before === after) return;
+    if (after) {
+      await this.db.entries.put(normalizeEntryRecord(after));
+    } else if (before) {
+      await this.db.entries.delete(before.entryId);
+    }
+    await this.applyProgressDelta(getProgressDelta(before, after));
   }
 
   private async ensureProgressSnapshot(): Promise<SyncProgressCounts> {

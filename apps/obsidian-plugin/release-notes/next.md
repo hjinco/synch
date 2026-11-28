@@ -19,3 +19,4 @@
 - Downloaded and merged Markdown preserves UTF-8 byte order marks and Unicode line separators.
 - Renaming a note on another device preserves the file when only the capitalization changes. Retrying an interrupted rename also avoids creating a duplicate conflict copy.
 - Sync keeps a renamed note’s version history when recovering an interrupted merge.
+- Sync preserves pending edits and tracks both file versions when local and remote changes to the same file overlap.
