@@ -12,10 +12,14 @@ import { queueLocalUpsertMutation } from "../core/mutation-queue";
 import { InMemorySyncDiagnostics } from "../diagnostics/in-memory";
 import type { SyncTokenResponse } from "../remote/client";
 import { SyncAutoLoop } from "../engine/auto-sync";
+import {
+  arrangePendingUpsertWithCachedBase, createBlobClient, createCommit, createRealtimeSession,
+  encryptRemoteMetadata, encryptTestBlob, hashText, TEST_VAULT_KEY,
+} from "../engine/__tests__/pull-service/helpers";
+import { SyncPullService } from "../engine/pull-service";
 import type { SyncChangeSource, SyncChangeSourceContext } from "./change-source";
 import { SyncEngine, type SyncEngineDeps } from "./sync-engine";
 
-const TEST_VAULT_KEY = new Uint8Array(Array.from({ length: 32 }, (_, index) => index + 1));
 const CONFIG_DIR = ".obsidian";
 
 describe("SyncEngine", () => {
@@ -273,6 +277,64 @@ describe("SyncEngine", () => {
     expect(onReconcileStatusChange.mock.calls).toEqual([[true], [false]]);
     await store.close();
   });
+
+  it.each(["rename first", "recovery first"])(
+    "keeps the note's identity when a rename follows an interrupted merge (%s)", async (order) => {
+      const vault = new InMemoryVaultAdapter();
+      const store = createTestSyncStore();
+      const runtime = new SyncContentRuntime();
+      const { engine, changeSource } = createTestEngine(vault, { contentRuntime: runtime });
+      const entryId = "note";
+      const path = "original.md";
+      const base = "Title\n\nParagraph\n";
+      const local = "Title\n\nLocal edit\n";
+      const remote = "New title\n\nParagraph\n";
+      const merged = "New title\n\nLocal edit\n";
+      const baseBytes = encodeUtf8(base);
+      try {
+        await arrangePendingUpsertWithCachedBase(store, {
+          entryId, path, baseRevision: 1, baseBlobId: "base", baseHash: await hashBytes(baseBytes),
+          baseBytes, localBlobId: "local", localHash: await hashText(local), createdAt: 1,
+        });
+        vault.seedText(path, local);
+        const incoming = { entryId, revision: 2, blobId: "remote" };
+        const commit = createCommit({ ...incoming, encryptedMetadata: await encryptRemoteMetadata({
+          ...incoming, path, hash: await hashText(remote),
+        }) });
+        const pull = new SyncPullService({
+          contentRuntime: runtime, getSyncStore: () => store, getRemoteVaultKey: () => TEST_VAULT_KEY,
+          getSyncToken: async () => createToken(), vaultAdapter: vault,
+          blobClient: createBlobClient({ blobs: { remote: await encryptTestBlob("remote", encodeUtf8(remote)) } }),
+        });
+        vi.spyOn(store, "replaceDirtyEntry").mockRejectedValueOnce(new Error("DB write interrupted"));
+        const session = createRealtimeSession({ pages: [{ cursor: 1, hasMore: false, commits: [commit] }] });
+        await expect(pull.pullOnce(session)).rejects.toThrow("DB write interrupted");
+        expect(await vault.readText(path)).toBe(merged);
+        await vault.rename(path, "renamed.md");
+
+        engine.setStore(store);
+        engine.registerVaultEvents();
+        const events = changeSource.requireContext();
+        if (order === "recovery first") await pull.recoverPendingWrites();
+        const reconcileUpdates = vi.spyOn(store, "applyReconcileEntryUpdates");
+        await events.runLocalMutationWork(() => events.eventRecorder.recordRenameFromFile!(
+          path, "renamed.md", () => vault.readBytes("renamed.md"),
+        ), "rename");
+        const queuedDelete = reconcileUpdates.mock.calls.some(([updates]) =>
+          updates.some((update) => update.dirty?.op === "delete"));
+        expect(queuedDelete).toBe(false);
+        expect(await store.listDirtyEntries()).toEqual([
+          expect.objectContaining({ entryId, op: "upsert", baseRevision: 2, hash: await hashText(merged) }),
+        ]);
+        expect(await engine.getEntryIdForPath("renamed.md")).toBe(entryId);
+        expect(await store.textMerges.listEntryIds()).toEqual([]);
+      } finally {
+        await engine.dispose();
+        await runtime.dispose();
+        await store.close();
+      }
+    },
+  );
 
   it("reapplies previously skipped remote vault config before reconcile queues local writes", async () => {
     const vault = new InMemoryVaultAdapter();

@@ -21,7 +21,7 @@ export class ObsidianSyncChangeSource implements SyncChangeSource {
       vaultAdapter: this.deps.vaultAdapter,
       eventRecorder: context.eventRecorder,
       notifyLocalChange: () => context.notifyLocalChange(),
-      runLocalMutationWork: async (work) => await context.runLocalMutationWork(work),
+      runLocalMutationWork: (work, operation) => context.runLocalMutationWork(work, operation),
       hasActiveRemoteVaultSession: () => context.hasActiveRemoteVaultSession(),
       onError: (error) => context.onError(error),
       onFileQueued: context.onFileQueued,

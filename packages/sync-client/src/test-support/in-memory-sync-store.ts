@@ -18,6 +18,8 @@ import type {
   SyncReconcileEntryState,
   SyncReconcileEntryUpdate,
   SyncStore,
+  PullWriteIntent,
+  TextMergeJournal,
 } from "../sync/store/store";
 
 interface EntryState {
@@ -35,6 +37,13 @@ export class InMemorySyncStore implements SyncStore {
   private connection: SyncConnection | null = null;
   private readonly entries = new Map<string, EntryState>();
   private readonly deferred = new Map<string, DeferredSyncFile>();
+  private readonly mergeIntents = new Map<string, PullWriteIntent>();
+  readonly textMerges: TextMergeJournal = {
+    get: async (id) => structuredClone(this.mergeIntents.get(id)),
+    listEntryIds: async () => [...this.mergeIntents.keys()],
+    put: async (intent) => { this.mergeIntents.set(intent.entryId, structuredClone(intent)); },
+    remove: async (id) => { this.mergeIntents.delete(id); },
+  };
   readonly deferredFiles: DeferredSyncFileStore = {
     get: async (id) => this.deferred.get(id),
     getMany: async (ids) => ids.map((id) => this.deferred.get(id)),
@@ -190,7 +199,7 @@ export class InMemorySyncStore implements SyncStore {
     return (await this.getEntryByPath(path))?.entryId ?? crypto.randomUUID();
   }
 
-  async upsertEntry(entry: TestSyncEntryInput): Promise<void> {
+  async upsertEntry(entry: TestSyncEntryInput, localPath = entry.path): Promise<void> {
     this.entries.set(entry.entryId, {
       entryId: entry.entryId,
       remote: {
@@ -212,7 +221,7 @@ export class InMemorySyncStore implements SyncStore {
       },
       local: {
         entryId: entry.entryId,
-        path: entry.path,
+        path: localPath,
         blobId: entry.blobId,
         hash: entry.hash,
         deleted: entry.deleted,

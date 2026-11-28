@@ -286,7 +286,8 @@ export class PushMutationPreparer {
 
       await store.applyLocalState({
         entryId: queued.entryId,
-        path,
+        path: local?.path && local.path !== path && await this.deps.fileReader.areSameFilePaths?.(local.path, path)
+          ? local.path : path,
         blobId: queued.blobId,
         hash,
         deleted: false,

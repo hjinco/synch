@@ -12,6 +12,7 @@ import type { SyncCursorStore, SyncRemoteEntryStore } from "../store/ports";
 import type { SyncOperationProgress } from "../runtime/user-visible-status";
 import { SyncWorkProgress } from "./work-progress";
 import { loadRecoveryManifest } from "./pull-recovery-manifest";
+import type { PullMode } from "./pull-entry-state-internal";
 import {
   type PullConflictEvent,
   PullEntryStateApplier,
@@ -47,6 +48,7 @@ export interface SyncPullServiceDeps extends SyncContentRuntimeDeps {
   onConflict?: (event: PullConflictEvent) => void;
   onRollbackDetected?: (event: PullRollbackEvent) => void;
   onRemoteStatesChange?: () => void;
+  onLocalMutationQueued?: () => void;
   onFileSyncStarted?: (event: {
     operation: "upsert" | "delete";
     path: string;
@@ -93,6 +95,7 @@ export class SyncPullService {
       getConflictPolicy: this.deps.getConflictPolicy,
       prepareConcurrency:
         this.deps.prepareConcurrency ?? DEFAULT_PULL_PREPARE_CONCURRENCY,
+      onLocalMutationQueued: this.deps.onLocalMutationQueued,
       onConflict: this.deps.onConflict,
       onRollbackDetected: this.deps.onRollbackDetected,
       onFileSyncStarted: this.deps.onFileSyncStarted,
@@ -100,6 +103,11 @@ export class SyncPullService {
       onFileSyncFailed: this.deps.onFileSyncFailed,
       now: this.deps.now,
     });
+  }
+
+  async recoverPendingWrites(): Promise<void> {
+    const store = this.deps.getSyncStore();
+    if (store) await this.entryStateApplier.writeRecovery.recover(store);
   }
 
   /** Reconcile stale entries without rewinding or advancing the global cursor. */
@@ -112,6 +120,7 @@ export class SyncPullService {
     const store = this.deps.getSyncStore();
     if (!store) throw new Error("Sync store is not initialized.");
     const { assertCurrent: checkSelection } = this.captureFileRules();
+    await this.entryStateApplier.writeRecovery.recover(store);
     const token = await this.deps.getSyncToken();
     const progress = new SyncWorkProgress("pull");
     await onProgress(progress.snapshot());
@@ -139,13 +148,15 @@ export class SyncPullService {
   async pullOnce(
     session: SyncRealtimeSession,
     onProgress = this.deps.onProgress ?? (async (_progress: SyncOperationProgress) => {}),
+    mode: PullMode = "bidirectional",
   ): Promise<PullOnceResult> {
     const store = this.deps.getSyncStore();
     if (!store) {
       throw new Error("Sync store is not initialized.");
     }
 
-    const { version, assertCurrent: checkSelection } = this.captureFileRules();
+    const { version, assertCurrent: checkSelection } = this.captureFileRules(mode);
+    if (mode !== "read-only") await this.entryStateApplier.writeRecovery.recover(store);
     const token = await this.deps.getSyncToken();
     let cursor = await store.getCursor();
     // Excluded paths keep remote metadata without claiming it was applied.
@@ -229,7 +240,7 @@ export class SyncPullService {
           remoteStatesMayHaveChanged = true;
           const applied = await selection.applyWindow(window, (items) =>
             this.entryStateApplier.applyManifestWindow(store, token, items, {
-              finalWindow: !hasMore, selection, checkSelection,
+              finalWindow: !hasMore, selection, checkSelection, mode,
             }));
           totals.entriesApplied += applied.entriesApplied;
           totals.filesWritten += applied.filesWritten;
@@ -350,8 +361,8 @@ export class SyncPullService {
     return version !== undefined && this.checkedSelection?.store === store && this.checkedSelection.version === version;
   }
 
-  private captureFileRules() {
-    this.deps.assertFileRulesScanned?.();
+  private captureFileRules(mode: PullMode = "bidirectional") {
+    if (mode !== "read-only") this.deps.assertFileRulesScanned?.();
     return captureDeviceFileRulesVersion(() => this.deps.getDeviceFileRulesVersion?.());
   }
 
@@ -362,8 +373,9 @@ export class SyncPullService {
           this.deps.shouldApplyRemotePath?.(remote.path, remote.deleted) === false ||
           await store.getDirtyEntryMutation(remote.entryId)) continue;
       const local = await store.getLocalStateById(remote.entryId);
-      if (local && local.path === remote.path && local.deleted === remote.deleted &&
-          local.blobId === remote.blobId && local.hash === remote.hash) continue;
+      if (local && local.deleted === remote.deleted && local.blobId === remote.blobId &&
+          local.hash === remote.hash && (local.path === remote.path ||
+          (local.path && await this.deps.vaultAdapter.areSameFilePaths?.(local.path, remote.path)))) continue;
       if (!await this.deps.vaultAdapter.isExcludedPath(remote.path)) return true;
     }
     return false;

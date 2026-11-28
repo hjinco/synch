@@ -90,3 +90,12 @@ export function createDefaultContentHasher(): SyncContentHasher {
 export function encodeUtf8(value: string): Uint8Array {
   return new TextEncoder().encode(value);
 }
+
+/** Keep the BOM as content so encoding the result reproduces the input bytes. */
+export function decodeUtf8(bytes: Uint8Array): string | null {
+  try {
+    return new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes);
+  } catch {
+    return null;
+  }
+}

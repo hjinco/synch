@@ -8,6 +8,7 @@ import { createSyncCryptoContext, type SyncCryptoContext } from "../core/crypto"
 import {
   buildLocalDeleteMutation,
   buildLocalUpsertMutation,
+  pathForLocalEdit,
 } from "../core/mutation-queue";
 import type {
   LocalSyncEntryRow,
@@ -110,7 +111,7 @@ export class SyncLocalReconcileService {
 
     const hashInputs: ReconcileHashInput[] = [];
     for (const file of localFiles) {
-      const existing = localByPath.get(file.path) ?? null;
+      const existing = localByPath.get(file.path)?.local ?? null;
       const pendingDeleteEntry = pendingDeleteEntriesByPath.get(file.path) ?? null;
       const existingHasPendingDelete =
         !!existing && pendingDeleteEntry?.entryId === existing.entryId;
@@ -181,7 +182,10 @@ export class SyncLocalReconcileService {
 
       const queued = await buildLocalUpsertMutation({
         metadataCrypto,
-        path: file.path,
+        path: await pathForLocalEdit({
+          path: file.path, localPath: existing?.path, remotePath: remote?.path, vault: this.deps.scanner,
+          getPending: () => localByPath.get(file.path)?.dirty ?? null, getRemoteVaultKey: this.deps.getRemoteVaultKey,
+        }),
         entryId,
         base: remote,
         previousLocal: entry,
@@ -473,12 +477,12 @@ function takeRenameCandidate(
 
 function indexLocalEntriesByPath(
   entries: SyncReconcileEntryState[],
-): Map<string, LocalSyncEntryRow> {
-  const result = new Map<string, LocalSyncEntryRow>();
+): Map<string, SyncReconcileEntryState> {
+  const result = new Map<string, SyncReconcileEntryState>();
   for (const entry of entries) {
     const local = entry.local;
     if (local?.path && !local.deleted) {
-      result.set(local.path, local);
+      result.set(local.path, entry);
     }
   }
   return result;

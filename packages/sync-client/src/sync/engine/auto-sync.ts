@@ -24,6 +24,7 @@ import { SyncSessionSubscriptions } from "./auto-sync-subscriptions";
 import { AutoSyncTimers } from "./auto-sync-timers";
 import { PendingSyncWorkQueue } from "./auto-sync-work-queue";
 import { pullWithReadOnlySession } from "./pull-only-session";
+import type { PullMode } from "./pull-entry-state-internal";
 
 const DEFAULT_PUSH_DEBOUNCE_MS = 100;
 const DEFAULT_RECONNECT_DELAY_MS = 3_000;
@@ -45,7 +46,7 @@ export interface SyncAutoLoopDeps {
   ) => Promise<number>;
   isDeferredEntry?: (id: string) => Promise<boolean>;
   hasNewlyIncludedFiles?: () => Promise<boolean>;
-  pullOnce: (session: SyncRealtimeSession) => Promise<unknown>;
+  pullOnce: (session: SyncRealtimeSession, mode?: PullMode) => Promise<unknown>;
   recoverEntryStates?: (session: SyncRealtimeSession, entryIds: string[]) => Promise<void>;
   realtimeClient: SyncRealtimeClientLike;
   pushDebounceMs?: number;

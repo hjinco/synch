@@ -70,7 +70,7 @@ export class PullBlobPreparer {
         return {
           transfer,
           plan,
-          bytes: await this.downloadAndVerifyEntryBlob(store, token, plan, transfer, reservation, checkSelection),
+          ...await this.downloadAndVerifyEntryBlob(store, token, plan, transfer, reservation, checkSelection),
         };
       },
     );
@@ -140,8 +140,9 @@ export class PullBlobPreparer {
     transfer: FileTransferLog,
     reservation?: ContentReservation,
     checkSelection?: () => void,
-  ): Promise<Uint8Array> {
+  ): Promise<Pick<PreparedEntryBlob, "bytes" | "journalCiphertext">> {
     const blobId = requireBlobId(plan.state);
+    let journalCiphertext: Uint8Array | undefined;
     let encryptedForMerge: Uint8Array | undefined;
     let plaintext: Uint8Array;
     {
@@ -155,6 +156,7 @@ export class PullBlobPreparer {
       plaintext = await transfer.run("decrypt", () =>
         decryptSyncBlob(this.deps.getRemoteVaultKey(), encrypted, { blobId }));
       if (plan.finalPath && isAutoMergeTextPath(plan.finalPath)) encryptedForMerge = encrypted;
+      else if (!this.deps.vaultAdapter.atomicWrites) journalCiphertext = encrypted;
     }
     const hashed = await transfer.run("verify", async () => {
       const result = await this.contentRuntime.hashAndReturnBytes(plaintext);
@@ -176,7 +178,7 @@ export class PullBlobPreparer {
       });
     }
 
-    return hashed.bytes;
+    return { bytes: hashed.bytes, journalCiphertext };
   }
 }
 

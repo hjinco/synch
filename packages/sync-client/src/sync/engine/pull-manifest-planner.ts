@@ -1,7 +1,7 @@
 import { metadataContextFromPendingMutation } from "../core/mutation-metadata";
 import type { DeviceFileSelection } from "./device-file-selection";
 import type { SyncedEntryMetadata } from "../core/content";
-import type { SyncVaultPathExclusions } from "../vault/ports";
+import type { SyncVaultAccess, SyncVaultPathExclusions } from "../vault/ports";
 import {
   type ConflictFileWriter,
   getAvailableConflictCopyPath,
@@ -14,6 +14,7 @@ import type {
 import type {
   SyncEntryStore,
   SyncMutationStore,
+  SyncRemoteEntryStore,
 } from "../store/ports";
 import {
   type AdoptedLocalEntry,
@@ -31,7 +32,7 @@ type ValidatedManifestItem = PullEntryStateManifestItem & (
 
 interface PullManifestPlannerDeps {
   getRemoteVaultKey: () => Uint8Array;
-  vaultAdapter: ConflictFileWriter & SyncVaultPathExclusions;
+  vaultAdapter: ConflictFileWriter & SyncVaultPathExclusions & Pick<SyncVaultAccess, "areSameFilePaths">;
   onRollbackDetected?: (event: PullRollbackEvent) => void;
   shouldUseLatestRemoteVersion?: (path: string) => boolean;
   isDeviceFileExcluded?: (path: string) => boolean;
@@ -81,6 +82,7 @@ export class PullManifestPlanner {
     // Rejected entries retain their local paths. They must not count as moving
     // owners or reserve destinations while planning the accepted entries.
     const latestManagedEntryByPath = this.findLatestManagedEntryByPath(validatedManifest);
+    const existingById = new Map<string, SyncEntryRow | null>();
     const activeManifest: ValidatedManifestItem[] = [];
     const superseded: PullEntryStateManifestItem[] = [];
     for (const item of validatedManifest) {
@@ -107,7 +109,25 @@ export class PullManifestPlanner {
       // Recovery may include an already-applied owner only to choose the latest
       // entry for a path. Replaying it could discard that owner's pending edits.
       // It can still be superseded by a genuinely newer incoming entry above.
-      if (!item.contextOnly) activeManifest.push(item);
+      if (item.contextOnly) continue;
+      const { state, metadata } = item;
+      const existing = await store.getEntryById(state.entryId);
+      // A crash after committing a merge can replay its base revision before
+      // the global cursor advances. The pending upload is already based on it.
+      if (existing?.revision === state.revision) {
+        const pending = await store.getDirtyEntryMutation(state.entryId);
+        if (pending?.baseRevision === state.revision) {
+          const remote = await store.getRemoteStateById(state.entryId);
+          if (remote?.path === metadata.path && remote.hash === metadata.hash &&
+              remote.blobId === state.blobId && remote.deleted === state.deleted) {
+            skipped.push(item);
+            continue;
+          }
+        }
+      }
+
+      existingById.set(state.entryId, existing);
+      activeManifest.push(item);
     }
 
     const deferredEntryIds = new Set<string>();
@@ -171,7 +191,7 @@ export class PullManifestPlanner {
         continue;
       }
 
-      let existing = await store.getEntryById(state.entryId);
+      let existing = existingById.get(state.entryId) ?? null;
       // A well-behaved server only ever hands out strictly increasing
       // revisions for a given entry - every legitimate mutation, delete, or
       // restore bumps it. The AEAD binds (entryId, revision, op, blobId), so
@@ -316,21 +336,21 @@ export class PullManifestPlanner {
       existing.deleted ||
       !existing.path ||
       existing.path === finalPath ||
-      pathConflict ||
-      adoptedLocalEntry ||
-      (await store.getDirtyEntryMutation(entryId))
+      pathConflict
     ) {
       return null;
     }
 
-    if (
-      !(await this.deps.vaultAdapter.exists(existing.path)) ||
-      (await this.deps.vaultAdapter.exists(finalPath))
-    ) {
-      return null;
+    const vault = this.deps.vaultAdapter;
+    if (!await vault.exists(existing.path)) return null;
+    if (await vault.exists(finalPath)) {
+      return await vault.areSameFilePaths?.(existing.path, finalPath)
+        ? { kind: "alias", from: existing.path, to: finalPath } : null;
     }
+    if (adoptedLocalEntry || await store.getDirtyEntryMutation(entryId)) return null;
 
     return {
+      kind: "rename",
       from: existing.path,
       to: finalPath,
     };
@@ -409,7 +429,8 @@ export class PullManifestPlanner {
 
 export interface PullManifestStore
   extends Pick<SyncEntryStore, "getEntryById" | "getEntryByPath">,
-    Pick<SyncMutationStore, "getDirtyEntryMutation"> {}
+    Pick<SyncMutationStore, "getDirtyEntryMutation">,
+    Pick<SyncRemoteEntryStore, "getRemoteStateById"> {}
 
 export function validateManifestItem(item: PullEntryStateManifestItem): ValidatedManifestItem {
   const { state, metadata } = item;

@@ -56,6 +56,11 @@ CREATE INDEX IF NOT EXISTS idx_entries_pending
 CREATE INDEX IF NOT EXISTS idx_entries_pending_mutation_id
   ON entries (pending_mutation_id) WHERE pending_mutation_id IS NOT NULL;
 
+CREATE TABLE IF NOT EXISTS text_merges (
+  entry_id TEXT PRIMARY KEY,
+  intent TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS blobs (
   blob_id TEXT PRIMARY KEY,
   hash TEXT,

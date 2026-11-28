@@ -82,8 +82,11 @@ async function restoreDirtyEntries(
   entries: ReadonlyMap<string, PendingMutationRow | null>,
 ): Promise<void> {
   for (const [entryId, mutation] of entries) {
+    if (mutation) {
+      await store.markEntryDirty(mutation);
+      continue;
+    }
     const current = await store.getDirtyEntryMutation(entryId);
     if (current) await store.clearDirtyEntryByMutationId(current.mutationId);
-    if (mutation) await store.markEntryDirty(mutation);
   }
 }

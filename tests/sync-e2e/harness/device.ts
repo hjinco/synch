@@ -64,7 +64,7 @@ export class Device {
   async rename(from: string, to: string) {
     const bytes = await this.vault.readBytes(from);
     await this.vault.rename(from, to);
-    await this.events.runLocalMutationWork(() => this.events.eventRecorder.recordRename(from, to, bytes));
+    await this.events.runLocalMutationWork(() => this.events.eventRecorder.recordRename(from, to, bytes), "rename");
     this.events.notifyLocalChange();
   }
   async remove(path: string) {

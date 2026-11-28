@@ -3,7 +3,7 @@
 // Dexie version in the same app window.
 import Dexie, { type Table } from "dexie/dist/dexie.mjs";
 
-import type { DeferredSyncFile } from "@synch/sync-client/store";
+import type { DeferredSyncFile, PullWriteIntent } from "@synch/sync-client/store";
 import type { BlobRecord, EntryRecord, MetadataRecord } from "./records";
 
 const DB_NAMESPACE_VERSION = "v1";
@@ -16,6 +16,7 @@ export const MIN_PENDING_CREATED_AT = 0;
 export class SyncDexieDatabase extends Dexie {
   metadata!: Table<MetadataRecord, string>;
   entries!: Table<EntryRecord, string>;
+  textMerges!: Table<PullWriteIntent, string>;
   deferredFiles!: Table<DeferredSyncFile, string>;
   blobs!: Table<BlobRecord, string>;
 
@@ -27,6 +28,7 @@ export class SyncDexieDatabase extends Dexie {
       blobs: "&blobId,hash,role,refEntryId,cachedAt",
     });
     this.version(2).stores({ deferredFiles: "&entryId" });
+    this.version(3).stores({ textMerges: "&entryId" });
   }
 }
 

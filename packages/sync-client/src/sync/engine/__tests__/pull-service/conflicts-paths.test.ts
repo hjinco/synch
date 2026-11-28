@@ -364,14 +364,18 @@ describe("SyncPullService path conflicts", () => {
     await store.close();
   });
 
-  it("removes the previous path of a superseded vault config entry", async () => {
+  it.each([
+    { previousPath: ".obsidian/old-graph.json", edit: null, policy: undefined, copies: 0 },
+    { previousPath: ".obsidian/old-graph.json", edit: "local settings", policy: undefined, copies: 0 },
+    { previousPath: "work.md", edit: "offline edit", policy: undefined, copies: 1 },
+    { previousPath: "work.md", edit: "offline edit", policy: "prefer-remote" as const, copies: 0 },
+  ])("releases a superseded $previousPath with edit $edit under policy $policy", async ({ previousPath, edit, policy, copies }) => {
     const store = createTestSyncStore();
-    const previousPath = ".obsidian/old-graph.json";
     const sharedPath = ".obsidian/graph.json";
     const previousBody = '{"version":"previous"}';
     const supersededBody = '{"version":"superseded"}';
     const latestBody = '{"version":"latest"}';
-    const adapter = createVaultAdapter({ [previousPath]: previousBody });
+    const adapter = createVaultAdapter({ [previousPath]: edit ?? previousBody });
     await store.upsertEntry({
       entryId: "entry-superseded",
       path: previousPath,
@@ -434,16 +438,20 @@ describe("SyncPullService path conflicts", () => {
         },
       }),
       onProgress: ignoreProgress,
+      getConflictPolicy: policy ? () => policy : undefined,
     });
 
     await expect(service.pullOnce(session)).resolves.toMatchObject({
       entriesApplied: 2,
       filesWritten: 1,
       filesDeleted: 1,
-      conflictsCreated: 0,
+      conflictsCreated: copies,
     });
     expect(adapter.text(previousPath)).toBeNull();
     expect(adapter.text(sharedPath)).toBe(latestBody);
+    const conflictPaths = [...adapter.files.keys()].filter((path) => path.includes(".sync-conflict-"));
+    expect(conflictPaths.map((path) => adapter.text(path))).toEqual(copies ? [edit] : []);
+    expect(await store.listDirtyEntries()).toEqual([]);
     expect(await store.getRemoteStateById("entry-superseded")).toMatchObject({
       path: null,
       revision: 2,
@@ -761,24 +769,16 @@ describe("SyncPullService path conflicts", () => {
       getSyncStore: () => store,
       getRemoteVaultKey: () => TEST_VAULT_KEY,
       vaultAdapter: adapter,
-      blobClient: createBlobClient({}),
+      blobClient: createBlobClient({ blobs: { "blob-remote": await encryptTestBlob("blob-remote", new TextEncoder().encode(recordedBody)) } }),
       onProgress: ignoreProgress,
     });
 
-    await expect(service.pullOnce(session)).rejects.toMatchObject({
-      code: "local_snapshot_changed",
-      path,
-    });
-    expect(adapter.text(path)).toBe(currentBody);
-    expect(await store.getEntryById("entry-local")).toMatchObject({
-      entryId: "entry-local",
-      path,
-      revision: 0,
-    });
-    expect(await store.getEntryById("entry-remote")).toBeNull();
-    expect(await store.getBlob("blob-remote")).toBeNull();
-    expect(await store.getCursor()).toBe(0);
-    expect(await store.listDirtyEntries()).toHaveLength(1);
+    await expect(service.pullOnce(session)).resolves.toMatchObject({ conflictsCreated: 1, cursor: 2 });
+    const copies = [...adapter.files.keys()].filter((name) => name.includes(".sync-conflict-"));
+    expect(copies.map((name) => adapter.text(name))).toEqual([currentBody]);
+    expect(adapter.text(path)).toBe(recordedBody);
+    expect(await store.getEntryById("entry-local")).toBeNull();
+    expect(await store.listDirtyEntries()).toHaveLength(0);
 
     await store.close();
   });

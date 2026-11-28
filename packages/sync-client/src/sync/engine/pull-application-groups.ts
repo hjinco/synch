@@ -1,6 +1,7 @@
 import { syncStateKeys, type SyncStateResources } from "./sync-state-coordinator";
 import type {
   PlannedEntryState,
+  PreparedConflictCopy,
   PreparedPathBatch,
   PreparedPendingConflict,
   PullEntryStateManifestItem,
@@ -17,6 +18,7 @@ export interface PreparedManifestApplication extends PullApplicationGroup {
   supersededPathsToRemove: string[];
   pathsToWrite: string[];
   pendingConflicts: PreparedPendingConflict[];
+  conflictCopies: PreparedConflictCopy[];
   batches: PreparedPathBatch[];
 }
 
@@ -37,7 +39,7 @@ export class PullApplicationTargets {
     }
   }
 
-  includePendingConflict({ pending, event }: PreparedPendingConflict): void {
+  includePendingConflict({ pending, event }: PreparedConflictCopy): void {
     // A pending delete may have no visible path and still needs a lock and rollback.
     this.dirtyEntryIds.add(pending.entryId);
     if (event?.originalPath) this.paths.add(event.originalPath);

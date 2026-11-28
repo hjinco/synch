@@ -1,3 +1,5 @@
+import { encodeBase64 } from "@synch/vault-crypto";
+import { decodeUtf8 } from "../core/content";
 import { metadataContextFromPendingMutation } from "../core/mutation-metadata";
 import {
   type SyncContentRuntime,
@@ -6,20 +8,22 @@ import {
 import { getAvailableConflictCopyPath } from "../core/conflict-file";
 import {
   decryptSyncBlob,
+  encryptSyncBlob,
   decryptSyncMetadata,
   encryptSyncMetadata,
 } from "../core/crypto";
 import type {
   PendingMutationRow,
   SyncEntryStateRow,
+  TextMergeIntent,
 } from "../store/store";
 import {
   writeVaultBinary,
-  writeVaultBytes,
 } from "../vault/vault-writer";
 import {
-  decodeUtf8,
+  requireBlobId,
   type PlannedEntryState,
+  type PreparedConflictCopy,
   type PreparedEntryBlob,
   type PreparedPendingConflict,
   type PreparedPendingMerge,
@@ -71,10 +75,9 @@ export class PullPendingMutationHandler {
       pending.encryptedMetadata,
       metadataContextFromPendingMutation(pending),
     );
+    const useRemote = await this.useRemoteVersionForPath(metadata.path);
     if (
-      this.deps.isDeviceFileExcluded?.(metadata.path) ||
-      await this.deps.vaultAdapter.isExcludedPath?.(metadata.path) ||
-      await isSameEntryPendingMutationAlreadyRemote(
+      useRemote || await isSameEntryPendingMutationAlreadyRemote(
         pending,
         metadata,
         plan,
@@ -88,17 +91,7 @@ export class PullPendingMutationHandler {
         pending,
         event: null,
         conflictBytes: null,
-        merge: { kind: "remote" },
-      };
-    }
-
-    if (this.deps.shouldUseLatestRemoteVersion?.(metadata.path)) {
-      return {
-        plan,
-        pending,
-        event: null,
-        conflictBytes: null,
-        merge: { kind: "remote" },
+        merge: { kind: !useRemote && pending.op === "upsert" ? "already-present" : "remote" },
       };
     }
 
@@ -120,6 +113,30 @@ export class PullPendingMutationHandler {
       };
     }
 
+    return { plan, merge: null, ...await this.prepareConflictCopy(pending, metadata.path, reservation) };
+  }
+
+  async prepareSupersededConflict(
+    pending: PendingMutationRow,
+    reservation: ContentReservation,
+  ): Promise<PreparedConflictCopy | null> {
+    const { path } = await decryptSyncMetadata(
+      this.deps.getRemoteVaultKey(), pending.encryptedMetadata, metadataContextFromPendingMutation(pending),
+    );
+    if (await this.useRemoteVersionForPath(path)) return null;
+    return await this.prepareConflictCopy(pending, path, reservation);
+  }
+
+  private async useRemoteVersionForPath(path: string): Promise<boolean> {
+    return !!(this.deps.isDeviceFileExcluded?.(path) || this.deps.shouldUseLatestRemoteVersion?.(path) ||
+      await this.deps.vaultAdapter.isExcludedPath?.(path));
+  }
+
+  private async prepareConflictCopy(
+    pending: PendingMutationRow,
+    path: string,
+    reservation?: ContentReservation,
+  ): Promise<PreparedConflictCopy> {
     let conflictPath: string | null = null;
     let conflictBytes: Uint8Array | null = null;
     // Only consult the fallback policy after attempting a clean text merge.
@@ -127,17 +144,17 @@ export class PullPendingMutationHandler {
     if (
       this.deps.getConflictPolicy?.() !== "prefer-remote" &&
       pending.op === "upsert" &&
-      (await this.deps.vaultAdapter.exists(metadata.path))
+      (await this.deps.vaultAdapter.exists(path))
     ) {
       conflictBytes = await this.contentRuntime.withReadBytes(
-        await this.deps.vaultAdapter.getFileSize(metadata.path),
-        async () => await this.deps.vaultAdapter.readBytes(metadata.path),
+        await this.deps.vaultAdapter.getFileSize(path),
+        async () => await this.deps.vaultAdapter.readBytes(path),
         async (bytes) => bytes,
         reservation,
       );
       conflictPath = await getAvailableConflictCopyPath(
         this.deps.vaultAdapter,
-        metadata.path,
+        path,
         this.deps.now,
       );
     }
@@ -146,21 +163,19 @@ export class PullPendingMutationHandler {
       entryId: pending.entryId,
       op: pending.op,
       reason: "local_pending_mutation" as const,
-      originalPath: metadata.path,
+      originalPath: path,
       conflictPath,
     };
     return {
-      plan,
       pending,
       event,
       conflictBytes,
-      merge: null,
     };
   }
 
   async applyPreparedPendingConflict(
     store: PullEntryStateStore,
-    prepared: PreparedPendingConflict,
+    prepared: PreparedConflictCopy,
   ): Promise<void> {
     if (!prepared.event) {
       return;
@@ -176,45 +191,6 @@ export class PullPendingMutationHandler {
 
     await store.clearDirtyEntryByMutationId(prepared.pending.mutationId);
     this.deps.onConflict?.(prepared.event);
-  }
-
-  async applyPreparedPendingMerge(
-    store: PullEntryStateStore,
-    prepared: PreparedPendingConflict,
-  ): Promise<void> {
-    if (!prepared.merge) {
-      return;
-    }
-
-    if (prepared.merge.kind === "remote") {
-      await store.clearDirtyEntryByMutationId(prepared.pending.mutationId);
-      return;
-    }
-
-    const rebasedMutation = {
-      mutationId: crypto.randomUUID(),
-      entryId: prepared.pending.entryId,
-      op: "upsert" as const,
-      baseRevision: prepared.plan.state.revision,
-      baseBlobId: prepared.plan.state.blobId,
-      baseHash: prepared.plan.hash,
-      blobId: prepared.merge.blobId,
-      hash: prepared.merge.hash,
-      encryptedMetadata: prepared.merge.encryptedMetadata,
-      createdAt: Date.now(),
-    };
-    await writeVaultBytes(this.deps.vaultAdapter, prepared.merge.path, prepared.merge.bytes);
-    await store.replaceDirtyEntry(rebasedMutation, { requireBaseBlob: true });
-    await store.applyLocalState({
-      entryId: prepared.pending.entryId,
-      path: prepared.merge.path,
-      blobId: prepared.merge.blobId,
-      hash: prepared.merge.hash,
-      deleted: false,
-      updatedAt: Date.now(),
-      localMtime: null,
-      localSize: null,
-    });
   }
 
   private async preparePendingTextMerge(
@@ -244,6 +220,7 @@ export class PullPendingMutationHandler {
     }
 
     const finalPath = plan.finalPath;
+    const baseHash = plan.hash;
     const localPath = local.path;
 
     const cachedBase = await store.getBlob(base.blobId);
@@ -281,31 +258,47 @@ export class PullPendingMutationHandler {
         const hashed = await this.contentRuntime.hashAndReturnBytes(mergedBytes);
         mergedBytes = hashed.bytes;
         const mergedHash = hashed.hash;
-        if (mergedHash === plan.hash) {
-          return { kind: "remote" };
+        const keepSource = this.deps.vaultAdapter.canCompareTextForWrite?.(localText, finalPath) === false;
+        if (mergedHash === plan.hash && !keepSource) {
+          return { kind: "remote-text", sourceText: localText };
         }
 
         const blobId = crypto.randomUUID();
-        return {
-          kind: "local",
-          bytes: mergedBytes,
-          blobId,
-          hash: mergedHash,
-          path: finalPath,
-          encryptedMetadata: await encryptSyncMetadata(
-            this.deps.getRemoteVaultKey(),
-            {
-              path: finalPath,
-              hash: mergedHash,
-            },
-            metadataContextFromPendingMutation({
-              entryId: entryState.entryId,
-              baseRevision: plan.state.revision,
-              op: "upsert",
-              blobId,
-            }),
-          ),
+        const sourceBlobId = crypto.randomUUID();
+        const key = this.deps.getRemoteVaultKey();
+        reservation?.retain((localBytes.byteLength + mergedBytes.byteLength) * 4);
+        const staged = {
+          sourceBlobId,
+          sourceCiphertext: encodeBase64(await encryptSyncBlob(key, localBytes, { blobId: sourceBlobId })),
+          mergedCiphertext: encodeBase64(await encryptSyncBlob(key, mergedBytes, { blobId })),
         };
+        const intent: TextMergeIntent = {
+          entryId: dirty.entryId,
+          path: finalPath,
+          keepSource,
+          sourceMutationId: dirty.mutationId,
+          staged,
+          sourceHash: await this.contentRuntime.hash(localBytes),
+          remoteUpdatedAt: plan.state.updatedAt,
+          mutation: {
+            entryId: dirty.entryId,
+            mutationId: crypto.randomUUID(),
+            op: "upsert",
+            baseRevision: plan.state.revision,
+            baseBlobId: requireBlobId(plan.state),
+            baseHash,
+            blobId,
+            hash: mergedHash,
+            createdAt: Date.now(),
+            encryptedMetadata: await encryptSyncMetadata(
+              this.deps.getRemoteVaultKey(),
+              { path: finalPath, hash: mergedHash },
+              { entryId: dirty.entryId, revision: plan.state.revision + 1, op: "upsert", blobId },
+            ),
+          },
+        };
+        return keepSource ? { kind: "keep-source", merged: hashed, intent } :
+          { kind: "local", sourceText: localText, bytes: mergedBytes, intent };
       },
       reservation,
     );

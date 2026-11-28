@@ -8,7 +8,7 @@ export interface SyncVaultEventHandlerDeps {
   vaultAdapter: ObsidianSyncVaultAdapter;
   eventRecorder: SyncChangeSourceContext["eventRecorder"];
   notifyLocalChange: SyncChangeSourceContext["notifyLocalChange"];
-  runLocalMutationWork: <T>(work: () => Promise<T>) => Promise<T>;
+  runLocalMutationWork: SyncChangeSourceContext["runLocalMutationWork"];
   hasActiveRemoteVaultSession: () => boolean;
   onError: (error: unknown) => void;
   onFileQueued?: (event: {
@@ -156,16 +156,12 @@ export class SyncVaultEventHandler {
       return;
     }
 
-    void this.deps.runLocalMutationWork(async () => {
+    void this.deps.runLocalMutationWork(work, event.operation).catch((error: unknown) => {
       try {
-        await work();
-      } catch (error) {
-        try {
-          this.deps.onFileError?.({ ...event, error });
-          this.deps.onError(error);
-        } catch {
-          // Keep later vault events flowing even if the error reporter fails.
-        }
+        this.deps.onFileError?.({ ...event, error });
+        this.deps.onError(error);
+      } catch {
+        // Keep later vault events flowing even if the error reporter fails.
       }
     });
   }

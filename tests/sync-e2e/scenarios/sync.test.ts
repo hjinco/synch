@@ -169,6 +169,21 @@ for (const runtime of runtimes) describe(`encrypted sync (${runtime})`, () => {
     expect(b.conflicts).toEqual([]);
   });
 
+  it("preserves Markdown bytes and the BOM through download, scan and text merge", async () => {
+    const encode = (text: string) => new TextEncoder().encode(text);
+    await seed("note.md", encode("\uFEFFone\ntwo\nthree\n"));
+    expect((await b.engine.reconcileOnce()).filesQueuedForUpsert).toBe(0);
+    await a.write("note.md", encode("\uFEFFONE\ntwo\nthree\n"));
+    // The local edit reaches disk before the receiving device delivers its event.
+    await b.vault.writeBinary("note.md", encode("\uFEFFone\ntwo\nTHREE\n"));
+    await syncInOrder(a, b);
+    const expected = encode("\uFEFFONE\ntwo\nTHREE\n");
+    expect(await a.vault.readBytes("note.md")).toEqual(expected);
+    expect(await b.vault.readBytes("note.md")).toEqual(expected);
+    expect((await b.engine.reconcileOnce()).filesQueuedForUpsert).toBe(0);
+    expect([...a.conflicts, ...b.conflicts]).toEqual([]);
+  });
+
   it("catches up after offline edits", async () => {
     await seed();
     await a.write("note.md", "offline content\n");
@@ -176,6 +191,38 @@ for (const runtime of runtimes) describe(`encrypted sync (${runtime})`, () => {
     await syncInOrder(a, b);
     expect(await b.snapshot()).toEqual(await a.snapshot());
     await stable();
+  });
+
+  it("recovers an interrupted download before a scan can upload the truncated note", async () => {
+    const path = "note.md";
+    const original = "Title\n\nKeep this paragraph.\n";
+    const complete = original + "Remote addition.\n";
+    await seed(path, original);
+    await a.write(path, complete);
+    await a.connect();
+    await settle(a);
+
+    const uploads = b.network.uploads.length;
+    const interrupted = vi.spyOn(b.vault, "writeText").mockImplementationOnce(async (name) => {
+      await b.vault.writeBinary(name, new TextEncoder().encode("Title\n"));
+      throw new Error("interrupted note write");
+    });
+    try {
+      await b.connect();
+      await expect.poll(() => b.errors.some((error) => String(error).includes("interrupted note write"))).toBe(true);
+      await b.disconnect();
+    } finally {
+      interrupted.mockRestore();
+    }
+
+    b.errors.length = 0;
+    await b.engine.reconcileOnce();
+    await b.connect();
+    await settle(b, a);
+    expect(await b.vault.readText(path)).toBe(complete);
+    expect(await a.vault.readText(path)).toBe(complete);
+    expect(b.network.uploads).toHaveLength(uploads);
+    expect(await b.store.getCursor()).toBe(await a.store.getCursor());
   });
 
   for (const reversed of [false, true]) {

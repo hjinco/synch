@@ -1,7 +1,7 @@
 import Dexie from "dexie/dist/dexie.mjs";
 import { getOrCreateLocalVaultId } from "./dexie-store/local-vault";
 import { decryptSyncMetadata, encryptSyncMetadata } from "@synch/sync-client/core";
-import type { PendingMutationRow } from "@synch/sync-client/store";
+import type { PendingMutationRow, TextMergeIntent } from "@synch/sync-client/store";
 import { SyncDexieDatabase, syncStoreDbName, METADATA_ID } from "./dexie-store/database";
 import { describe, expect, it } from "vitest";
 
@@ -88,6 +88,29 @@ describe("DexieSyncStore", () => {
     await reopened.deferredFiles?.remove(["pdf"]);
     expect(await reopened.deferredFiles?.list()).toEqual([]);
     await reopened.close();
+  });
+
+  it("reopens an interrupted text merge with the same upload identity", async () => {
+    const plugin = createPlugin();
+    let store = await createDexieSyncStore(plugin);
+    const intent: TextMergeIntent = {
+      entryId: "note", path: "note.md", sourceHash: "local-hash", sourceMutationId: "original",
+      installed: true, staged: { sourceBlobId: "backup", sourceCiphertext: "c291cmNl", mergedCiphertext: "bWVyZ2Vk" },
+      remoteUpdatedAt: 3,
+      mutation: {
+        entryId: "note", mutationId: "rebased", op: "upsert", baseRevision: 3,
+        baseBlobId: "remote", baseHash: "remote-hash", blobId: "local", hash: "merged-hash",
+        encryptedMetadata: "encrypted-metadata", createdAt: 4,
+      },
+    };
+    await store.textMerges.put(intent);
+    await store.close();
+    store = await createDexieSyncStore(plugin);
+    expect(await store.textMerges.listEntryIds()).toEqual([intent.entryId]);
+    expect(await store.textMerges.get(intent.entryId)).toEqual(intent);
+    await store.textMerges.remove(intent.entryId);
+    expect(await store.textMerges.listEntryIds()).toEqual([]);
+    await store.close();
   });
 
   it("creates and persists entry ids by path", async () => {

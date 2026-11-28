@@ -16,6 +16,7 @@ import type {
   SyncVaultAdapter,
   SyncVaultFile,
 } from "@synch/sync-client/vault";
+import { ConditionalTextWriter } from "./conditional-text-write";
 import { VaultPathResolver } from "./vault-path";
 import { isMissingPathError } from "./filesystem-errors";
 
@@ -29,10 +30,13 @@ export interface NodeSyncVaultAdapterDeps {
 export const VAULT_TMP_FILE_MARKER = ".synch-tmp-";
 
 export class NodeSyncVaultAdapter implements SyncVaultAdapter {
+  readonly atomicWrites = true;
   private readonly paths: VaultPathResolver;
+  private readonly conditionalWriter: ConditionalTextWriter;
 
   constructor(private readonly deps: NodeSyncVaultAdapterDeps) {
     this.paths = new VaultPathResolver(deps.vaultPath);
+    this.conditionalWriter = new ConditionalTextWriter(this.paths);
   }
 
   isSyncablePath(vaultRelativePath: string): boolean {
@@ -49,6 +53,26 @@ export class NodeSyncVaultAdapter implements SyncVaultAdapter {
 
   isProtectedVaultPath(vaultRelativePath: string): boolean {
     return isForbiddenVaultPath(vaultRelativePath, this.deps.getConfigDir());
+  }
+
+  async areSameFilePaths(first: string, second: string): Promise<boolean> {
+    const canonical = async (name: string) => {
+      const allowed = await this.paths.resolveIfAllowed(name);
+      return allowed === null ? null : await fs.realpath(allowed);
+    };
+    try {
+      const [source, destination] = await Promise.all([canonical(first), canonical(second)]);
+      return source !== null && source === destination;
+    } catch (error) {
+      if (isMissingPathError(error)) return false;
+      throw error;
+    }
+  }
+
+  async isOnlyChild(name: string): Promise<boolean> {
+    const file = await this.paths.resolve(name);
+    const siblings = await fs.readdir(path.dirname(file));
+    return siblings.length === 1 && siblings[0] === path.basename(await fs.realpath(file));
   }
 
   async listFiles(): Promise<SyncVaultFile[]> {
@@ -69,6 +93,17 @@ export class NodeSyncVaultAdapter implements SyncVaultAdapter {
     }
 
     return stat.size;
+  }
+
+  async statKind(vaultRelativePath: string): Promise<"file" | "folder" | null> {
+    const absolute = await this.paths.resolve(vaultRelativePath);
+    try {
+      const stat = await fs.stat(absolute);
+      return stat.isFile() ? "file" : "folder";
+    } catch (error) {
+      if (isMissingPathError(error)) return null;
+      throw error;
+    }
   }
 
   async statFile(
@@ -108,11 +143,27 @@ export class NodeSyncVaultAdapter implements SyncVaultAdapter {
   }
 
   async writeText(vaultRelativePath: string, content: string): Promise<void> {
-    await this.writeAtomic(vaultRelativePath, content);
+    await this.writeStaged(vaultRelativePath, content, "replace");
   }
 
   async writeBinary(vaultRelativePath: string, content: Uint8Array): Promise<void> {
-    await this.writeAtomic(vaultRelativePath, content);
+    await this.writeStaged(vaultRelativePath, content, "replace");
+  }
+
+  async writeBytesIfAbsent(vaultRelativePath: string, content: Uint8Array): Promise<boolean> {
+    return await this.writeStaged(vaultRelativePath, content, "create");
+  }
+
+  canCompareTextForWrite(_expected: string | Uint8Array, path: string): boolean {
+    return this.conditionalWriter.supports(path);
+  }
+
+  async writeTextIfUnchanged(vaultRelativePath: string, expected: string | Uint8Array, replacement: string): Promise<boolean> {
+    return await this.conditionalWriter.write(vaultRelativePath, expected, replacement);
+  }
+
+  async recoverInterruptedWrites(): Promise<void> {
+    await this.conditionalWriter.recover();
   }
 
   async rename(oldPath: string, newPath: string): Promise<void> {
@@ -203,10 +254,11 @@ export class NodeSyncVaultAdapter implements SyncVaultAdapter {
     );
   }
 
-  private async writeAtomic(
+  private async writeStaged(
     vaultRelativePath: string,
     content: string | Uint8Array,
-  ): Promise<void> {
+    mode: "create" | "replace",
+  ): Promise<boolean> {
     const absolute = await this.paths.resolve(vaultRelativePath);
     const tempPath = path.join(
       path.dirname(absolute),
@@ -215,15 +267,28 @@ export class NodeSyncVaultAdapter implements SyncVaultAdapter {
     // Exclusive creation cannot follow a pre-existing temp-file symlink. Only
     // clean up a temp file that this operation successfully created.
     const temp = await fs.open(tempPath, "wx");
+    let renamed = false;
     try {
       await temp.writeFile(content);
       await temp.close();
       await this.paths.resolve(vaultRelativePath);
-      await fs.rename(tempPath, absolute);
-    } catch (error) {
-      await temp.close().catch(() => {});
-      await fs.unlink(tempPath).catch(() => {});
-      throw error;
+      if (mode === "replace") {
+        await fs.rename(tempPath, absolute);
+        renamed = true;
+        return true;
+      }
+      try {
+        await fs.copyFile(tempPath, absolute, fs.constants.COPYFILE_EXCL);
+      } catch (error) {
+        if (error instanceof Error && "code" in error && error.code === "EEXIST") return false;
+        throw error;
+      }
+      return true;
+    } finally {
+      if (!renamed) {
+        await temp.close().catch(() => {});
+        await fs.unlink(tempPath).catch(() => {});
+      }
     }
   }
 }

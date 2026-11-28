@@ -164,6 +164,7 @@ export class SyncEngine {
     const isDeviceFileExcluded = (path: string) => !!this.syncStore?.deferredFiles &&
       isExcludedByDeviceFileRules(path, this.vaultPathPolicyRules());
     this.syncEventRecorder = new SyncEventRecorder({
+      areSameFilePaths: this.vaultAdapter.areSameFilePaths?.bind(this.vaultAdapter),
       requireLocalStateForDelete: !!this.vaultAdapter.isExcludedPath,
       getSyncStore: () => this.syncStore,
       getRemoteVaultKey: () => this.deps.getRemoteVaultKey(),
@@ -222,6 +223,7 @@ export class SyncEngine {
       shouldSyncPath: (path) =>
         this.decideVaultPathSync(path).kind === "sync",
       scanner: {
+        areSameFilePaths: this.vaultAdapter.areSameFilePaths?.bind(this.vaultAdapter),
         isExcludedPath: this.vaultAdapter.isExcludedPath?.bind(this.vaultAdapter),
         listFiles: async () => {
           const byPath = new Map<string, SyncVaultFile>();
@@ -252,6 +254,7 @@ export class SyncEngine {
         await this.withSyncActivity("push", async (report) => {
           await this.ensureFileRulesScanned();
           this.assertFileRulesScanned();
+          await this.syncPullService.recoverPendingWrites();
           return await this.syncPushService.pushPendingMutations(session, report, shouldYield, options);
         }),
       unblockFileSizeBlockedMutations: async (session) =>
@@ -264,10 +267,10 @@ export class SyncEngine {
           }
           return unblocked;
         }),
-      pullOnce: async (session) =>
+      pullOnce: async (session, mode) =>
         await this.withSyncActivity("pull", async (report) => {
-          await this.ensureFileRulesScanned();
-          return await this.syncPullService.pullOnce(session, report);
+          if (mode !== "read-only") await this.ensureFileRulesScanned();
+          return await this.syncPullService.pullOnce(session, report, mode);
         }),
       recoverEntryStates: async (session, entryIds) =>
         await this.withSyncActivity("pull", async (report) => {
@@ -346,6 +349,7 @@ export class SyncEngine {
       },
     });
     this.syncPullService = new SyncPullService({
+      onLocalMutationQueued: () => this.notifyLocalChange(),
       getDeviceFileRulesVersion: () => this.fileRulesVersion || undefined,
       assertFileRulesScanned: () => this.assertFileRulesScanned(),
       isDeviceFileExcluded,
@@ -498,7 +502,10 @@ export class SyncEngine {
     this.deps.changeSource.start({
       eventRecorder: this.syncEventRecorder,
       notifyLocalChange: () => this.notifyLocalChange(),
-      runLocalMutationWork: async (work) => await this.runLocalMutationWork(work),
+      // Record the destination while the old path still identifies the entry.
+      // Recovery can then rebase the rename onto the installed remote revision.
+      runLocalMutationWork: (work, operation) =>
+        this.runLocalMutationWork(work, operation === "rename" ? "after" : "before"),
       hasActiveRemoteVaultSession: () => this.deps.hasActiveRemoteVaultSession(),
       onError: (error) => {
         void this.deps.onSyncError(error, "sync_event_handling");
@@ -767,12 +774,14 @@ export class SyncEngine {
     return await this.syncAutoLoop.withRealtimeSession(work);
   }
 
-  private runLocalMutationWork<T>(work: () => Promise<T>): Promise<T> {
+  private runLocalMutationWork<T>(work: () => Promise<T>, recover: "before" | "after" = "before"): Promise<T> {
     this.localMutationWorkCount += 1;
-    const run = this.localMutationQueue.then(
-      () => this.withSyncActivity("local", work),
-      () => this.withSyncActivity("local", work),
-    );
+    const run = this.localMutationQueue.then(async () => {
+      if (recover === "before") await this.syncPullService.recoverPendingWrites();
+      const result = await this.withSyncActivity("local", work);
+      if (recover === "after") await this.syncPullService.recoverPendingWrites();
+      return result;
+    });
     this.localMutationQueue = run.then(
       () => {
         this.localMutationWorkCount -= 1;

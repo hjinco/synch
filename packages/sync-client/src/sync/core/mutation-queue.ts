@@ -1,9 +1,30 @@
 import { metadataContextFromPendingMutation } from "./mutation-metadata";
-import { createSyncCryptoContext, type SyncCryptoContext } from "./crypto";
+import { createSyncCryptoContext, decryptSyncMetadata, type SyncCryptoContext } from "./crypto";
+import type { SyncVaultPathAliases } from "../vault/ports";
 import type { SyncMutationStore } from "../store/ports";
 import type { PendingMutationRow } from "../store/store";
 
 export type PendingMutationWriter = Pick<SyncMutationStore, "replaceDirtyEntry">;
+
+/** Content edits retain the remote spelling of a path mapped onto a shared
+ * local directory. An explicit pending rename already carries its own spelling. */
+export async function pathForLocalEdit({
+  path, localPath, remotePath, vault, getPending, getRemoteVaultKey,
+}: {
+  path: string;
+  localPath: string | null | undefined;
+  remotePath: string | null | undefined;
+  vault: SyncVaultPathAliases;
+  getPending: () => PendingMutationRow | null | Promise<PendingMutationRow | null>;
+  getRemoteVaultKey: () => Uint8Array;
+}): Promise<string> {
+  if (path !== localPath || !remotePath || remotePath === path ||
+      !await vault.areSameFilePaths?.(path, remotePath)) return path;
+  const pending = await getPending();
+  if (pending?.op !== "upsert") return remotePath;
+  return (await decryptSyncMetadata(getRemoteVaultKey(), pending.encryptedMetadata,
+    metadataContextFromPendingMutation(pending))).path;
+}
 
 export interface QueueLocalUpsertMutationInput {
   remoteVaultKey: Uint8Array;

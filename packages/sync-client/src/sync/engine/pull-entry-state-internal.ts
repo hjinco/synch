@@ -1,12 +1,15 @@
 import type { FileTransferLog } from "../diagnostics/file-transfer";
-import type { SyncedEntryMetadata } from "../core/content";
+import type { HashedBytes, SyncedEntryMetadata } from "../core/content";
 import type { RemoteEntryState } from "../remote/changes";
 import type {
   PendingMutationRow,
   SyncEntryRow,
+  TextMergeIntent,
 } from "../store/store";
 
 export const DEFAULT_PREPARE_CONCURRENCY = 25;
+
+export type PullMode = "bidirectional" | "read-only";
 
 export interface PullConflictEvent {
   entryId: string;
@@ -45,6 +48,7 @@ export type PlannedEntryState = {
 };
 
 export type PlannedVaultMove = {
+  kind: "rename" | "alias";
   from: string;
   to: string;
 };
@@ -56,6 +60,8 @@ export type AdoptedLocalEntry = {
 };
 
 export type PreparedEntryBlob = {
+  /** Incoming ciphertext for an uncached file on a non-atomic host. */
+  journalCiphertext?: Uint8Array;
   transfer: FileTransferLog;
   plan: PlannedEntryState;
   bytes: Uint8Array;
@@ -64,21 +70,23 @@ export type PreparedEntryBlob = {
 export type PreparedPendingMerge =
   | {
       kind: "local";
+      sourceText: string;
       bytes: Uint8Array;
-      blobId: string;
-      hash: string;
-      encryptedMetadata: string;
-      path: string;
+      intent: TextMergeIntent;
     }
-  | {
-      kind: "remote";
-    };
+  | { kind: "remote-text"; sourceText: string }
+  | { kind: "keep-source"; merged: HashedBytes; intent: TextMergeIntent }
+  | { kind: "already-present" }
+  | { kind: "remote" };
 
-export type PreparedPendingConflict = {
-  plan: PlannedEntryState;
+export type PreparedConflictCopy = {
   pending: PendingMutationRow;
   event: PullConflictEvent | null;
   conflictBytes: Uint8Array | null;
+};
+
+export type PreparedPendingConflict = PreparedConflictCopy & {
+  plan: PlannedEntryState;
   merge: PreparedPendingMerge | null;
 };
 
@@ -191,12 +199,4 @@ export function requireBlobId(state: RemoteEntryState): string {
     throw new Error(`Entry state ${state.entryId}@${state.revision} is missing a blob.`);
   }
   return state.blobId;
-}
-
-export function decodeUtf8(bytes: Uint8Array): string | null {
-  try {
-    return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
-  } catch {
-    return null;
-  }
 }

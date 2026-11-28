@@ -18,7 +18,7 @@ import type {
 } from "../store/ports";
 import type { PendingMutationBlockedReason } from "../store/store";
 import type { PushBlobRetryCache } from "./push-blob-retry-cache";
-import type { SyncVaultPathExclusions } from "../vault/ports";
+import type { SyncVaultPathAliases, SyncVaultPathExclusions } from "../vault/ports";
 
 export interface PushMutationCommitterDeps extends SyncContentRuntimeDeps {
   diagnostics?: SyncDiagnostics;
@@ -35,7 +35,7 @@ export interface PushMutationCommitterDeps extends SyncContentRuntimeDeps {
   now?: () => number;
 }
 
-export interface LocalFileReader extends SyncVaultPathExclusions {
+export interface LocalFileReader extends SyncVaultPathExclusions, SyncVaultPathAliases {
   readBytes(path: string): Promise<Uint8Array>;
   /** Optional stat lookup used to reserve memory before readBytes starts. */
   getFileSize?(path: string): Promise<number>;
