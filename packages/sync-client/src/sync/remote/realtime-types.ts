@@ -6,14 +6,14 @@ import type {
 import type { PresenceSelection } from "../core/presence";
 
 export interface SyncRealtimeCallbacks {
-  onCursorAdvanced(cursor: number): void;
-  onStorageStatusUpdated(status: SyncStorageStatus): void;
-  onPolicyUpdated(policy: SyncPolicy, storageStatus: SyncStorageStatus): void;
-  onPresenceUpdated(update: PresenceUpdatedPush): void;
-  onPresenceCleared(presenceId: string): void;
-  onPresenceAvailabilityChanged(enabled: boolean): void;
-  onClose(event: { code: number; reason: string }): void;
-  onError(error: Error): void;
+  onCursorAdvanced: (cursor: number) => void;
+  onStorageStatusUpdated: (status: SyncStorageStatus) => void;
+  onPolicyUpdated: (policy: SyncPolicy, storageStatus: SyncStorageStatus) => void;
+  onPresenceUpdated: (update: PresenceUpdatedPush) => void;
+  onPresenceCleared: (presenceId: string) => void;
+  onPresenceAvailabilityChanged: (enabled: boolean) => void;
+  onClose: (event: { code: number; reason: string }) => void;
+  onError: (error: Error) => void;
 }
 
 export type PresenceUpdatedPush = {
