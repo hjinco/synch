@@ -147,7 +147,7 @@ export class PullBlobPreparer {
     reservation?: ContentReservation,
   ): Promise<Uint8Array> {
     const blobId = requireBlobId(plan.state);
-    const encryptedBytes = await this.downloadEntryBlob(token, plan.state);
+    let encryptedBytes: Uint8Array | undefined = await this.downloadEntryBlob(token, plan.state);
     if (plan.state.blobSize != null && encryptedBytes.byteLength !== plan.state.blobSize) {
       throw new Error(`Entry state ${plan.state.entryId} blob size does not match metadata.`);
     }
@@ -159,6 +159,10 @@ export class PullBlobPreparer {
       encryptedBytes,
       { blobId },
     );
+    // Only an auto-merge base needs its ciphertext after decryption.
+    if (!plan.finalPath || !isAutoMergeTextPath(plan.finalPath)) {
+      encryptedBytes = undefined;
+    }
     const hashed = await this.contentRuntime.hashAndReturnBytes(bytes);
     bytes = hashed.bytes;
     const actualHash = hashed.hash;
@@ -167,7 +171,7 @@ export class PullBlobPreparer {
         `Entry state ${plan.state.entryId}@${plan.state.revision} hash does not match metadata.`,
       );
     }
-    if (plan.finalPath && isAutoMergeTextPath(plan.finalPath)) {
+    if (encryptedBytes) {
       await store.putBlob({
         blobId,
         hash: actualHash,
