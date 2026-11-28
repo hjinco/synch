@@ -94,6 +94,10 @@ export interface SyncControllerDeps {
 export class SyncController {
   private syncStatus: UserVisibleSyncState = "not_ready";
   private reconcileCount = 0;
+  private changingFileRules = false;
+  private pendingFileRuleChange: symbol | null = null;
+  private fileRuleSaves: Promise<void> = Promise.resolve();
+  private fileRuleUpdates: Promise<void> = Promise.resolve();
   private syncProgress: UserVisibleSyncProgress = {
     completedEntries: 0,
     totalEntries: 0,
@@ -107,7 +111,7 @@ export class SyncController {
     getSyncFileRules: () => this.deps.getSyncFileRules(),
     getConflictPolicy: () => this.deps.getConflictPolicy?.() ?? "conflict-copy",
     getVaultConfigSyncRules: () => this.deps.getVaultConfigSyncRules(),
-    shouldDeferSyncWork: () => this.deps.getSyncIntervalMs() > 0,
+    shouldDeferSyncWork: () => this.changingFileRules || this.deps.getSyncIntervalMs() > 0,
     hasActiveRemoteVaultSession: () => this.deps.hasActiveRemoteVaultSession(),
     diagnostics: this.deps.diagnostics,
     onSyncError: (error, phase) => {
@@ -168,6 +172,7 @@ export class SyncController {
     try {
       await this.syncEngine.closeStore();
       this.syncEngine.setStore(await createDexieSyncStore(this.deps.plugin));
+      this.syncEngine.invalidateDeviceFileRules();
       await this.syncEngine.getOrCreateLocalVaultId(remoteVaultId);
       await this.syncEngine.refreshSyncProgress();
     } catch (error) {
@@ -436,6 +441,7 @@ export class SyncController {
   }
 
   async syncNow(): Promise<void> {
+    await this.fileRuleUpdates;
     if (this.serverPaused) return;
     if (!this.deps.hasActiveRemoteVaultSession() || !this.deps.hasAuthenticatedSession()) {
       return;
@@ -452,6 +458,49 @@ export class SyncController {
     } catch (error) {
       await this.handleSyncError(error, "auto_sync");
     }
+  }
+
+  updateDeviceFileRules(save: (onChange: () => void) => Promise<boolean>): Promise<void> {
+    // A no-op queued behind a real change must still drain that change.
+    const saved = this.fileRuleSaves.then(async () => {
+      let changed = false;
+      const syncEnabled = await save(() => {
+        changed = true;
+        this.pendingFileRuleChange = Symbol();
+        this.changingFileRules = true;
+        this.clearPeriodicSyncTimer();
+        this.syncEngine.invalidateDeviceFileRules();
+      });
+      if (changed && !syncEnabled) this.pendingFileRuleChange = null;
+    });
+    const latestSave = saved.then(() => {}, () => {});
+    this.fileRuleSaves = latestSave;
+    const update = this.fileRuleUpdates.then(async () => {
+      try {
+        await saved;
+        const change = this.pendingFileRuleChange;
+        if (this.fileRuleSaves !== latestSave || !change || this.serverPaused ||
+            !this.syncEngine.hasStore() || !this.deps.hasActiveRemoteVaultSession()) return;
+        await this.periodicSyncPromise;
+        await this.syncEngine.flushDebouncedPushAndWaitForInFlight();
+        await this.reconcileForSync("local_change");
+        if (this.pendingFileRuleChange !== change) return;
+        this.pendingFileRuleChange = null;
+        this.syncEngine.refreshHiddenFolderReconcileTimer();
+        this.changingFileRules = false;
+        if (await this.syncEngine.syncNow()) this.recordSyncCompleted("local_change");
+      } catch (error) {
+        if (this.fileRuleSaves === latestSave) await this.handleSyncError(error, "file_rule_update");
+      } finally {
+        if (this.fileRuleSaves === latestSave) {
+          this.pendingFileRuleChange = null;
+          this.changingFileRules = false;
+          this.scheduleNextPeriodicSync();
+        }
+      }
+    });
+    this.fileRuleUpdates = update.catch(() => {});
+    return update;
   }
 
   async reconcileAfterFileRuleChange(): Promise<void> {
@@ -629,14 +678,18 @@ export class SyncController {
   }
 
   private async runSyncCycle(source: "manual" | "periodic"): Promise<void> {
+    await this.reconcileForSync(source);
+    if (await this.syncEngine.syncNow()) {
+      this.recordSyncCompleted(source);
+    }
+  }
+
+  private async reconcileForSync(source: "manual" | "periodic" | "local_change"): Promise<void> {
     this.recordSyncStarted(source);
     this.setSyncStatus("syncing");
     const reconcile = await this.syncEngine.reconcileOnce();
     this.recordSyncReconciled(source, reconcile);
     await this.syncEngine.waitForLocalMutationWork();
-    if (await this.syncEngine.syncNow()) {
-      this.recordSyncCompleted(source);
-    }
   }
 
   private async runPeriodicSyncCycle(): Promise<void> {
@@ -652,7 +705,7 @@ export class SyncController {
 
   private scheduleNextPeriodicSync(): void {
     const intervalMs = this.deps.getSyncIntervalMs();
-    if (!this.periodicSyncEnabled || intervalMs <= 0 || this.periodicSyncTimer) {
+    if (this.changingFileRules || !this.periodicSyncEnabled || intervalMs <= 0 || this.periodicSyncTimer) {
       return;
     }
 

@@ -22,6 +22,7 @@ export async function loadRecoveryManifest(
   store: PullEntryStateStore & SyncCursorStore,
   entryIds: string[],
   deps: {
+    targetCursor?: number;
     applier: Pick<PullEntryStateApplier, "createManifestItems">;
     shouldApplyRemotePath?: (path: string, deleted: boolean) => boolean;
     onItems: (items: PullEntryStateManifestItem[]) => Promise<void>;
@@ -33,7 +34,7 @@ export async function loadRecoveryManifest(
   const queue = [...queued];
   const manifest = new Map<string, PullEntryStateManifestItem>();
   const requiredOwners = new Map<string, number>();
-  let targetCursor: number | null = null;
+  let targetCursor: number | null = deps.targetCursor ?? null;
 
   for (let offset = 0; offset < queue.length;) {
     const batch = queue.slice(offset, offset + RECOVERY_BATCH_SIZE);

@@ -2,7 +2,10 @@ import { ApiRequestError } from "@synch/sync-client/http";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { SyncTokenResponse } from "@synch/sync-client/remote";
-import { DEFAULT_SYNC_FILE_RULES, DEFAULT_VAULT_CONFIG_SYNC_RULES } from "@synch/sync-client/core";
+import { DEFAULT_SYNC_FILE_RULES, DEFAULT_VAULT_CONFIG_SYNC_RULES, hashBytes, type SyncFileRules } from "@synch/sync-client/core";
+import { InMemoryVaultAdapter } from "@synch/sync-client/testing";
+import { createDexieSyncStore } from "../adapters/dexie-store";
+import { ObsidianSyncVaultAdapter } from "../adapters/vault-adapter";
 
 import { createTestPlugin } from "../test-support/test-plugin";
 import { t } from "../i18n";
@@ -14,6 +17,75 @@ describe("SyncController", () => {
   afterEach(() => {
     vi.restoreAllMocks();
     vi.useRealTimers();
+  });
+
+  it("reconciles a reused source path against its original remote revision when excluding a pending rename", async () => {
+    const plugin = createTestPlugin();
+    const vault = new InMemoryVaultAdapter();
+    const rules: SyncFileRules = { ...DEFAULT_SYNC_FILE_RULES, excludedFolders: [] };
+    const controller = new SyncController(createDeps({ plugin, getSyncFileRules: () => rules }));
+    vi.spyOn(ObsidianSyncVaultAdapter.prototype, "listFiles").mockImplementation(async () =>
+      (await vault.listFiles()).filter(file => controller.shouldSyncPath(file.path)));
+    await controller.initializeStore("vault-1");
+    const store = await createDexieSyncStore(plugin);
+    try {
+      const path = "a.pdf";
+      const moved = "Archive/a.pdf";
+      await vault.writeText(moved, "original");
+      await store.upsertEntry({
+        entryId: "original", path, revision: 1, blobId: "original-blob", hash: await hashBytes(await vault.readBytes(moved)),
+        deleted: false, updatedAt: 1, localMtime: null, localSize: null,
+      });
+      await controller.syncNow();
+      expect(await store.getEntryByPath(moved)).toMatchObject({ entryId: "original" });
+      await vault.writeText(path, "replacement");
+      await controller.syncNow();
+      expect(await store.listDirtyEntries()).toHaveLength(2);
+      await controller.updateDeviceFileRules(async (changed) => { changed(); rules.excludedFolders = ["Archive"]; return true; });
+      const replacementHash = await hashBytes(await vault.readBytes(path));
+      expect(await store.getEntryByPath(path)).toMatchObject({ entryId: "original", hash: replacementHash });
+      expect(await store.listDirtyEntries()).toMatchObject([{ entryId: "original", baseRevision: 1, hash: replacementHash }]);
+      expect(await vault.readText(moved)).toBe("original");
+      await controller.updateDeviceFileRules(async (changed) => { changed(); rules.excludedFolders = []; return true; });
+      const archived = await store.getEntryByPath(moved);
+      expect(archived?.entryId).toBeDefined();
+      expect(archived?.entryId).not.toBe("original");
+      expect(await store.listDirtyEntries()).toHaveLength(2);
+    } finally {
+      await store.close();
+      await controller.stop();
+    }
+  });
+
+  it("saves rapid rule changes before draining transfers and scans the latest selection once", async () => {
+    const order: string[] = [];
+    const drain = vi.spyOn(SyncEngine.prototype, "flushDebouncedPushAndWaitForInFlight").mockImplementation(async () => {
+      order.push("drain");
+    });
+    vi.spyOn(SyncEngine.prototype, "hasStore").mockReturnValue(true);
+    vi.spyOn(SyncEngine.prototype, "reconcileOnce").mockImplementation(async () => {
+      order.push("scan");
+      return { filesScanned: 1, filesQueuedForUpsert: 1, filesQueuedForDelete: 0 };
+    });
+    vi.spyOn(SyncEngine.prototype, "syncNow").mockImplementation(async () => {
+      order.push("sync");
+      return true;
+    });
+    const controller = new SyncController(createDeps());
+    const update = () => controller.updateDeviceFileRules(async (onChange) => {
+      onChange();
+      order.push("save");
+      return true;
+    });
+    const noChange = () => controller.updateDeviceFileRules(async () => false);
+    const invalidate = vi.spyOn(SyncEngine.prototype, "invalidateDeviceFileRules");
+    await noChange();
+    expect(invalidate).not.toHaveBeenCalled();
+    expect(order).toEqual([]);
+    await Promise.all([update(), update(), noChange()]);
+    expect(invalidate).toHaveBeenCalledTimes(2);
+    expect(order).toEqual(["save", "save", "drain", "scan", "sync"]);
+    expect(drain).toHaveBeenCalledTimes(1);
   });
 
   it("keeps realtime connected and reschedules file sync cycles in periodic mode", async () => {

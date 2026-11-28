@@ -132,7 +132,7 @@ export const ko = {
     "excluded.selectHint": "이 기기에서 절대 동기화하지 않을 폴더를 선택하세요.",
     "fileSync.audioDesc": "이 기기에서 오디오 첨부 파일을 동기화합니다.",
     "fileSync.header": "파일 동기화",
-    "fileSync.hint": "파일 동기화 규칙은 이 기기에만 적용됩니다. 여기에서 제외해도 이미 서버에 업로드된 파일은 자동으로 제거되지 않습니다.",
+    "fileSync.hint": "이 기기에서 업로드하고 다운로드할 파일을 선택합니다. 파일을 제외해도 기기와 서버에 있는 사본은 유지됩니다.",
     "fileSync.imagesDesc": "이 기기에서 이미지 첨부 파일을 동기화합니다.",
     "fileSync.other": "기타 파일 형식",
     "fileSync.otherDesc": "이 기기에서 추가 non-markdown 파일 형식을 동기화합니다.",

@@ -137,7 +137,7 @@ export const zhCn = {
     "excluded.selectHint": "选择不应从此设备同步的文件夹。",
     "fileSync.audioDesc": "在此设备上同步音频附件。",
     "fileSync.header": "文件同步",
-    "fileSync.hint": "文件同步规则仅适用于此设备。在这里排除文件不会自动删除已上传到服务器的文件。",
+    "fileSync.hint": "选择此设备上传和下载的文件。排除文件后，此设备和服务器上已有的副本会保留。",
     "fileSync.imagesDesc": "在此设备上同步图片附件。",
     "fileSync.other": "其他文件类型",
     "fileSync.otherDesc": "在此设备上同步其他非 Markdown 文件类型。",

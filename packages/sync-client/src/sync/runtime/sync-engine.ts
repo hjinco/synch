@@ -1,3 +1,4 @@
+import { DeviceFileRulesChangedError } from "../engine/device-file-selection";
 import type { SyncConflictPolicy } from "../core/conflict-policy";
 import {
   isOffline as detectOffline,
@@ -19,6 +20,7 @@ import type { PresenceSelection } from "../core/presence";
 import type { VaultConfigSyncRules } from "../core/vault-config-rules";
 import {
   decideVaultPathSync,
+  isExcludedByDeviceFileRules,
   shouldApplyRemoteVaultPath,
   shouldUseLatestRemoteVaultConfig,
   type VaultPathPolicyRules,
@@ -124,6 +126,8 @@ export interface SyncEngineDeps {
 }
 
 export class SyncEngine {
+  private fileRulesVersion = 0;
+  private scannedFileRulesVersion = 0;
   private syncStore: SyncStore | null = null;
   private localMutationQueue: Promise<void> = Promise.resolve();
   private localMutationWorkCount = 0;
@@ -157,6 +161,8 @@ export class SyncEngine {
     this.contentRuntime = deps.contentRuntime ?? new SyncContentRuntime({ maxBytesInFlight: deps.maxBytesInFlight });
     this.vaultAdapter = deps.vaultAdapter;
     this.vaultConfigSource = deps.vaultConfigSource;
+    const isDeviceFileExcluded = (path: string) => !!this.syncStore?.deferredFiles &&
+      isExcludedByDeviceFileRules(path, this.vaultPathPolicyRules());
     this.syncEventRecorder = new SyncEventRecorder({
       requireLocalStateForDelete: !!this.vaultAdapter.isExcludedPath,
       getSyncStore: () => this.syncStore,
@@ -173,6 +179,8 @@ export class SyncEngine {
     });
     this.syncBlobClient = new SyncBlobClient(this.syncRequestClient, this.transferScheduler);
     this.syncPushService = new SyncPushService({
+      isDeviceFileExcluded,
+      getDeviceFileRulesVersion: () => this.fileRulesVersion,
       diagnostics: this.deps.diagnostics,
       getSyncToken: async () => await this.deps.getSyncToken(),
       getSyncStore: () => this.syncStore,
@@ -208,6 +216,7 @@ export class SyncEngine {
       },
     });
     this.syncLocalReconcileService = new SyncLocalReconcileService({
+      isDeviceFileExcluded,
       getSyncStore: () => this.syncStore,
       getRemoteVaultKey: () => this.deps.getRemoteVaultKey(),
       shouldSyncPath: (path) =>
@@ -228,6 +237,8 @@ export class SyncEngine {
       contentRuntime: this.contentRuntime,
     });
     this.syncAutoLoop = new SyncAutoLoop({
+      isDeferredEntry: async (id) => !!await this.syncStore?.deferredFiles?.get(id),
+      hasNewlyIncludedFiles: () => this.syncPullService.hasNewlyIncludedFiles(),
       getApiBaseUrl: () => this.deps.getApiBaseUrl(),
       getSyncToken: async () => await this.deps.getSyncToken(),
       getSyncStore: () => this.syncStore,
@@ -239,6 +250,8 @@ export class SyncEngine {
       }),
       pushPendingMutations: async (session, shouldYield, options) =>
         await this.withSyncActivity("push", async (report) => {
+          await this.ensureFileRulesScanned();
+          this.assertFileRulesScanned();
           return await this.syncPushService.pushPendingMutations(session, report, shouldYield, options);
         }),
       unblockFileSizeBlockedMutations: async (session) =>
@@ -253,10 +266,12 @@ export class SyncEngine {
         }),
       pullOnce: async (session) =>
         await this.withSyncActivity("pull", async (report) => {
+          await this.ensureFileRulesScanned();
           return await this.syncPullService.pullOnce(session, report);
         }),
       recoverEntryStates: async (session, entryIds) =>
         await this.withSyncActivity("pull", async (report) => {
+          await this.ensureFileRulesScanned();
           await this.syncPullService.recoverEntryStates(session, entryIds, report);
         }),
       shouldDeferSyncWork: () => this.deps.shouldDeferSyncWork(),
@@ -331,6 +346,9 @@ export class SyncEngine {
       },
     });
     this.syncPullService = new SyncPullService({
+      getDeviceFileRulesVersion: () => this.fileRulesVersion || undefined,
+      assertFileRulesScanned: () => this.assertFileRulesScanned(),
+      isDeviceFileExcluded,
       diagnostics: this.deps.diagnostics,
       getConflictPolicy: this.deps.getConflictPolicy,
       onRemoteStatesChange: () => this.deps.onBlockedSyncFilesChange?.(),
@@ -376,9 +394,13 @@ export class SyncEngine {
       blobClient: this.syncBlobClient,
       contentRuntime: this.contentRuntime,
       withRealtimeSession: async (work) => await this.withRealtimeSession(work),
-      runLocalMutationWork: async (work) => await this.runLocalMutationWork(work),
+      runLocalMutationWork: async (work) => {
+        await this.ensureFileRulesScanned();
+        return await this.runLocalMutationWork(work);
+      },
       pullOnce: async (session) => {
         await this.withSyncActivity("pull", async (report) => {
+          this.assertFileRulesScanned();
           await this.syncPullService.pullOnce(session, report);
         });
       },
@@ -545,10 +567,31 @@ export class SyncEngine {
     this.deps.onReconcileStatusChange?.(true);
     try {
       return await this.runLocalMutationWork(async () => {
-        return await this.syncLocalReconcileService.reconcileOnce();
+        const version = this.fileRulesVersion;
+        const result = await this.syncLocalReconcileService.reconcileOnce(() => {
+          if (version !== this.fileRulesVersion) throw new DeviceFileRulesChangedError();
+        });
+        this.scannedFileRulesVersion = version;
+        return result;
       });
     } finally {
       this.deps.onReconcileStatusChange?.(false);
+    }
+  }
+
+  invalidateDeviceFileRules(): void {
+    this.fileRulesVersion++;
+  }
+
+  private async ensureFileRulesScanned(): Promise<void> {
+    if (this.scannedFileRulesVersion === this.fileRulesVersion) return;
+    await this.reconcileOnce();
+    this.assertFileRulesScanned();
+  }
+
+  private assertFileRulesScanned(): void {
+    if (this.scannedFileRulesVersion !== this.fileRulesVersion) {
+      throw new DeviceFileRulesChangedError();
     }
   }
 

@@ -1,3 +1,5 @@
+import Dexie from "dexie/dist/dexie.mjs";
+import { getOrCreateLocalVaultId } from "./dexie-store/local-vault";
 import { decryptSyncMetadata, encryptSyncMetadata } from "@synch/sync-client/core";
 import type { PendingMutationRow } from "@synch/sync-client/store";
 import { SyncDexieDatabase, syncStoreDbName, METADATA_ID } from "./dexie-store/database";
@@ -12,6 +14,82 @@ import {
 } from "./dexie-store";
 
 describe("DexieSyncStore", () => {
+  it("swaps local path owners in one scan while preserving their remote baselines", async () => {
+    const store = await createDexieSyncStore(createPlugin());
+    try {
+      const baseline = { revision: 1, deleted: false, localMtime: null, localSize: null, updatedAt: 1 };
+      const first = { ...baseline, entryId: "a", path: "a.pdf", blobId: "blob-a", hash: "hash-a" };
+      const second = { ...baseline, entryId: "b", path: "b.pdf", blobId: "blob-b", hash: "hash-b" };
+      await store.upsertEntry(first);
+      await store.upsertEntry(second);
+      const counts = await store.countSyncProgress();
+      await store.applyReconcileEntryUpdates([
+        { entryId: first.entryId, local: { ...first, path: second.path } },
+        { entryId: second.entryId, local: { ...second, path: first.path } },
+      ]);
+      expect((await store.getLocalStateByPath(first.path))?.entryId).toBe(second.entryId);
+      expect((await store.getRemoteStateByPath(first.path))?.entryId).toBe(first.entryId);
+      expect((await store.getLocalStateByPath(second.path))?.entryId).toBe(first.entryId);
+      expect(await store.countSyncProgress()).toEqual(counts);
+    } finally {
+      await store.close();
+    }
+  });
+
+  it("releases a deferred move's remote path while preserving an offline local rename", async () => {
+    const store = await createDexieSyncStore(createPlugin());
+    try {
+      const original = {
+        entryId: "original", path: "a.md", revision: 1, blobId: "blob", hash: "hash",
+        deleted: false, updatedAt: 1, localMtime: null, localSize: null,
+      };
+      await store.upsertEntry(original);
+      await store.markEntryDirty({
+        entryId: original.entryId, mutationId: "rename", op: "upsert", baseRevision: 1,
+        baseBlobId: "blob", baseHash: "hash", blobId: "blob", hash: "hash", createdAt: 2,
+        encryptedMetadata: await encryptSyncMetadata(new Uint8Array(32), { path: "b.md", hash: "hash" }, {
+          entryId: original.entryId, revision: 2, op: "upsert", blobId: "blob",
+        }),
+      });
+      await store.applyLocalState({ ...original, path: "b.md" });
+      const before = await store.getEntryStateById(original.entryId);
+      const marker = { entryId: original.entryId, path: "Archive/a.md", revision: 2 };
+      await store.deferredFiles?.put([marker]);
+      await store.upsertEntry({ ...original, entryId: "replacement" });
+      expect(await store.getEntryByPath("a.md")).toMatchObject({ entryId: "replacement" });
+      expect(await store.getEntryByPath("b.md")).toMatchObject({ entryId: "original" });
+      expect(await store.getEntryStateById(original.entryId)).toMatchObject({
+        base: before?.base, local: before?.local, dirty: before?.dirty, remote: { revision: 1 },
+      });
+      expect(await store.deferredFiles?.get(original.entryId)).toEqual(marker);
+    } finally {
+      await store.close();
+    }
+  });
+
+  it("preserves the v1 checkpoint and persists deferred files independently of applied revisions", async () => {
+    const plugin = createPlugin();
+    const old = new Dexie(syncStoreDbName(getOrCreateLocalVaultId(plugin)));
+    old.version(1).stores({
+      metadata: "&id", entries: "&entryId,&remotePathKey,&localPathKey,dirty,pendingStatus,pendingMutationId,[dirty+pendingCreatedAt+entryId],[pendingStatus+pendingCreatedAt+entryId]",
+      blobs: "&blobId,hash,role,refEntryId,cachedAt",
+    });
+    await old.table("metadata").put({ id: METADATA_ID, remoteVaultId: "remote", lastPulledCursor: 12 });
+    old.close();
+
+    const store = await createDexieSyncStore(plugin);
+    expect(await store.getCursor()).toBe(12);
+    const file = { entryId: "pdf", path: "report.pdf", revision: 3 };
+    await store.deferredFiles?.put([file]);
+    await store.close();
+    const reopened = await createDexieSyncStore(plugin);
+    expect(await reopened.deferredFiles?.list()).toEqual([file]);
+    expect(await reopened.getRemoteStateById("pdf")).toBeNull();
+    await reopened.deferredFiles?.remove(["pdf"]);
+    expect(await reopened.deferredFiles?.list()).toEqual([]);
+    await reopened.close();
+  });
+
   it("creates and persists entry ids by path", async () => {
     const plugin = createPlugin();
 

@@ -6,6 +6,7 @@ import type { TestVault } from "./account";
 import { DeviceNetwork } from "./network";
 
 export class Device {
+  private fileRules = { ...DEFAULT_SYNC_FILE_RULES };
   readonly vault = new InMemoryVaultAdapter();
   readonly store = createTestSyncStore();
   readonly network = new DeviceNetwork();
@@ -25,7 +26,7 @@ export class Device {
       httpClient: this.network.httpClient, createWebSocket: this.network.createWebSocket,
       getApiBaseUrl: () => baseUrl, getSyncToken: () => remote.token(this.localVaultId), invalidateSyncToken() {},
       getRemoteVaultKey: () => this.key, getConfigDir: () => ".obsidian",
-      getSyncFileRules: () => DEFAULT_SYNC_FILE_RULES, getVaultConfigSyncRules: () => DEFAULT_VAULT_CONFIG_SYNC_RULES,
+      getSyncFileRules: () => this.fileRules, getVaultConfigSyncRules: () => DEFAULT_VAULT_CONFIG_SYNC_RULES,
       shouldDeferSyncWork: () => false, hasActiveRemoteVaultSession: () => true, isOffline: () => false,
       diagnostics: this.diagnostics, onSyncError: error => { this.errors.push(error); },
       notifySyncConflict: event => { this.conflicts.push(event); },
@@ -39,6 +40,10 @@ export class Device {
   async initialize(remote: TestVault) {
     this.localVaultId = await this.store.readLocalVaultId();
     await this.store.writeSyncConnection({ localVaultId: this.localVaultId, remoteVaultId: remote.id, lastPulledCursor: 0 });
+  }
+  updateFileRules(changes: Partial<typeof this.fileRules>) {
+    this.fileRules = { ...this.fileRules, ...changes };
+    this.engine.invalidateDeviceFileRules();
   }
   async connect() { await this.engine.startAutoSync(); }
   async disconnect() {

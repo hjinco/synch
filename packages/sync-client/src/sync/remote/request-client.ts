@@ -13,6 +13,7 @@ export interface SyncAuthorizedRequestClientDeps {
 }
 
 export interface SyncAuthorizedRequestInput {
+  beforeRequest?: () => void;
   path: (token: SyncTokenResponse) => string;
   method?: string;
   headers?: Record<string, string>;
@@ -32,6 +33,7 @@ export class SyncAuthorizedRequestClient {
 
     while (true) {
       const token = await this.deps.getSyncToken();
+      input.beforeRequest?.();
       const response = await this.deps.httpClient.request({
         url: `${stripTrailingSlash(this.deps.getApiBaseUrl())}${input.path(token)}`,
         method: input.method ?? "GET",

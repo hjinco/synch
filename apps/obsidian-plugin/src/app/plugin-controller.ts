@@ -592,11 +592,15 @@ export class SynchPluginController implements SynchSettingsController {
     this.syncController.clearPresence();
   }
 
+  private cachedFileRules?: { source: SyncFileRules; configDir: string; normalized: SyncFileRules };
+
   getSyncFileRules(): SyncFileRules {
-    return normalizeSyncFileRules(
-      this.settingsStore.getSnapshot().fileRules,
-      this.configDir(),
-    );
+    const source = this.settingsStore.getSnapshot().fileRules;
+    const configDir = this.configDir();
+    if (this.cachedFileRules?.source !== source || this.cachedFileRules.configDir !== configDir) {
+      this.cachedFileRules = { source, configDir, normalized: normalizeSyncFileRules(source, configDir) };
+    }
+    return this.cachedFileRules.normalized;
   }
 
   getVaultConfigSyncRules(): VaultConfigSyncRules {
@@ -618,21 +622,18 @@ export class SynchPluginController implements SynchSettingsController {
     value: SyncFileRules[K],
   ): Promise<void> {
     await this.updateSyncFileRules({
-      ...this.getSyncFileRules(),
       [key]: value,
     });
   }
 
   async updateExcludedFolders(paths: string[]): Promise<void> {
     await this.updateSyncFileRules({
-      ...this.getSyncFileRules(),
       excludedFolders: paths,
     });
   }
 
   async updateIncludedHiddenFolders(paths: string[]): Promise<void> {
     await this.updateSyncFileRules({
-      ...this.getSyncFileRules(),
       includedHiddenFolders: paths,
     });
   }
@@ -891,21 +892,16 @@ export class SynchPluginController implements SynchSettingsController {
     this.emitUiEvent({ type: "storage-status-changed" });
   }
 
-  private async updateSyncFileRules(nextRules: SyncFileRules): Promise<void> {
-    const changed = await this.settingsStore.updateFileRules(
-      nextRules,
-      this.configDir(),
-    );
-    if (!changed) {
-      return;
-    }
-
-    if (!this.isSyncEnabled()) {
+  private async updateSyncFileRules(changes: Partial<SyncFileRules>): Promise<void> {
+    await this.syncController.updateDeviceFileRules(async (onChange) => {
+      const changed = await this.settingsStore.updateFileRules(
+        { ...this.getSyncFileRules(), ...changes }, this.configDir(), onChange,
+      );
+      if (!changed) return false;
+      if (this.isSyncEnabled()) return true;
       this.syncController.stopAutoSyncAndMarkPaused();
-      return;
-    }
-
-    await this.syncController.reconcileAfterFileRuleChange();
+      return false;
+    });
   }
 
   private async updateVaultConfigSyncRules(

@@ -1,3 +1,5 @@
+import { DeviceFileSelection, DeviceFileRulesChangedError } from "./device-file-selection";
+import type { SyncStore } from "../store/store";
 import type { SyncDiagnostics } from "../diagnostics/types";
 import type { SyncConflictPolicy } from "../core/conflict-policy";
 import type { SyncTokenResponse } from "../remote/client";
@@ -30,6 +32,9 @@ export interface SyncPullServiceDeps extends SyncContentRuntimeDeps {
   getSyncStore: () => SyncPullStore | null;
   getRemoteVaultKey: () => Uint8Array;
   getConflictPolicy?: () => SyncConflictPolicy;
+  getDeviceFileRulesVersion?: () => number | undefined;
+  assertFileRulesScanned?: () => void;
+  isDeviceFileExcluded?: (path: string) => boolean;
   shouldApplyRemotePath?: (path: string, deleted: boolean) => boolean;
   shouldUseLatestRemoteVersion?: (path: string) => boolean;
   vaultAdapter: PullVaultAdapter;
@@ -58,7 +63,7 @@ export interface SyncPullServiceDeps extends SyncContentRuntimeDeps {
   now?: () => number;
 }
 
-export interface SyncPullStore extends SyncCursorStore, PullEntryStateStore,
+export interface SyncPullStore extends SyncCursorStore, PullEntryStateStore, Pick<SyncStore, "deferredFiles">,
   Pick<SyncRemoteEntryStore, "listRemoteStates"> {}
 
 export interface PullOnceResult {
@@ -70,6 +75,7 @@ export interface PullOnceResult {
 }
 
 export class SyncPullService {
+  private checkedSelection?: { store: SyncPullStore; version: number };
   private readonly entryStateApplier: PullEntryStateApplier;
 
   constructor(private readonly deps: SyncPullServiceDeps) {
@@ -80,6 +86,7 @@ export class SyncPullService {
       blobClient: this.deps.blobClient,
       diagnostics: this.deps.diagnostics,
       contentRuntime: this.deps.contentRuntime,
+      isDeviceFileExcluded: this.deps.isDeviceFileExcluded,
       shouldApplyRemotePath: this.deps.shouldApplyRemotePath,
       shouldUseLatestRemoteVersion: this.deps.shouldUseLatestRemoteVersion,
       getConflictPolicy: this.deps.getConflictPolicy,
@@ -103,25 +110,23 @@ export class SyncPullService {
     if (entryIds.length === 0) return;
     const store = this.deps.getSyncStore();
     if (!store) throw new Error("Sync store is not initialized.");
+    const checkSelection = this.checkFileRulesVersion();
     const token = await this.deps.getSyncToken();
     const progress = new SyncWorkProgress("pull");
     await onProgress(progress.snapshot());
-    const manifest = await loadRecoveryManifest(session, store, entryIds, {
-      applier: this.entryStateApplier,
-      shouldApplyRemotePath: this.deps.shouldApplyRemotePath,
-      onItems: async (items) => {
-        progress.register(items.map(manifestKey));
-        await onProgress(progress.snapshot());
-      },
+    const selection = await this.loadFileSelection(store, false);
+    const manifest = await this.loadRecovery(session, store, entryIds, async (items) => {
+      progress.register(items.map(manifestKey));
+      await onProgress(progress.snapshot());
     });
     progress.seal();
     await onProgress(progress.snapshot());
     try {
       // Resolve ownership across the whole recovery snapshot, including owners
       // fetched in later batches. Blob preparation remains byte-budgeted.
-      const applied = await this.entryStateApplier.applyManifestWindow(store, token, manifest, {
-        finalWindow: true,
-      });
+      checkSelection();
+      const applied = await selection.applyWindow(manifest, (items) =>
+        this.entryStateApplier.applyManifestWindow(store, token, items, { finalWindow: true, selection, checkSelection }));
       progress.complete(applied.completedStates.map(stateKey));
       progress.complete(manifest.filter((item) => item.contextOnly).map(manifestKey));
       await onProgress(progress.snapshot());
@@ -139,11 +144,15 @@ export class SyncPullService {
       throw new Error("Sync store is not initialized.");
     }
 
+    const checkSelection = this.checkFileRulesVersion();
     const token = await this.deps.getSyncToken();
     let cursor = await store.getCursor();
     // Excluded paths keep remote metadata without claiming it was applied.
     // When a path becomes available, replay a fresh authenticated snapshot;
     // never reset the persisted checkpoint or apply stale cached remote data.
+    const version = this.deps.getDeviceFileRulesVersion?.();
+    const selection = await this.loadFileSelection(store, !this.alreadyChecked(store, version));
+    const recovering = selection.newlyIncluded.size > 0;
     const requestCursor = await this.needsExcludedPathReplay(store) ? 0 : cursor;
     let hasMore = true;
     let targetCursor: number | null = null;
@@ -197,6 +206,10 @@ export class SyncPullService {
         const result = await pendingPage;
         if (!result.ok) throw result.error;
         const { page, items } = result.value;
+        checkSelection();
+        if (recovering && targetCursor !== null && targetCursor !== page.targetCursor) {
+          throw new Error("Entry-state pagination changed its target cursor.");
+        }
         targetCursor = page.targetCursor;
         hasMore = page.hasMore;
         // Only metadata is prefetched. Planning, vault writes and checkpoints stay
@@ -204,20 +217,20 @@ export class SyncPullService {
         if (hasMore) pendingPage = startPage(targetCursor, page.nextAfter);
         progress.register(items.map(manifestKey));
         window.push(...items);
+        if (recovering && !hasMore) {
+          window = await this.includeDeferredFiles(session, store, window, selection.newlyIncluded, targetCursor, progress);
+        }
         if (!hasMore) progress.seal();
         await onProgress(progress.snapshot());
 
-        if (window.length >= applyWindowSize || !hasMore) {
+        if (window.length && ((!recovering && window.length >= applyWindowSize) || !hasMore)) {
+          checkSelection();
           const appliedWindow = window;
-          remoteStatesMayHaveChanged ||= window.length > 0;
-          const applied = await this.entryStateApplier.applyManifestWindow(
-            store,
-            token,
-            window,
-            {
-              finalWindow: !hasMore,
-            },
-          );
+          remoteStatesMayHaveChanged = true;
+          const applied = await selection.applyWindow(window, (items) =>
+            this.entryStateApplier.applyManifestWindow(store, token, items, {
+              finalWindow: !hasMore, selection, checkSelection,
+            }));
           totals.entriesApplied += applied.entriesApplied;
           totals.filesWritten += applied.filesWritten;
           totals.filesDeleted += applied.filesDeleted;
@@ -231,6 +244,7 @@ export class SyncPullService {
             hasMore ? null : targetCursor,
           );
           progress.complete(applied.completedStates.map(stateKey));
+          progress.complete(appliedWindow.filter((item) => item.contextOnly).map(manifestKey));
           await onProgress(progress.snapshot());
         }
       }
@@ -241,6 +255,9 @@ export class SyncPullService {
       // partial progress before a later failure. Empty polls need no refresh.
       if (remoteStatesMayHaveChanged) this.deps.onRemoteStatesChange?.();
     }
+
+    checkSelection();
+    if (version !== undefined && !selection.newlyIncluded.size) this.checkedSelection = { store, version };
 
     cursor = targetCursor ?? cursor;
     if (cursor > await store.getCursor()) {
@@ -254,6 +271,44 @@ export class SyncPullService {
       filesDeleted: totals.filesDeleted,
       conflictsCreated: totals.conflictsCreated,
     };
+  }
+
+  /** An old tombstone or move can release a path claimed in the new delta. */
+  private async includeDeferredFiles(
+    session: SyncRealtimeSession,
+    store: SyncPullStore,
+    delta: PullEntryStateManifestItem[],
+    newlyIncluded: ReadonlySet<string>,
+    targetCursor: number,
+    progress: SyncWorkProgress,
+  ): Promise<PullEntryStateManifestItem[]> {
+    const byId = new Map(delta.map((item) => [item.state.entryId, item]));
+    const missing = [...newlyIncluded].filter((id) => !byId.has(id));
+    if (!missing.length) return delta;
+    const recovered = await this.loadRecovery(session, store, missing, async (items) => {
+      progress.register(items.map(manifestKey));
+    }, targetCursor);
+    for (const item of recovered) {
+      if (!byId.has(item.state.entryId)) byId.set(item.state.entryId, item);
+    }
+    if (missing.some((id) => !byId.has(id))) {
+      throw new Error("A deferred file changed during recovery. Retry with a fresh snapshot.");
+    }
+    return [...byId.values()].sort((a, b) => a.state.updatedSeq - b.state.updatedSeq);
+  }
+
+  private loadRecovery(
+    session: SyncRealtimeSession,
+    store: SyncPullStore,
+    ids: string[],
+    onItems: (items: PullEntryStateManifestItem[]) => Promise<void>,
+    targetCursor?: number,
+  ) {
+    return loadRecoveryManifest(session, store, ids, {
+      applier: this.entryStateApplier, targetCursor, onItems,
+      shouldApplyRemotePath: (path, deleted) => !this.deps.isDeviceFileExcluded?.(path) &&
+        this.deps.shouldApplyRemotePath?.(path, deleted) !== false,
+    });
   }
 
   private async checkpointAppliedWindow(
@@ -275,6 +330,32 @@ export class SyncPullService {
 
     await store.setCursor(safeCursor);
     return safeCursor;
+  }
+
+  private loadFileSelection(store: SyncPullStore, scanForInclusions = true): Promise<DeviceFileSelection> {
+    return DeviceFileSelection.load(store, this.deps.isDeviceFileExcluded, this.deps.onRollbackDetected, scanForInclusions);
+  }
+
+  async hasNewlyIncludedFiles(): Promise<boolean> {
+    const store = this.deps.getSyncStore();
+    if (!store) return false;
+    const version = this.deps.getDeviceFileRulesVersion?.();
+    if (this.alreadyChecked(store, version)) return false;
+    const hasFiles = (await this.loadFileSelection(store)).newlyIncluded.size > 0;
+    if (version !== undefined && !hasFiles) this.checkedSelection = { store, version };
+    return hasFiles;
+  }
+
+  private alreadyChecked(store: SyncPullStore, version: number | undefined): boolean {
+    return version !== undefined && this.checkedSelection?.store === store && this.checkedSelection.version === version;
+  }
+
+  private checkFileRulesVersion(): () => void {
+    this.deps.assertFileRulesScanned?.();
+    const version = this.deps.getDeviceFileRulesVersion?.();
+    return () => {
+      if (version !== this.deps.getDeviceFileRulesVersion?.()) throw new DeviceFileRulesChangedError();
+    };
   }
 
   private async needsExcludedPathReplay(store: SyncPullStore): Promise<boolean> {

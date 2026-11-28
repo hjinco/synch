@@ -1,6 +1,7 @@
 import type {
   AcceptedPushMutationRow,
   CachedSyncBlobRow,
+  DeferredSyncFileStore,
   LocalSyncEntryRow,
   MarkEntryDirtyOptions,
   PendingMutationBlockedReason,
@@ -53,6 +54,26 @@ export class DexieSyncStore implements SyncStore {
   constructor(private readonly localVaultId: string) {
     this.db = new SyncDexieDatabase(syncStoreDbName(localVaultId));
   }
+
+  readonly deferredFiles: DeferredSyncFileStore = {
+    get: (id) => this.db.deferredFiles.get(id),
+    getMany: (ids) => this.db.deferredFiles.bulkGet(ids),
+    list: () => this.db.deferredFiles.toArray(),
+    put: async (files) => {
+      await this.db.transaction("rw", this.db.entries, this.db.deferredFiles, async () => {
+        const entries = await this.db.entries.bulkGet(files.map(file => file.entryId));
+        const moved = entries.flatMap((entry, index) => {
+          const file = files[index];
+          if (!entry?.remotePathKey || entry.remotePathKey === file.path ||
+              entry.remoteRevision >= file.revision) return [];
+          return [normalizeEntryRecord({ ...entry, remotePath: null })];
+        });
+        if (moved.length) await this.db.entries.bulkPut(moved);
+        await this.db.deferredFiles.bulkPut(files);
+      });
+    },
+    remove: (ids) => this.db.deferredFiles.bulkDelete(ids),
+  };
 
   async initialize(): Promise<void> {
     await this.db.open();
@@ -501,10 +522,16 @@ export class DexieSyncStore implements SyncStore {
           ...entriesToDelete.map((row) => getProgressDelta(row, null)),
         ]);
 
-        if (entriesToDelete.length > 0) {
-          await this.db.entries.bulkDelete(
-            entriesToDelete.map((entry) => entry.entryId),
-          );
+        // Release an old unique local path before another row claims it. Rows
+        // that still exist are put back below in this same transaction.
+        const claimedPaths = new Set(rowsToPut.flatMap((row, i) =>
+          row.localPathKey && row.localPathKey !== rowsBeforePut[i]?.localPathKey ? [row.localPathKey] : []));
+        const releaseIds = entriesToDelete.map((row) => row.entryId);
+        for (const row of rowsBeforePut) {
+          if (row?.localPathKey && claimedPaths.has(row.localPathKey)) releaseIds.push(row.entryId);
+        }
+        if (releaseIds.length > 0) {
+          await this.db.entries.bulkDelete(releaseIds);
         }
         if (rowsToPut.length > 0) {
           await this.db.entries.bulkPut(rowsToPut);

@@ -1,3 +1,4 @@
+import { DeviceFileRulesChangedError } from "./device-file-selection";
 import { isSyncPausedError, isSyncPausedClose } from "../remote/sync-pause";
 import type { SyncTokenResponse } from "../remote/client";
 import type { PresenceSelection } from "../core/presence";
@@ -41,6 +42,8 @@ export interface SyncAutoLoopDeps {
   unblockFileSizeBlockedMutations?: (
     session: SyncRealtimeSession,
   ) => Promise<number>;
+  isDeferredEntry?: (id: string) => Promise<boolean>;
+  hasNewlyIncludedFiles?: () => Promise<boolean>;
   pullOnce: (session: SyncRealtimeSession) => Promise<unknown>;
   recoverEntryStates?: (session: SyncRealtimeSession, entryIds: string[]) => Promise<void>;
   realtimeClient: SyncRealtimeClientLike;
@@ -404,7 +407,9 @@ export class SyncAutoLoop {
       if (!this.isCurrentConnection(generation)) return;
       await this.unblockFileSizeBlockedMutations(session, run);
       if (!this.isCurrentConnection(generation)) return;
-      if (session.serverCursor > cursor) {
+      const needsPull = session.serverCursor > cursor || await this.deps.hasNewlyIncludedFiles?.();
+      if (!this.isCurrentConnection(generation)) return;
+      if (needsPull) {
         this.requestPullWork(session.serverCursor);
         this.reportQueuedWork();
       }
@@ -601,7 +606,8 @@ export class SyncAutoLoop {
           }
         }
 
-        if (shouldPullNow) {
+        // Recovery may have requested that a pending path owner commit first.
+        if (shouldPullNow && !(shouldPush && this.pushPriorityEntryIds.length)) {
           if (!session) {
             throw new Error("Sync realtime session is not connected.");
           }
@@ -689,7 +695,7 @@ export class SyncAutoLoop {
         if (shouldPullNow) {
           this.requestPullWork(work.pullTargetCursor);
         }
-        if (!isRealtimeConnectionError(error)) {
+        if (!isRealtimeConnectionError(error) && !(error instanceof DeviceFileRulesChangedError)) {
           this.handleError(error);
         }
         this.scheduleSyncRetry();
@@ -706,7 +712,7 @@ export class SyncAutoLoop {
     const unresolved: string[] = [];
     for (const mutation of mutations) {
       const pending = await store.getDirtyEntryMutation(mutation.entryId);
-      if (pending && pending.baseRevision <= mutation.baseRevision) {
+      if (pending && pending.baseRevision <= mutation.baseRevision && !await this.deps.isDeferredEntry?.(mutation.entryId)) {
         unresolved.push(mutation.entryId);
       }
     }

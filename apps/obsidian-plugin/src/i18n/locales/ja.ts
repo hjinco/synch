@@ -137,7 +137,7 @@ export const ja = {
     "excluded.selectHint": "このデバイスから同期しないフォルダーを選択してください。",
     "fileSync.audioDesc": "このデバイスでオーディオ添付ファイルを同期します。",
     "fileSync.header": "ファイル同期",
-    "fileSync.hint": "ファイル同期ルールはこのデバイスにのみ適用されます。ここで除外しても、すでにサーバーへアップロード済みのファイルは自動削除されません。",
+    "fileSync.hint": "このデバイスでアップロードおよびダウンロードするファイルを選択します。ファイルを除外しても、デバイスとサーバーにある既存のコピーは保持されます。",
     "fileSync.imagesDesc": "このデバイスで画像添付ファイルを同期します。",
     "fileSync.other": "その他のファイル形式",
     "fileSync.otherDesc": "このデバイスで追加の非Markdownファイル形式を同期します。",

@@ -63,12 +63,14 @@ export class SynchSettingsStore {
   async updateFileRules(
     nextRules: SyncFileRules,
     configDir = "",
+    onChange?: () => void,
   ): Promise<boolean> {
     const normalized = normalizeSyncFileRules(nextRules, configDir);
     if (JSON.stringify(normalized) === JSON.stringify(this.settings.fileRules)) {
       return false;
     }
 
+    onChange?.();
     this.settings = {
       ...this.settings,
       fileRules: normalized,

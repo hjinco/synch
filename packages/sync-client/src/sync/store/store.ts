@@ -12,6 +12,23 @@ import type {
 } from "./ports";
 import type { SyncedEntryMetadata } from "../core/content";
 
+/** A remote revision omitted by this device's file selection. Keep it separate
+ * from the last applied revision used as the base for local edits. */
+export interface DeferredSyncFile {
+  entryId: string;
+  path: string;
+  revision: number;
+}
+
+export interface DeferredSyncFileStore {
+  get(entryId: string): Promise<DeferredSyncFile | undefined>;
+  getMany(entryIds: string[]): Promise<(DeferredSyncFile | undefined)[]>;
+  list(): Promise<DeferredSyncFile[]>;
+  /** Atomically record the deferral and release any vacated remote path claim. */
+  put(files: DeferredSyncFile[]): Promise<void>;
+  remove(entryIds: string[]): Promise<void>;
+}
+
 export interface RemoteSyncEntryRow {
   entryId: string;
   path: string | null;
@@ -136,4 +153,7 @@ export interface SyncStore
     SyncPushAcceptanceStore,
     SyncReconcileStore,
     SyncBlobStore,
-    SyncStoreLifecycle {}
+    SyncStoreLifecycle {
+  /** Present on hosts offering device-specific file selection. */
+  readonly deferredFiles?: DeferredSyncFileStore;
+}

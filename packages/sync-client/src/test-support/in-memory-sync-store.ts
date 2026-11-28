@@ -3,6 +3,8 @@ import type {
   AcceptedPushMutationRow,
   BaseSyncEntryRow,
   CachedSyncBlobRow,
+  DeferredSyncFile,
+  DeferredSyncFileStore,
   LocalSyncEntryRow,
   MarkEntryDirtyOptions,
   PendingMutationBlockedReason,
@@ -31,6 +33,20 @@ type TestSyncEntryInput = Omit<SyncEntryRow, "localMtime" | "localSize"> &
 export class InMemorySyncStore implements SyncStore {
   private connection: SyncConnection | null = null;
   private readonly entries = new Map<string, EntryState>();
+  private readonly deferred = new Map<string, DeferredSyncFile>();
+  readonly deferredFiles: DeferredSyncFileStore = {
+    get: async (id) => this.deferred.get(id),
+    getMany: async (ids) => ids.map((id) => this.deferred.get(id)),
+    list: async () => [...this.deferred.values()].map((file) => ({ ...file })),
+    put: async (files) => {
+      for (const file of files) {
+        const remote = this.entries.get(file.entryId)?.remote;
+        if (remote && remote.path !== file.path && remote.revision < file.revision) remote.path = null;
+        this.deferred.set(file.entryId, { ...file });
+      }
+    },
+    remove: async (ids) => { for (const id of ids) this.deferred.delete(id); },
+  };
   private readonly blobs = new Map<string, CachedSyncBlobRow>();
 
   constructor(private readonly localVaultId: string = crypto.randomUUID()) {

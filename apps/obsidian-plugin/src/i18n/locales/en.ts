@@ -141,7 +141,7 @@ export const en = {
     "excluded.selectHint": "Select folders that should never sync from this device.",
     "fileSync.audioDesc": "Sync audio attachments on this device.",
     "fileSync.header": "File sync",
-    "fileSync.hint": "File sync rules apply only to this device. Files already uploaded to the server are not removed automatically when you exclude them here.",
+    "fileSync.hint": "Choose which files this device uploads and downloads. Excluding a file keeps existing copies on this device and on the server.",
     "fileSync.imagesDesc": "Sync image attachments on this device.",
     "fileSync.other": "Other file types",
     "fileSync.otherDesc": "Sync additional non-markdown file types on this device.",
